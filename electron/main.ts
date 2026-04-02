@@ -49,8 +49,8 @@ function createWindow(): void {
     console.log(`[RENDERER] ${message} (at ${sourceId}:${line})`);
   });
 
-  // Open DevTools by default for debugging
-  mainWindow.webContents.openDevTools();
+  // // Open DevTools by default for debugging
+  // mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;

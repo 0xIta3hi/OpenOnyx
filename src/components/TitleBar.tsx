@@ -20,7 +20,6 @@ export function TitleBar({ theme }: TitleBarProps) {
   return (
     <div className="titlebar">
       <div className="titlebar-title">
-        <span className="logo">OpenObsidian</span>
         OpenObsidian
       </div>
 
