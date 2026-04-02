@@ -1,5 +1,5 @@
 /**
- * Core type definitions for Notework
+ * Core type definitions for OpenObsidian
  */
 
 export interface FileEntry {

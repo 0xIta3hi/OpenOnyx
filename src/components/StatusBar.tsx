@@ -34,7 +34,7 @@ export function StatusBar({ activeTab, content, theme, viewMode }: StatusBarProp
             <span className="status-item">{lineCount} lines</span>
           </>
         ) : (
-          <span className="status-item">Nyx</span>
+          <span className="status-item">OpenObsidian</span>
         )}
       </div>
       <div className="status-bar-right">

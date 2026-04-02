@@ -1,6 +1,6 @@
-# Welcome to Notework
+# Welcome to OpenObsidian
 
-Notework is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
+OpenObsidian is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
 
 ## Getting Started
 

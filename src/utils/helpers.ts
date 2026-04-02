@@ -1,5 +1,5 @@
 /**
- * Utility helpers for Notework
+ * Utility helpers for OpenObsidian
  */
 
 /** Extract the display name from a file path (without extension) */

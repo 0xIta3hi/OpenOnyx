@@ -13,9 +13,9 @@ const mockFiles: Record<string, string> = {};
 let mockVaultPath: string | null = null;
 
 const SAMPLE_NOTES: Record<string, string> = {
-  'Welcome.md': `# Welcome to Notework
+  'Welcome.md': `# Welcome to OpenObsidian
 
-Notework is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
+OpenObsidian is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
 
 ## Getting Started
 
@@ -36,7 +36,7 @@ Check out [[Getting Started]] to learn more, or explore [[Markdown Guide]] for f
 `,
   'Getting Started.md': `# Getting Started
 
-Welcome to your Notework vault! Here's everything you need to know.
+Welcome to your OpenObsidian vault! Here's everything you need to know.
 
 ## Creating Notes
 
@@ -46,7 +46,7 @@ Welcome to your Notework vault! Here's everything you need to know.
 
 ## Linking Notes
 
-The power of Notework lies in connecting your ideas:
+The power of OpenObsidian lies in connecting your ideas:
 
 \`\`\`
 [[Note Name]]
@@ -75,7 +75,7 @@ This creates a bidirectional link. The linked note will show this note in its **
 `,
   'Markdown Guide.md': `# Markdown Guide
 
-Notework supports full **GitHub Flavored Markdown**. Here's a quick reference.
+OpenObsidian supports full **GitHub Flavored Markdown**. Here's a quick reference.
 
 ## Text Formatting
 

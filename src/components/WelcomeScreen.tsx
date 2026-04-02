@@ -15,8 +15,8 @@ interface WelcomeScreenProps {
 export function WelcomeScreen({ onOpenVault }: WelcomeScreenProps) {
   return (
     <div className="welcome-screen">
-      <div className="welcome-logo">Nyx</div>
-      <h1 className="welcome-title">Welcome to Nyx</h1>
+      <div className="welcome-logo">OpenObsidian</div>
+      <h1 className="welcome-title">Welcome to OpenObsidian</h1>
       <p className="welcome-subtitle">
         A local-first knowledge management tool. Create, link, and visualize your
         notes as a connected graph — all stored securely on your device.

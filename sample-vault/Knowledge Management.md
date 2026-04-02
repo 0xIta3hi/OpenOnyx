@@ -10,7 +10,7 @@ The Zettelkasten ("slip box") method, pioneered by Niklas Luhmann, emphasizes:
 2. **Connections**: Notes link to related concepts
 3. **Emergence**: Insights emerge from the network of connections
 
-## How to Use Notework for Knowledge Management
+## How to Use OpenObsidian for Knowledge Management
 
 ### Capture
 - Write down ideas immediately using [[Getting Started|quick note creation]]

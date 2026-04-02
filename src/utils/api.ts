@@ -20,7 +20,7 @@ export function getAPI(): API {
     _api = window.electronAPI;
   } else {
     // Running in browser — use mock API
-    console.log('%c[Notework] Running in browser mode with mock API', 'color: #6c63ff; font-weight: bold;');
+    console.log('%c[OpenObsidian] Running in browser mode with mock API', 'color: #6c63ff; font-weight: bold;');
     _api = createMockAPI();
   }
 

@@ -1,6 +1,6 @@
 # Getting Started
 
-Welcome to your Notework vault! Here's everything you need to know.
+Welcome to your OpenObsidian vault! Here's everything you need to know.
 
 ## Creating Notes
 
@@ -10,7 +10,7 @@ Welcome to your Notework vault! Here's everything you need to know.
 
 ## Linking Notes
 
-The power of Notework lies in connecting your ideas:
+The power of OpenObsidian lies in connecting your ideas:
 
 ```
 [[Note Name]]

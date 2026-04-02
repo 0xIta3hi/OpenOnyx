@@ -1,5 +1,5 @@
 /**
- * Notework - Electron Main Process
+ * OpenObsidian - Electron Main Process
  * 
  * Handles window creation, IPC communication, and lifecycle management.
  * All filesystem operations are delegated to the fileSystem module and
@@ -23,7 +23,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'Notework',
+    title: 'OpenObsidian',
     backgroundColor: '#0f0f14',
     titleBarStyle: 'hiddenInset',
     frame: process.platform === 'darwin' ? true : false,

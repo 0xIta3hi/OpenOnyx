@@ -1,250 +1,213 @@
-# Notework
+# OpenObsidian
 
-<div align="center">
+A local-first knowledge management tool for creating, editing, and linking Markdown notes stored locally as files. OpenObsidian forms a graph-based knowledge system inspired by Obsidian, built with Electron, React, and TypeScript.
 
-**A local-first knowledge management tool**
+## Features
 
-Create, edit, and link Markdown notes stored locally, forming a graph-based knowledge system.
+### Core Functionality
+- **Markdown Editor**: CodeMirror 6 with syntax highlighting, line wrapping, and keyboard shortcuts
+- **Wiki Links**: Connect notes using `[[note-name]]` syntax with automatic creation of missing notes
+- **Graph View**: Interactive D3.js force-directed visualization of note connections
+- **File Explorer**: Sidebar with tree view, drag-and-drop support, and context menus
+- **Full-Text Search**: Fuzzy search across all notes powered by Fuse.js
+- **Auto-Save**: Automatic saving after 2 seconds of inactivity
 
-*Inspired by Obsidian. Built with Electron + React + TypeScript.*
+### Advanced Features
+- **Tags**: Organize notes using `#tag` syntax
+- **Daily Notes**: One-click creation of daily note entries
+- **Command Palette**: VS Code-style command launcher (Ctrl+P)
+- **Backlinks Panel**: View all notes that link to the current note
+- **Theme Toggle**: Switch between dark and light modes
+- **Tabs**: Work with multiple notes simultaneously
+- **Split View**: Edit and preview markdown side by side
+- **Drag & Drop**: Reorganize files between folders
 
-</div>
-
----
-
-## ✨ Features
-
-### Core
-- 📝 **Markdown Editor** — CodeMirror 6 with syntax highlighting, line wrapping, and keyboard shortcuts
-- 🔗 **Wiki Links** — `[[note-name]]` style linking with auto-creation of missing notes
-- 🕸️ **Graph View** — Interactive D3.js force-directed graph visualization
-- 📁 **File Explorer** — Sidebar with tree view, drag-and-drop, context menus
-- 🔍 **Full-Text Search** — Fuzzy search across all notes using Fuse.js
-- 💾 **Auto-Save** — Changes saved automatically after 2 seconds of inactivity
-
-### Advanced
-- 🏷️ **Tags** — `#tag` syntax for categorization
-- 📅 **Daily Notes** — One-click daily note generation
-- ⌨️ **Command Palette** — VS Code-style command launcher (`Ctrl+P`)
-- 🔙 **Backlinks** — Panel showing which notes link to the current note
-- 🌙 **Dark/Light Theme** — Toggle between themes
-- 📑 **Tabs** — Multiple notes open simultaneously
-- ✂️ **Split View** — Edit and preview side by side
-- 🖱️ **Drag & Drop** — Reorganize files between folders
-
-## 🚀 Quick Start
+## Getting Started
 
 ### Prerequisites
-- **Node.js** >= 18.x
-- **npm** >= 9.x
+- Node.js >= 18.x
+- npm >= 9.x
 
-### Setup
+### Installation
 
 ```bash
-# Clone/navigate to the project
-cd notework
+cd openobsidian
 
-# Install dependencies
 npm install
 
-# Compile Electron main process
 npx tsc -p tsconfig.electron.json
 
-# Start the app in development mode
 npm run dev
 ```
 
 ### Production Build
 
 ```bash
-# Build everything
 npm run build
 
-# Package as distributable
 npm run package
 ```
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
-notework/
+openobsidian/
 ├── electron/                   # Electron main process
-│   ├── main.ts                 # App entry, window creation, menu
-│   ├── preload.ts              # Secure bridge (contextBridge)
+│   ├── main.ts                 # Application entry, window creation
+│   ├── preload.ts              # Secure IPC bridge (contextBridge)
 │   ├── fileSystem.ts           # Vault filesystem operations
 │   ├── search.ts               # Fuse.js search engine
 │   └── ipc.ts                  # IPC handler registration
 │
-├── src/                        # React renderer (frontend)
+├── src/                        # React renderer process
 │   ├── main.tsx                # React entry point
-│   ├── App.tsx                 # Root component (state management)
-│   ├── types/
-│   │   └── index.ts            # TypeScript interfaces
-│   ├── utils/
-│   │   └── helpers.ts          # Utility functions
-│   ├── styles/
-│   │   └── index.css           # Design system & all styles
+│   ├── App.tsx                 # Root component and state management
+│   ├── types/index.ts          # TypeScript type definitions
+│   ├── utils/helpers.ts        # Utility functions
+│   ├── styles/index.css        # Application styles
 │   └── components/
-│       ├── TitleBar.tsx         # Custom window title bar
-│       ├── Sidebar.tsx          # File explorer panel
-│       ├── WelcomeScreen.tsx    # First-time user screen
-│       ├── SearchModal.tsx      # Full-text search modal
-│       ├── CommandPalette.tsx   # Command launcher
-│       ├── BacklinksPanel.tsx   # Backlinks sidebar
-│       ├── StatusBar.tsx        # Bottom status bar
+│       ├── TitleBar.tsx
+│       ├── Sidebar.tsx
+│       ├── SearchModal.tsx
+│       ├── CommandPalette.tsx
+│       ├── BacklinksPanel.tsx
 │       ├── editor/
-│       │   ├── Editor.tsx       # CodeMirror markdown editor
-│       │   └── MarkdownPreview.tsx  # Rendered markdown view
+│       │   ├── Editor.tsx
+│       │   └── MarkdownPreview.tsx
 │       └── graph/
-│           └── GraphView.tsx    # D3.js knowledge graph
+│           └── GraphView.tsx
 │
 ├── sample-vault/               # Demo notes
-│   ├── Welcome.md
-│   ├── Getting Started.md
-│   ├── Markdown Guide.md
-│   ├── Knowledge Management.md
-│   └── Project Ideas.md
-│
 ├── dist-electron/              # Compiled Electron code
 ├── dist/                       # Built frontend
-├── package.json
-├── tsconfig.json               # Frontend TypeScript config
-├── tsconfig.electron.json      # Electron TypeScript config
-└── vite.config.ts              # Vite configuration
+└── release/                    # Packaged applications
 ```
 
-## 🏗️ Architecture
+## Architecture
 
-### Layer Separation
+### System Design
+
+The application follows a secure multi-process architecture:
 
 ```
 ┌─────────────────────────────────────────┐
-│           Renderer (React)              │
+│         Renderer Process (React)        │
 │  ┌──────────────────────────────────┐   │
-│  │ Components (UI Layer)            │   │
-│  │  ├── Editor (CodeMirror)         │   │
-│  │  ├── GraphView (D3.js)           │   │
-│  │  ├── Sidebar (File Explorer)     │   │
-│  │  └── Search / CommandPalette     │   │
+│  │  UI Components                   │   │
+│  │   - Editor (CodeMirror)          │   │
+│  │   - GraphView (D3.js)            │   │
+│  │   - Sidebar (File Explorer)      │   │
+│  │   - Search / CommandPalette      │   │
 │  └──────────┬───────────────────────┘   │
 │             │ window.electronAPI         │
 │  ┌──────────▼───────────────────────┐   │
-│  │ Preload (contextBridge)          │   │
-│  │  Secure IPC channel proxy        │   │
+│  │  Preload Script                  │   │
+│  │   - contextBridge                │   │
+│  │   - Secure IPC proxy             │   │
 │  └──────────┬───────────────────────┘   │
 ├─────────────┼───────────────────────────┤
 │  ┌──────────▼───────────────────────┐   │
-│  │ Main Process (Node.js)           │   │
-│  │  ├── FileSystemManager           │   │
-│  │  ├── SearchEngine (Fuse.js)      │   │
-│  │  └── IPC Handlers                │   │
+│  │  Main Process (Node.js)          │   │
+│  │   - FileSystemManager            │   │
+│  │   - SearchEngine (Fuse.js)       │   │
+│  │   - IPC Handlers                 │   │
 │  └──────────────────────────────────┘   │
-│           Main (Electron)               │
+│         Main Process (Electron)         │
 └─────────────────────────────────────────┘
-          │
-          ▼
-    Local File System (.md files)
+              │
+              ▼
+      Local Filesystem (.md files)
 ```
 
-### Key Design Decisions
+### Key Design Principles
 
-1. **Context Isolation**: The renderer never has direct access to Node.js APIs. All operations go through the preload script's `contextBridge`.
+**Context Isolation**: The renderer process has no direct access to Node.js APIs. All operations are routed through the preload script's contextBridge.
 
-2. **Async Everything**: All filesystem operations are async to avoid blocking the main thread.
+**Asynchronous Operations**: All filesystem operations are asynchronous to prevent blocking the main thread.
 
-3. **In-Memory Search**: Fuse.js maintains an in-memory index rebuilt on file changes, providing instant search results.
+**In-Memory Search Index**: Fuse.js maintains an in-memory search index that is rebuilt when files change, providing fast search results.
 
-4. **No Database**: All data is stored as plain `.md` files. The graph structure is computed dynamically from `[[wiki-links]]`.
+**File-Based Storage**: All notes are stored as plain Markdown (.md) files. The graph structure is computed dynamically from wiki-link syntax.
 
-5. **Auto-Save**: Changes are automatically persisted after 2 seconds of inactivity, preventing data loss.
+**Automatic Persistence**: Changes are automatically saved after 2 seconds of inactivity to prevent data loss.
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+N` | New Note |
-| `Ctrl+S` | Save |
-| `Ctrl+F` | Search |
-| `Ctrl+G` | Toggle Graph View |
-| `Ctrl+P` | Command Palette |
-| `Ctrl+B` | Toggle Sidebar |
-| `Ctrl+W` | Close Tab |
-| `Ctrl+O` | Open Vault |
-| `Escape` | Close modals |
+| Ctrl+N | New Note |
+| Ctrl+S | Save Current Note |
+| Ctrl+F | Open Search |
+| Ctrl+G | Toggle Graph View |
+| Ctrl+P | Open Command Palette |
+| Ctrl+B | Toggle Sidebar |
+| Ctrl+W | Close Active Tab |
+| Ctrl+O | Open Vault |
+| Escape | Close Modals |
 
-## 🔌 Plugin System Architecture
+## Extending OpenObsidian
 
-Notework is designed with extensibility in mind. Here's how to extend it:
+### Adding New Commands
 
-### Adding a New Command
-
-1. Define your command in `App.tsx`'s `commands` array:
+Commands are defined in `App.tsx`:
 
 ```typescript
 {
-  id: 'my-command',
-  label: 'My Custom Command',
-  shortcut: 'Ctrl+Shift+M',
-  action: () => { /* your logic */ },
+  id: 'custom-command',
+  label: 'Custom Command',
+  shortcut: 'Ctrl+Shift+C',
+  action: () => { /* implementation */ },
   category: 'Custom'
 }
 ```
 
-### Adding a New IPC Channel
+### Adding IPC Channels
 
-1. **Main process** (`electron/ipc.ts`): Register a new handler
-
+1. Register handler in `electron/ipc.ts`:
 ```typescript
-ipcMain.handle('custom:action', async (_event, arg: string) => {
-  // Your logic here
+ipcMain.handle('custom:action', async (_event, arg) => {
   return result;
 });
 ```
 
-2. **Preload** (`electron/preload.ts`): Expose to renderer
-
+2. Expose in `electron/preload.ts`:
 ```typescript
-customAction: (arg: string): Promise<any> =>
-  ipcRenderer.invoke('custom:action', arg),
+customAction: (arg: string) => ipcRenderer.invoke('custom:action', arg)
 ```
 
-3. **Renderer**: Call via `window.electronAPI.customAction(arg)`
+3. Call from renderer:
+```typescript
+await window.electronAPI.customAction(arg);
+```
 
-### Adding a New View Component
+## Sample Vault
 
-1. Create component in `src/components/`
-2. Add state management in `App.tsx`
-3. Add toggle command to the command palette
-4. Wire up keyboard shortcut if needed
+The `sample-vault/` directory contains demonstration notes showcasing:
+- Wiki-style links between notes
+- Tag-based organization
+- Task lists and checkboxes
+- Code blocks with syntax highlighting
+- Tables and advanced Markdown formatting
 
-### Future Plugin API Design
+Open this vault to explore all features.
 
-A full plugin system would involve:
-- Plugin manifest files (`plugin.json`)
-- Sandboxed execution environment
-- Hooks system for lifecycle events
-- API surface for reading/writing notes
-- UI extension points (sidebar panels, editor toolbars)
+## Privacy and Security
 
-## 📋 Sample Vault
+- **Fully Offline**: No internet connection required
+- **Local Storage**: All data remains on your device as Markdown files
+- **No Telemetry**: Zero data collection or analytics
+- **Context Isolation**: Renderer process runs in a sandboxed environment
+- **Path Traversal Protection**: Filesystem operations are restricted to the vault directory
 
-The `sample-vault/` directory contains demo notes showcasing:
-- Wiki links between notes
-- Tags and categorization
-- Task lists
-- Code blocks
-- Tables
-- Markdown formatting
+## Technology Stack
 
-Open it as your vault to explore all features.
-
-## 🔒 Privacy & Security
-
-- **Fully offline**: No internet connection required
-- **Local storage**: All data stays on your device as `.md` files
-- **No telemetry**: Zero data collection
-- **Context isolation**: Renderer process is sandboxed
-- **Path traversal protection**: Filesystem operations are vault-scoped
+- **Electron 35**: Cross-platform desktop framework
+- **React 19**: UI framework
+- **TypeScript**: Type-safe development
+- **CodeMirror 6**: Advanced text editor
+- **D3.js**: Graph visualization
+- **Fuse.js**: Fuzzy search engine
+- **Vite**: Build tool and development server
 
 ## License
 

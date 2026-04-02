@@ -1,6 +1,6 @@
 # Markdown Guide
 
-Notework supports full **GitHub Flavored Markdown** (GFM). Here's a quick reference.
+OpenObsidian supports full **GitHub Flavored Markdown** (GFM). Here's a quick reference.
 
 ## Headings
 
@@ -36,7 +36,7 @@ Notework supports full **GitHub Flavored Markdown** (GFM). Here's a quick refere
 
 ## Links
 
-- External: [Notework](https://example.com)
+- External: [OpenObsidian](https://example.com)
 - Internal: [[Welcome]]
 - With alias: [[Getting Started|Getting Started Guide]]
 

@@ -1,5 +1,5 @@
 {
-  "name": "nyx",
+  "name": "openobsidian",
   "version": "1.0.0",
   "description": "A local-first knowledge management tool with graph-based note linking",
   "main": "dist-electron/main.js",
@@ -15,7 +15,7 @@
     "markdown",
     "graph"
   ],
-  "author": "Notework",
+  "author": "OpenObsidian",
   "license": "MIT",
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
@@ -49,9 +49,9 @@
     "wait-on": "^8.0.3"
   },
   "build": {
-    "appId": "com.nyx.app",
-    "productName": "Nyx",
-    "copyright": "Copyright © 2026 Nyx",
+    "appId": "com.openobsidian.app",
+    "productName": "OpenObsidian",
+    "copyright": "Copyright © 2026 OpenObsidian",
     "directories": {
       "output": "release"
     },
