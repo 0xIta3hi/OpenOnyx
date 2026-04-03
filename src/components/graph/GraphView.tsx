@@ -28,8 +28,10 @@ const api = getAPI();
 
 export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScreen, theme = 'dark' }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const onNodeClickRef = useRef(onNodeClick);
 
   useEffect(() => {
@@ -64,24 +66,46 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
 
     svg.attr('width', width).attr('height', height);
 
-    // Theme-specific colors
+    // Theme-specific colors  
     const isDark = theme === 'dark';
-    const nodeColor = isDark ? '#ffffff' : '#1f2937';
-    const nodeHoverColor = isDark ? '#e5e7eb' : '#374151';
-    const phantomNodeColor = isDark ? '#4b5563' : '#9ca3af';
-    const phantomHoverColor = isDark ? '#6b7280' : '#6b7280';
-    const strokeColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)';
-    const linkColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
-    const textColor = isDark ? '#f3f4f6' : '#1f2937';
+    const nodeColor = isDark ? '#ffffff' : '#4b5563'; // White in dark, gray in light
+    const nodeHoverColor = isDark ? '#a5f3fc' : '#0891b2';
+    const phantomNodeColor = isDark ? '#6b7280' : '#9ca3af';
+    const phantomHoverColor = isDark ? '#9ca3af' : '#6b7280';
+    const strokeColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)';
+    const linkColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)'; // More visible links
+    const textColor = isDark ? '#f5f5f5' : '#1f2937';
+    const selectedColor = '#22c55e'; // Green for selected node
+    const connectedColor = '#f59e0b'; // Amber/orange for connected nodes
 
-    // Create zoom behavior
+    // Build adjacency map for finding connected nodes
+    const adjacencyMap = new Map<string, Set<string>>();
+    graphData.edges.forEach(edge => {
+      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source.id;
+      const targetId = typeof edge.target === 'string' ? edge.target : edge.target.id;
+      
+      if (!adjacencyMap.has(sourceId)) adjacencyMap.set(sourceId, new Set());
+      if (!adjacencyMap.has(targetId)) adjacencyMap.set(targetId, new Set());
+      adjacencyMap.get(sourceId)!.add(targetId);
+      adjacencyMap.get(targetId)!.add(sourceId);
+    });
+
+    // Create zoom behavior and store reference
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
       });
-
+    
+    zoomRef.current = zoom;
     svg.call(zoom);
+
+    // Click on background to deselect
+    svg.on('click', (event) => {
+      if (event.target === svgRef.current) {
+        setSelectedNode(null);
+      }
+    });
 
     // Main group for zoom/pan
     const g = svg.append('g');
@@ -98,13 +122,13 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide().radius((d: any) => Math.min(30, 5 + Math.sqrt(d.connections) * 4) + 20));
 
-    // Draw edges
+    // Draw edges with better visibility
     const link = g.selectAll('.graph-link')
       .data(graphData.edges)
       .join('line')
       .attr('class', 'graph-link')
-      .attr('stroke', linkColor)
-      .attr('stroke-width', 1);
+      .style('stroke', linkColor)
+      .style('stroke-width', '1.5px');
 
     // Draw nodes
     const node = g.selectAll('.graph-node')
@@ -130,14 +154,44 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     // Node circle - cap radius at 30 to prevent excessively large nodes
     const calculateRadius = (d: GraphNode) => Math.min(30, 5 + Math.sqrt(d.connections) * 4);
 
-    node.append('circle')
+    // Helper to check if node is connected to selected node
+    const isConnected = (nodeId: string) => {
+      if (!selectedNode) return false;
+      if (nodeId === selectedNode) return true;
+      return adjacencyMap.get(selectedNode)?.has(nodeId) || false;
+    };
+
+    // Helper to check if edge is connected to selected node
+    const isEdgeConnected = (edge: GraphEdge) => {
+      if (!selectedNode) return false;
+      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source.id;
+      const targetId = typeof edge.target === 'string' ? edge.target : edge.target.id;
+      return sourceId === selectedNode || targetId === selectedNode;
+    };
+
+    const circles = node.append('circle')
       .attr('r', calculateRadius)
-      .attr('fill', (d: GraphNode) => d.path ? nodeColor : phantomNodeColor)
-      .attr('stroke', strokeColor)
-      .attr('stroke-width', 1.5)
+      .style('fill', (d: GraphNode) => {
+        if (selectedNode) {
+          if (d.id === selectedNode) return selectedColor; // Green for selected
+          if (isConnected(d.id)) return connectedColor; // Amber for connected
+        }
+        return d.path ? nodeColor : phantomNodeColor;
+      })
+      .style('stroke', (d: GraphNode) => {
+        if (selectedNode && d.id === selectedNode) return selectedColor;
+        if (selectedNode && isConnected(d.id)) return connectedColor;
+        return strokeColor;
+      })
+      .style('stroke-width', (d: GraphNode) => {
+        if (selectedNode && (d.id === selectedNode || isConnected(d.id))) return '3px';
+        return '1.5px';
+      })
       .attr('stroke-dasharray', (d: GraphNode) => d.path ? 'none' : '4 2')
       .style('cursor', 'pointer')
-      .on('click', (_event: any, d: GraphNode) => {
+      .on('click', (event: any, d: GraphNode) => {
+        event.stopPropagation();
+        setSelectedNode(prev => prev === d.id ? null : d.id);
         onNodeClickRef.current(d.name);
       })
       .on('mouseover', function(this: SVGCircleElement, _event: any, d: GraphNode) {
@@ -145,24 +199,48 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
           .transition()
           .duration(200)
           .attr('r', calculateRadius(d) + 3)
-          .attr('fill', d.path ? nodeHoverColor : phantomHoverColor);
+          .style('fill', () => {
+            if (selectedNode && d.id === selectedNode) return selectedColor;
+            if (selectedNode && isConnected(d.id)) return connectedColor;
+            return d.path ? nodeHoverColor : phantomHoverColor;
+          });
       })
       .on('mouseout', function(this: SVGCircleElement, _event: any, d: GraphNode) {
         d3.select(this)
           .transition()
           .duration(200)
           .attr('r', calculateRadius(d))
-          .attr('fill', d.path ? nodeColor : phantomNodeColor);
+          .style('fill', () => {
+            if (selectedNode) {
+              if (d.id === selectedNode) return selectedColor;
+              if (isConnected(d.id)) return connectedColor;
+            }
+            return d.path ? nodeColor : phantomNodeColor;
+          });
       });
 
-    // Node labels - clean text without glow
+    // Update link styles based on selection - highlight connected, keep others visible
+    link
+      .style('stroke', (d: any) => {
+        if (selectedNode && isEdgeConnected(d)) return connectedColor;
+        return linkColor;
+      })
+      .style('stroke-width', (d: any) => {
+        if (selectedNode && isEdgeConnected(d)) return '2.5px';
+        return '1.5px';
+      });
+
+    // Node labels
     node.append('text')
       .text((d: GraphNode) => d.name)
       .attr('dy', (d: GraphNode) => calculateRadius(d) + 14)
       .attr('text-anchor', 'middle')
       .attr('font-size', '11px')
-      .attr('fill', textColor)
-      .attr('font-weight', '500')
+      .style('fill', textColor)
+      .attr('font-weight', (d: GraphNode) => {
+        if (selectedNode && (d.id === selectedNode || isConnected(d.id))) return '600';
+        return '500';
+      })
       .attr('font-family', 'Inter, -apple-system, sans-serif')
       .style('pointer-events', 'none');
 
@@ -187,23 +265,19 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     return () => {
       simulation.stop();
     };
-  }, [graphData, theme]);
+  }, [graphData, theme, selectedNode]);
 
-  // Zoom controls
+  // Zoom controls - use stored zoom behavior
   const handleZoomIn = () => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !zoomRef.current) return;
     const svg = d3.select(svgRef.current);
-    svg.transition().duration(300).call(
-      d3.zoom<SVGSVGElement, unknown>().scaleBy as any, 1.3
-    );
+    svg.transition().duration(300).call(zoomRef.current.scaleBy, 1.4);
   };
 
   const handleZoomOut = () => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !zoomRef.current) return;
     const svg = d3.select(svgRef.current);
-    svg.transition().duration(300).call(
-      d3.zoom<SVGSVGElement, unknown>().scaleBy as any, 0.7
-    );
+    svg.transition().duration(300).call(zoomRef.current.scaleBy, 0.7);
   };
 
   return (

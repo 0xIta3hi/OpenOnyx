@@ -1023,27 +1023,17 @@ body {
 }
 
 .graph-node circle {
-  stroke: var(--accent-primary);
-  stroke-width: 1.5;
-  fill: var(--bg-elevated);
   cursor: pointer;
-  transition: fill var(--transition-fast), stroke-width var(--transition-fast);
-}
-
-.graph-node circle:hover {
-  fill: var(--accent-primary);
-  stroke-width: 2.5;
+  transition: all 0.2s ease;
 }
 
 .graph-node.phantom circle {
   stroke-dasharray: 4 2;
-  opacity: 0.5;
 }
 
 .graph-node text {
   font-family: var(--font-sans);
   font-size: 11px;
-  fill: var(--text-secondary);
   pointer-events: none;
   text-anchor: middle;
   dominant-baseline: central;
