@@ -465,7 +465,7 @@ export default function App() {
           ) : (
             <>
               {(!showGraph || !graphFullScreen) && (
-                <div style={{ flex: (!showGraph || !activeTab || graphFullScreen) ? 1 : `0 0 ${editorPaneWidth}%`, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: (!showGraph || graphFullScreen) ? 1 : `0 0 ${editorPaneWidth}%`, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   {activeTab ? (
                     <Editor
                       tabs={tabs}
@@ -495,7 +495,7 @@ export default function App() {
                 </div>
               )}
               
-              {!graphFullScreen && showGraph && activeTab && (
+              {!graphFullScreen && showGraph && (
                 <div
                   className="resizer"
                   onMouseDown={startPaneDrag}
@@ -505,7 +505,7 @@ export default function App() {
               
               {showGraph && (
                 <div style={{ 
-                  flex: graphFullScreen || !activeTab ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`, 
+                  flex: graphFullScreen ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`, 
                   height: '100%', 
                   display: 'flex',
                   flexDirection: 'column',

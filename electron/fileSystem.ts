@@ -211,16 +211,20 @@ export class FileSystemManager {
     const allFiles = await this.getAllMarkdownFiles();
     const nodes: Map<string, { id: string; name: string; path: string; connections: number }> = new Map();
     const edges: { source: string; target: string }[] = [];
+    // Track children for each node (outgoing links - nodes this note links TO)
+    const childrenMap: Map<string, Set<string>> = new Map();
 
     // Create nodes for all existing files
     for (const file of allFiles) {
       const name = path.basename(file, '.md');
-      nodes.set(name.toLowerCase(), {
-        id: name.toLowerCase(),
+      const key = name.toLowerCase();
+      nodes.set(key, {
+        id: key,
         name,
         path: file,
         connections: 0,
       });
+      childrenMap.set(key, new Set());
     }
 
     // Build edges by scanning links in each file
@@ -240,16 +244,41 @@ export class FileSystemManager {
             path: '',
             connections: 0,
           });
+          childrenMap.set(targetKey, new Set());
         }
 
         edges.push({ source: sourceName, target: targetKey });
         
-        // Increment connection counts
-        const sourceNode = nodes.get(sourceName);
-        const targetNode = nodes.get(targetKey);
-        if (sourceNode) sourceNode.connections++;
-        if (targetNode) targetNode.connections++;
+        // Track children (outgoing links from source TO target)
+        childrenMap.get(sourceName)?.add(targetKey);
       }
+    }
+
+    // Calculate total descendants for each node recursively
+    const descendantCache: Map<string, number> = new Map();
+    
+    const countDescendants = (nodeId: string, visited: Set<string>): number => {
+      // Prevent infinite loops from cycles
+      if (visited.has(nodeId)) return 0;
+      
+      // Return cached value if available
+      if (descendantCache.has(nodeId)) return descendantCache.get(nodeId)!;
+      
+      visited.add(nodeId);
+      const children = childrenMap.get(nodeId) || new Set();
+      
+      let total = children.size; // Direct children
+      for (const child of children) {
+        total += countDescendants(child, new Set(visited));
+      }
+      
+      descendantCache.set(nodeId, total);
+      return total;
+    };
+
+    // Set connections to total descendants count
+    for (const [nodeId, node] of nodes) {
+      node.connections = countDescendants(nodeId, new Set());
     }
 
     return {

@@ -47,3 +47,4 @@ export function StatusBar({ activeTab, content, theme, viewMode }: StatusBarProp
     </div>
   );
 }
+

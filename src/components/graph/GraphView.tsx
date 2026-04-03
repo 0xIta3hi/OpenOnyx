@@ -64,6 +64,16 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
 
     svg.attr('width', width).attr('height', height);
 
+    // Theme-specific colors
+    const isDark = theme === 'dark';
+    const nodeColor = isDark ? '#ffffff' : '#1f2937';
+    const nodeHoverColor = isDark ? '#e5e7eb' : '#374151';
+    const phantomNodeColor = isDark ? '#4b5563' : '#9ca3af';
+    const phantomHoverColor = isDark ? '#6b7280' : '#6b7280';
+    const strokeColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)';
+    const linkColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+    const textColor = isDark ? '#f3f4f6' : '#1f2937';
+
     // Create zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
@@ -76,46 +86,24 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     // Main group for zoom/pan
     const g = svg.append('g');
 
-    // Create force simulation
+    // Create force simulation with better spacing
     const simulation = d3.forceSimulation<GraphNode>(graphData.nodes)
       .force('link', d3.forceLink<GraphNode, GraphEdge>(graphData.edges)
         .id(d => d.id)
-        .distance(100)
-        .strength(0.3))
+        .distance(120)
+        .strength(0.2))
       .force('charge', d3.forceManyBody()
-        .strength(-200)
-        .distanceMax(400))
+        .strength(-300)
+        .distanceMax(500))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(30));
-
-    // Gradient definition for node glow
-    const defs = svg.append('defs');
-    
-    const gradient = defs.append('radialGradient')
-      .attr('id', 'nodeGlow');
-    gradient.append('stop')
-      .attr('offset', '0%')
-      .attr('stop-color', '#6c63ff')
-      .attr('stop-opacity', 0.3);
-    gradient.append('stop')
-      .attr('offset', '100%')
-      .attr('stop-color', '#6c63ff')
-      .attr('stop-opacity', 0);
-
-    // Color palette for nodes
-    const colors = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#c084fc', '#38bdf8', '#818cf8'];
-    const getColor = (name: string) => {
-      let hash = 0;
-      for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-      return colors[Math.abs(hash) % colors.length];
-    };
+      .force('collision', d3.forceCollide().radius((d: any) => Math.min(30, 5 + Math.sqrt(d.connections) * 4) + 20));
 
     // Draw edges
     const link = g.selectAll('.graph-link')
       .data(graphData.edges)
       .join('line')
       .attr('class', 'graph-link')
-      .attr('stroke', 'rgba(150, 150, 170, 0.2)')
+      .attr('stroke', linkColor)
       .attr('stroke-width', 1);
 
     // Draw nodes
@@ -139,15 +127,14 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
           d.fy = null;
         }) as any);
 
-    // Node circle
-    // Cap radius at 30 to prevent excessively large nodes
+    // Node circle - cap radius at 30 to prevent excessively large nodes
     const calculateRadius = (d: GraphNode) => Math.min(30, 5 + Math.sqrt(d.connections) * 4);
 
     node.append('circle')
       .attr('r', calculateRadius)
-      .attr('fill', (d: GraphNode) => d.path ? getColor(d.name) : '#2a2a42')
-      .attr('stroke', (d: GraphNode) => d.path ? 'transparent' : '#484868')
-      .attr('stroke-width', 1)
+      .attr('fill', (d: GraphNode) => d.path ? nodeColor : phantomNodeColor)
+      .attr('stroke', strokeColor)
+      .attr('stroke-width', 1.5)
       .attr('stroke-dasharray', (d: GraphNode) => d.path ? 'none' : '4 2')
       .style('cursor', 'pointer')
       .on('click', (_event: any, d: GraphNode) => {
@@ -158,27 +145,26 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
           .transition()
           .duration(200)
           .attr('r', calculateRadius(d) + 3)
-          .attr('fill', d.path ? d3.rgb(getColor(d.name)).brighter(0.5).toString() : '#484868');
+          .attr('fill', d.path ? nodeHoverColor : phantomHoverColor);
       })
       .on('mouseout', function(this: SVGCircleElement, _event: any, d: GraphNode) {
         d3.select(this)
           .transition()
           .duration(200)
           .attr('r', calculateRadius(d))
-          .attr('fill', d.path ? getColor(d.name) : '#2a2a42');
+          .attr('fill', d.path ? nodeColor : phantomNodeColor);
       });
 
-    // Node labels
+    // Node labels - clean text without glow
     node.append('text')
       .text((d: GraphNode) => d.name)
       .attr('dy', (d: GraphNode) => calculateRadius(d) + 14)
       .attr('text-anchor', 'middle')
-      .attr('font-size', '10px')
-      .attr('fill', theme === 'dark' ? '#d1d5db' : '#374151')
+      .attr('font-size', '11px')
+      .attr('fill', textColor)
       .attr('font-weight', '500')
-      .attr('font-family', 'Inter, sans-serif')
-      .style('pointer-events', 'none')
-      .style('text-shadow', theme === 'dark' ? '0 1px 3px rgba(0,0,0,0.8)' : '0 1px 3px rgba(255,255,255,0.8)');
+      .attr('font-family', 'Inter, -apple-system, sans-serif')
+      .style('pointer-events', 'none');
 
     // Update positions on tick
     simulation.on('tick', () => {
@@ -201,7 +187,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     return () => {
       simulation.stop();
     };
-  }, [graphData]);
+  }, [graphData, theme]);
 
   // Zoom controls
   const handleZoomIn = () => {

@@ -331,12 +331,15 @@ export function createMockAPI(): ElectronAPI {
     getGraphData: async () => {
       const nodes: Map<string, any> = new Map();
       const edges: any[] = [];
+      // Track children for each node (outgoing links - nodes this note links TO)
+      const childrenMap: Map<string, Set<string>> = new Map();
 
       for (const [filePath, content] of Object.entries(mockFiles)) {
         const name = getBasename(filePath).replace(/\.md$/, '');
         const key = name.toLowerCase();
         if (!nodes.has(key)) {
           nodes.set(key, { id: key, name, path: filePath, connections: 0 });
+          childrenMap.set(key, new Set());
         }
 
         const links = extractLinks(content);
@@ -344,11 +347,39 @@ export function createMockAPI(): ElectronAPI {
           const targetKey = linkTarget.toLowerCase();
           if (!nodes.has(targetKey)) {
             nodes.set(targetKey, { id: targetKey, name: linkTarget, path: '', connections: 0 });
+            childrenMap.set(targetKey, new Set());
           }
           edges.push({ source: key, target: targetKey });
-          nodes.get(key)!.connections++;
-          nodes.get(targetKey)!.connections++;
+          // Track children (outgoing links from source TO target)
+          childrenMap.get(key)?.add(targetKey);
         }
+      }
+
+      // Calculate total descendants for each node recursively
+      const descendantCache: Map<string, number> = new Map();
+      
+      const countDescendants = (nodeId: string, visited: Set<string>): number => {
+        // Prevent infinite loops from cycles
+        if (visited.has(nodeId)) return 0;
+        
+        // Return cached value if available
+        if (descendantCache.has(nodeId)) return descendantCache.get(nodeId)!;
+        
+        visited.add(nodeId);
+        const children = childrenMap.get(nodeId) || new Set();
+        
+        let total = children.size; // Direct children
+        for (const child of children) {
+          total += countDescendants(child, new Set(visited));
+        }
+        
+        descendantCache.set(nodeId, total);
+        return total;
+      };
+
+      // Set connections to total descendants count
+      for (const [nodeId, node] of nodes) {
+        node.connections = countDescendants(nodeId, new Set());
       }
 
       return { nodes: Array.from(nodes.values()), edges };
