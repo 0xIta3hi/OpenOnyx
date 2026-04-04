@@ -16,17 +16,18 @@ import { Network, Maximize, Minimize } from 'lucide-react';
 import { GraphData, GraphNode, GraphEdge, Theme } from '../../types';
 import { getAPI } from '../../utils/api';
 
+const api = getAPI();
+
 interface GraphViewProps {
   onNodeClick: (noteName: string) => void;
   onClose: () => void;
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
   theme?: Theme;
+  vaultPath?: string | null;
 }
 
-const api = getAPI();
-
-export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScreen, theme = 'dark' }: GraphViewProps) {
+export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScreen, theme = 'dark', vaultPath }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
@@ -38,7 +39,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     onNodeClickRef.current = onNodeClick;
   }, [onNodeClick]);
 
-  // Fetch graph data
+  // Fetch graph data - reload when vaultPath changes
   useEffect(() => {
     const loadGraph = async () => {
       try {
@@ -51,7 +52,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
       }
     };
     loadGraph();
-  }, []);
+  }, [vaultPath]);
 
   // Render D3 graph
   useEffect(() => {

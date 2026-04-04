@@ -141,11 +141,12 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const shift = e.shiftKey;
 
       if (ctrl && e.key === 'p') {
         e.preventDefault();
         setShowCommandPalette(true);
-      } else if (ctrl && e.key === 'f') {
+      } else if (ctrl && shift && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setShowSearch(true);
       } else if (ctrl && e.key === 'n') {
@@ -172,6 +173,15 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTabId, tabs, currentContent]);
+
+  // ── Auto-fullscreen graph when no file selected ─────
+  useEffect(() => {
+    if (showGraph && !activeTabId && !graphFullScreen) {
+      setGraphFullScreen(true);
+    } else if (showGraph && activeTabId && graphFullScreen) {
+      setGraphFullScreen(false);
+    }
+  }, [showGraph, activeTabId]);
 
   // ── Vault Operations ────────────────────────────────
   const handleOpenVault = async () => {
@@ -411,7 +421,7 @@ export default function App() {
     { id: 'new-note', label: 'New Note', shortcut: 'Ctrl+N', action: handleNewNote, category: 'File' },
     { id: 'open-vault', label: 'Open Vault', shortcut: 'Ctrl+O', action: handleOpenVault, category: 'File' },
     { id: 'save', label: 'Save Current Note', shortcut: 'Ctrl+S', action: handleSave, category: 'File' },
-    { id: 'search', label: 'Search Notes', shortcut: 'Ctrl+F', action: () => setShowSearch(true), category: 'Search' },
+    { id: 'search-vault', label: 'Search Entire Vault', shortcut: 'Ctrl+Shift+F', action: () => setShowSearch(true), category: 'Search' },
     { id: 'graph', label: 'Toggle Graph View', shortcut: 'Ctrl+G', action: () => setShowGraph(g => !g), category: 'View' },
     { id: 'sidebar', label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setShowSidebar(s => !s), category: 'View' },
     { id: 'backlinks', label: 'Toggle Backlinks', action: () => setShowBacklinks(b => !b), category: 'View' },
@@ -427,13 +437,20 @@ export default function App() {
 
   return (
     <div className="app">
-      <TitleBar theme={theme} />
+      <TitleBar 
+        theme={theme} 
+        onCommandPalette={() => setShowCommandPalette(true)} 
+        commands={commands}
+      />
       
       <div className="app-body" style={{ '--sidebar-width': `${sidebarWidth}px` } as any}>
         {vaultPath && (
           <Ribbon
             onNewNote={handleNewNote}
-            onSearch={() => setShowSearch(true)}
+            onSearch={() => {
+               // Trigger a ctrl+f inside the editor so the internal search panel shows up
+               document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true }));
+            }}
             onGraph={() => setShowGraph(g => !g)}
             onCommandPalette={() => setShowCommandPalette(true)}
             onSettings={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
@@ -517,6 +534,7 @@ export default function App() {
                     isFullScreen={graphFullScreen}
                     onToggleFullScreen={() => setGraphFullScreen(f => !f)}
                     theme={theme}
+                    vaultPath={vaultPath}
                   />
                 </div>
               )}

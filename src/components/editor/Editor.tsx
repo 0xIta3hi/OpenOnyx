@@ -12,7 +12,7 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin, WidgetType } from '@codemirror/view';
-import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { searchKeymap } from '@codemirror/search';
@@ -200,50 +200,39 @@ export function Editor({
       doc: content,
       extensions: [
         history(),
-        markdown(),
-        syntaxHighlighting(defaultHighlightStyle),
-        oneDark,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
           ...searchKeymap,
           indentWithTab,
         ]),
-        EditorView.updateListener.of((update: ViewUpdate) => {
-          if (update.docChanged) {
-            const newContent = update.state.doc.toString();
-            contentRef.current = newContent;
-            onContentChange(newContent);
-          }
-        }),
-        EditorView.lineWrapping,
+        markdown(),
+        syntaxHighlighting(defaultHighlightStyle),
+        oneDark,
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            onContentChange(update.state.doc.toString());
+          }
+        }),
         EditorView.theme({
-          '&': {
-            height: '100%',
+          '&': { height: '100%', fontSize: '15px' },
+          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-sans)', lineHeight: '1.6' },
+          '.cm-content': { padding: '20px 40px', maxWidth: '800px', margin: '0 auto' },
+          '.cm-wikilink': {
+            color: 'var(--text-link)',
+            textDecoration: 'none',
+            cursor: 'pointer',
+            transition: 'color 0.2s',
           },
-          '.cm-scroller': {
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: '14px',
-            padding: '24px',
-            lineHeight: '1.75',
+          '.cm-wikilink:hover': {
+            color: 'var(--accent-glow)',
+            textDecoration: 'underline',
           },
-          '.cm-content': {
-            maxWidth: '800px',
-            margin: '0 auto',
-          },
-          '.cm-gutters': {
-            display: 'none',
-          },
-          '&.cm-focused': {
-            outline: 'none',
-          },
-          '.cm-activeLine': {
-            backgroundColor: 'var(--bg-hover) !important',
-          },
-          '.cm-selectionBackground': {
-            backgroundColor: 'var(--accent-glow) !important',
+          '.cm-tag-mark': {
+            color: 'var(--accent-secondary)',
+            fontWeight: 'bold',
           }
         }),
       ],
