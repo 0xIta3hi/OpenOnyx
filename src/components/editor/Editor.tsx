@@ -15,10 +15,11 @@ import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin, 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { searchKeymap } from '@codemirror/search';
+import { search, highlightSelectionMatches } from '@codemirror/search';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { Tab, ViewMode } from '../../types';
 import { MarkdownPreview } from './MarkdownPreview';
+import { SearchReplace } from './SearchReplace';
 
 interface EditorProps {
   tabs: Tab[];
@@ -149,6 +150,7 @@ export function Editor({
   const contentRef = useRef(content);
   
   const [editorWidth, setEditorWidth] = useState(50); // percentage
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Resizer logic
   const handleDrag = useCallback((e: MouseEvent) => {
@@ -200,10 +202,11 @@ export function Editor({
       doc: content,
       extensions: [
         history(),
+        search(),
+        highlightSelectionMatches(),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
-          ...searchKeymap,
           indentWithTab,
         ]),
         markdown(),
@@ -233,6 +236,15 @@ export function Editor({
           '.cm-tag-mark': {
             color: 'var(--accent-secondary)',
             fontWeight: 'bold',
+          },
+          '.cm-searchMatch': {
+            backgroundColor: 'rgba(255, 200, 0, 0.3)',
+            borderBottom: '1px solid #f5c518',
+          },
+          '.cm-searchMatch-selected': {
+            backgroundColor: 'rgba(255, 200, 0, 0.5)',
+            border: '1px solid #f5c518',
+            borderRadius: '1px',
           }
         }),
       ],
@@ -266,6 +278,31 @@ export function Editor({
       }
     }
   }, [content]);
+
+  // Handle custom search event from Ribbon or App
+  useEffect(() => {
+    const handleOpenSearch = () => {
+      setIsSearchOpen(true);
+    };
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    
+    document.addEventListener('editor:open-search', handleOpenSearch as EventListener);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('editor:open-search', handleOpenSearch as EventListener);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   return (
     <>
@@ -336,8 +373,16 @@ export function Editor({
           display: 'flex',
           flexDirection: 'row',
           height: '100%',
+          position: 'relative',
         }}
       >
+        {/* VS Code-style Search/Replace Panel */}
+        <SearchReplace 
+          getView={() => viewRef.current} 
+          isOpen={isSearchOpen} 
+          onClose={() => setIsSearchOpen(false)} 
+        />
+
         <div
           ref={editorRef}
           style={{

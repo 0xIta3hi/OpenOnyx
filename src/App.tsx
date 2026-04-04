@@ -146,6 +146,9 @@ export default function App() {
       if (ctrl && e.key === 'p') {
         e.preventDefault();
         setShowCommandPalette(true);
+      } else if (ctrl && !shift && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('editor:open-search'));
       } else if (ctrl && shift && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setShowSearch(true);
@@ -421,6 +424,7 @@ export default function App() {
     { id: 'new-note', label: 'New Note', shortcut: 'Ctrl+N', action: handleNewNote, category: 'File' },
     { id: 'open-vault', label: 'Open Vault', shortcut: 'Ctrl+O', action: handleOpenVault, category: 'File' },
     { id: 'save', label: 'Save Current Note', shortcut: 'Ctrl+S', action: handleSave, category: 'File' },
+    { id: 'search-file', label: 'Find/Replace in Note', shortcut: 'Ctrl+F', action: () => document.dispatchEvent(new CustomEvent('editor:open-search')), category: 'Search' },
     { id: 'search-vault', label: 'Search Entire Vault', shortcut: 'Ctrl+Shift+F', action: () => setShowSearch(true), category: 'Search' },
     { id: 'graph', label: 'Toggle Graph View', shortcut: 'Ctrl+G', action: () => setShowGraph(g => !g), category: 'View' },
     { id: 'sidebar', label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setShowSidebar(s => !s), category: 'View' },
@@ -448,8 +452,7 @@ export default function App() {
           <Ribbon
             onNewNote={handleNewNote}
             onSearch={() => {
-               // Trigger a ctrl+f inside the editor so the internal search panel shows up
-               document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true }));
+               document.dispatchEvent(new CustomEvent('editor:open-search'));
             }}
             onGraph={() => setShowGraph(g => !g)}
             onCommandPalette={() => setShowCommandPalette(true)}

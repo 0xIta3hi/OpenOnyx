@@ -14,8 +14,8 @@ export function Ribbon({ onNewNote, onSearch, onGraph, onCommandPalette, onSetti
   const api = getAPI();
   
   const handleSearch = () => {
-    // Dispatch a command that VSCode-like search is triggered inside the editor
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true }));
+    // Notify the editor to open the search panel
+    document.dispatchEvent(new CustomEvent('editor:open-search'));
   };
 
   return (
