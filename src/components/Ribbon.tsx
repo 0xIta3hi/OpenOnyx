@@ -1,5 +1,5 @@
 import React from 'react';
-import { FilePlus, Search, Network, SunMoon, TerminalSquare } from 'lucide-react';
+import { FilePlus, Search, Network, Settings, TerminalSquare, Calendar, FileText, Hash, List } from 'lucide-react';
 import { getAPI } from '../utils/api';
 
 interface RibbonProps {
@@ -8,13 +8,22 @@ interface RibbonProps {
   onGraph: () => void;
   onCommandPalette: () => void;
   onSettings: () => void;
+  onDailyNote?: () => void;
+  onToggleTags?: () => void;
+  onToggleOutline?: () => void;
 }
 
-export function Ribbon({ onNewNote, onSearch, onGraph, onCommandPalette, onSettings }: RibbonProps) {
-  const api = getAPI();
-  
+export function Ribbon({ 
+  onNewNote, 
+  onSearch, 
+  onGraph, 
+  onCommandPalette, 
+  onSettings,
+  onDailyNote,
+  onToggleTags,
+  onToggleOutline
+}: RibbonProps) {
   const handleSearch = () => {
-    // Notify the editor to open the search panel
     document.dispatchEvent(new CustomEvent('editor:open-search'));
   };
 
@@ -30,13 +39,28 @@ export function Ribbon({ onNewNote, onSearch, onGraph, onCommandPalette, onSetti
         <button className="ribbon-btn" onClick={onNewNote} title="New Note (Ctrl+N)">
           <FilePlus size={20} strokeWidth={1.5} />
         </button>
+        {onDailyNote && (
+          <button className="ribbon-btn" onClick={onDailyNote} title="Daily Note">
+            <Calendar size={20} strokeWidth={1.5} />
+          </button>
+        )}
         <button className="ribbon-btn" onClick={onGraph} title="Graph View (Ctrl+G)">
           <Network size={20} strokeWidth={1.5} />
         </button>
+        {onToggleOutline && (
+          <button className="ribbon-btn" onClick={onToggleOutline} title="Toggle Outline">
+            <List size={20} strokeWidth={1.5} />
+          </button>
+        )}
+        {onToggleTags && (
+          <button className="ribbon-btn" onClick={onToggleTags} title="Toggle Tags">
+            <Hash size={20} strokeWidth={1.5} />
+          </button>
+        )}
       </div>
       <div className="ribbon-bottom">
-        <button className="ribbon-btn" onClick={onSettings} title="Toggle Theme">
-          <SunMoon size={20} strokeWidth={1.5} />
+        <button className="ribbon-btn" onClick={onSettings} title="Settings">
+          <Settings size={20} strokeWidth={1.5} />
         </button>
       </div>
     </div>

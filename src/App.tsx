@@ -6,7 +6,7 @@
  * components via prop drilling (simple and predictable for this scale).
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/editor/Editor';
@@ -18,6 +18,12 @@ import { StatusBar } from './components/StatusBar';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Modal } from './components/Modal';
 import { Ribbon } from './components/Ribbon';
+import { OutlinePane } from './components/OutlinePane';
+import { TagPane } from './components/TagPane';
+import { OutgoingLinksPanel } from './components/OutgoingLinksPanel';
+import { PropertiesPanel } from './components/PropertiesPanel';
+import { SettingsPage, AppSettings, DEFAULT_SETTINGS } from './components/SettingsPage';
+import { TemplateModal } from './components/TemplateModal';
 import { FileText } from 'lucide-react';
 import { Tab, ViewMode, Theme, Command, FileEntry } from './types';
 import { getNoteName, generateId, debounce } from './utils/helpers';
@@ -35,6 +41,14 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showBacklinks, setShowBacklinks] = useState(true);
+  const [showOutline, setShowOutline] = useState(false);
+  const [showTags, setShowTags] = useState(false);
+  const [showOutgoingLinks, setShowOutgoingLinks] = useState(false);
+  const [showProperties, setShowProperties] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [starredNotes, setStarredNotes] = useState<string[]>([]);
   
   // Split pane references and dragging
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -324,7 +338,7 @@ export default function App() {
   };
 
   // ── Link Navigation ─────────────────────────────────
-  const handleLinkClick = async (linkName: string) => {
+  const handleLinkClick = async (linkName: string, heading?: string) => {
     // Find the note by name
     const findNote = (entries: FileEntry[], name: string): string | null => {
       for (const entry of entries) {
@@ -345,6 +359,23 @@ export default function App() {
     const filePath = findNote(fileTree, linkName);
     if (filePath) {
       await openFile(filePath, 'preview');
+      // TODO: Scroll to heading if specified
+      if (heading) {
+        // Dispatch event to scroll to heading in preview
+        setTimeout(() => {
+          const headingEl = document.querySelector(
+            `.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6`
+          );
+          // Find the heading that matches
+          const allHeadings = document.querySelectorAll('.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6');
+          for (const h of allHeadings) {
+            if (h.textContent?.toLowerCase().includes(heading.toLowerCase())) {
+              h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              break;
+            }
+          }
+        }, 100);
+      }
     } else {
       // Auto-create note if it doesn't exist
       const newPath = `${linkName}.md`;
@@ -419,6 +450,38 @@ export default function App() {
     await openFile(filePath);
   };
 
+  // Handle template insertion
+  const handleTemplateInsert = (templateContent: string) => {
+    if (activeTabId) {
+      // Insert at cursor or append
+      const newContent = currentContent + '\n' + templateContent;
+      setCurrentContent(newContent);
+      // Mark as modified
+      setTabs(prev =>
+        prev.map(t => t.id === activeTabId ? { ...t, isModified: true } : t)
+      );
+    }
+  };
+
+  // Get list of all note names for autocomplete
+  const allNoteNames = useMemo(() => {
+    const getNotes = (entries: FileEntry[]): { name: string; path: string }[] => {
+      const notes: { name: string; path: string }[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory && entry.extension === '.md') {
+          // Extract name without extension
+          const name = entry.path.replace(/\.md$/, '').split('/').pop() || entry.path;
+          notes.push({ name, path: entry.path });
+        }
+        if (entry.children) {
+          notes.push(...getNotes(entry.children));
+        }
+      }
+      return notes;
+    };
+    return getNotes(fileTree);
+  }, [fileTree]);
+
   // ── Commands (for Command Palette) ──────────────────
   const commands: Command[] = [
     { id: 'new-note', label: 'New Note', shortcut: 'Ctrl+N', action: handleNewNote, category: 'File' },
@@ -428,9 +491,15 @@ export default function App() {
     { id: 'search-vault', label: 'Search Entire Vault', shortcut: 'Ctrl+Shift+F', action: () => setShowSearch(true), category: 'Search' },
     { id: 'graph', label: 'Toggle Graph View', shortcut: 'Ctrl+G', action: () => setShowGraph(g => !g), category: 'View' },
     { id: 'sidebar', label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setShowSidebar(s => !s), category: 'View' },
-    { id: 'backlinks', label: 'Toggle Backlinks', action: () => setShowBacklinks(b => !b), category: 'View' },
+    { id: 'backlinks', label: 'Toggle Backlinks Panel', action: () => setShowBacklinks(b => !b), category: 'View' },
+    { id: 'outline', label: 'Toggle Outline', action: () => setShowOutline(o => !o), category: 'View' },
+    { id: 'tags', label: 'Toggle Tag Pane', action: () => setShowTags(t => !t), category: 'View' },
+    { id: 'outgoing-links', label: 'Toggle Outgoing Links', action: () => setShowOutgoingLinks(o => !o), category: 'View' },
+    { id: 'properties', label: 'Toggle Properties Panel', action: () => setShowProperties(p => !p), category: 'View' },
     { id: 'daily-note', label: 'Create Daily Note', action: handleCreateDailyNote, category: 'Notes' },
+    { id: 'insert-template', label: 'Insert Template', action: () => setShowTemplateModal(true), category: 'Notes' },
     { id: 'theme', label: 'Toggle Theme', action: () => setTheme(t => t === 'dark' ? 'light' : 'dark'), category: 'Settings' },
+    { id: 'settings', label: 'Open Settings', action: () => setShowSettings(true), category: 'Settings' },
     { id: 'editor-mode', label: 'Editor View', action: () => setViewMode('editor'), category: 'View' },
     { id: 'preview-mode', label: 'Preview View', action: () => setViewMode('preview'), category: 'View' },
     { id: 'split-mode', label: 'Split View', action: () => setViewMode('split'), category: 'View' },
@@ -442,7 +511,7 @@ export default function App() {
   return (
     <div className="app">
       <TitleBar 
-        theme={theme} 
+        theme={theme}
         onCommandPalette={() => setShowCommandPalette(true)} 
         commands={commands}
       />
@@ -456,19 +525,30 @@ export default function App() {
             }}
             onGraph={() => setShowGraph(g => !g)}
             onCommandPalette={() => setShowCommandPalette(true)}
-            onSettings={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+            onSettings={() => setShowSettings(true)}
+            onDailyNote={handleCreateDailyNote}
+            onToggleTags={() => setShowTags(t => !t)}
+            onToggleOutline={() => setShowOutline(o => !o)}
           />
         )}
         <Sidebar
           visible={showSidebar}
           fileTree={fileTree}
           activeFilePath={activeTab?.path || null}
+          starredNotes={starredNotes}
           onFileSelect={openFile}
           onNewNote={handleNewNote}
           onNewFolder={handleCreateFolder}
           onDeleteFile={handleDeleteFile}
           onRenameFile={handleRenameFile}
           onRefresh={refreshFileTree}
+          onToggleStar={(path) => {
+            setStarredNotes(prev => 
+              prev.includes(path) 
+                ? prev.filter(p => p !== path)
+                : [...prev, path]
+            );
+          }}
         />
         
         {showSidebar && vaultPath && (
@@ -492,6 +572,7 @@ export default function App() {
                       activeTabId={activeTabId!}
                       content={currentContent}
                       viewMode={viewMode}
+                      availableNotes={allNoteNames}
                       onTabSelect={async (id) => {
                         setActiveTabId(id);
                         const tab = tabs.find(t => t.id === id);
@@ -538,6 +619,7 @@ export default function App() {
                     onToggleFullScreen={() => setGraphFullScreen(f => !f)}
                     theme={theme}
                     vaultPath={vaultPath}
+                    localNodePath={activeTab?.path}
                   />
                 </div>
               )}
@@ -545,10 +627,42 @@ export default function App() {
           )}
         </div>
 
-        {activeTab && showBacklinks && !showGraph && (
-          <BacklinksPanel
-            backlinks={backlinks}
-            onBacklinkClick={openFile}
+        {/* Right Panels */}
+        {activeTab && !showGraph && (
+          <>
+            {showOutline && (
+              <OutlinePane
+                content={currentContent}
+                onHeadingClick={(line) => {
+                  // Scroll to line in editor
+                  document.dispatchEvent(new CustomEvent('editor:goto-line', { detail: line }));
+                }}
+                visible={showOutline}
+              />
+            )}
+            
+            {showOutgoingLinks && (
+              <OutgoingLinksPanel
+                content={currentContent}
+                existingNotes={allNoteNames.map(n => n.path)}
+                onLinkClick={handleLinkClick}
+                visible={showOutgoingLinks}
+              />
+            )}
+            
+            {showBacklinks && (
+              <BacklinksPanel
+                backlinks={backlinks}
+                onBacklinkClick={openFile}
+              />
+            )}
+          </>
+        )}
+        
+        {showTags && (
+          <TagPane
+            visible={showTags}
+            onTagClick={(filePath) => openFile(filePath)}
           />
         )}
       </div>
@@ -558,6 +672,7 @@ export default function App() {
         content={currentContent}
         theme={theme}
         viewMode={viewMode}
+        fileTree={fileTree}
       />
 
       {showSearch && (
@@ -574,6 +689,22 @@ export default function App() {
         <CommandPalette
           commands={commands}
           onClose={() => setShowCommandPalette(false)}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsPage
+          settings={settings}
+          onSettingsChange={setSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showTemplateModal && (
+        <TemplateModal
+          onClose={() => setShowTemplateModal(false)}
+          onInsert={handleTemplateInsert}
+          currentNoteName={activeTab?.name}
         />
       )}
 

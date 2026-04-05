@@ -7,11 +7,12 @@
  * - Split view showing both editor and preview
  * - Tab management for multiple open notes
  * - Wiki-link [[link]] support in both editor and preview
+ * - Link autocomplete when typing [[
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin, WidgetType } from '@codemirror/view';
+import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -20,9 +21,11 @@ import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { Tab, ViewMode } from '../../types';
 import { MarkdownPreview } from './MarkdownPreview';
 import { SearchReplace } from './SearchReplace';
+import { linkAutocomplete, linkAutocompleteTheme, setAvailableNotes } from '../../utils/linkAutocomplete';
 
 interface EditorProps {
   tabs: Tab[];
+  availableNotes?: { name: string; path: string }[];
   activeTabId: string;
   content: string;
   viewMode: ViewMode;
@@ -30,7 +33,8 @@ interface EditorProps {
   onTabClose: (id: string) => void;
   onContentChange: (content: string) => void;
   onViewModeChange: (mode: ViewMode) => void;
-  onLinkClick: (linkName: string) => void;
+  onLinkClick: (linkName: string, heading?: string) => void;
+  onGetNoteContent?: (noteName: string) => string | null;
 }
 
 /**
@@ -140,9 +144,9 @@ function tagPlugin() {
 }
 
 export function Editor({
-  tabs, activeTabId, content, viewMode,
+  tabs, activeTabId, content, viewMode, availableNotes,
   onTabSelect, onTabClose, onContentChange,
-  onViewModeChange, onLinkClick
+  onViewModeChange, onLinkClick, onGetNoteContent
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -151,6 +155,35 @@ export function Editor({
   
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Update available notes for autocomplete
+  useEffect(() => {
+    if (availableNotes) {
+      setAvailableNotes(availableNotes);
+    }
+  }, [availableNotes]);
+
+  // Handle checkbox toggle in preview - updates the source markdown
+  const handleCheckboxToggle = useCallback((checkboxIndex: number, checked: boolean) => {
+    const lines = content.split('\n');
+    let currentCheckbox = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i].match(/^(\s*[-*+]\s+)\[([ xX])\]/);
+      if (match) {
+        if (currentCheckbox === checkboxIndex) {
+          // Toggle the checkbox
+          lines[i] = lines[i].replace(
+            /^(\s*[-*+]\s+)\[([ xX])\]/,
+            `$1[${checked ? 'x' : ' '}]`
+          );
+          onContentChange(lines.join('\n'));
+          return;
+        }
+        currentCheckbox++;
+      }
+    }
+  }, [content, onContentChange]);
 
   // Resizer logic
   const handleDrag = useCallback((e: MouseEvent) => {
@@ -212,6 +245,8 @@ export function Editor({
         markdown(),
         syntaxHighlighting(defaultHighlightStyle),
         oneDark,
+        linkAutocomplete(),
+        linkAutocompleteTheme,
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
         EditorView.updateListener.of((update) => {
@@ -412,6 +447,8 @@ export function Editor({
           <MarkdownPreview
             content={content}
             onLinkClick={onLinkClick}
+            onCheckboxToggle={handleCheckboxToggle}
+            onEmbed={onGetNoteContent}
           />
         </div>
       </div>

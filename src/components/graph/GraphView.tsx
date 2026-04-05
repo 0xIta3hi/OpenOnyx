@@ -25,15 +25,17 @@ interface GraphViewProps {
   onToggleFullScreen?: () => void;
   theme?: Theme;
   vaultPath?: string | null;
+  localNodePath?: string | null; // If set, shows only this node and its direct connections
 }
 
-export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScreen, theme = 'dark', vaultPath }: GraphViewProps) {
+export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScreen, theme = 'dark', vaultPath, localNodePath }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [nodeSpacing, setNodeSpacing] = useState<number>(150); // Default spacing
+  const [isLocalView, setIsLocalView] = useState(!!localNodePath);
   const onNodeClickRef = useRef(onNodeClick);
 
   useEffect(() => {
@@ -54,6 +56,45 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     };
     loadGraph();
   }, [vaultPath]);
+
+  // Compute filtered data for stats display
+  const { displayNodeCount, displayEdgeCount } = React.useMemo(() => {
+    if (!graphData) return { displayNodeCount: 0, displayEdgeCount: 0 };
+    
+    if (!isLocalView || !localNodePath) {
+      return { displayNodeCount: graphData.nodes.length, displayEdgeCount: graphData.edges.length };
+    }
+
+    // Build adjacency map
+    const adjacencyMap = new Map<string, Set<string>>();
+    graphData.edges.forEach(edge => {
+      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source.id;
+      const targetId = typeof edge.target === 'string' ? edge.target : edge.target.id;
+      if (!adjacencyMap.has(sourceId)) adjacencyMap.set(sourceId, new Set());
+      if (!adjacencyMap.has(targetId)) adjacencyMap.set(targetId, new Set());
+      adjacencyMap.get(sourceId)!.add(targetId);
+      adjacencyMap.get(targetId)!.add(sourceId);
+    });
+
+    const focalName = localNodePath.replace(/\.md$/, '').split('/').pop()!;
+    const focalNodeId = graphData.nodes.find(n => 
+      n.id === focalName || n.id === localNodePath || n.id === localNodePath.replace(/\.md$/, '')
+    )?.id;
+
+    if (focalNodeId && adjacencyMap.has(focalNodeId)) {
+      const connectedIds = adjacencyMap.get(focalNodeId)!;
+      const localNodeIds = new Set([focalNodeId, ...connectedIds]);
+      const nodeCount = graphData.nodes.filter(n => localNodeIds.has(n.id)).length;
+      const edgeCount = graphData.edges.filter(e => {
+        const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
+        const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+        return localNodeIds.has(sourceId) && localNodeIds.has(targetId);
+      }).length;
+      return { displayNodeCount: nodeCount, displayEdgeCount: edgeCount };
+    }
+
+    return { displayNodeCount: graphData.nodes.length, displayEdgeCount: graphData.edges.length };
+  }, [graphData, isLocalView, localNodePath]);
 
   // Render D3 graph
   useEffect(() => {
@@ -92,6 +133,30 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
       adjacencyMap.get(targetId)!.add(sourceId);
     });
 
+    // Filter for local graph view - show only the focus node and its direct connections
+    let displayNodes = graphData.nodes;
+    let displayEdges = graphData.edges;
+    
+    if (isLocalView && localNodePath) {
+      // Find the focal node ID (match by path without .md extension)
+      const focalName = localNodePath.replace(/\.md$/, '').split('/').pop()!;
+      const focalNodeId = graphData.nodes.find(n => 
+        n.id === focalName || n.id === localNodePath || n.id === localNodePath.replace(/\.md$/, '')
+      )?.id;
+      
+      if (focalNodeId && adjacencyMap.has(focalNodeId)) {
+        const connectedIds = adjacencyMap.get(focalNodeId)!;
+        const localNodeIds = new Set([focalNodeId, ...connectedIds]);
+        
+        displayNodes = graphData.nodes.filter(n => localNodeIds.has(n.id));
+        displayEdges = graphData.edges.filter(e => {
+          const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
+          const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+          return localNodeIds.has(sourceId) && localNodeIds.has(targetId);
+        });
+      }
+    }
+
     // Create zoom behavior and store reference
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
@@ -113,8 +178,8 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     const g = svg.append('g');
 
     // Initialize nodes with better starting positions (circular layout)
-    const nodeCount = graphData.nodes.length;
-    graphData.nodes.forEach((node, i) => {
+    const nodeCount = displayNodes.length;
+    displayNodes.forEach((node, i) => {
       if (node.x === undefined || node.y === undefined) {
         const angle = (2 * Math.PI * i) / nodeCount;
         const radius = Math.min(width, height) * 0.35;
@@ -127,8 +192,8 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     const chargeStrength = -nodeSpacing * 4; // Scale repulsion with spacing
     const collisionPadding = nodeSpacing * 0.27; // Scale collision buffer
     
-    const simulation = d3.forceSimulation<GraphNode>(graphData.nodes)
-      .force('link', d3.forceLink<GraphNode, GraphEdge>(graphData.edges)
+    const simulation = d3.forceSimulation<GraphNode>(displayNodes)
+      .force('link', d3.forceLink<GraphNode, GraphEdge>(displayEdges)
         .id(d => d.id)
         .distance(nodeSpacing)
         .strength(0.4))
@@ -149,7 +214,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
 
     // Draw edges with better visibility
     const link = g.selectAll('.graph-link')
-      .data(graphData.edges)
+      .data(displayEdges)
       .join('line')
       .attr('class', 'graph-link')
       .style('stroke', linkColor)
@@ -157,7 +222,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
 
     // Draw nodes
     const node = g.selectAll('.graph-node')
-      .data(graphData.nodes)
+      .data(displayNodes)
       .join('g')
       .attr('class', (d: GraphNode) => `graph-node ${!d.path ? 'phantom' : ''}`)
       .call(d3.drag<SVGGElement, GraphNode>()
@@ -290,7 +355,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     return () => {
       simulation.stop();
     };
-  }, [graphData, theme, selectedNode, nodeSpacing]);
+  }, [graphData, theme, selectedNode, nodeSpacing, isLocalView, localNodePath]);
 
   // Zoom controls - use stored zoom behavior
   const handleZoomIn = () => {
@@ -310,9 +375,19 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
       <div className="graph-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Network size={20} strokeWidth={1.5} style={{ opacity: 0.6 }} />
-          Graph View
+          {isLocalView ? 'Local Graph' : 'Graph View'}
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {localNodePath && (
+            <button 
+              className={`btn btn-ghost ${isLocalView ? 'active' : ''}`}
+              onClick={() => setIsLocalView(!isLocalView)}
+              style={{ fontSize: '13px', padding: '4px 10px' }}
+              title={isLocalView ? 'Show full graph' : 'Show local graph (current note connections only)'}
+            >
+              {isLocalView ? '🌐 Global' : '📍 Local'}
+            </button>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <label htmlFor="spacing-slider" style={{ fontSize: '13px', opacity: 0.7, whiteSpace: 'nowrap' }}>
               Spacing:
@@ -330,8 +405,8 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
             <span style={{ fontSize: '13px', opacity: 0.6, width: '35px' }}>{nodeSpacing}</span>
           </div>
           <div className="graph-stats">
-            <span>{graphData?.nodes.length || 0} nodes</span>
-            <span>{graphData?.edges.length || 0} connections</span>
+            <span>{displayNodeCount} nodes</span>
+            <span>{displayEdgeCount} connections</span>
           </div>
           {onToggleFullScreen && (
             <button className="btn btn-ghost" onClick={onToggleFullScreen} style={{ display: 'inline-flex', padding: '6px' }} title="Toggle Full Screen">

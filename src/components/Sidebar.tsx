@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { ChevronRight, Folder, FolderOpen, FileText, FilePlus, FolderPlus, RefreshCw, FileEdit, Trash2 } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, FileText, FilePlus, FolderPlus, RefreshCw, FileEdit, Trash2, Star, ChevronDown } from 'lucide-react';
 import { FileEntry } from '../types';
 import { getNoteName } from '../utils/helpers';
 import { getAPI } from '../utils/api';
@@ -15,24 +15,27 @@ interface SidebarProps {
   visible: boolean;
   fileTree: FileEntry[];
   activeFilePath: string | null;
+  starredNotes: string[];
   onFileSelect: (path: string) => void;
   onNewNote: () => void;
   onNewFolder: (parentPath: string) => void;
   onDeleteFile: (path: string) => void;
   onRenameFile: (oldPath: string, newName: string) => void;
   onRefresh: () => void;
+  onToggleStar: (path: string) => void;
 }
 
 export function Sidebar({
-  visible, fileTree, activeFilePath,
+  visible, fileTree, activeFilePath, starredNotes,
   onFileSelect, onNewNote, onNewFolder,
-  onDeleteFile, onRenameFile, onRefresh
+  onDeleteFile, onRenameFile, onRefresh, onToggleStar
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
+  const [showStarred, setShowStarred] = useState(true);
 
   const toggleDir = (path: string) => {
     setExpandedDirs(prev => {
@@ -193,6 +196,38 @@ export function Sidebar({
           </div>
         </div>
 
+        {/* Starred Notes Section */}
+        {starredNotes.length > 0 && (
+          <div className="sidebar-section starred-section">
+            <button 
+              className="section-header"
+              onClick={() => setShowStarred(!showStarred)}
+            >
+              <span className="section-chevron">
+                {showStarred ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </span>
+              <Star size={14} className="section-icon" fill="currentColor" />
+              <span>Starred</span>
+              <span className="section-count">{starredNotes.length}</span>
+            </button>
+            {showStarred && (
+              <div className="starred-list">
+                {starredNotes.map(path => (
+                  <button
+                    key={path}
+                    className={`file-item ${activeFilePath === path ? 'active' : ''}`}
+                    onClick={() => onFileSelect(path)}
+                    onContextMenu={(e) => handleContextMenu(e, path, false)}
+                  >
+                    <Star size={14} className="star-icon" fill="var(--accent-warning)" stroke="var(--accent-warning)" />
+                    <span className="name">{getNoteName(path)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div
           className="file-explorer"
           onDragOver={(e) => handleDragOver(e, '')}
@@ -227,12 +262,25 @@ export function Sidebar({
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             {!contextMenu.isDir && (
-              <button
-                className="context-menu-item"
-                onClick={() => { onFileSelect(contextMenu.path); closeContextMenu(); }}
-              >
-                <FileText size={14} style={{ marginRight: 8 }} /> Open
-              </button>
+              <>
+                <button
+                  className="context-menu-item"
+                  onClick={() => { onFileSelect(contextMenu.path); closeContextMenu(); }}
+                >
+                  <FileText size={14} style={{ marginRight: 8 }} /> Open
+                </button>
+                <button
+                  className="context-menu-item"
+                  onClick={() => { onToggleStar(contextMenu.path); closeContextMenu(); }}
+                >
+                  <Star 
+                    size={14} 
+                    style={{ marginRight: 8 }} 
+                    fill={starredNotes.includes(contextMenu.path) ? 'currentColor' : 'none'} 
+                  /> 
+                  {starredNotes.includes(contextMenu.path) ? 'Unstar' : 'Star'}
+                </button>
+              </>
             )}
             <button
               className="context-menu-item"
