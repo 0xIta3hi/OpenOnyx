@@ -33,6 +33,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [nodeSpacing, setNodeSpacing] = useState<number>(150); // Default spacing
   const onNodeClickRef = useRef(onNodeClick);
 
   useEffect(() => {
@@ -111,17 +112,40 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     // Main group for zoom/pan
     const g = svg.append('g');
 
-    // Create force simulation with better spacing
+    // Initialize nodes with better starting positions (circular layout)
+    const nodeCount = graphData.nodes.length;
+    graphData.nodes.forEach((node, i) => {
+      if (node.x === undefined || node.y === undefined) {
+        const angle = (2 * Math.PI * i) / nodeCount;
+        const radius = Math.min(width, height) * 0.35;
+        node.x = width / 2 + radius * Math.cos(angle);
+        node.y = height / 2 + radius * Math.sin(angle);
+      }
+    });
+
+    // Create force simulation with adjustable spacing to prevent text overlap
+    const chargeStrength = -nodeSpacing * 4; // Scale repulsion with spacing
+    const collisionPadding = nodeSpacing * 0.27; // Scale collision buffer
+    
     const simulation = d3.forceSimulation<GraphNode>(graphData.nodes)
       .force('link', d3.forceLink<GraphNode, GraphEdge>(graphData.edges)
         .id(d => d.id)
-        .distance(120)
-        .strength(0.2))
+        .distance(nodeSpacing)
+        .strength(0.4))
       .force('charge', d3.forceManyBody()
-        .strength(-300)
-        .distanceMax(500))
+        .strength(chargeStrength)
+        .distanceMax(nodeSpacing * 3.3))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d: any) => Math.min(30, 5 + Math.sqrt(d.connections) * 4) + 20));
+      .force('collision', d3.forceCollide().radius((d: any) => Math.min(30, 5 + Math.sqrt(d.connections) * 4) + collisionPadding))
+      .force('x', d3.forceX(width / 2).strength(0.03))
+      .force('y', d3.forceY(height / 2).strength(0.03));
+
+    // Pre-run simulation to stabilize layout before rendering
+    simulation.alpha(1).alphaDecay(0.02);
+    for (let i = 0; i < 300; i++) {
+      simulation.tick();
+    }
+    simulation.alpha(0.3).restart();
 
     // Draw edges with better visibility
     const link = g.selectAll('.graph-link')
@@ -266,7 +290,7 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
     return () => {
       simulation.stop();
     };
-  }, [graphData, theme, selectedNode]);
+  }, [graphData, theme, selectedNode, nodeSpacing]);
 
   // Zoom controls - use stored zoom behavior
   const handleZoomIn = () => {
@@ -289,6 +313,22 @@ export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScre
           Graph View
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label htmlFor="spacing-slider" style={{ fontSize: '13px', opacity: 0.7, whiteSpace: 'nowrap' }}>
+              Spacing:
+            </label>
+            <input
+              id="spacing-slider"
+              type="range"
+              min="50"
+              max="300"
+              value={nodeSpacing}
+              onChange={(e) => setNodeSpacing(Number(e.target.value))}
+              style={{ width: '100px', cursor: 'pointer' }}
+              title={`Node spacing: ${nodeSpacing}`}
+            />
+            <span style={{ fontSize: '13px', opacity: 0.6, width: '35px' }}>{nodeSpacing}</span>
+          </div>
           <div className="graph-stats">
             <span>{graphData?.nodes.length || 0} nodes</span>
             <span>{graphData?.edges.length || 0} connections</span>
