@@ -24,6 +24,7 @@ import { OutgoingLinksPanel } from './components/OutgoingLinksPanel';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { SettingsPage, AppSettings, DEFAULT_SETTINGS } from './components/SettingsPage';
 import { TemplateModal } from './components/TemplateModal';
+import { UnlinkedMentionsPanel } from './components/UnlinkedMentionsPanel';
 import { FileText } from 'lucide-react';
 import { Tab, ViewMode, Theme, Command, FileEntry } from './types';
 import { getNoteName, generateId, debounce } from './utils/helpers';
@@ -47,8 +48,11 @@ export default function App() {
   const [showProperties, setShowProperties] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showUnlinkedMentions, setShowUnlinkedMentions] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [starredNotes, setStarredNotes] = useState<string[]>([]);
+  const [recentFiles, setRecentFiles] = useState<string[]>([]);
+  const [noteContentCache, setNoteContentCache] = useState<Map<string, string>>(new Map());
   
   // Split pane references and dragging
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -229,6 +233,12 @@ export default function App() {
 
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
+    // Track recent files (keep last 20)
+    setRecentFiles(prev => {
+      const filtered = prev.filter(p => p !== filePath);
+      return [filePath, ...filtered].slice(0, 20);
+    });
+    
     // Check if tab already exists
     const existingTab = tabs.find(t => t.path === filePath);
     if (existingTab) {
@@ -463,6 +473,21 @@ export default function App() {
     }
   };
 
+  // Handle image paste - save image to attachments folder and return path
+  const handleImagePaste = async (file: File): Promise<string | null> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      const imagePath = await api.saveImage(base64, file.name);
+      return imagePath;
+    } catch (err) {
+      console.error('Failed to save image:', err);
+      return null;
+    }
+  };
+
   // Get list of all note names for autocomplete
   const allNoteNames = useMemo(() => {
     const getNotes = (entries: FileEntry[]): { name: string; path: string }[] => {
@@ -481,6 +506,27 @@ export default function App() {
     };
     return getNotes(fileTree);
   }, [fileTree]);
+
+  // Get note content for embeds - uses cache or fetches
+  const getNoteContent = useCallback((noteName: string): string | null => {
+    // Check cache first
+    const cached = noteContentCache.get(noteName);
+    if (cached !== undefined) return cached;
+    
+    // Find the note path
+    const note = allNoteNames.find(n => 
+      n.name.toLowerCase() === noteName.toLowerCase()
+    );
+    
+    if (!note) return null;
+    
+    // Async fetch and update cache (won't be immediate but will work on re-render)
+    api.readFile(note.path).then(content => {
+      setNoteContentCache(prev => new Map(prev).set(noteName, content));
+    });
+    
+    return null;
+  }, [noteContentCache, allNoteNames]);
 
   // ── Commands (for Command Palette) ──────────────────
   const commands: Command[] = [
@@ -503,6 +549,7 @@ export default function App() {
     { id: 'editor-mode', label: 'Editor View', action: () => setViewMode('editor'), category: 'View' },
     { id: 'preview-mode', label: 'Preview View', action: () => setViewMode('preview'), category: 'View' },
     { id: 'split-mode', label: 'Split View', action: () => setViewMode('split'), category: 'View' },
+    { id: 'unlinked-mentions', label: 'Toggle Unlinked Mentions', action: () => setShowUnlinkedMentions(u => !u), category: 'View' },
   ];
 
   // Get active tab info
@@ -586,6 +633,8 @@ export default function App() {
                       onContentChange={handleContentChange}
                       onViewModeChange={setViewMode}
                       onLinkClick={handleLinkClick}
+                      onImagePaste={handleImagePaste}
+                      onGetNoteContent={getNoteContent}
                     />
                   ) : (
                     <div className="empty-state">
@@ -656,6 +705,18 @@ export default function App() {
                 onBacklinkClick={openFile}
               />
             )}
+            
+            {showUnlinkedMentions && (
+              <UnlinkedMentionsPanel
+                currentNotePath={activeTab?.path || null}
+                currentNoteName={activeTab?.name || ''}
+                visible={showUnlinkedMentions}
+                onNavigate={(path, line) => {
+                  openFile(path);
+                  // TODO: Scroll to line after file opens
+                }}
+              />
+            )}
           </>
         )}
         
@@ -682,6 +743,9 @@ export default function App() {
             setShowSearch(false);
             openFile(path);
           }}
+          recentFiles={recentFiles}
+          starredNotes={starredNotes}
+          fileTree={fileTree}
         />
       )}
 

@@ -7,7 +7,7 @@ OpenObsidian is your **local-first knowledge management tool**. Think of it as a
 1. Create notes using the sidebar or `Ctrl+N`
 2. Link notes using `[[Note Name]]` syntax — like this: [[Getting Started]]
 3. View your knowledge graph with `Ctrl+G`
-4. Search across all notes with `Ctrl+F`
+4. Search across all notes with `Ctrl+Shift+F`
 5. Use the command palette with `Ctrl+P`
 
 ## Key Concepts
@@ -21,14 +21,33 @@ OpenObsidian is your **local-first knowledge management tool**. Think of it as a
 
 - ✅ Markdown editing with live preview
 - ✅ [[Wiki Links]] for connecting ideas
-- ✅ Interactive graph visualization
-- ✅ Full-text search
-- ✅ Command palette
+- ✅ Interactive graph visualization with local/global toggle
+- ✅ Full-text search and quick switcher
+- ✅ Command palette (`Ctrl+P`)
 - ✅ Dark/light themes
-- ✅ Auto-save
-- ✅ Tags with #getting-started
+- ✅ Auto-save with 2-second debounce
+- ✅ Tags with #welcome
 - ✅ Daily notes
+- ✅ [[Templates Guide|Templates]] with variables
+- ✅ Callouts and admonitions
+- ✅ Task lists with click-to-toggle
+- ✅ Link autocomplete (type `[[`)
+- ✅ Outline pane for navigation
+- ✅ Properties panel for frontmatter
+- ✅ Starred notes
+- ✅ Heading folding in editor
+- ✅ Image paste/drag support
+- ✅ Link preview on hover
 
-Check out [[Getting Started]] to learn more, or explore [[Markdown Guide]] for formatting tips.
+> [!tip] Quick Start
+> Open [[Feature Showcase]] to see all features in action!
 
-#welcome #introduction
+## Learn More
+
+- [[Getting Started]] - First steps
+- [[Markdown Guide]] - Formatting syntax
+- [[Feature Showcase]] - See all features
+- [[Keyboard Shortcuts]] - Quick reference
+- [[Templates Guide]] - Using templates
+
+#welcome #introduction #getting-started

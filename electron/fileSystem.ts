@@ -373,4 +373,39 @@ export class FileSystemManager {
     
     return fileName;
   }
+
+  /**
+   * Save an image to the attachments folder.
+   * Creates the folder if it doesn't exist.
+   * Returns the relative path to use in markdown.
+   */
+  async saveImage(fileName: string, base64Data: string): Promise<string> {
+    if (!this.vaultPath) throw new Error('No vault path set');
+    
+    // Create attachments folder if it doesn't exist
+    const attachmentsDir = path.join(this.vaultPath, 'attachments');
+    if (!fs.existsSync(attachmentsDir)) {
+      fs.mkdirSync(attachmentsDir, { recursive: true });
+    }
+    
+    // Generate unique filename if needed
+    let uniqueName = fileName;
+    let counter = 1;
+    while (fs.existsSync(path.join(attachmentsDir, uniqueName))) {
+      const ext = path.extname(fileName);
+      const base = path.basename(fileName, ext);
+      uniqueName = `${base}-${counter}${ext}`;
+      counter++;
+    }
+    
+    // Remove data URL prefix if present
+    const base64Content = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    
+    // Write the image file
+    const imagePath = path.join(attachmentsDir, uniqueName);
+    fs.writeFileSync(imagePath, Buffer.from(base64Content, 'base64'));
+    
+    // Return relative path for markdown
+    return `attachments/${uniqueName}`;
+  }
 }

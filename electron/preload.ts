@@ -92,6 +92,10 @@ const electronAPI = {
   // ── Tags ──────────────────────────────────────────
   getAllTags: (): Promise<Record<string, string[]>> =>
     ipcRenderer.invoke('tags:getAll'),
+
+  // ── Attachments/Images ────────────────────────────
+  saveImage: (fileName: string, base64Data: string): Promise<string> =>
+    ipcRenderer.invoke('attachments:saveImage', fileName, base64Data),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

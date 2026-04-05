@@ -125,4 +125,9 @@ export function registerIpcHandlers(
   ipcMain.handle('window:isMaximized', () => {
     return getMainWindow()?.isMaximized() || false;
   });
+
+  // ── Attachments/Images ────────────────────────────
+  ipcMain.handle('attachments:saveImage', async (_event, fileName: string, base64Data: string) => {
+    return fsManager.saveImage(fileName, base64Data);
+  });
 }

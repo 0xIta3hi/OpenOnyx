@@ -22,6 +22,7 @@ import { Tab, ViewMode } from '../../types';
 import { MarkdownPreview } from './MarkdownPreview';
 import { SearchReplace } from './SearchReplace';
 import { linkAutocomplete, linkAutocompleteTheme, setAvailableNotes } from '../../utils/linkAutocomplete';
+import { headingFold, foldTheme } from '../../utils/headingFold';
 
 interface EditorProps {
   tabs: Tab[];
@@ -35,6 +36,7 @@ interface EditorProps {
   onViewModeChange: (mode: ViewMode) => void;
   onLinkClick: (linkName: string, heading?: string) => void;
   onGetNoteContent?: (noteName: string) => string | null;
+  onImagePaste?: (file: File) => Promise<string | null>; // Returns the path to insert
 }
 
 /**
@@ -146,7 +148,7 @@ function tagPlugin() {
 export function Editor({
   tabs, activeTabId, content, viewMode, availableNotes,
   onTabSelect, onTabClose, onContentChange,
-  onViewModeChange, onLinkClick, onGetNoteContent
+  onViewModeChange, onLinkClick, onGetNoteContent, onImagePaste
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -206,6 +208,75 @@ export function Editor({
     document.body.style.cursor = 'col-resize';
   }, [handleDrag, stopDrag]);
 
+  // Handle image paste from clipboard
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    if (!onImagePaste || !viewRef.current) return;
+    
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          const imagePath = await onImagePaste(file);
+          if (imagePath) {
+            // Insert markdown image syntax at cursor
+            const view = viewRef.current;
+            const pos = view.state.selection.main.head;
+            const imageMarkdown = `![${file.name}](${imagePath})`;
+            view.dispatch({
+              changes: { from: pos, insert: imageMarkdown },
+              selection: { anchor: pos + imageMarkdown.length },
+            });
+          }
+        }
+        break;
+      }
+    }
+  }, [onImagePaste]);
+
+  // Handle image drop
+  const handleDrop = useCallback(async (e: DragEvent) => {
+    if (!onImagePaste || !viewRef.current) return;
+    
+    const files = e.dataTransfer?.files;
+    if (!files) return;
+    
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        e.preventDefault();
+        const imagePath = await onImagePaste(file);
+        if (imagePath) {
+          const view = viewRef.current;
+          const pos = view.state.selection.main.head;
+          const imageMarkdown = `![${file.name}](${imagePath})`;
+          view.dispatch({
+            changes: { from: pos, insert: imageMarkdown },
+            selection: { anchor: pos + imageMarkdown.length },
+          });
+        }
+        break;
+      }
+    }
+  }, [onImagePaste]);
+
+  // Add paste/drop listeners to editor
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    
+    editor.addEventListener('paste', handlePaste as any);
+    editor.addEventListener('drop', handleDrop as any);
+    editor.addEventListener('dragover', (e) => e.preventDefault());
+    
+    return () => {
+      editor.removeEventListener('paste', handlePaste as any);
+      editor.removeEventListener('drop', handleDrop as any);
+    };
+  }, [handlePaste, handleDrop]);
+
   // Keep contentRef in sync
   useEffect(() => {
     contentRef.current = content;
@@ -247,6 +318,8 @@ export function Editor({
         oneDark,
         linkAutocomplete(),
         linkAutocompleteTheme,
+        headingFold(),
+        foldTheme,
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
         EditorView.updateListener.of((update) => {
@@ -449,6 +522,7 @@ export function Editor({
             onLinkClick={onLinkClick}
             onCheckboxToggle={handleCheckboxToggle}
             onEmbed={onGetNoteContent}
+            onGetLinkPreview={onGetNoteContent}
           />
         </div>
       </div>

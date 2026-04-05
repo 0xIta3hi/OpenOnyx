@@ -9,10 +9,11 @@
  * - Clickable checkboxes that update source
  * - Obsidian-style callouts/admonitions
  * - ![[embed]] note embeds
+ * - Link preview on hover
  * - DOMPurify XSS protection
  */
 
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import DOMPurify from 'dompurify';
@@ -55,10 +56,17 @@ interface MarkdownPreviewProps {
   onLinkClick: (linkName: string, heading?: string) => void;
   onCheckboxToggle?: (lineIndex: number, checked: boolean) => void;
   onEmbed?: (noteName: string) => string | null;
+  onGetLinkPreview?: (noteName: string) => string | null;
 }
 
-export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbed }: MarkdownPreviewProps) {
+export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbed, onGetLinkPreview }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
+  const [linkPreview, setLinkPreview] = useState<{
+    noteName: string;
+    content: string | null;
+    position: { x: number; y: number };
+  } | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Process callouts (Obsidian-style admonitions)
   const processCallouts = (text: string): string => {
@@ -194,11 +202,112 @@ export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbe
     return () => container.removeEventListener('click', handleClick);
   }, [onLinkClick, onCheckboxToggle]);
 
+  // Handle link hover for preview
+  useEffect(() => {
+    const container = previewRef.current;
+    if (!container || !onGetLinkPreview) return;
+
+    const handleMouseEnter = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('wiki-link')) {
+        const linkName = target.getAttribute('data-link');
+        if (!linkName) return;
+        
+        // Clear any existing timeout
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+        }
+        
+        // Delay showing preview
+        hoverTimeoutRef.current = setTimeout(() => {
+          const previewContent = onGetLinkPreview(linkName);
+          const rect = target.getBoundingClientRect();
+          setLinkPreview({
+            noteName: linkName,
+            content: previewContent,
+            position: { x: rect.left, y: rect.bottom + 5 },
+          });
+        }, 400); // 400ms delay before showing
+      }
+    };
+
+    const handleMouseLeave = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('wiki-link')) {
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+        }
+        // Small delay before hiding to allow moving to preview
+        setTimeout(() => {
+          setLinkPreview(null);
+        }, 100);
+      }
+    };
+
+    container.addEventListener('mouseover', handleMouseEnter);
+    container.addEventListener('mouseout', handleMouseLeave);
+    
+    return () => {
+      container.removeEventListener('mouseover', handleMouseEnter);
+      container.removeEventListener('mouseout', handleMouseLeave);
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, [onGetLinkPreview]);
+
+  // Render preview content for link preview popup
+  const renderPreviewContent = useCallback((content: string | null) => {
+    if (!content) return '<p class="preview-empty">Note not found</p>';
+    
+    // Remove frontmatter
+    let text = content.replace(/^---[\s\S]*?---\s*/m, '');
+    
+    // Truncate to ~500 chars for preview
+    if (text.length > 500) {
+      text = text.slice(0, 500) + '...';
+    }
+    
+    // Render markdown
+    const html = marked.parse(text, { async: false }) as string;
+    return DOMPurify.sanitize(html);
+  }, []);
+
   return (
-    <div
-      ref={previewRef}
-      className="markdown-preview"
-      dangerouslySetInnerHTML={{ __html: renderedHtml }}
-    />
+    <>
+      <div
+        ref={previewRef}
+        className="markdown-preview"
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
+      />
+      
+      {/* Link Preview Popup */}
+      {linkPreview && (
+        <div
+          className="link-preview"
+          style={{
+            position: 'fixed',
+            left: linkPreview.position.x,
+            top: linkPreview.position.y,
+            zIndex: 10000,
+          }}
+          onMouseEnter={() => {
+            // Keep preview open while hovering
+            if (hoverTimeoutRef.current) {
+              clearTimeout(hoverTimeoutRef.current);
+            }
+          }}
+          onMouseLeave={() => setLinkPreview(null)}
+        >
+          <div className="link-preview-header">
+            <span className="link-preview-title">{linkPreview.noteName}</span>
+          </div>
+          <div 
+            className="link-preview-content"
+            dangerouslySetInnerHTML={{ __html: renderPreviewContent(linkPreview.content) }}
+          />
+        </div>
+      )}
+    </>
   );
 }

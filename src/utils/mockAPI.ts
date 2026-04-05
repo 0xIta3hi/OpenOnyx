@@ -430,6 +430,12 @@ export function createMockAPI(): ElectronAPI {
       }
       return tagMap;
     },
+
+    // Attachments/Images
+    saveImage: async (fileName: string, _base64Data: string) => {
+      // In mock mode, just return a mock path
+      return `attachments/${fileName}`;
+    },
   };
 
   return mockAPI;
