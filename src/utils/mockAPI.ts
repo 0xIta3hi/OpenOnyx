@@ -436,6 +436,97 @@ export function createMockAPI(): ElectronAPI {
       // In mock mode, just return a mock path
       return `attachments/${fileName}`;
     },
+
+    // Thought Model (mock implementation for browser)
+    thoughtModel: {
+      build: async (_vaultPath: string, _numClusters?: number) => {
+        // Simulate a build that completes quickly
+        return { job_id: 'mock-job-123', status: 'indexing' };
+      },
+      status: async (_jobId: string) => {
+        // Always return done for mock
+        return {
+          job_id: 'mock-job-123',
+          status: 'done',
+          progress: 100,
+          message: 'Complete (mock)',
+          total_notes: 5,
+          total_chunks: 12,
+        };
+      },
+      themes: async (_jobId: string) => {
+        // Return mock themes based on sample notes
+        return {
+          themes: [
+            {
+              cluster_id: 0,
+              keywords: ['knowledge', 'management', 'zettelkasten', 'notes', 'ideas'],
+              representative_chunks: [
+                {
+                  chunk_id: 'km_0',
+                  note_id: 'km',
+                  note_path: 'Knowledge Management.md',
+                  note_title: 'Knowledge Management',
+                  chunk_text: 'Effective knowledge management is about capturing, connecting, and retrieving information efficiently.',
+                },
+              ],
+              note_count: 2,
+            },
+            {
+              cluster_id: 1,
+              keywords: ['markdown', 'formatting', 'code', 'text', 'guide'],
+              representative_chunks: [
+                {
+                  chunk_id: 'md_0',
+                  note_id: 'md',
+                  note_path: 'Markdown Guide.md',
+                  note_title: 'Markdown Guide',
+                  chunk_text: 'OpenObsidian supports full GitHub Flavored Markdown. Here\'s a quick reference.',
+                },
+              ],
+              note_count: 1,
+            },
+            {
+              cluster_id: 2,
+              keywords: ['getting', 'started', 'tutorial', 'shortcuts', 'linking'],
+              representative_chunks: [
+                {
+                  chunk_id: 'gs_0',
+                  note_id: 'gs',
+                  note_path: 'Getting Started.md',
+                  note_title: 'Getting Started',
+                  chunk_text: 'Welcome to your OpenObsidian vault! Here\'s everything you need to know.',
+                },
+              ],
+              note_count: 2,
+            },
+          ],
+          total_notes: 5,
+          total_chunks: 12,
+        };
+      },
+      query: async (_jobId: string, query: string, _topK?: number) => {
+        // Simple mock search
+        const results = [];
+        const q = query.toLowerCase();
+        for (const [path, content] of Object.entries(mockFiles)) {
+          if (content.toLowerCase().includes(q)) {
+            results.push({
+              score: 0.75,
+              note_title: path.replace('.md', ''),
+              note_path: path,
+              chunk_text: content.substring(0, 200),
+              cluster_id: 0,
+            });
+          }
+        }
+        return { query, results: results.slice(0, 10) };
+      },
+      clear: async (_jobId: string) => {
+        return { status: 'cleared', job_id: 'mock-job-123' };
+      },
+      health: async () => true,
+    },
   };
 
   return mockAPI;

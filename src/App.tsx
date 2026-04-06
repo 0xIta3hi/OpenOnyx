@@ -25,6 +25,7 @@ import { PropertiesPanel } from './components/PropertiesPanel';
 import { SettingsPage, AppSettings, DEFAULT_SETTINGS } from './components/SettingsPage';
 import { TemplateModal } from './components/TemplateModal';
 import { UnlinkedMentionsPanel } from './components/UnlinkedMentionsPanel';
+import { ThoughtModelPage } from './components/ThoughtModelPage';
 import { FileText } from 'lucide-react';
 import { Tab, ViewMode, Theme, Command, FileEntry } from './types';
 import { getNoteName, generateId, debounce } from './utils/helpers';
@@ -48,6 +49,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUnlinkedMentions, setShowUnlinkedMentions] = useState(false);
+  const [showThoughtModel, setShowThoughtModel] = useState(false);
+  const [thoughtModelFullScreen, setThoughtModelFullScreen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => {
     // Load settings from localStorage on initial render
     try {
@@ -446,20 +449,38 @@ export default function App() {
   };
 
   // ── File Management ─────────────────────────────────
-  const handleDeleteFile = async (filePath: string) => {
+  const handleDeleteFile = async (filePath: string, isDir: boolean = false) => {
     setModal({
       type: 'confirm',
-      title: 'Delete File',
-      message: `Delete "${getNoteName(filePath)}"?`,
+      title: isDir ? 'Delete Folder' : 'Delete File',
+      message: `Delete "${getNoteName(filePath)}"${isDir ? ' and all its contents' : ''}?`,
       onConfirm: async (confirmed) => {
         if (!confirmed) return;
-        await api.deleteFile(filePath);
         
-        // Close tab if open
-        const tab = tabs.find(t => t.path === filePath);
-        if (tab) closeTab(tab.id);
-        
-        await refreshFileTree();
+        try {
+          if (isDir) {
+            await api.deleteDirectory(filePath);
+          } else {
+            await api.deleteFile(filePath);
+          }
+          
+          // Close tab if open (for files) or close all tabs within the folder
+          if (isDir) {
+            // Close all tabs that are within this directory
+            tabs.forEach(tab => {
+              if (tab.path.startsWith(filePath + '/') || tab.path === filePath) {
+                closeTab(tab.id);
+              }
+            });
+          } else {
+            const tab = tabs.find(t => t.path === filePath);
+            if (tab) closeTab(tab.id);
+          }
+          
+          await refreshFileTree();
+        } catch (error) {
+          console.error('Failed to delete:', error);
+        }
       },
     });
   };
@@ -583,6 +604,7 @@ export default function App() {
     { id: 'properties', label: 'Toggle Properties Panel', action: () => setShowProperties(p => !p), category: 'View' },
     { id: 'daily-note', label: 'Create Daily Note', action: handleCreateDailyNote, category: 'Notes' },
     { id: 'insert-template', label: 'Insert Template', action: () => setShowTemplateModal(true), category: 'Notes' },
+    { id: 'thought-model', label: 'Open Thought Model', action: () => setShowThoughtModel(true), category: 'AI' },
     { id: 'theme', label: 'Toggle Theme', action: () => setSettings(s => ({ ...s, theme: s.theme === 'dark' ? 'light' : 'dark' })), category: 'Settings' },
     { id: 'settings', label: 'Open Settings', action: () => setShowSettings(true), category: 'Settings' },
     { id: 'editor-mode', label: 'Editor View', action: () => setViewMode('editor'), category: 'View' },
@@ -609,12 +631,19 @@ export default function App() {
             onSearch={() => {
                document.dispatchEvent(new CustomEvent('editor:open-search'));
             }}
-            onGraph={() => setShowGraph(g => !g)}
+            onGraph={() => {
+              setShowThoughtModel(false);
+              setShowGraph(g => !g);
+            }}
             onCommandPalette={() => setShowCommandPalette(true)}
             onSettings={() => setShowSettings(true)}
             onDailyNote={handleCreateDailyNote}
             onToggleTags={() => setShowTags(t => !t)}
             onToggleOutline={() => setShowOutline(o => !o)}
+            onThoughtModel={() => {
+              setShowGraph(false);
+              setShowThoughtModel(t => !t);
+            }}
           />
         )}
         <Sidebar
@@ -650,8 +679,15 @@ export default function App() {
             <WelcomeScreen onOpenVault={handleOpenVault} />
           ) : (
             <>
-              {(!showGraph || !graphFullScreen) && (
-                <div style={{ flex: (!showGraph || graphFullScreen) ? 1 : `0 0 ${editorPaneWidth}%`, height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Editor pane - hidden when graph or thought model is fullscreen */}
+              {(!showGraph || !graphFullScreen) && (!showThoughtModel || !thoughtModelFullScreen) && (
+                <div style={{ 
+                  flex: (showGraph || showThoughtModel) ? `0 0 ${editorPaneWidth}%` : 1, 
+                  height: '100%', 
+                  overflow: 'hidden', 
+                  display: 'flex', 
+                  flexDirection: 'column' 
+                }}>
                   {activeTab ? (
                     <Editor
                       tabs={tabs}
@@ -684,6 +720,7 @@ export default function App() {
                 </div>
               )}
               
+              {/* Resizer for Graph */}
               {!graphFullScreen && showGraph && (
                 <div
                   className="resizer"
@@ -692,6 +729,7 @@ export default function App() {
                 />
               )}
               
+              {/* Graph View pane */}
               {showGraph && (
                 <div style={{ 
                   flex: graphFullScreen ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`, 
@@ -711,12 +749,44 @@ export default function App() {
                   />
                 </div>
               )}
+
+              {/* Resizer for Thought Model */}
+              {!thoughtModelFullScreen && showThoughtModel && !showGraph && (
+                <div
+                  className="resizer"
+                  onMouseDown={startPaneDrag}
+                  style={{ width: '4px', cursor: 'col-resize' }}
+                />
+              )}
+
+              {/* Thought Model pane */}
+              {showThoughtModel && !showGraph && (
+                <div style={{ 
+                  flex: thoughtModelFullScreen ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`, 
+                  height: '100%', 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }}>
+                  <ThoughtModelPage
+                    vaultPath={vaultPath}
+                    theme={theme}
+                    onOpenNote={(path) => {
+                      setShowThoughtModel(false);
+                      openFile(path);
+                    }}
+                    onClose={() => setShowThoughtModel(false)}
+                    isFullScreen={thoughtModelFullScreen}
+                    onToggleFullScreen={() => setThoughtModelFullScreen(f => !f)}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
 
         {/* Right Panels */}
-        {activeTab && !showGraph && (
+        {activeTab && !showGraph && !showThoughtModel && (
           <>
             {showOutline && (
               <OutlinePane

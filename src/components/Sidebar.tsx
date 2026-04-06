@@ -19,7 +19,7 @@ interface SidebarProps {
   onFileSelect: (path: string) => void;
   onNewNote: () => void;
   onNewFolder: (parentPath: string) => void;
-  onDeleteFile: (path: string) => void;
+  onDeleteFile: (path: string, isDir: boolean) => void;
   onRenameFile: (oldPath: string, newName: string) => void;
   onRefresh: () => void;
   onToggleStar: (path: string) => void;
@@ -300,7 +300,7 @@ export function Sidebar({
             <button
               className="context-menu-item danger"
               onClick={() => {
-                onDeleteFile(contextMenu.path);
+                onDeleteFile(contextMenu.path, contextMenu.isDir);
                 closeContextMenu();
               }}
             >

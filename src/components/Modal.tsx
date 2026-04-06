@@ -64,11 +64,9 @@ export function Modal({ type, title, message, defaultValue = '', onClose }: Moda
           <button onClick={handleCancel} style={styles.cancelBtn}>
             Cancel
           </button>
-          {type === 'prompt' && (
-            <button onClick={handleConfirm} style={styles.confirmBtn}>
-              OK
-            </button>
-          )}
+          <button onClick={handleConfirm} style={type === 'confirm' ? styles.dangerBtn : styles.confirmBtn}>
+            {type === 'confirm' ? 'Delete' : 'OK'}
+          </button>
         </div>
       </div>
     </div>
@@ -137,6 +135,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '4px',
     border: 'none',
     backgroundColor: 'var(--accent, #6c63ff)',
+    color: '#ffffff',
+    cursor: 'pointer',
+    fontSize: '14px',
+  },
+  dangerBtn: {
+    padding: '8px 16px',
+    borderRadius: '4px',
+    border: 'none',
+    backgroundColor: '#ef4444',
     color: '#ffffff',
     cursor: 'pointer',
     fontSize: '14px',

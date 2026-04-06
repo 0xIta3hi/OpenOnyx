@@ -96,6 +96,56 @@ const electronAPI = {
   // ── Attachments/Images ────────────────────────────
   saveImage: (fileName: string, base64Data: string): Promise<string> =>
     ipcRenderer.invoke('attachments:saveImage', fileName, base64Data),
+
+  // ── Thought Model ─────────────────────────────────
+  thoughtModel: {
+    build: (vaultPath: string, numClusters?: number): Promise<{ job_id: string; status: string }> =>
+      ipcRenderer.invoke('thoughtModel:build', vaultPath, numClusters),
+    
+    status: (jobId: string): Promise<{
+      job_id: string;
+      status: string;
+      progress?: number;
+      message?: string;
+      error?: string;
+      total_notes?: number;
+      total_chunks?: number;
+    }> => ipcRenderer.invoke('thoughtModel:status', jobId),
+    
+    themes: (jobId: string): Promise<{
+      themes: Array<{
+        cluster_id: number;
+        keywords: string[];
+        representative_chunks: Array<{
+          chunk_id: string;
+          note_id: string;
+          note_path: string;
+          note_title: string;
+          chunk_text: string;
+        }>;
+        note_count: number;
+      }>;
+      total_notes: number;
+      total_chunks: number;
+    }> => ipcRenderer.invoke('thoughtModel:themes', jobId),
+    
+    query: (jobId: string, query: string, topK?: number): Promise<{
+      query: string;
+      results: Array<{
+        score: number;
+        note_title: string;
+        note_path: string;
+        chunk_text: string;
+        cluster_id: number;
+      }>;
+    }> => ipcRenderer.invoke('thoughtModel:query', jobId, query, topK),
+    
+    clear: (jobId: string): Promise<{ status: string; job_id: string }> =>
+      ipcRenderer.invoke('thoughtModel:clear', jobId),
+    
+    health: (): Promise<boolean> =>
+      ipcRenderer.invoke('thoughtModel:health'),
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

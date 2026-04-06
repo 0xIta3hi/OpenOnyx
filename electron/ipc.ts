@@ -130,4 +130,112 @@ export function registerIpcHandlers(
   ipcMain.handle('attachments:saveImage', async (_event, fileName: string, base64Data: string) => {
     return fsManager.saveImage(fileName, base64Data);
   });
+
+  // ── Thought Model ─────────────────────────────────
+  const THOUGHT_MODEL_URL = 'http://127.0.0.1:8765';
+
+  const isConnRefused = (err: unknown): boolean => {
+    return err instanceof Error && 'code' in err && (err as any).code === 'ECONNREFUSED';
+  };
+
+  interface APIError { detail?: string }
+
+  ipcMain.handle('thoughtModel:build', async (_event, vaultPath: string, numClusters: number = 12) => {
+    try {
+      const response = await fetch(`${THOUGHT_MODEL_URL}/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vault_path: vaultPath, num_clusters: numClusters }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json() as APIError;
+        throw new Error(errorData.detail || 'Build request failed');
+      }
+      return await response.json();
+    } catch (err) {
+      if (isConnRefused(err)) {
+        throw new Error('Thought Model service not running. Please start it with: cd thought_model && python main.py');
+      }
+      throw err;
+    }
+  });
+
+  ipcMain.handle('thoughtModel:status', async (_event, jobId: string) => {
+    try {
+      const response = await fetch(`${THOUGHT_MODEL_URL}/status?job_id=${encodeURIComponent(jobId)}`);
+      if (!response.ok) {
+        const errorData = await response.json() as APIError;
+        throw new Error(errorData.detail || 'Status request failed');
+      }
+      return await response.json();
+    } catch (err) {
+      if (isConnRefused(err)) {
+        throw new Error('Thought Model service not running');
+      }
+      throw err;
+    }
+  });
+
+  ipcMain.handle('thoughtModel:themes', async (_event, jobId: string) => {
+    try {
+      const response = await fetch(`${THOUGHT_MODEL_URL}/themes?job_id=${encodeURIComponent(jobId)}`);
+      if (!response.ok) {
+        const errorData = await response.json() as APIError;
+        throw new Error(errorData.detail || 'Themes request failed');
+      }
+      return await response.json();
+    } catch (err) {
+      if (isConnRefused(err)) {
+        throw new Error('Thought Model service not running');
+      }
+      throw err;
+    }
+  });
+
+  ipcMain.handle('thoughtModel:query', async (_event, jobId: string, query: string, topK: number = 10) => {
+    try {
+      const response = await fetch(`${THOUGHT_MODEL_URL}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId, query, top_k: topK }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json() as APIError;
+        throw new Error(errorData.detail || 'Query request failed');
+      }
+      return await response.json();
+    } catch (err) {
+      if (isConnRefused(err)) {
+        throw new Error('Thought Model service not running');
+      }
+      throw err;
+    }
+  });
+
+  ipcMain.handle('thoughtModel:clear', async (_event, jobId: string) => {
+    try {
+      const response = await fetch(`${THOUGHT_MODEL_URL}/clear?job_id=${encodeURIComponent(jobId)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorData = await response.json() as APIError;
+        throw new Error(errorData.detail || 'Clear request failed');
+      }
+      return await response.json();
+    } catch (err) {
+      if (isConnRefused(err)) {
+        throw new Error('Thought Model service not running');
+      }
+      throw err;
+    }
+  });
+
+  ipcMain.handle('thoughtModel:health', async () => {
+    try {
+      const response = await fetch(`${THOUGHT_MODEL_URL}/health`);
+      return response.ok;
+    } catch {
+      return false;
+    }
+  });
 }
