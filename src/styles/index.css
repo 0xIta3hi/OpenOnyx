@@ -47,6 +47,12 @@
   /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  
+  /* User-configurable settings (overridden via JS) */
+  --font-family: 'Inter', system-ui, sans-serif;
+  --accent-color: #7c3aed;
+  --editor-font-size: 15px;
+  --editor-line-height: 1.6;
 
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -583,13 +589,13 @@ body {
 /* ── CodeMirror Editor Overrides ───────────────────── */
 .editor-container .cm-editor {
   height: 100%;
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-family: var(--font-family);
+  font-size: var(--editor-font-size);
 }
 
 .editor-container .cm-editor .cm-scroller {
   padding: var(--space-6);
-  line-height: 1.75;
+  line-height: var(--editor-line-height);
 }
 
 .editor-container .cm-editor .cm-content {
@@ -639,8 +645,8 @@ body {
   margin: 0 auto;
   overflow-y: auto;
   height: 100%;
-  font-family: var(--font-sans);
-  font-size: 15px; /* Clean size */
+  font-family: var(--font-family);
+  font-size: var(--editor-font-size);
 }
 
 .markdown-preview h1 {
@@ -672,8 +678,8 @@ body {
 
 .markdown-preview p {
   margin-bottom: var(--space-4);
-  color: var(--text-primary); /* Brighter base text */
-  line-height: 1.8;
+  color: var(--text-primary);
+  line-height: var(--editor-line-height);
 }
 
 .markdown-preview a {

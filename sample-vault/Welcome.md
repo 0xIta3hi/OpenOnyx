@@ -37,7 +37,7 @@ OpenObsidian is your **local-first knowledge management tool**. Think of it as a
 - ✅ Starred notes
 - ✅ Heading folding in editor
 - ✅ Image paste/drag support
-- ✅ Link preview on hover
+- ✅ Link preview on hover/all
 
 > [!tip] Quick Start
 > Open [[Feature Showcase]] to see all features in action!

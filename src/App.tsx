@@ -35,7 +35,6 @@ const api = getAPI();
 export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
-  const [theme, setTheme] = useState<Theme>('dark');
   const [showSidebar, setShowSidebar] = useState(true);
   const [showGraph, setShowGraph] = useState(false);
   const [graphFullScreen, setGraphFullScreen] = useState(false);
@@ -49,7 +48,18 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUnlinkedMentions, setShowUnlinkedMentions] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    // Load settings from localStorage on initial render
+    try {
+      const saved = localStorage.getItem('notework-settings');
+      if (saved) {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.error('Failed to load settings:', e);
+    }
+    return DEFAULT_SETTINGS;
+  });
   const [starredNotes, setStarredNotes] = useState<string[]>([]);
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
   const [noteContentCache, setNoteContentCache] = useState<Map<string, string>>(new Map());
@@ -118,10 +128,39 @@ export default function App() {
 
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Apply theme
+  // Track system color scheme for 'system' theme option
+  const [systemPrefersDark, setSystemPrefersDark] = useState(
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+
+  // Listen for system theme changes
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  // Derive theme from settings (handles 'system' preference)
+  const theme: Theme = settings.theme === 'system'
+    ? (systemPrefersDark ? 'dark' : 'light')
+    : settings.theme;
+
+  // Apply settings (theme, colors, fonts, etc.)
+  useEffect(() => {
+    // Apply theme
     document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    
+    // Apply CSS custom properties from settings
+    const root = document.documentElement;
+    root.style.setProperty('--accent-color', settings.accentColor);
+    root.style.setProperty('--font-family', settings.fontFamily);
+    root.style.setProperty('--editor-font-size', `${settings.fontSize}px`);
+    root.style.setProperty('--editor-line-height', `${settings.lineHeight}`);
+    
+    // Save settings to localStorage
+    localStorage.setItem('notework-settings', JSON.stringify(settings));
+  }, [settings, theme]);
 
   // ── Initialize Vault ────────────────────────────────
   useEffect(() => {
@@ -544,7 +583,7 @@ export default function App() {
     { id: 'properties', label: 'Toggle Properties Panel', action: () => setShowProperties(p => !p), category: 'View' },
     { id: 'daily-note', label: 'Create Daily Note', action: handleCreateDailyNote, category: 'Notes' },
     { id: 'insert-template', label: 'Insert Template', action: () => setShowTemplateModal(true), category: 'Notes' },
-    { id: 'theme', label: 'Toggle Theme', action: () => setTheme(t => t === 'dark' ? 'light' : 'dark'), category: 'Settings' },
+    { id: 'theme', label: 'Toggle Theme', action: () => setSettings(s => ({ ...s, theme: s.theme === 'dark' ? 'light' : 'dark' })), category: 'Settings' },
     { id: 'settings', label: 'Open Settings', action: () => setShowSettings(true), category: 'Settings' },
     { id: 'editor-mode', label: 'Editor View', action: () => setViewMode('editor'), category: 'View' },
     { id: 'preview-mode', label: 'Preview View', action: () => setViewMode('preview'), category: 'View' },
