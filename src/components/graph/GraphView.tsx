@@ -282,15 +282,11 @@ export function GraphView({
     return { displayNodes: nodes, displayEdges: edges };
   }, [graphData, settings.searchFilter, settings.existingFilesOnly, settings.showOrphans, isLocalView, localNodePath, adjacencyMap]);
 
-  // Check if force settings changed - if so, trigger relayout
+  // Force settings key for tracking - but DON'T auto-relayout
+  // User must click "Recalculate Layout" to apply force changes to layout
   const forceSettingsKey = `${settings.centerForce}-${settings.repelForce}-${settings.linkForce}-${settings.linkDistance}`;
   
   useEffect(() => {
-    if (prevForceSettingsRef.current && prevForceSettingsRef.current !== forceSettingsKey) {
-      // Force settings changed, recalculate layout
-      positionsRef.current.clear();
-      setLayoutKey(k => k + 1);
-    }
     prevForceSettingsRef.current = forceSettingsKey;
   }, [forceSettingsKey]);
 
@@ -344,40 +340,188 @@ export function GraphView({
 
     if (needsLayout) {
       didLayout = true;
-      // COMPUTE LAYOUT SYNCHRONOUSLY - no animation, no floating
+      // COMPUTE LAYOUT using hierarchical radial algorithm
       const simNodes = displayNodes.map(n => ({ ...n }));
       const simEdges = displayEdges.map(e => ({ ...e }));
-
-      // Initialize positions
-      simNodes.forEach((node, i) => {
-        const cached = positionsRef.current.get(node.id);
-        if (cached) {
-          node.x = cached.x;
-          node.y = cached.y;
+      
+      // Build adjacency for layout
+      const adjMap = new Map<string, Set<string>>();
+      simEdges.forEach(e => {
+        const sid = typeof e.source === 'string' ? e.source : e.source.id;
+        const tid = typeof e.target === 'string' ? e.target : e.target.id;
+        if (!adjMap.has(sid)) adjMap.set(sid, new Set());
+        if (!adjMap.has(tid)) adjMap.set(tid, new Set());
+        adjMap.get(sid)!.add(tid);
+        adjMap.get(tid)!.add(sid);
+      });
+      
+      // Calculate connection counts
+      const connectionCounts = new Map<string, number>();
+      simNodes.forEach(n => {
+        connectionCounts.set(n.id, adjMap.get(n.id)?.size || 0);
+      });
+      
+      // Sort nodes by connection count (hubs first)
+      const sortedNodes = [...simNodes].sort((a, b) => 
+        (connectionCounts.get(b.id) || 0) - (connectionCounts.get(a.id) || 0)
+      );
+      
+      // Find connected components
+      const visited = new Set<string>();
+      const components: string[][] = [];
+      
+      const bfs = (startId: string): string[] => {
+        const component: string[] = [];
+        const queue = [startId];
+        visited.add(startId);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          component.push(current);
+          const neighbors = adjMap.get(current) || new Set();
+          neighbors.forEach(neighbor => {
+            if (!visited.has(neighbor)) {
+              visited.add(neighbor);
+              queue.push(neighbor);
+            }
+          });
+        }
+        return component;
+      };
+      
+      sortedNodes.forEach(n => {
+        if (!visited.has(n.id)) {
+          const component = bfs(n.id);
+          components.push(component);
+        }
+      });
+      
+      // Sort components by size (largest first)
+      components.sort((a, b) => b.length - a.length);
+      
+      // Position nodes using radial layout per component
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const nodePositions = new Map<string, {x: number, y: number}>();
+      
+      // Calculate total nodes for spacing
+      const totalNodes = simNodes.length;
+      const baseRadius = Math.min(width, height) * 0.35;
+      
+      // Position each component
+      let componentAngleOffset = 0;
+      const componentAngleStep = components.length > 1 ? (2 * Math.PI) / components.length : 0;
+      
+      components.forEach((component, compIdx) => {
+        // Find hub node (most connected in this component)
+        let hubId = component[0];
+        let maxConn = 0;
+        component.forEach(id => {
+          const conn = connectionCounts.get(id) || 0;
+          if (conn > maxConn) {
+            maxConn = conn;
+            hubId = id;
+          }
+        });
+        
+        // Calculate component center offset for multiple components
+        const compCenterX = components.length > 1
+          ? centerX + Math.cos(componentAngleOffset) * baseRadius * 0.6
+          : centerX;
+        const compCenterY = components.length > 1
+          ? centerY + Math.sin(componentAngleOffset) * baseRadius * 0.6
+          : centerY;
+        
+        // BFS from hub to assign layers
+        const layers = new Map<string, number>();
+        const layerNodes: string[][] = [];
+        const bfsQueue = [hubId];
+        layers.set(hubId, 0);
+        
+        while (bfsQueue.length > 0) {
+          const current = bfsQueue.shift()!;
+          const currentLayer = layers.get(current)!;
+          
+          if (!layerNodes[currentLayer]) layerNodes[currentLayer] = [];
+          layerNodes[currentLayer].push(current);
+          
+          const neighbors = adjMap.get(current) || new Set();
+          neighbors.forEach(neighbor => {
+            if (!layers.has(neighbor) && component.includes(neighbor)) {
+              layers.set(neighbor, currentLayer + 1);
+              bfsQueue.push(neighbor);
+            }
+          });
+        }
+        
+        // Also add orphans from this component
+        component.forEach(id => {
+          if (!layers.has(id)) {
+            const outerLayer = layerNodes.length;
+            layers.set(id, outerLayer);
+            if (!layerNodes[outerLayer]) layerNodes[outerLayer] = [];
+            layerNodes[outerLayer].push(id);
+          }
+        });
+        
+        // Calculate radius per layer based on component size
+        const compSize = component.length;
+        const maxLayer = layerNodes.length;
+        const layerRadiusStep = Math.max(40, Math.min(80, baseRadius / (maxLayer + 1)));
+        
+        // Position nodes in concentric circles
+        layerNodes.forEach((nodesInLayer, layerIdx) => {
+          if (layerIdx === 0) {
+            // Hub at center
+            nodesInLayer.forEach(id => {
+              nodePositions.set(id, { x: compCenterX, y: compCenterY });
+            });
+          } else {
+            const layerRadius = layerIdx * layerRadiusStep;
+            const angleStep = (2 * Math.PI) / nodesInLayer.length;
+            const startAngle = Math.random() * Math.PI * 0.5; // Slight randomness
+            
+            nodesInLayer.forEach((id, idx) => {
+              const angle = startAngle + idx * angleStep;
+              nodePositions.set(id, {
+                x: compCenterX + Math.cos(angle) * layerRadius,
+                y: compCenterY + Math.sin(angle) * layerRadius
+              });
+            });
+          }
+        });
+        
+        componentAngleOffset += componentAngleStep;
+      });
+      
+      // Apply initial positions
+      simNodes.forEach(node => {
+        const pos = nodePositions.get(node.id);
+        if (pos) {
+          node.x = pos.x;
+          node.y = pos.y;
         } else {
-          const angle = (i / simNodes.length) * 2 * Math.PI;
-          const radius = Math.min(width, height) * 0.3;
-          node.x = width / 2 + Math.cos(angle) * radius * (0.5 + Math.random() * 0.5);
-          node.y = height / 2 + Math.sin(angle) * radius * (0.5 + Math.random() * 0.5);
+          // Fallback for any missed nodes
+          node.x = centerX + (Math.random() - 0.5) * 100;
+          node.y = centerY + (Math.random() - 0.5) * 100;
         }
       });
 
-      // Create and run simulation to completion
+      // Run a SHORT force simulation to refine positions (but not scramble them)
       const simulation = d3.forceSimulation<GraphNode>(simNodes)
         .force('link', d3.forceLink<GraphNode, GraphEdge>(simEdges)
           .id(d => d.id)
           .distance(settings.linkDistance)
-          .strength(settings.linkForce / 100))
+          .strength(0.3)) // Gentler link force to preserve structure
         .force('charge', d3.forceManyBody()
-          .strength(-settings.repelForce * 1.5)
-          .distanceMax(400))
-        .force('center', d3.forceCenter(width / 2, height / 2)
-          .strength(settings.centerForce / 100))
-        .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 5))
+          .strength(-settings.repelForce * 0.5) // Gentler repulsion
+          .distanceMax(200))
+        .force('center', d3.forceCenter(centerX, centerY)
+          .strength(0.05)) // Weak center force
+        .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 8))
         .stop();
 
-      // Run simulation ticks synchronously
-      for (let i = 0; i < 300; i++) {
+      // Only run a few ticks to refine, not scramble
+      for (let i = 0; i < 100; i++) {
         simulation.tick();
       }
 
@@ -644,6 +788,7 @@ export function GraphView({
             </Section>
 
             <Section title="Forces" id="forces">
+              <p className="graph-forces-note">Adjust forces then click Recalculate to apply</p>
               <Slider label="Center force" value={settings.centerForce} min={0} max={100} onChange={v => updateSetting('centerForce', v)} info="Pull toward center" />
               <Slider label="Repel force" value={settings.repelForce} min={0} max={200} onChange={v => updateSetting('repelForce', v)} info="Push nodes apart" />
               <Slider label="Link force" value={settings.linkForce} min={0} max={100} onChange={v => updateSetting('linkForce', v)} info="Pull connected nodes together" />

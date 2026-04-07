@@ -2027,6 +2027,15 @@ blockquote:has(.callout) {
   border: none;
 }
 
+/* Forces section note */
+.graph-forces-note {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-2);
+  font-style: italic;
+  padding: var(--space-1) 0;
+}
+
 /* Reset/relayout button */
 .graph-reset-layout-btn,
 .graph-relayout-btn {
