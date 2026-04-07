@@ -1,63 +1,117 @@
 /**
- * Graph View - Interactive Knowledge Graph
- * 
- * Visualizes notes as nodes and [[links]] as edges using D3.js
- * force-directed layout. Features:
- * - Interactive zoom & pan with static layout option
- * - Click nodes to navigate to notes
- * - Node size scales with connection count (toggleable)
- * - Phantom nodes for unresolved links
- * - Obsidian-like settings panel with filters and forces
- * - Light/dark theme support with proper edge visibility
+ * Graph View - Stable Knowledge Graph with Full Customization
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Network, Maximize, Minimize, Settings, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
+import { Network, Maximize, Minimize, Settings, ChevronDown, ChevronRight, Search, X, RotateCcw, Info } from 'lucide-react';
 import { GraphData, GraphNode, GraphEdge, Theme } from '../../types';
 import { getAPI } from '../../utils/api';
 
 const api = getAPI();
+const SETTINGS_KEY = 'openobsidian-graph-settings-v2';
 
-// Graph settings interface
 interface GraphSettings {
   // Filters
-  showTags: boolean;
+  searchFilter: string;
   showOrphans: boolean;
   existingFilesOnly: boolean;
-  searchFilter: string;
-  
   // Display
+  nodeColor: string;
+  edgeColor: string;
+  nodeSize: number;
+  linkThickness: number;
+  // Text
   showLabels: boolean;
-  labelThreshold: number; // Min connections to show label
-  fixedNodeSize: boolean;
-  nodeSize: number; // Fixed size when enabled
-  
+  textColor: string;
+  textSize: number;
+  textThreshold: number;
   // Forces
   centerForce: number;
   repelForce: number;
   linkForce: number;
   linkDistance: number;
-  
-  // Behavior
-  staticLayout: boolean; // Stop simulation after initial layout
 }
 
 const defaultSettings: GraphSettings = {
-  showTags: false,
+  searchFilter: '',
   showOrphans: true,
   existingFilesOnly: false,
-  searchFilter: '',
+  nodeColor: '#6ee7b7',
+  edgeColor: '#6ee7b7',
+  nodeSize: 3,
+  linkThickness: 0.8,
   showLabels: true,
-  labelThreshold: 0,
-  fixedNodeSize: false,
-  nodeSize: 8,
-  centerForce: 0.5,
-  repelForce: 0.5,
-  linkForce: 0.5,
-  linkDistance: 100,
-  staticLayout: true,
+  textColor: '#d1d5db',
+  textSize: 9,
+  textThreshold: 0,
+  centerForce: 30,
+  repelForce: 80,
+  linkForce: 30,
+  linkDistance: 50,
 };
+
+function loadSettings(): GraphSettings {
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+  } catch { return defaultSettings; }
+}
+
+function saveSettings(s: GraphSettings) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+}
+
+// Components
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button className={`graph-toggle-switch ${checked ? 'active' : ''}`} onClick={() => onChange(!checked)} type="button">
+      <span className="graph-toggle-thumb" />
+    </button>
+  );
+}
+
+function Slider({ value, onChange, min, max, step = 1, label, info }: { 
+  value: number; onChange: (v: number) => void; min: number; max: number; step?: number; label: string; info?: string;
+}) {
+  return (
+    <div className="graph-setting-row">
+      <div className="graph-setting-label">
+        <span>{label}</span>
+        {info && <span className="graph-info-icon" title={info}><Info size={12} /></span>}
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} className="graph-slider-input" />
+    </div>
+  );
+}
+
+function ColorPicker({ value, onChange, label, info }: { 
+  value: string; onChange: (v: string) => void; label: string; info?: string;
+}) {
+  return (
+    <div className="graph-setting-row">
+      <div className="graph-setting-label">
+        <span>{label}</span>
+        {info && <span className="graph-info-icon" title={info}><Info size={12} /></span>}
+      </div>
+      <input type="color" value={value} onChange={e => onChange(e.target.value)} className="graph-color-input" />
+    </div>
+  );
+}
+
+function ToggleRow({ checked, onChange, label, info }: { 
+  checked: boolean; onChange: (v: boolean) => void; label: string; info?: string;
+}) {
+  return (
+    <div className="graph-setting-row">
+      <div className="graph-setting-label">
+        <span>{label}</span>
+        {info && <span className="graph-info-icon" title={info}><Info size={12} /></span>}
+      </div>
+      <Toggle checked={checked} onChange={onChange} />
+    </div>
+  );
+}
 
 interface GraphViewProps {
   onNodeClick: (noteName: string) => void;
@@ -66,694 +120,477 @@ interface GraphViewProps {
   onToggleFullScreen?: () => void;
   theme?: Theme;
   vaultPath?: string | null;
-  localNodePath?: string | null; // If set, shows only this node and its direct connections
+  localNodePath?: string | null;
 }
 
-export function GraphView({ onNodeClick, onClose, isFullScreen, onToggleFullScreen, theme = 'dark', vaultPath, localNodePath }: GraphViewProps) {
+export function GraphView({ 
+  onNodeClick, onClose, isFullScreen, onToggleFullScreen, 
+  theme = 'dark', vaultPath, localNodePath 
+}: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphEdge> | null>(null);
-  const nodePositionsRef = useRef<Map<string, { x: number; y: number; fx?: number | null; fy?: number | null }>>(new Map());
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const initialRenderRef = useRef(true);
   
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [isLocalView, setIsLocalView] = useState(!!localNodePath);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<GraphSettings>(defaultSettings);
-  
-  // Collapsible sections state
-  const [filtersOpen, setFiltersOpen] = useState(true);
-  const [displayOpen, setDisplayOpen] = useState(false);
-  const [forcesOpen, setForcesOpen] = useState(false);
+  const [settings, setSettings] = useState<GraphSettings>(loadSettings);
+  const [sections, setSections] = useState({ filters: true, display: false, text: false, forces: false });
   
   const onNodeClickRef = useRef(onNodeClick);
+  useEffect(() => { onNodeClickRef.current = onNodeClick; }, [onNodeClick]);
+  useEffect(() => { saveSettings(settings); }, [settings]);
 
-  useEffect(() => {
-    onNodeClickRef.current = onNodeClick;
-  }, [onNodeClick]);
-
-  // Update setting helper
   const updateSetting = useCallback(<K extends keyof GraphSettings>(key: K, value: GraphSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  // Fetch graph data - reload when vaultPath changes
+  // Fetch graph data
   useEffect(() => {
-    const loadGraph = async () => {
-      try {
-        const data = await api.getGraphData();
-        setGraphData(data);
-      } catch (err) {
-        console.error('Failed to load graph:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadGraph();
+    setLoading(true);
+    api.getGraphData()
+      .then(data => setGraphData(data))
+      .catch(err => console.error('Failed to load graph:', err))
+      .finally(() => setLoading(false));
   }, [vaultPath]);
 
-  // Build adjacency map for connected nodes lookup
+  // Build adjacency map
   const adjacencyMap = useMemo(() => {
     if (!graphData) return new Map<string, Set<string>>();
     const map = new Map<string, Set<string>>();
     graphData.edges.forEach(edge => {
-      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source.id;
-      const targetId = typeof edge.target === 'string' ? edge.target : edge.target.id;
-      if (!map.has(sourceId)) map.set(sourceId, new Set());
-      if (!map.has(targetId)) map.set(targetId, new Set());
-      map.get(sourceId)!.add(targetId);
-      map.get(targetId)!.add(sourceId);
+      const sid = typeof edge.source === 'string' ? edge.source : edge.source.id;
+      const tid = typeof edge.target === 'string' ? edge.target : edge.target.id;
+      if (!map.has(sid)) map.set(sid, new Set());
+      if (!map.has(tid)) map.set(tid, new Set());
+      map.get(sid)!.add(tid);
+      map.get(tid)!.add(sid);
     });
     return map;
   }, [graphData]);
 
-  // Filter and compute display data
-  const { displayNodes, displayEdges, displayNodeCount, displayEdgeCount } = useMemo(() => {
-    if (!graphData) return { displayNodes: [], displayEdges: [], displayNodeCount: 0, displayEdgeCount: 0 };
+  // Filter nodes and edges
+  const { displayNodes, displayEdges } = useMemo(() => {
+    if (!graphData) return { displayNodes: [], displayEdges: [] };
     
-    let nodes = [...graphData.nodes];
-    let edges = [...graphData.edges];
+    let nodes = graphData.nodes.map(n => ({ ...n }));
+    let edges = graphData.edges.map(e => ({ ...e }));
     
-    // Apply search filter
     if (settings.searchFilter.trim()) {
       const search = settings.searchFilter.toLowerCase();
-      const matchingIds = new Set(nodes.filter(n => n.name.toLowerCase().includes(search)).map(n => n.id));
-      nodes = nodes.filter(n => matchingIds.has(n.id));
+      const matchIds = new Set(nodes.filter(n => n.name.toLowerCase().includes(search)).map(n => n.id));
+      nodes = nodes.filter(n => matchIds.has(n.id));
       edges = edges.filter(e => {
-        const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
-        const targetId = typeof e.target === 'string' ? e.target : e.target.id;
-        return matchingIds.has(sourceId) && matchingIds.has(targetId);
+        const sid = typeof e.source === 'string' ? e.source : e.source.id;
+        const tid = typeof e.target === 'string' ? e.target : e.target.id;
+        return matchIds.has(sid) && matchIds.has(tid);
       });
     }
     
-    // Filter existing files only (exclude phantom nodes)
     if (settings.existingFilesOnly) {
-      const existingIds = new Set(nodes.filter(n => n.path).map(n => n.id));
-      nodes = nodes.filter(n => existingIds.has(n.id));
+      const existIds = new Set(nodes.filter(n => n.path).map(n => n.id));
+      nodes = nodes.filter(n => existIds.has(n.id));
       edges = edges.filter(e => {
-        const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
-        const targetId = typeof e.target === 'string' ? e.target : e.target.id;
-        return existingIds.has(sourceId) && existingIds.has(targetId);
+        const sid = typeof e.source === 'string' ? e.source : e.source.id;
+        const tid = typeof e.target === 'string' ? e.target : e.target.id;
+        return existIds.has(sid) && existIds.has(tid);
       });
     }
     
-    // Filter orphans (nodes with no connections)
     if (!settings.showOrphans) {
-      const connectedIds = new Set<string>();
+      const connected = new Set<string>();
       edges.forEach(e => {
-        const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
-        const targetId = typeof e.target === 'string' ? e.target : e.target.id;
-        connectedIds.add(sourceId);
-        connectedIds.add(targetId);
+        connected.add(typeof e.source === 'string' ? e.source : e.source.id);
+        connected.add(typeof e.target === 'string' ? e.target : e.target.id);
       });
-      nodes = nodes.filter(n => connectedIds.has(n.id));
+      nodes = nodes.filter(n => connected.has(n.id));
     }
     
-    // Local graph view - show only focal node and direct connections
     if (isLocalView && localNodePath) {
       const focalName = localNodePath.replace(/\.md$/, '').split('/').pop()!;
-      const focalNodeId = nodes.find(n => 
-        n.id === focalName || n.id === localNodePath || n.id === localNodePath.replace(/\.md$/, '')
-      )?.id;
-      
-      if (focalNodeId && adjacencyMap.has(focalNodeId)) {
-        const connectedIds = adjacencyMap.get(focalNodeId)!;
-        const localNodeIds = new Set([focalNodeId, ...connectedIds]);
-        
-        nodes = nodes.filter(n => localNodeIds.has(n.id));
+      const focal = nodes.find(n => n.id === focalName || n.id === localNodePath || n.id === localNodePath.replace(/\.md$/, ''));
+      if (focal && adjacencyMap.has(focal.id)) {
+        const localIds = new Set([focal.id, ...adjacencyMap.get(focal.id)!]);
+        nodes = nodes.filter(n => localIds.has(n.id));
         edges = edges.filter(e => {
-          const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
-          const targetId = typeof e.target === 'string' ? e.target : e.target.id;
-          return localNodeIds.has(sourceId) && localNodeIds.has(targetId);
+          const sid = typeof e.source === 'string' ? e.source : e.source.id;
+          const tid = typeof e.target === 'string' ? e.target : e.target.id;
+          return localIds.has(sid) && localIds.has(tid);
         });
       }
     }
     
-    return { 
-      displayNodes: nodes, 
-      displayEdges: edges, 
-      displayNodeCount: nodes.length, 
-      displayEdgeCount: edges.length 
-    };
-  }, [graphData, settings, isLocalView, localNodePath, adjacencyMap]);
+    return { displayNodes: nodes, displayEdges: edges };
+  }, [graphData, settings.searchFilter, settings.existingFilesOnly, settings.showOrphans, isLocalView, localNodePath, adjacencyMap]);
 
-  // Render D3 graph
+  // Main render effect
   useEffect(() => {
     if (!svgRef.current || displayNodes.length === 0) return;
 
     const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
-
     const container = svgRef.current.parentElement!;
     const width = container.clientWidth;
     const height = container.clientHeight;
-
-    svg.attr('width', width).attr('height', height);
-
-    // Theme-specific colors - improved for light theme visibility
-    const isDark = theme === 'dark';
-    const nodeColor = isDark ? '#6ee7b7' : '#059669'; // Teal/emerald for better visibility
-    const nodeHoverColor = isDark ? '#a5f3fc' : '#0891b2';
-    const phantomNodeColor = isDark ? '#6b7280' : '#9ca3af';
-    const phantomHoverColor = isDark ? '#9ca3af' : '#6b7280';
-    const strokeColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)';
-    // Improved edge colors for both themes
-    const linkColor = isDark ? 'rgba(100, 200, 200, 0.5)' : 'rgba(30, 80, 100, 0.4)';
-    const textColor = isDark ? '#f5f5f5' : '#1f2937';
-    const selectedColor = '#22c55e'; // Green for selected node
-    const connectedColor = '#f59e0b'; // Amber for connected nodes
-    const dimmedOpacity = 0.15; // Dim non-connected when a node is selected
-
-    // Create zoom behavior
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform);
-      });
     
-    zoomRef.current = zoom;
-    svg.call(zoom);
+    svg.attr('width', width).attr('height', height);
+    svg.selectAll('*').remove();
 
-    // Click on background to deselect
-    svg.on('click', (event) => {
-      if (event.target === svgRef.current) {
-        setSelectedNode(null);
-      }
-    });
+    // Colors
+    const isDark = theme === 'dark';
+    const nodeColor = settings.nodeColor;
+    const phantomColor = isDark ? '#6b7280' : '#9ca3af';
+    const edgeColor = settings.edgeColor + '40'; // Add transparency
+    const textColor = settings.textColor;
+    const selectedColor = '#22c55e';
+    const connectedColor = '#f59e0b';
 
-    // Main group for zoom/pan
     const g = svg.append('g');
 
-    // Initialize or restore node positions
-    const nodeCount = displayNodes.length;
-    displayNodes.forEach((node, i) => {
-      const savedPos = nodePositionsRef.current.get(node.id);
-      if (savedPos) {
-        // Restore saved position
-        node.x = savedPos.x;
-        node.y = savedPos.y;
-        if (savedPos.fx !== undefined) node.fx = savedPos.fx;
-        if (savedPos.fy !== undefined) node.fy = savedPos.fy;
-      } else if (node.x === undefined || node.y === undefined) {
-        // Initialize with circular layout
-        const angle = (2 * Math.PI * i) / nodeCount;
-        const radius = Math.min(width, height) * 0.35;
-        node.x = width / 2 + radius * Math.cos(angle);
-        node.y = height / 2 + radius * Math.sin(angle);
-      }
-    });
+    // Zoom
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 4])
+      .on('zoom', e => g.attr('transform', e.transform));
+    zoomRef.current = zoom;
+    svg.call(zoom);
+    svg.on('click', e => { if (e.target === svgRef.current) setSelectedNode(null); });
 
-    // Calculate forces based on settings
-    const linkDistance = 50 + settings.linkDistance * 2;
-    const chargeStrength = -100 - settings.repelForce * 300;
-    const centerStrength = 0.01 + settings.centerForce * 0.08;
-    const linkStrength = 0.2 + settings.linkForce * 0.6;
+    // Initialize positions only on first render
+    if (initialRenderRef.current) {
+      displayNodes.forEach((node, i) => {
+        const angle = (i / displayNodes.length) * 2 * Math.PI;
+        const radius = Math.min(width, height) * 0.3;
+        node.x = width / 2 + Math.cos(angle) * radius;
+        node.y = height / 2 + Math.sin(angle) * radius;
+      });
+      initialRenderRef.current = false;
+    }
 
-    // Create force simulation
+    // Links
+    const linkGroup = g.append('g').attr('class', 'links');
+    const links = linkGroup.selectAll('line')
+      .data(displayEdges)
+      .enter()
+      .append('line')
+      .attr('stroke', edgeColor)
+      .attr('stroke-width', settings.linkThickness)
+      .attr('stroke-linecap', 'round');
+
+    // Nodes
+    const nodeGroup = g.append('g').attr('class', 'nodes');
+    const nodes = nodeGroup.selectAll('g')
+      .data(displayNodes)
+      .enter()
+      .append('g')
+      .attr('class', 'node');
+
+    // Fixed small radius calculation
+    const getRadius = (d: GraphNode) => {
+      const base = settings.nodeSize;
+      const connBonus = Math.min(Math.log2((d.connections || 0) + 1), 3);
+      return Math.max(2, Math.min(base + connBonus, 12));
+    };
+    
+    const isConnected = (id: string) => selectedNode === id || adjacencyMap.get(selectedNode || '')?.has(id);
+
+    // Node circles
+    nodes.append('circle')
+      .attr('r', getRadius)
+      .attr('fill', d => {
+        if (selectedNode === d.id) return selectedColor;
+        if (selectedNode && isConnected(d.id)) return connectedColor;
+        return d.path ? nodeColor : phantomColor;
+      })
+      .attr('stroke', isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', d => d.path ? 'none' : '2 1')
+      .style('opacity', d => selectedNode && !isConnected(d.id) ? 0.3 : 1)
+      .style('cursor', 'pointer')
+      .on('click', (e, d) => {
+        e.stopPropagation();
+        setSelectedNode(prev => prev === d.id ? null : d.id);
+        onNodeClickRef.current(d.name);
+      });
+
+    // Labels
+    if (settings.showLabels) {
+      nodes.filter(d => (d.connections || 0) >= settings.textThreshold)
+        .append('text')
+        .text(d => d.name)
+        .attr('dy', d => getRadius(d) + settings.textSize + 2)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', `${settings.textSize}px`)
+        .attr('fill', textColor)
+        .style('pointer-events', 'none')
+        .style('opacity', d => selectedNode && !isConnected(d.id) ? 0.2 : 0.8);
+    }
+
+    // Drag - does NOT restart simulation aggressively
+    const drag = d3.drag<SVGGElement, GraphNode>()
+      .on('start', function(event, d) {
+        d.fx = d.x;
+        d.fy = d.y;
+      })
+      .on('drag', function(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+        d.x = event.x;
+        d.y = event.y;
+        d3.select(this).attr('transform', `translate(${event.x},${event.y})`);
+        // Update connected links immediately
+        links.filter((l: any) => l.source.id === d.id || l.target.id === d.id)
+          .attr('x1', (l: any) => l.source.id === d.id ? event.x : l.source.x)
+          .attr('y1', (l: any) => l.source.id === d.id ? event.y : l.source.y)
+          .attr('x2', (l: any) => l.target.id === d.id ? event.x : l.target.x)
+          .attr('y2', (l: any) => l.target.id === d.id ? event.y : l.target.y);
+      })
+      .on('end', function(_, d) {
+        d.fx = null;
+        d.fy = null;
+      });
+    nodes.call(drag as any);
+
+    // Simulation - runs once then stops
     const simulation = d3.forceSimulation<GraphNode>(displayNodes)
       .force('link', d3.forceLink<GraphNode, GraphEdge>(displayEdges)
         .id(d => d.id)
-        .distance(linkDistance)
-        .strength(linkStrength))
+        .distance(settings.linkDistance)
+        .strength(settings.linkForce / 100))
       .force('charge', d3.forceManyBody()
-        .strength(chargeStrength)
-        .distanceMax(linkDistance * 4))
-      .force('center', d3.forceCenter(width / 2, height / 2).strength(centerStrength))
-      .force('collision', d3.forceCollide().radius((d: any) => {
-        const r = settings.fixedNodeSize ? settings.nodeSize : Math.min(30, 4 + Math.sqrt(d.connections) * 3);
-        return r + 10;
-      }))
-      .force('x', d3.forceX(width / 2).strength(centerStrength * 0.3))
-      .force('y', d3.forceY(height / 2).strength(centerStrength * 0.3));
+        .strength(-settings.repelForce)
+        .distanceMax(300))
+      .force('center', d3.forceCenter(width / 2, height / 2)
+        .strength(settings.centerForce / 100))
+      .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 3))
+      .force('bounds', () => {
+        // Keep nodes within bounds
+        displayNodes.forEach(d => {
+          const margin = 50;
+          if (d.x !== undefined) d.x = Math.max(margin, Math.min(width - margin, d.x));
+          if (d.y !== undefined) d.y = Math.max(margin, Math.min(height - margin, d.y));
+        });
+      })
+      .velocityDecay(0.6)
+      .alpha(0.5)
+      .alphaDecay(0.05);
 
     simulationRef.current = simulation;
 
-    // Pre-run simulation to stabilize layout
-    simulation.alpha(1).alphaDecay(0.03);
-    for (let i = 0; i < 200; i++) {
-      simulation.tick();
-    }
+    simulation.on('tick', () => {
+      links
+        .attr('x1', (d: any) => d.source.x)
+        .attr('y1', (d: any) => d.source.y)
+        .attr('x2', (d: any) => d.target.x)
+        .attr('y2', (d: any) => d.target.y);
+      nodes.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
 
-    // If static layout, stop simulation after initial positioning
-    if (settings.staticLayout) {
-      simulation.stop();
-      // Save positions for later
-      displayNodes.forEach(node => {
-        if (node.x !== undefined && node.y !== undefined) {
-          nodePositionsRef.current.set(node.id, { x: node.x, y: node.y, fx: node.fx, fy: node.fy });
-        }
-      });
-    } else {
-      simulation.alpha(0.3).restart();
-    }
+    // Stop simulation after settling
+    simulation.on('end', () => {
+      simulationRef.current = null;
+    });
 
-    // Calculate node radius
-    const calculateRadius = (d: GraphNode) => {
-      if (settings.fixedNodeSize) return settings.nodeSize;
-      return Math.min(30, 4 + Math.sqrt(d.connections) * 3);
-    };
+    // Fit to view after initial layout
+    setTimeout(() => {
+      const bounds = g.node()?.getBBox();
+      if (bounds && bounds.width > 0) {
+        const padding = 60;
+        const scale = Math.min(0.9, Math.min(
+          (width - padding) / bounds.width,
+          (height - padding) / bounds.height
+        ));
+        const tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
+        const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
+        svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      }
+    }, 600);
 
-    // Helper functions for selection highlighting
-    const isConnected = (nodeId: string) => {
-      if (!selectedNode) return false;
-      if (nodeId === selectedNode) return true;
-      return adjacencyMap.get(selectedNode)?.has(nodeId) || false;
-    };
-
-    const isEdgeConnected = (edge: GraphEdge) => {
-      if (!selectedNode) return false;
-      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source.id;
-      const targetId = typeof edge.target === 'string' ? edge.target : edge.target.id;
-      return sourceId === selectedNode || targetId === selectedNode;
-    };
-
-    // Draw edges with improved visibility
-    const link = g.selectAll('.graph-link')
-      .data(displayEdges)
-      .join('line')
-      .attr('class', 'graph-link')
-      .style('stroke', (d: any) => {
-        if (selectedNode && isEdgeConnected(d)) return connectedColor;
-        return linkColor;
-      })
-      .style('stroke-width', (d: any) => {
-        if (selectedNode && isEdgeConnected(d)) return '2.5px';
-        return '1.5px';
-      })
-      .style('opacity', (d: any) => {
-        if (selectedNode && !isEdgeConnected(d)) return dimmedOpacity;
-        return 1;
-      })
-      .attr('x1', (d: any) => d.source.x)
-      .attr('y1', (d: any) => d.source.y)
-      .attr('x2', (d: any) => d.target.x)
-      .attr('y2', (d: any) => d.target.y);
-
-    // Draw nodes
-    const node = g.selectAll('.graph-node')
-      .data(displayNodes)
-      .join('g')
-      .attr('class', (d: GraphNode) => `graph-node ${!d.path ? 'phantom' : ''}`)
-      .attr('transform', (d: GraphNode) => `translate(${d.x},${d.y})`)
-      .call(d3.drag<SVGGElement, GraphNode>()
-        .on('start', (event, d) => {
-          if (!settings.staticLayout && !event.active) {
-            simulation.alphaTarget(0.3).restart();
-          }
-          d.fx = d.x;
-          d.fy = d.y;
-        })
-        .on('drag', (event, d) => {
-          d.fx = event.x;
-          d.fy = event.y;
-          // Update position immediately for static layout
-          if (settings.staticLayout) {
-            d.x = event.x;
-            d.y = event.y;
-            d3.select(event.sourceEvent.target.parentNode)
-              .attr('transform', `translate(${event.x},${event.y})`);
-            // Update connected edges
-            link
-              .filter((l: any) => l.source.id === d.id || l.target.id === d.id)
-              .attr('x1', (l: any) => l.source.id === d.id ? event.x : l.source.x)
-              .attr('y1', (l: any) => l.source.id === d.id ? event.y : l.source.y)
-              .attr('x2', (l: any) => l.target.id === d.id ? event.x : l.target.x)
-              .attr('y2', (l: any) => l.target.id === d.id ? event.y : l.target.y);
-          }
-        })
-        .on('end', (event, d) => {
-          if (settings.staticLayout) {
-            // Keep the node fixed at its new position in static mode
-            d.x = event.x;
-            d.y = event.y;
-            d.fx = event.x;
-            d.fy = event.y;
-            // Save position
-            nodePositionsRef.current.set(d.id, { x: event.x, y: event.y, fx: event.x, fy: event.y });
-          } else {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          }
-        }) as any);
-
-    // Node circles
-    const circles = node.append('circle')
-      .attr('r', calculateRadius)
-      .style('fill', (d: GraphNode) => {
-        if (selectedNode) {
-          if (d.id === selectedNode) return selectedColor;
-          if (isConnected(d.id)) return connectedColor;
-        }
-        return d.path ? nodeColor : phantomNodeColor;
-      })
-      .style('stroke', (d: GraphNode) => {
-        if (selectedNode && d.id === selectedNode) return selectedColor;
-        if (selectedNode && isConnected(d.id)) return connectedColor;
-        return strokeColor;
-      })
-      .style('stroke-width', (d: GraphNode) => {
-        if (selectedNode && (d.id === selectedNode || isConnected(d.id))) return '3px';
-        return '1.5px';
-      })
-      .style('opacity', (d: GraphNode) => {
-        if (selectedNode && !isConnected(d.id)) return dimmedOpacity + 0.3;
-        return 1;
-      })
-      .attr('stroke-dasharray', (d: GraphNode) => d.path ? 'none' : '4 2')
-      .style('cursor', 'pointer')
-      .on('click', (event: any, d: GraphNode) => {
-        event.stopPropagation();
-        setSelectedNode(prev => prev === d.id ? null : d.id);
-        onNodeClickRef.current(d.name);
-      })
-      .on('mouseover', function(this: SVGCircleElement, _event: any, d: GraphNode) {
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr('r', calculateRadius(d) + 3)
-          .style('fill', () => {
-            if (selectedNode && d.id === selectedNode) return selectedColor;
-            if (selectedNode && isConnected(d.id)) return connectedColor;
-            return d.path ? nodeHoverColor : phantomHoverColor;
-          });
-      })
-      .on('mouseout', function(this: SVGCircleElement, _event: any, d: GraphNode) {
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr('r', calculateRadius(d))
-          .style('fill', () => {
-            if (selectedNode) {
-              if (d.id === selectedNode) return selectedColor;
-              if (isConnected(d.id)) return connectedColor;
-            }
-            return d.path ? nodeColor : phantomNodeColor;
-          });
-      });
-
-    // Node labels - conditionally show based on settings
-    if (settings.showLabels) {
-      node.filter((d: GraphNode) => d.connections >= settings.labelThreshold)
-        .append('text')
-        .text((d: GraphNode) => d.name)
-        .attr('dy', (d: GraphNode) => calculateRadius(d) + 14)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '11px')
-        .style('fill', textColor)
-        .attr('font-weight', (d: GraphNode) => {
-          if (selectedNode && (d.id === selectedNode || isConnected(d.id))) return '600';
-          return '500';
-        })
-        .attr('font-family', 'Inter, -apple-system, sans-serif')
-        .style('pointer-events', 'none')
-        .style('opacity', (d: GraphNode) => {
-          if (selectedNode && !isConnected(d.id)) return dimmedOpacity + 0.2;
-          return 1;
-        });
-    }
-
-    // Update positions on tick (only for non-static layout)
-    if (!settings.staticLayout) {
-      simulation.on('tick', () => {
-        link
-          .attr('x1', (d: any) => d.source.x)
-          .attr('y1', (d: any) => d.source.y)
-          .attr('x2', (d: any) => d.target.x)
-          .attr('y2', (d: any) => d.target.y);
-
-        node.attr('transform', (d: GraphNode) => `translate(${d.x},${d.y})`);
-      });
-    }
-
-    // Initial zoom to fit
-    const initialTransform = d3.zoomIdentity
-      .translate(width / 2, height / 2)
-      .scale(0.85)
-      .translate(-width / 2, -height / 2);
-    svg.call(zoom.transform, initialTransform);
-
-    return () => {
-      simulation.stop();
-    };
+    return () => { simulation.stop(); };
   }, [displayNodes, displayEdges, theme, selectedNode, settings, adjacencyMap]);
 
-  // Zoom controls - use stored zoom behavior
-  const handleZoomIn = () => {
-    if (!svgRef.current || !zoomRef.current) return;
-    const svg = d3.select(svgRef.current);
-    svg.transition().duration(300).call(zoomRef.current.scaleBy, 1.4);
+  const handleZoom = (factor: number) => {
+    if (svgRef.current && zoomRef.current) {
+      d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy, factor);
+    }
   };
 
-  const handleZoomOut = () => {
-    if (!svgRef.current || !zoomRef.current) return;
-    const svg = d3.select(svgRef.current);
-    svg.transition().duration(300).call(zoomRef.current.scaleBy, 0.7);
-  };
+  const handleReset = () => setSettings(defaultSettings);
 
-  // Reset layout - clear saved positions
-  const handleResetLayout = () => {
-    nodePositionsRef.current.clear();
-    // Force re-render
-    setSettings(prev => ({ ...prev }));
-  };
-
-  // Render settings panel section
-  const renderSettingsSection = (
-    title: string, 
-    isOpen: boolean, 
-    setOpen: (open: boolean) => void, 
-    children: React.ReactNode
-  ) => (
-    <div className="graph-settings-section">
-      <button 
-        className="graph-settings-section-header" 
-        onClick={() => setOpen(!isOpen)}
-      >
-        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+  const Section = ({ title, id, children }: { title: string; id: keyof typeof sections; children: React.ReactNode }) => (
+    <div className="graph-section">
+      <button className="graph-section-header" onClick={() => setSections(p => ({ ...p, [id]: !p[id] }))}>
+        {sections[id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span>{title}</span>
       </button>
-      {isOpen && <div className="graph-settings-section-content">{children}</div>}
+      {sections[id] && <div className="graph-section-content">{children}</div>}
     </div>
   );
 
   return (
     <>
       <div className="graph-header">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Network size={20} strokeWidth={1.5} style={{ opacity: 0.6 }} />
-          {isLocalView ? 'Local Graph' : 'Graph View'}
-        </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <h2><Network size={18} style={{ opacity: 0.6 }} /> {isLocalView ? 'Local Graph' : 'Graph View'}</h2>
+        <div className="graph-header-actions">
           {localNodePath && (
-            <button 
-              className={`graph-toggle-btn ${isLocalView ? 'active' : ''}`}
-              onClick={() => {
-                setIsLocalView(!isLocalView);
-                // Clear positions when switching view mode
-                nodePositionsRef.current.clear();
-              }}
-              title={isLocalView ? 'Show full graph' : 'Show local graph'}
-            >
+            <button className={`graph-view-toggle ${isLocalView ? 'local' : ''}`} onClick={() => setIsLocalView(v => !v)}>
               {isLocalView ? '🌐 Global' : '📍 Local'}
             </button>
           )}
-          <div className="graph-stats">
-            <span>{displayNodeCount} nodes</span>
-            <span>{displayEdgeCount} edges</span>
-          </div>
-          <button 
-            className={`btn btn-ghost ${showSettings ? 'active' : ''}`}
-            onClick={() => setShowSettings(!showSettings)}
-            title="Graph settings"
-            style={{ padding: '6px' }}
-          >
+          <span className="graph-stats">{displayNodes.length} nodes</span>
+          <button className={`btn-icon ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(v => !v)} title="Settings">
             <Settings size={16} />
           </button>
           {onToggleFullScreen && (
-            <button className="btn btn-ghost" onClick={onToggleFullScreen} style={{ padding: '6px' }} title="Toggle Full Screen">
+            <button className="btn-icon" onClick={onToggleFullScreen} title="Fullscreen">
               {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onClose}>✕</button>
+          <button className="btn-icon" onClick={onClose} title="Close">✕</button>
         </div>
       </div>
 
-      <div className="graph-main-container">
-        {/* Settings Panel */}
+      <div className="graph-body">
         {showSettings && (
-          <div className="graph-settings-panel">
-            {/* Filters Section */}
-            {renderSettingsSection('Filters', filtersOpen, setFiltersOpen, (
-              <>
-                <div className="graph-settings-search">
-                  <Search size={14} />
-                  <input
-                    type="text"
-                    placeholder="Search files..."
-                    value={settings.searchFilter}
-                    onChange={(e) => updateSetting('searchFilter', e.target.value)}
-                  />
-                  {settings.searchFilter && (
-                    <button onClick={() => updateSetting('searchFilter', '')}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                <label className="graph-settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={settings.existingFilesOnly}
-                    onChange={(e) => updateSetting('existingFilesOnly', e.target.checked)}
-                  />
-                  <span>Existing files only</span>
-                </label>
-                <label className="graph-settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={settings.showOrphans}
-                    onChange={(e) => updateSetting('showOrphans', e.target.checked)}
-                  />
-                  <span>Show orphans</span>
-                </label>
-              </>
-            ))}
+          <div className="graph-settings">
+            <div className="graph-settings-header">
+              <span className="graph-settings-title">Settings</span>
+              <button className="graph-settings-reset" onClick={handleReset} title="Reset to defaults">
+                <RotateCcw size={14} />
+              </button>
+              <button className="graph-settings-close" onClick={() => setShowSettings(false)}>
+                <X size={14} />
+              </button>
+            </div>
 
-            {/* Display Section */}
-            {renderSettingsSection('Display', displayOpen, setDisplayOpen, (
-              <>
-                <label className="graph-settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={settings.showLabels}
-                    onChange={(e) => updateSetting('showLabels', e.target.checked)}
-                  />
-                  <span>Show labels</span>
-                </label>
-                {settings.showLabels && (
-                  <div className="graph-settings-slider">
-                    <span>Label threshold</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="10"
-                      value={settings.labelThreshold}
-                      onChange={(e) => updateSetting('labelThreshold', Number(e.target.value))}
-                    />
-                    <span className="value">{settings.labelThreshold}</span>
-                  </div>
-                )}
-                <label className="graph-settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={settings.fixedNodeSize}
-                    onChange={(e) => updateSetting('fixedNodeSize', e.target.checked)}
-                  />
-                  <span>Fixed node size</span>
-                </label>
-                {settings.fixedNodeSize && (
-                  <div className="graph-settings-slider">
-                    <span>Node size</span>
-                    <input
-                      type="range"
-                      min="4"
-                      max="20"
-                      value={settings.nodeSize}
-                      onChange={(e) => updateSetting('nodeSize', Number(e.target.value))}
-                    />
-                    <span className="value">{settings.nodeSize}</span>
-                  </div>
-                )}
-              </>
-            ))}
+            <Section title="Filters" id="filters">
+              <div className="graph-search">
+                <Search size={14} />
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={settings.searchFilter}
+                  onChange={e => updateSetting('searchFilter', e.target.value)}
+                />
+                {settings.searchFilter && <button onClick={() => updateSetting('searchFilter', '')}><X size={12} /></button>}
+              </div>
+              <ToggleRow 
+                label="Existing files only" 
+                checked={settings.existingFilesOnly} 
+                onChange={v => updateSetting('existingFilesOnly', v)}
+                info="Only show notes that exist as files, hide phantom links"
+              />
+              <ToggleRow 
+                label="Show orphans" 
+                checked={settings.showOrphans} 
+                onChange={v => updateSetting('showOrphans', v)}
+                info="Show notes with no connections to other notes"
+              />
+            </Section>
 
-            {/* Forces Section */}
-            {renderSettingsSection('Forces', forcesOpen, setForcesOpen, (
-              <>
-                <label className="graph-settings-toggle">
-                  <input
-                    type="checkbox"
-                    checked={settings.staticLayout}
-                    onChange={(e) => {
-                      updateSetting('staticLayout', e.target.checked);
-                      if (e.target.checked) {
-                        // Stop simulation when switching to static
-                        simulationRef.current?.stop();
-                      }
-                    }}
-                  />
-                  <span>Static layout</span>
-                </label>
-                <div className="graph-settings-slider">
-                  <span>Center force</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={settings.centerForce * 100}
-                    onChange={(e) => updateSetting('centerForce', Number(e.target.value) / 100)}
-                  />
-                </div>
-                <div className="graph-settings-slider">
-                  <span>Repel force</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={settings.repelForce * 100}
-                    onChange={(e) => updateSetting('repelForce', Number(e.target.value) / 100)}
-                  />
-                </div>
-                <div className="graph-settings-slider">
-                  <span>Link force</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={settings.linkForce * 100}
-                    onChange={(e) => updateSetting('linkForce', Number(e.target.value) / 100)}
-                  />
-                </div>
-                <div className="graph-settings-slider">
-                  <span>Link distance</span>
-                  <input
-                    type="range"
-                    min="30"
-                    max="200"
-                    value={settings.linkDistance}
-                    onChange={(e) => updateSetting('linkDistance', Number(e.target.value))}
-                  />
-                  <span className="value">{settings.linkDistance}</span>
-                </div>
-                <button className="graph-reset-btn" onClick={handleResetLayout}>
-                  Reset Layout
-                </button>
-              </>
-            ))}
+            <Section title="Display" id="display">
+              <ColorPicker 
+                label="Node color" 
+                value={settings.nodeColor} 
+                onChange={v => updateSetting('nodeColor', v)}
+                info="Color of the note nodes in the graph"
+              />
+              <ColorPicker 
+                label="Edge color" 
+                value={settings.edgeColor} 
+                onChange={v => updateSetting('edgeColor', v)}
+                info="Color of the lines connecting nodes"
+              />
+              <Slider 
+                label="Node size" 
+                value={settings.nodeSize} 
+                min={1} max={8} 
+                onChange={v => updateSetting('nodeSize', v)}
+                info="Base size of nodes (1-8px)"
+              />
+              <Slider 
+                label="Link thickness" 
+                value={settings.linkThickness} 
+                min={0.3} max={3} step={0.1}
+                onChange={v => updateSetting('linkThickness', v)}
+                info="Thickness of connection lines"
+              />
+            </Section>
+
+            <Section title="Text" id="text">
+              <ToggleRow 
+                label="Show labels" 
+                checked={settings.showLabels} 
+                onChange={v => updateSetting('showLabels', v)}
+                info="Display note names below nodes"
+              />
+              <ColorPicker 
+                label="Text color" 
+                value={settings.textColor} 
+                onChange={v => updateSetting('textColor', v)}
+                info="Color of the label text"
+              />
+              <Slider 
+                label="Text size" 
+                value={settings.textSize} 
+                min={6} max={14} 
+                onChange={v => updateSetting('textSize', v)}
+                info="Font size of labels in pixels"
+              />
+              <Slider 
+                label="Show labels above" 
+                value={settings.textThreshold} 
+                min={0} max={10} 
+                onChange={v => updateSetting('textThreshold', v)}
+                info="Only show labels for nodes with this many connections or more"
+              />
+            </Section>
+
+            <Section title="Forces" id="forces">
+              <Slider 
+                label="Center force" 
+                value={settings.centerForce} 
+                min={0} max={100} 
+                onChange={v => updateSetting('centerForce', v)}
+                info="How strongly nodes are pulled to the center"
+              />
+              <Slider 
+                label="Repel force" 
+                value={settings.repelForce} 
+                min={0} max={200} 
+                onChange={v => updateSetting('repelForce', v)}
+                info="How strongly nodes push each other apart"
+              />
+              <Slider 
+                label="Link force" 
+                value={settings.linkForce} 
+                min={0} max={100} 
+                onChange={v => updateSetting('linkForce', v)}
+                info="How strongly connected nodes are pulled together"
+              />
+              <Slider 
+                label="Link distance" 
+                value={settings.linkDistance} 
+                min={20} max={150} 
+                onChange={v => updateSetting('linkDistance', v)}
+                info="Target distance between connected nodes"
+              />
+            </Section>
           </div>
         )}
 
-        {/* Graph Container */}
-        <div className="graph-container">
+        <div className="graph-canvas">
           {loading ? (
-            <div className="empty-state">
-              <div className="loading-spinner" />
-              <div className="empty-text">Loading graph...</div>
-            </div>
-          ) : displayNodeCount === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon" style={{ opacity: 0.5, marginBottom: '0.5rem' }}>
-                <Network size={48} strokeWidth={1} />
-              </div>
-              <div className="empty-text">No notes to visualize yet</div>
-            </div>
+            <div className="graph-empty"><div className="loading-spinner" /><span>Loading...</span></div>
+          ) : displayNodes.length === 0 ? (
+            <div className="graph-empty"><Network size={48} strokeWidth={1} style={{ opacity: 0.3 }} /><span>No notes</span></div>
           ) : (
             <>
               <svg ref={svgRef} />
-              <div className="graph-controls">
-                <button onClick={handleZoomIn} title="Zoom In">+</button>
-                <button onClick={handleZoomOut} title="Zoom Out">−</button>
+              <div className="graph-zoom-controls">
+                <button onClick={() => handleZoom(1.3)}>+</button>
+                <button onClick={() => handleZoom(0.7)}>−</button>
               </div>
             </>
           )}
