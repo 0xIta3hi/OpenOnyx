@@ -111,6 +111,28 @@ export default function App() {
     document.body.style.cursor = 'col-resize';
   }, [handleSidebarDrag, stopSidebarDrag]);
 
+  // Thought Model panel drag resizer
+  const [thoughtModelWidth, setThoughtModelWidth] = useState(400);
+  
+  const handleThoughtModelDrag = useCallback((e: MouseEvent) => {
+    const appWidth = window.innerWidth - 48; // minus ribbon
+    const newWidth = appWidth - e.clientX;
+    if (newWidth > 300 && newWidth < 800) setThoughtModelWidth(newWidth);
+  }, []);
+
+  const stopThoughtModelDrag = useCallback(() => {
+    document.removeEventListener('mousemove', handleThoughtModelDrag);
+    document.removeEventListener('mouseup', stopThoughtModelDrag);
+    document.body.style.cursor = 'default';
+  }, [handleThoughtModelDrag]);
+
+  const startThoughtModelDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    document.addEventListener('mousemove', handleThoughtModelDrag);
+    document.addEventListener('mouseup', stopThoughtModelDrag);
+    document.body.style.cursor = 'col-resize';
+  }, [handleThoughtModelDrag, stopThoughtModelDrag]);
+
   // ── File & Editor State ─────────────────────────────
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -754,18 +776,25 @@ export default function App() {
 
         {/* Thought Model Panel - independent of graph */}
         {showThoughtModel && vaultPath && (
-          <div className="thought-model-panel">
-            <ThoughtModelPage
-              vaultPath={vaultPath}
-              theme={theme}
-              onOpenNote={(path) => {
-                openFile(path);
-              }}
-              onClose={() => setShowThoughtModel(false)}
-              isFullScreen={false}
-              onToggleFullScreen={() => {}}
+          <>
+            <div
+              className="resizer"
+              onMouseDown={startThoughtModelDrag}
+              style={{ width: '4px', cursor: 'col-resize', zIndex: 100 }}
             />
-          </div>
+            <div className="thought-model-panel" style={{ width: `${thoughtModelWidth}px` }}>
+              <ThoughtModelPage
+                vaultPath={vaultPath}
+                theme={theme}
+                onOpenNote={(path) => {
+                  openFile(path);
+                }}
+                onClose={() => setShowThoughtModel(false)}
+                isFullScreen={false}
+                onToggleFullScreen={() => {}}
+              />
+            </div>
+          </>
         )}
 
         {/* Right Panels */}
