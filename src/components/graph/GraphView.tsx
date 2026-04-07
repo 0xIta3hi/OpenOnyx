@@ -352,27 +352,34 @@ export function GraphView({
       });
     nodes.call(drag as any);
 
-    // Simulation with radial force for circular layout
+    // Simulation - balanced forces for organic circular layout
     const centerX = width / 2;
     const centerY = height / 2;
-    const graphRadius = Math.min(width, height) * 0.4;
     
     const simulation = d3.forceSimulation<GraphNode>(displayNodes)
+      // Link force - STRONG to keep connected nodes close
       .force('link', d3.forceLink<GraphNode, GraphEdge>(displayEdges)
         .id(d => d.id)
         .distance(settings.linkDistance)
-        .strength(settings.linkForce / 100))
+        .strength(d => {
+          // Stronger links between highly connected nodes
+          const sourceConn = (d.source as GraphNode).connections || 1;
+          const targetConn = (d.target as GraphNode).connections || 1;
+          return (settings.linkForce / 50) / Math.min(sourceConn, targetConn);
+        }))
+      // Charge - pushes nodes apart
       .force('charge', d3.forceManyBody()
-        .strength(-settings.repelForce)
-        .distanceMax(400))
+        .strength(-settings.repelForce * 0.8)
+        .distanceMax(250)
+        .distanceMin(10))
+      // Center - keeps graph centered
       .force('center', d3.forceCenter(centerX, centerY)
         .strength(settings.centerForce / 100))
-      .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 4))
-      // Radial force - pulls nodes toward a circle
-      .force('radial', d3.forceRadial(graphRadius * 0.6, centerX, centerY).strength(0.05))
-      .velocityDecay(0.5)
-      .alpha(0.8)
-      .alphaDecay(0.03);
+      // Collision - prevents overlap
+      .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 2))
+      .velocityDecay(0.4)
+      .alpha(1)
+      .alphaDecay(0.02);
 
     simulationRef.current = simulation;
 
