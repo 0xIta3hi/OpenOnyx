@@ -1,6 +1,7 @@
 /**
  * Graph View - STATIC Knowledge Graph
  * No floating, no scattering. Positions are computed once then frozen.
+ * Positions persist across sessions via localStorage.
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -11,6 +12,7 @@ import { getAPI } from '../../utils/api';
 
 const api = getAPI();
 const SETTINGS_KEY = 'openobsidian-graph-settings-v4';
+const POSITIONS_KEY = 'openobsidian-graph-positions-v1';
 
 interface GraphSettings {
   searchFilter: string;
@@ -43,10 +45,10 @@ const getDefaultSettings = (isDark: boolean): GraphSettings => ({
   textColor: isDark ? '#9ca3af' : '#4b5563',
   textSize: 9,
   textThreshold: 0,
-  centerForce: 50,
-  repelForce: 60,
-  linkForce: 80,
-  linkDistance: 40,
+  centerForce: 30,
+  repelForce: 100,
+  linkForce: 50,
+  linkDistance: 60,
 });
 
 // Fallback for initial load
@@ -61,6 +63,25 @@ function loadSettings(isDark: boolean): GraphSettings {
 
 function saveSettings(s: GraphSettings) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+}
+
+// Position persistence
+function loadPositions(): Map<string, {x: number, y: number}> {
+  try {
+    const saved = localStorage.getItem(POSITIONS_KEY);
+    if (saved) {
+      const arr = JSON.parse(saved) as Array<[string, {x: number, y: number}]>;
+      return new Map(arr);
+    }
+  } catch {}
+  return new Map();
+}
+
+function savePositions(positions: Map<string, {x: number, y: number}>) {
+  try {
+    const arr = Array.from(positions.entries());
+    localStorage.setItem(POSITIONS_KEY, JSON.stringify(arr));
+  } catch {}
 }
 
 // UI Components
@@ -126,8 +147,9 @@ export function GraphView({
 }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-  const positionsRef = useRef<Map<string, {x: number, y: number}>>(new Map());
-  const initialFitDoneRef = useRef(false);
+  const transformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
+  const positionsRef = useRef<Map<string, {x: number, y: number}>>(loadPositions());
+  const initialFitDoneRef = useRef(positionsRef.current.size > 0);
   const prevForceSettingsRef = useRef<string>('');
   
   const isDark = theme === 'dark';
@@ -257,12 +279,21 @@ export function GraphView({
 
     const g = svg.append('g');
 
-    // Zoom - preserve existing transform if we have one
+    // Zoom - save transform on zoom, restore previous transform
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
-      .on('zoom', e => g.attr('transform', e.transform));
+      .on('zoom', e => {
+        g.attr('transform', e.transform);
+        transformRef.current = e.transform;
+      });
     zoomRef.current = zoom;
     svg.call(zoom);
+    
+    // Restore previous transform immediately (no animation)
+    if (transformRef.current !== d3.zoomIdentity) {
+      svg.call(zoom.transform, transformRef.current);
+    }
+    
     svg.on('click', e => { if (e.target === svgRef.current) setSelectedNode(null); });
 
     const getRadius = (d: GraphNode) => {
@@ -300,13 +331,13 @@ export function GraphView({
         .force('link', d3.forceLink<GraphNode, GraphEdge>(simEdges)
           .id(d => d.id)
           .distance(settings.linkDistance)
-          .strength(settings.linkForce / 50))
+          .strength(settings.linkForce / 100))
         .force('charge', d3.forceManyBody()
-          .strength(-settings.repelForce)
-          .distanceMax(200))
+          .strength(-settings.repelForce * 1.5)
+          .distanceMax(400))
         .force('center', d3.forceCenter(width / 2, height / 2)
           .strength(settings.centerForce / 100))
-        .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 3))
+        .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 5))
         .stop();
 
       // Run simulation ticks synchronously
@@ -314,7 +345,7 @@ export function GraphView({
         simulation.tick();
       }
 
-      // Save positions
+      // Save positions to ref and localStorage
       simNodes.forEach(node => {
         if (node.x !== undefined && node.y !== undefined) {
           positionsRef.current.set(node.id, { x: node.x, y: node.y });
@@ -325,6 +356,8 @@ export function GraphView({
           }
         }
       });
+      // Persist to localStorage
+      savePositions(positionsRef.current);
     } else {
       // Use cached positions
       displayNodes.forEach(node => {
@@ -434,6 +467,8 @@ export function GraphView({
       })
       .on('end', function(_, d) {
         positionsRef.current.set(d.id, { x: d.x!, y: d.y! });
+        // Persist after manual drag
+        savePositions(positionsRef.current);
       });
     
     nodes.call(drag as any);
@@ -464,11 +499,41 @@ export function GraphView({
     }
   };
 
-  const handleReset = () => setSettings(getDefaultSettings(isDark));
+  // Reset only visual settings, preserve force settings and layout
+  const handleReset = () => {
+    const defaults = getDefaultSettings(isDark);
+    setSettings(prev => ({
+      ...prev,
+      // Reset visual settings only
+      nodeColor: defaults.nodeColor,
+      edgeColor: defaults.edgeColor,
+      textColor: defaults.textColor,
+      nodeSize: defaults.nodeSize,
+      linkThickness: defaults.linkThickness,
+      textSize: defaults.textSize,
+      textThreshold: defaults.textThreshold,
+      showLabels: defaults.showLabels,
+      // Keep force settings as-is to avoid relayout
+      // centerForce, repelForce, linkForce, linkDistance stay the same
+    }));
+  };
+  
+  // Full reset including forces (triggers relayout)
+  const handleFullReset = () => {
+    const defaults = getDefaultSettings(isDark);
+    positionsRef.current.clear();
+    localStorage.removeItem(POSITIONS_KEY);
+    initialFitDoneRef.current = false;
+    transformRef.current = d3.zoomIdentity;
+    setSettings(defaults);
+    setLayoutKey(k => k + 1);
+  };
   
   const handleResetLayout = () => {
     positionsRef.current.clear();
+    localStorage.removeItem(POSITIONS_KEY);
     initialFitDoneRef.current = false;
+    transformRef.current = d3.zoomIdentity;
     setLayoutKey(k => k + 1);
   };
 
@@ -544,13 +609,19 @@ export function GraphView({
 
             <Section title="Forces" id="forces">
               <Slider label="Center force" value={settings.centerForce} min={0} max={100} onChange={v => updateSetting('centerForce', v)} info="Pull toward center" />
-              <Slider label="Repel force" value={settings.repelForce} min={0} max={150} onChange={v => updateSetting('repelForce', v)} info="Push nodes apart" />
+              <Slider label="Repel force" value={settings.repelForce} min={0} max={200} onChange={v => updateSetting('repelForce', v)} info="Push nodes apart" />
               <Slider label="Link force" value={settings.linkForce} min={0} max={100} onChange={v => updateSetting('linkForce', v)} info="Pull connected nodes together" />
-              <Slider label="Link distance" value={settings.linkDistance} min={15} max={100} onChange={v => updateSetting('linkDistance', v)} info="Target distance between nodes" />
+              <Slider label="Link distance" value={settings.linkDistance} min={20} max={150} onChange={v => updateSetting('linkDistance', v)} info="Target distance between nodes" />
               <button className="graph-relayout-btn" onClick={handleResetLayout}>
                 <RotateCcw size={12} /> Recalculate Layout
               </button>
             </Section>
+            
+            <div className="graph-reset-all">
+              <button className="graph-reset-all-btn" onClick={handleFullReset}>
+                Reset All to Defaults
+              </button>
+            </div>
           </div>
         )}
 
