@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import joblib
 from scipy.sparse import save_npz, load_npz, csr_matrix
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -154,8 +154,16 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 def extract_text_from_markdown(content: str) -> str:
     """Extract plain text from markdown, removing formatting."""
-    # Remove YAML frontmatter
-    content = re.sub(r'^---\n.*?\n---\n', '', content, flags=re.DOTALL)
+    # Remove YAML frontmatter (handles various formats)
+    # Match --- at start, any content, then --- on its own line
+    content = re.sub(r'^\s*---\s*\n.*?\n---\s*\n?', '', content, flags=re.DOTALL)
+    # Also handle frontmatter that uses three dashes without newlines properly
+    content = re.sub(r'^---[\s\S]*?---\s*\n?', '', content.strip(), flags=re.MULTILINE)
+    # Remove any remaining YAML-like lines at the start (title:, tags:, etc.)
+    lines = content.split('\n')
+    while lines and re.match(r'^\s*(title|tags|date|description|aliases|created|updated|category|type|status|author|draft):', lines[0], re.IGNORECASE):
+        lines.pop(0)
+    content = '\n'.join(lines)
     # Remove code blocks
     content = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
     content = re.sub(r'`[^`]+`', '', content)
@@ -303,8 +311,17 @@ def build_thought_model(job_id: str, vault_path: str, num_clusters: int):
         job_state.update(job_id, progress=40, message="Vectorizing text...")
         logger.info(f"[{job_id}] Vectorizing with TF-IDF...")
         
+        # Custom stop words to exclude frontmatter/metadata terms
+        custom_stop_words = set(ENGLISH_STOP_WORDS) | {
+            'title', 'tags', 'date', 'description', 'aliases', 'created', 'updated',
+            'category', 'type', 'status', 'author', 'draft', 'render', 'markdown',
+            'obsidian', 'note', 'notes', 'link', 'links', 'true', 'false', 'null',
+            'yaml', 'frontmatter', 'metadata', 'http', 'https', 'www', 'com', 'org',
+            'test', 'example', 'testing', 'readme', 'todo', 'fixme', 'nbsp'
+        }
+        
         vectorizer = TfidfVectorizer(
-            stop_words='english',
+            stop_words=list(custom_stop_words),
             max_features=50000,
             min_df=1,
             max_df=0.95,

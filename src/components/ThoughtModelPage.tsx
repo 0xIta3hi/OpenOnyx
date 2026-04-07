@@ -20,6 +20,31 @@ import type { ThoughtModelStatus } from '../types';
 
 const api = getAPI();
 
+/**
+ * Strip YAML frontmatter and metadata from text for display
+ */
+function cleanChunkText(text: string): string {
+  if (!text) return '';
+  
+  // Remove YAML frontmatter block (---...---)
+  let cleaned = text.replace(/^---[\s\S]*?---\s*/m, '');
+  
+  // Remove individual frontmatter-like lines at start
+  const lines = cleaned.split('\n');
+  while (lines.length > 0 && /^\s*(title|tags|date|description|aliases|created|updated|category|type|status|author|draft|render):/i.test(lines[0])) {
+    lines.shift();
+  }
+  cleaned = lines.join('\n').trim();
+  
+  // Remove any remaining standalone metadata patterns
+  cleaned = cleaned.replace(/^(title|tags|date|description|aliases|created|updated):\s*.*$/gim, '');
+  
+  // Clean up multiple newlines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  
+  return cleaned;
+}
+
 interface ThoughtModelPageProps {
   vaultPath: string | null;
   theme: 'dark' | 'light';
@@ -381,7 +406,7 @@ export function ThoughtModelPage({
                               <FileText size={12} />
                               <span>{chunk.note_title}</span>
                             </div>
-                            <p className="thought-model-chunk-text">{chunk.chunk_text}</p>
+                            <p className="thought-model-chunk-text">{cleanChunkText(chunk.chunk_text)}</p>
                           </div>
                         ))}
                       </div>
@@ -439,9 +464,10 @@ export function ThoughtModelPage({
                           </span>
                         </div>
                         <p className="thought-model-result-text">
-                          {result.chunk_text.length > 200 
-                            ? result.chunk_text.slice(0, 200) + '...' 
-                            : result.chunk_text}
+                          {(() => {
+                            const cleaned = cleanChunkText(result.chunk_text);
+                            return cleaned.length > 200 ? cleaned.slice(0, 200) + '...' : cleaned;
+                          })()}
                         </p>
                         <span className="thought-model-result-path">{result.note_path}</span>
                       </div>
