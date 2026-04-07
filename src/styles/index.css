@@ -965,6 +965,20 @@ blockquote:has(.callout) {
   overflow: hidden;
 }
 
+/* ── Thought Model Panel ──────────────────────────────*/
+.thought-model-panel {
+  width: 400px;
+  min-width: 300px;
+  max-width: 600px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  resize: horizontal;
+}
+
 .backlinks-header {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);

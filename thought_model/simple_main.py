@@ -101,7 +101,7 @@ def split_into_chunks(text: str, min_size: int = 200, max_size: int = 800) -> li
             current = f"{current}\n\n{para}".strip()
         else:
             if current:
-                chunks.append(current)
+                chunks/all.append(current)
             current = para
     
     if current:

@@ -50,7 +50,6 @@ export default function App() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUnlinkedMentions, setShowUnlinkedMentions] = useState(false);
   const [showThoughtModel, setShowThoughtModel] = useState(false);
-  const [thoughtModelFullScreen, setThoughtModelFullScreen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => {
     // Load settings from localStorage on initial render
     try {
@@ -679,10 +678,10 @@ export default function App() {
             <WelcomeScreen onOpenVault={handleOpenVault} />
           ) : (
             <>
-              {/* Editor pane - hidden when graph or thought model is fullscreen */}
-              {(!showGraph || !graphFullScreen) && (!showThoughtModel || !thoughtModelFullScreen) && (
+              {/* Editor pane - hidden when graph is fullscreen */}
+              {(!showGraph || !graphFullScreen) && (
                 <div style={{ 
-                  flex: (showGraph || showThoughtModel) ? `0 0 ${editorPaneWidth}%` : 1, 
+                  flex: showGraph ? `0 0 ${editorPaneWidth}%` : 1, 
                   height: '100%', 
                   overflow: 'hidden', 
                   display: 'flex', 
@@ -749,44 +748,28 @@ export default function App() {
                   />
                 </div>
               )}
-
-              {/* Resizer for Thought Model */}
-              {!thoughtModelFullScreen && showThoughtModel && !showGraph && (
-                <div
-                  className="resizer"
-                  onMouseDown={startPaneDrag}
-                  style={{ width: '4px', cursor: 'col-resize' }}
-                />
-              )}
-
-              {/* Thought Model pane */}
-              {showThoughtModel && !showGraph && (
-                <div style={{ 
-                  flex: thoughtModelFullScreen ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`, 
-                  height: '100%', 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden'
-                }}>
-                  <ThoughtModelPage
-                    vaultPath={vaultPath}
-                    theme={theme}
-                    onOpenNote={(path) => {
-                      setShowThoughtModel(false);
-                      openFile(path);
-                    }}
-                    onClose={() => setShowThoughtModel(false)}
-                    isFullScreen={thoughtModelFullScreen}
-                    onToggleFullScreen={() => setThoughtModelFullScreen(f => !f)}
-                  />
-                </div>
-              )}
             </>
           )}
         </div>
 
+        {/* Thought Model Panel - independent of graph */}
+        {showThoughtModel && vaultPath && (
+          <div className="thought-model-panel">
+            <ThoughtModelPage
+              vaultPath={vaultPath}
+              theme={theme}
+              onOpenNote={(path) => {
+                openFile(path);
+              }}
+              onClose={() => setShowThoughtModel(false)}
+              isFullScreen={false}
+              onToggleFullScreen={() => {}}
+            />
+          </div>
+        )}
+
         {/* Right Panels */}
-        {activeTab && !showGraph && !showThoughtModel && (
+        {activeTab && !showGraph && (
           <>
             {showOutline && (
               <OutlinePane
