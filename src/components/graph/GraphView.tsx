@@ -10,7 +10,7 @@ import { GraphData, GraphNode, GraphEdge, Theme } from '../../types';
 import { getAPI } from '../../utils/api';
 
 const api = getAPI();
-const SETTINGS_KEY = 'openobsidian-graph-settings-v3';
+const SETTINGS_KEY = 'openobsidian-graph-settings-v4';
 
 interface GraphSettings {
   searchFilter: string;
@@ -30,29 +30,33 @@ interface GraphSettings {
   linkDistance: number;
 }
 
-const defaultSettings: GraphSettings = {
+// Theme-specific default settings
+const getDefaultSettings = (isDark: boolean): GraphSettings => ({
   searchFilter: '',
   showOrphans: true,
   existingFilesOnly: false,
-  nodeColor: '#6ee7b7',
-  edgeColor: '#6ee7b7',
+  nodeColor: isDark ? '#6ee7b7' : '#10b981',
+  edgeColor: isDark ? '#6ee7b7' : '#059669',
   nodeSize: 3,
   linkThickness: 0.8,
   showLabels: true,
-  textColor: '#9ca3af',
+  textColor: isDark ? '#9ca3af' : '#4b5563',
   textSize: 9,
   textThreshold: 0,
   centerForce: 50,
   repelForce: 60,
   linkForce: 80,
   linkDistance: 40,
-};
+});
 
-function loadSettings(): GraphSettings {
+// Fallback for initial load
+const defaultSettings = getDefaultSettings(true);
+
+function loadSettings(isDark: boolean): GraphSettings {
   try {
     const saved = localStorage.getItem(SETTINGS_KEY);
-    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
-  } catch { return defaultSettings; }
+    return saved ? { ...getDefaultSettings(isDark), ...JSON.parse(saved) } : getDefaultSettings(isDark);
+  } catch { return getDefaultSettings(isDark); }
 }
 
 function saveSettings(s: GraphSettings) {
@@ -123,13 +127,17 @@ export function GraphView({
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const positionsRef = useRef<Map<string, {x: number, y: number}>>(new Map());
+  const initialFitDoneRef = useRef(false);
+  const prevForceSettingsRef = useRef<string>('');
+  
+  const isDark = theme === 'dark';
   
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [isLocalView, setIsLocalView] = useState(!!localNodePath);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<GraphSettings>(loadSettings);
+  const [settings, setSettings] = useState<GraphSettings>(() => loadSettings(isDark));
   const [sections, setSections] = useState({ filters: true, display: false, text: false, forces: false });
   const [layoutKey, setLayoutKey] = useState(0);
   
@@ -216,6 +224,18 @@ export function GraphView({
     return { displayNodes: nodes, displayEdges: edges };
   }, [graphData, settings.searchFilter, settings.existingFilesOnly, settings.showOrphans, isLocalView, localNodePath, adjacencyMap]);
 
+  // Check if force settings changed - if so, trigger relayout
+  const forceSettingsKey = `${settings.centerForce}-${settings.repelForce}-${settings.linkForce}-${settings.linkDistance}`;
+  
+  useEffect(() => {
+    if (prevForceSettingsRef.current && prevForceSettingsRef.current !== forceSettingsKey) {
+      // Force settings changed, recalculate layout
+      positionsRef.current.clear();
+      setLayoutKey(k => k + 1);
+    }
+    prevForceSettingsRef.current = forceSettingsKey;
+  }, [forceSettingsKey]);
+
   // MAIN RENDER - Compute layout ONCE, then render STATIC
   useEffect(() => {
     if (!svgRef.current || displayNodes.length === 0) return;
@@ -228,17 +248,16 @@ export function GraphView({
     svg.attr('width', width).attr('height', height);
     svg.selectAll('*').remove();
 
-    const isDark = theme === 'dark';
     const nodeColor = settings.nodeColor;
     const phantomColor = isDark ? '#6b7280' : '#9ca3af';
-    const edgeColor = settings.edgeColor + '50';
+    const edgeColor = settings.edgeColor + (isDark ? '50' : '70');
     const textColor = settings.textColor;
     const selectedColor = '#22c55e';
     const connectedColor = '#f59e0b';
 
     const g = svg.append('g');
 
-    // Zoom
+    // Zoom - preserve existing transform if we have one
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
       .on('zoom', e => g.attr('transform', e.transform));
@@ -254,8 +273,10 @@ export function GraphView({
 
     // Check if we have cached positions
     const needsLayout = displayNodes.some(n => !positionsRef.current.has(n.id));
+    let didLayout = false;
 
     if (needsLayout) {
+      didLayout = true;
       // COMPUTE LAYOUT SYNCHRONOUSLY - no animation, no floating
       const simNodes = displayNodes.map(n => ({ ...n }));
       const simEdges = displayEdges.map(e => ({ ...e }));
@@ -417,22 +438,25 @@ export function GraphView({
     
     nodes.call(drag as any);
 
-    // Fit to view
-    setTimeout(() => {
-      const bounds = g.node()?.getBBox();
-      if (bounds && bounds.width > 0) {
-        const padding = 80;
-        const scale = Math.min(0.9, Math.min(
-          (width - padding) / bounds.width,
-          (height - padding) / bounds.height
-        ));
-        const tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
-        const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
-        svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-      }
-    }, 50);
+    // Fit to view ONLY on initial layout or after recalculate
+    if (didLayout || !initialFitDoneRef.current) {
+      setTimeout(() => {
+        const bounds = g.node()?.getBBox();
+        if (bounds && bounds.width > 0) {
+          const padding = 80;
+          const scale = Math.min(0.9, Math.min(
+            (width - padding) / bounds.width,
+            (height - padding) / bounds.height
+          ));
+          const tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
+          const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
+          svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+          initialFitDoneRef.current = true;
+        }
+      }, 50);
+    }
 
-  }, [displayNodes, displayEdges, theme, selectedNode, settings, adjacencyMap, layoutKey]);
+  }, [displayNodes, displayEdges, isDark, selectedNode, settings, adjacencyMap, layoutKey]);
 
   const handleZoom = (factor: number) => {
     if (svgRef.current && zoomRef.current) {
@@ -440,10 +464,11 @@ export function GraphView({
     }
   };
 
-  const handleReset = () => setSettings(defaultSettings);
+  const handleReset = () => setSettings(getDefaultSettings(isDark));
   
   const handleResetLayout = () => {
     positionsRef.current.clear();
+    initialFitDoneRef.current = false;
     setLayoutKey(k => k + 1);
   };
 
