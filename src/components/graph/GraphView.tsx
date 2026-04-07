@@ -352,7 +352,11 @@ export function GraphView({
       });
     nodes.call(drag as any);
 
-    // Simulation - runs once then stops
+    // Simulation with radial force for circular layout
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const graphRadius = Math.min(width, height) * 0.4;
+    
     const simulation = d3.forceSimulation<GraphNode>(displayNodes)
       .force('link', d3.forceLink<GraphNode, GraphEdge>(displayEdges)
         .id(d => d.id)
@@ -360,21 +364,15 @@ export function GraphView({
         .strength(settings.linkForce / 100))
       .force('charge', d3.forceManyBody()
         .strength(-settings.repelForce)
-        .distanceMax(300))
-      .force('center', d3.forceCenter(width / 2, height / 2)
+        .distanceMax(400))
+      .force('center', d3.forceCenter(centerX, centerY)
         .strength(settings.centerForce / 100))
-      .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 3))
-      .force('bounds', () => {
-        // Keep nodes within bounds
-        displayNodes.forEach(d => {
-          const margin = 50;
-          if (d.x !== undefined) d.x = Math.max(margin, Math.min(width - margin, d.x));
-          if (d.y !== undefined) d.y = Math.max(margin, Math.min(height - margin, d.y));
-        });
-      })
-      .velocityDecay(0.6)
-      .alpha(0.5)
-      .alphaDecay(0.05);
+      .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 4))
+      // Radial force - pulls nodes toward a circle
+      .force('radial', d3.forceRadial(graphRadius * 0.6, centerX, centerY).strength(0.05))
+      .velocityDecay(0.5)
+      .alpha(0.8)
+      .alphaDecay(0.03);
 
     simulationRef.current = simulation;
 
