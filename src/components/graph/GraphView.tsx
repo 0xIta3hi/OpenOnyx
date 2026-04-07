@@ -54,21 +54,36 @@ const getDefaultSettings = (isDark: boolean): GraphSettings => ({
 // Fallback for initial load
 const defaultSettings = getDefaultSettings(true);
 
-function loadSettings(isDark: boolean): GraphSettings {
+// Generate vault-specific storage key
+function getVaultKey(base: string, vaultPath: string | null | undefined): string {
+  if (!vaultPath) return base;
+  // Create a simple hash from vault path for the key
+  const hash = vaultPath.split('').reduce((acc, char) => {
+    return ((acc << 5) - acc) + char.charCodeAt(0);
+  }, 0).toString(36);
+  return `${base}-${hash}`;
+}
+
+function loadSettings(isDark: boolean, vaultPath: string | null | undefined): GraphSettings {
   try {
-    const saved = localStorage.getItem(SETTINGS_KEY);
+    const key = getVaultKey(SETTINGS_KEY, vaultPath);
+    const saved = localStorage.getItem(key);
     return saved ? { ...getDefaultSettings(isDark), ...JSON.parse(saved) } : getDefaultSettings(isDark);
   } catch { return getDefaultSettings(isDark); }
 }
 
-function saveSettings(s: GraphSettings) {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+function saveSettings(s: GraphSettings, vaultPath: string | null | undefined) {
+  try {
+    const key = getVaultKey(SETTINGS_KEY, vaultPath);
+    localStorage.setItem(key, JSON.stringify(s));
+  } catch {}
 }
 
 // Position persistence
-function loadPositions(): Map<string, {x: number, y: number}> {
+function loadPositions(vaultPath: string | null | undefined): Map<string, {x: number, y: number}> {
   try {
-    const saved = localStorage.getItem(POSITIONS_KEY);
+    const key = getVaultKey(POSITIONS_KEY, vaultPath);
+    const saved = localStorage.getItem(key);
     if (saved) {
       const arr = JSON.parse(saved) as Array<[string, {x: number, y: number}]>;
       return new Map(arr);
@@ -77,10 +92,18 @@ function loadPositions(): Map<string, {x: number, y: number}> {
   return new Map();
 }
 
-function savePositions(positions: Map<string, {x: number, y: number}>) {
+function savePositions(positions: Map<string, {x: number, y: number}>, vaultPath: string | null | undefined) {
   try {
+    const key = getVaultKey(POSITIONS_KEY, vaultPath);
     const arr = Array.from(positions.entries());
-    localStorage.setItem(POSITIONS_KEY, JSON.stringify(arr));
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch {}
+}
+
+function clearPositions(vaultPath: string | null | undefined) {
+  try {
+    const key = getVaultKey(POSITIONS_KEY, vaultPath);
+    localStorage.removeItem(key);
   } catch {}
 }
 
@@ -148,7 +171,8 @@ export function GraphView({
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const transformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
-  const positionsRef = useRef<Map<string, {x: number, y: number}>>(loadPositions());
+  const vaultPathRef = useRef(vaultPath);
+  const positionsRef = useRef<Map<string, {x: number, y: number}>>(loadPositions(vaultPath));
   const initialFitDoneRef = useRef(positionsRef.current.size > 0);
   const prevForceSettingsRef = useRef<string>('');
   
@@ -159,13 +183,25 @@ export function GraphView({
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [isLocalView, setIsLocalView] = useState(!!localNodePath);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<GraphSettings>(() => loadSettings(isDark));
+  const [settings, setSettings] = useState<GraphSettings>(() => loadSettings(isDark, vaultPath));
   const [sections, setSections] = useState({ filters: true, display: false, text: false, forces: false });
   const [layoutKey, setLayoutKey] = useState(0);
   
+  // Update vaultPathRef when vaultPath changes
+  useEffect(() => {
+    if (vaultPath !== vaultPathRef.current) {
+      vaultPathRef.current = vaultPath;
+      // Load settings and positions for new vault
+      setSettings(loadSettings(isDark, vaultPath));
+      positionsRef.current = loadPositions(vaultPath);
+      initialFitDoneRef.current = positionsRef.current.size > 0;
+      setLayoutKey(k => k + 1);
+    }
+  }, [vaultPath, isDark]);
+  
   const onNodeClickRef = useRef(onNodeClick);
   useEffect(() => { onNodeClickRef.current = onNodeClick; }, [onNodeClick]);
-  useEffect(() => { saveSettings(settings); }, [settings]);
+  useEffect(() => { saveSettings(settings, vaultPath); }, [settings, vaultPath]);
 
   const updateSetting = useCallback(<K extends keyof GraphSettings>(key: K, value: GraphSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -356,8 +392,8 @@ export function GraphView({
           }
         }
       });
-      // Persist to localStorage
-      savePositions(positionsRef.current);
+      // Persist to localStorage (vault-specific)
+      savePositions(positionsRef.current, vaultPath);
     } else {
       // Use cached positions
       displayNodes.forEach(node => {
@@ -467,8 +503,8 @@ export function GraphView({
       })
       .on('end', function(_, d) {
         positionsRef.current.set(d.id, { x: d.x!, y: d.y! });
-        // Persist after manual drag
-        savePositions(positionsRef.current);
+        // Persist after manual drag (vault-specific)
+        savePositions(positionsRef.current, vaultPath);
       });
     
     nodes.call(drag as any);
@@ -491,7 +527,7 @@ export function GraphView({
       }, 50);
     }
 
-  }, [displayNodes, displayEdges, isDark, selectedNode, settings, adjacencyMap, layoutKey]);
+  }, [displayNodes, displayEdges, isDark, selectedNode, settings, adjacencyMap, layoutKey, vaultPath]);
 
   const handleZoom = (factor: number) => {
     if (svgRef.current && zoomRef.current) {
@@ -522,7 +558,7 @@ export function GraphView({
   const handleFullReset = () => {
     const defaults = getDefaultSettings(isDark);
     positionsRef.current.clear();
-    localStorage.removeItem(POSITIONS_KEY);
+    clearPositions(vaultPath);
     initialFitDoneRef.current = false;
     transformRef.current = d3.zoomIdentity;
     setSettings(defaults);
@@ -531,7 +567,7 @@ export function GraphView({
   
   const handleResetLayout = () => {
     positionsRef.current.clear();
-    localStorage.removeItem(POSITIONS_KEY);
+    clearPositions(vaultPath);
     initialFitDoneRef.current = false;
     transformRef.current = d3.zoomIdentity;
     setLayoutKey(k => k + 1);
