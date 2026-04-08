@@ -1,5 +1,5 @@
 /**
- * Graph View Component - WebGL-based with PixiJS
+ * Graph View Component - Canvas2D based
  * Matches app theme with smooth zoom and hover dimming
  */
 
@@ -196,7 +196,7 @@ export function GraphView({
     return getDefaultSettings(isDark);
   });
   
-  // Load settings when theme changes
+  // Load settings when theme changes and update renderer background
   useEffect(() => {
     if (prevThemeRef.current !== theme) {
       prevThemeRef.current = theme;
@@ -210,6 +210,13 @@ export function GraphView({
       } catch {
         setSettings(getDefaultSettings(isDark));
       }
+      
+      // Update background color immediately without full re-init
+      const renderer = rendererRef.current;
+      if (renderer && renderer.isInitialized()) {
+        renderer.setBackgroundColor(getBackgroundColor(isDark));
+      }
+      
       // Force re-init with new theme colors
       setReinitCounter(c => c + 1);
     }
@@ -455,15 +462,26 @@ export function GraphView({
       }
     }).catch(console.error);
     
+    // Debounced resize handler to prevent glitches during drag resize
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
-      const rect = container.getBoundingClientRect();
-      renderer.resize(rect.width, rect.height);
+      // Clear any pending resize
+      if (resizeTimer) clearTimeout(resizeTimer);
+      
+      // Debounce the resize to prevent flickering
+      resizeTimer = setTimeout(() => {
+        const rect = container.getBoundingClientRect();
+        if (rect.width > 10 && rect.height > 10) {
+          renderer.resize(rect.width, rect.height);
+        }
+      }, 16); // ~60fps throttle
     };
     
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
     
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       if (workerRef.current) {
         workerRef.current.terminate();

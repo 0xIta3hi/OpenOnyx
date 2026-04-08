@@ -2057,6 +2057,17 @@ blockquote:has(.callout) {
   z-index: 100;
 }
 
+.graph-view-container.fullscreen .graph-header {
+  position: relative;
+  z-index: 101;
+}
+
+.graph-view-container.fullscreen .graph-btn {
+  position: relative;
+  z-index: 102;
+  pointer-events: auto;
+}
+
 .graph-header {
   display: flex;
   align-items: center;

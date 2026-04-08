@@ -34,7 +34,6 @@
     "kill-port": "^2.0.1",
     "marked": "^15.0.8",
     "marked-katex-extension": "^5.1.7",
-    "pixi.js": "^7.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
