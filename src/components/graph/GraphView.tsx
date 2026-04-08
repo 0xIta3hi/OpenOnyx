@@ -1,6 +1,6 @@
 /**
  * Graph View Component - WebGL-based with PixiJS
- * Uses Web Worker for physics simulation and Canvas2D overlay for crisp labels
+ * Matches Obsidian's visual style with smooth zoom and hover dimming
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -11,7 +11,6 @@ import { getAPI } from '../../utils/api';
 
 const api = getAPI();
 
-// Get vault hash for localStorage keys
 function getVaultHash(path: string): string {
   let hash = 0;
   for (let i = 0; i < path.length; i++) {
@@ -41,16 +40,18 @@ interface GraphSettings {
   linkDistance: number;
 }
 
+// Obsidian-style colors
 const getDefaultSettings = (isDark: boolean): GraphSettings => ({
   searchTerm: '',
   existingFilesOnly: false,
   showOrphans: true,
-  nodeColor: isDark ? '#6ee7b7' : '#10b981',
-  connectedColor: '#fbbf24',
-  edgeColor: isDark ? '#6ee7b7' : '#059669',
+  // Obsidian uses grayscale - darker nodes on light bg, lighter on dark bg
+  nodeColor: isDark ? '#a0a0a0' : '#4a4a4a',
+  connectedColor: isDark ? '#c0c0c0' : '#3a3a3a',
+  edgeColor: isDark ? '#505050' : '#b0b0b0',
   nodeSize: 5,
   linkWidth: 1,
-  textColor: isDark ? '#9ca3af' : '#4b5563',
+  textColor: isDark ? '#808080' : '#606060',
   textSize: 11,
   showLabels: true,
   labelThreshold: 0.4,
@@ -80,15 +81,15 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
 
 function Toggle({ label, checked, onChange, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; info?: string }) {
   return (
-    <label className="graph-toggle-row">
+    <div className="graph-toggle-row" onClick={() => onChange(!checked)}>
       <span className="graph-toggle-label">
         {label}
         {info && <span className="graph-info-icon" title={info}>ℹ</span>}
       </span>
-      <div className={`graph-toggle ${checked ? 'active' : ''}`} onClick={() => onChange(!checked)}>
+      <div className={`graph-toggle-switch ${checked ? 'active' : ''}`}>
         <div className="graph-toggle-thumb" />
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -161,19 +162,20 @@ export function GraphView({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<GraphRenderer | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const initDoneRef = useRef(false);
   
   const [showSettingsPanel, setShowSettingsPanel] = useState(true);
   const [simulating, setSimulating] = useState(false);
   const [alpha, setAlpha] = useState(0);
   const [graphData, setGraphData] = useState<GraphDataState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataKey, setDataKey] = useState(0); // Force re-render on filter change
   
   const isDark = theme === 'dark';
   const vaultHash = useMemo(() => getVaultHash(vaultPath || 'default'), [vaultPath]);
-  const settingsKey = `openobsidian-graph-settings-v5-${vaultHash}`;
-  const positionsKey = `openobsidian-graph-positions-v2-${vaultHash}`;
+  const settingsKey = `openobsidian-graph-settings-v6-${vaultHash}`;
+  const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
   
-  // Load settings from localStorage
   const [settings, setSettings] = useState<GraphSettings>(() => {
     try {
       const saved = localStorage.getItem(settingsKey);
@@ -268,32 +270,55 @@ export function GraphView({
     }));
     
     return { nodes, edges: normalizedEdges };
-  }, [graphData, settings.searchTerm, settings.showOrphans]);
+  }, [graphData, settings.searchTerm, settings.showOrphans, settings.existingFilesOnly]);
   
   // Initialize renderer and worker
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current || loading || filteredData.nodes.length === 0) return;
+    if (!canvasRef.current || !containerRef.current || loading) return;
+    if (filteredData.nodes.length === 0) {
+      // Clear any existing renderer
+      if (rendererRef.current) {
+        rendererRef.current.destroy();
+        rendererRef.current = null;
+      }
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+      return;
+    }
+    
+    // Clean up previous instances
+    if (rendererRef.current) {
+      rendererRef.current.destroy();
+      rendererRef.current = null;
+    }
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
     
     const canvas = canvasRef.current;
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
     
-    // Create renderer
+    // Obsidian colors: dark = #2d2d2d, light = #ffffff
+    const bgColor = isDark ? 0x2d2d2d : 0xffffff;
+    
     const renderer = new GraphRenderer(canvas, {
       width: rect.width,
       height: rect.height,
-      backgroundColor: isDark ? 0x111827 : 0xffffff,
+      backgroundColor: bgColor,
+      isDark,
     });
     rendererRef.current = renderer;
     
-    // Create worker
     const worker = new Worker(
       new URL('./graphWorker.ts', import.meta.url),
       { type: 'module' }
     );
     workerRef.current = worker;
     
-    // Worker message handler
     worker.onmessage = (e) => {
       const { type, ids, positions, alpha: a } = e.data;
       
@@ -304,7 +329,6 @@ export function GraphView({
       } else if (type === 'end') {
         setSimulating(false);
         setAlpha(0);
-        // Save positions
         try {
           const allPositions = renderer.getAllPositions();
           const posObj: Record<string, { x: number; y: number }> = {};
@@ -314,7 +338,6 @@ export function GraphView({
       }
     };
     
-    // Initialize renderer async
     renderer.init().then(() => {
       renderer.setCallbacks({
         onNodeClick: (nodeId) => {
@@ -328,15 +351,18 @@ export function GraphView({
         },
       });
       
-      // Set initial styles
+      // Apply Obsidian-style colors
       renderer.setNodeStyle({
         color: hexToNumber(settings.nodeColor),
         size: settings.nodeSize,
+        selectedColor: hexToNumber(settings.nodeColor),
+        hoveredColor: hexToNumber(settings.connectedColor),
         connectedColor: hexToNumber(settings.connectedColor),
       });
       renderer.setEdgeStyle({
         color: hexToNumber(settings.edgeColor),
         width: settings.linkWidth,
+        highlightColor: hexToNumber(settings.edgeColor),
       });
       renderer.setLabelStyle({
         color: settings.textColor,
@@ -345,14 +371,13 @@ export function GraphView({
         threshold: settings.labelThreshold,
       });
       
-      // Load saved positions or initialize
+      // Load saved positions
       let savedPositions: Record<string, { x: number; y: number }> | null = null;
       try {
         const saved = localStorage.getItem(positionsKey);
         if (saved) savedPositions = JSON.parse(saved);
       } catch {}
       
-      // Apply saved positions to nodes
       const nodesWithPositions = filteredData.nodes.map(n => {
         if (savedPositions && savedPositions[n.id]) {
           return { ...n, ...savedPositions[n.id] };
@@ -366,7 +391,6 @@ export function GraphView({
       
       renderer.setData(nodesWithPositions, filteredData.edges);
       
-      // Initialize worker
       worker.postMessage({
         type: 'init',
         data: {
@@ -374,7 +398,7 @@ export function GraphView({
             id: n.id,
             x: n.x,
             y: n.y,
-            connections: filteredData.edges.filter(e => e.source === n.id || e.target === n.id).length,
+            connections: n.connections || 0,
           })),
           edges: filteredData.edges.map(e => ({ source: e.source, target: e.target })),
           forces: {
@@ -387,16 +411,14 @@ export function GraphView({
         },
       });
       
-      // Start simulation if no saved positions
       if (!savedPositions || Object.keys(savedPositions).length === 0) {
         setSimulating(true);
         worker.postMessage({ type: 'start' });
       } else {
-        renderer.centerView();
+        setTimeout(() => renderer.centerView(), 100);
       }
     }).catch(console.error);
     
-    // Resize handler
     const handleResize = () => {
       const rect = container.getBoundingClientRect();
       renderer.resize(rect.width, rect.height);
@@ -407,12 +429,18 @@ export function GraphView({
     
     return () => {
       resizeObserver.disconnect();
-      worker.terminate();
-      renderer.destroy();
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+      if (rendererRef.current) {
+        rendererRef.current.destroy();
+        rendererRef.current = null;
+      }
     };
-  }, [filteredData.nodes.length, filteredData.edges.length, loading, isDark]);
+  }, [filteredData.nodes.length, filteredData.edges.length, loading, isDark, dataKey]);
   
-  // Update styles when settings change
+  // Update styles when visual settings change
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !renderer.isInitialized()) return;
@@ -420,11 +448,14 @@ export function GraphView({
     renderer.setNodeStyle({
       color: hexToNumber(settings.nodeColor),
       size: settings.nodeSize,
+      selectedColor: hexToNumber(settings.nodeColor),
+      hoveredColor: hexToNumber(settings.connectedColor),
       connectedColor: hexToNumber(settings.connectedColor),
     });
     renderer.setEdgeStyle({
       color: hexToNumber(settings.edgeColor),
       width: settings.linkWidth,
+      highlightColor: hexToNumber(settings.edgeColor),
     });
     renderer.setLabelStyle({
       color: settings.textColor,
@@ -434,8 +465,8 @@ export function GraphView({
     });
   }, [settings.nodeColor, settings.connectedColor, settings.edgeColor, settings.nodeSize, settings.linkWidth, settings.textColor, settings.textSize, settings.showLabels, settings.labelThreshold]);
   
-  // Update forces and reheat when force settings change
-  const updateForces = useCallback(() => {
+  // Live force updates - reheat on change
+  useEffect(() => {
     const worker = workerRef.current;
     if (!worker) return;
     
@@ -448,16 +479,19 @@ export function GraphView({
         linkDistance: settings.linkDistance * 2.5,
       },
     });
+    
+    // Reheat simulation for live updates
+    setSimulating(true);
+    worker.postMessage({ type: 'reheat' });
   }, [settings.centerForce, settings.repelForce, settings.linkForce, settings.linkDistance]);
   
   const recalculateLayout = useCallback(() => {
     const worker = workerRef.current;
     if (!worker) return;
     
-    updateForces();
     setSimulating(true);
     worker.postMessage({ type: 'reheat' });
-  }, [updateForces]);
+  }, []);
   
   const resetSettings = useCallback(() => {
     setSettings(getDefaultSettings(isDark));
@@ -511,7 +545,11 @@ export function GraphView({
           <button className="graph-btn" onClick={recalculateLayout} title="Recalculate layout">
             <RotateCcw size={14} />
           </button>
-          <button className="graph-btn" onClick={() => setShowSettingsPanel(!showSettingsPanel)} title="Settings">
+          <button 
+            className={`graph-btn ${showSettingsPanel ? 'active' : ''}`} 
+            onClick={() => setShowSettingsPanel(!showSettingsPanel)} 
+            title="Settings"
+          >
             <Settings size={14} />
           </button>
           {onToggleFullScreen && (
@@ -530,6 +568,11 @@ export function GraphView({
         {/* Canvas area */}
         <div ref={containerRef} className="graph-canvas-container">
           <canvas ref={canvasRef} />
+          {filteredData.nodes.length === 0 && !loading && (
+            <div className="graph-empty">
+              <span>No nodes to display</span>
+            </div>
+          )}
         </div>
         
         {/* Settings panel */}
@@ -548,13 +591,19 @@ export function GraphView({
               <Toggle
                 label="Existing files only"
                 checked={settings.existingFilesOnly}
-                onChange={(v) => setSettings(s => ({ ...s, existingFilesOnly: v }))}
+                onChange={(v) => {
+                  setSettings(s => ({ ...s, existingFilesOnly: v }));
+                  setDataKey(k => k + 1);
+                }}
                 info="Hide phantom (unresolved) links"
               />
               <Toggle
                 label="Show orphans"
                 checked={settings.showOrphans}
-                onChange={(v) => setSettings(s => ({ ...s, showOrphans: v }))}
+                onChange={(v) => {
+                  setSettings(s => ({ ...s, showOrphans: v }));
+                  setDataKey(k => k + 1);
+                }}
                 info="Show notes with no links"
               />
             </Section>
@@ -564,19 +613,19 @@ export function GraphView({
                 label="Node color"
                 value={settings.nodeColor}
                 onChange={(v) => setSettings(s => ({ ...s, nodeColor: v }))}
-                presets={['#6ee7b7', '#60a5fa', '#f472b6', '#facc15', '#a78bfa']}
+                presets={['#a0a0a0', '#7f7f7f', '#606060', '#404040', '#808080']}
               />
               <ColorPicker
                 label="Connected"
                 value={settings.connectedColor}
                 onChange={(v) => setSettings(s => ({ ...s, connectedColor: v }))}
-                presets={['#fbbf24', '#fb923c', '#f87171', '#4ade80', '#38bdf8']}
+                presets={['#c0c0c0', '#a0a0a0', '#808080', '#606060', '#b0b0b0']}
               />
               <ColorPicker
                 label="Edge color"
                 value={settings.edgeColor}
                 onChange={(v) => setSettings(s => ({ ...s, edgeColor: v }))}
-                presets={['#6ee7b7', '#6b7280', '#4b5563', '#9ca3af', '#d1d5db']}
+                presets={['#505050', '#404040', '#606060', '#707070', '#808080']}
               />
               <Slider
                 label="Node size"
@@ -605,7 +654,7 @@ export function GraphView({
                 label="Text color"
                 value={settings.textColor}
                 onChange={(v) => setSettings(s => ({ ...s, textColor: v }))}
-                presets={['#9ca3af', '#d1d5db', '#f3f4f6', '#6b7280', '#ffffff']}
+                presets={['#808080', '#909090', '#a0a0a0', '#707070', '#606060']}
               />
               <Slider
                 label="Text size"

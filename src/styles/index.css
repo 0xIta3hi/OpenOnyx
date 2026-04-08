@@ -1694,13 +1694,18 @@ blockquote:has(.callout) {
 }
 
 .graph-empty {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
   gap: var(--space-3);
   color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .graph-zoom-controls {
@@ -1875,16 +1880,6 @@ blockquote:has(.callout) {
   color: var(--text-primary);
 }
 
-/* Toggle row with iOS-style switch */
-.graph-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
 /* Setting row with label and control */
 .graph-setting-row {
   display: flex;
@@ -1936,45 +1931,6 @@ blockquote:has(.callout) {
 .graph-color-input::-webkit-color-swatch {
   border: none;
   border-radius: 2px;
-}
-
-/* iOS-style toggle switch */
-.graph-toggle-switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-medium);
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.graph-toggle-switch:hover {
-  border-color: var(--text-muted);
-}
-
-.graph-toggle-switch.active {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-}
-
-.graph-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  background: white;
-  border-radius: 50%;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-
-.graph-toggle-switch.active .graph-toggle-thumb {
-  transform: translateX(16px);
 }
 
 /* Slider row */
@@ -2409,6 +2365,11 @@ blockquote:has(.callout) {
   color: var(--text-primary);
 }
 
+.graph-btn.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
 .graph-btn-primary {
   flex: 1;
   padding: var(--space-2);
@@ -2498,12 +2459,17 @@ blockquote:has(.callout) {
   gap: var(--space-2);
 }
 
-/* Toggle switch */
+/* Toggle switch - unified styles */
 .graph-toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
+  padding: var(--space-1) 0;
+}
+
+.graph-toggle-row:hover {
+  opacity: 0.9;
 }
 
 .graph-toggle-label {
@@ -2514,29 +2480,38 @@ blockquote:has(.callout) {
   color: var(--text-secondary);
 }
 
-.graph-toggle {
+.graph-toggle-switch {
+  position: relative;
   width: 36px;
   height: 20px;
   background: var(--bg-tertiary);
   border-radius: 10px;
-  padding: 2px;
   cursor: pointer;
   transition: background 0.2s ease;
+  flex-shrink: 0;
 }
 
-.graph-toggle.active {
+.graph-toggle-switch:hover {
+  background: var(--bg-hover);
+}
+
+.graph-toggle-switch.active {
   background: var(--accent-primary);
 }
 
-.graph-toggle-thumb {
+.graph-toggle-switch .graph-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
   width: 16px;
   height: 16px;
   background: white;
   border-radius: 50%;
   transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.graph-toggle.active .graph-toggle-thumb {
+.graph-toggle-switch.active .graph-toggle-thumb {
   transform: translateX(16px);
 }
 

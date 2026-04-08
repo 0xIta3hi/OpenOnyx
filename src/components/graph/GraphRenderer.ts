@@ -1,6 +1,7 @@
 /**
  * Graph Renderer using PixiJS v7
  * WebGL-based rendering with Canvas2D text overlay for crisp labels
+ * Matches Obsidian's visual style and interactions
  */
 
 import * as PIXI from 'pixi.js';
@@ -9,6 +10,7 @@ export interface RendererOptions {
   width: number;
   height: number;
   backgroundColor: number;
+  isDark: boolean;
 }
 
 export interface NodeStyle {
@@ -17,6 +19,7 @@ export interface NodeStyle {
   selectedColor: number;
   hoveredColor: number;
   connectedColor: number;
+  dimmedAlpha: number;
 }
 
 export interface EdgeStyle {
@@ -25,6 +28,7 @@ export interface EdgeStyle {
   highlightColor: number;
   highlightWidth: number;
   alpha: number;
+  dimmedAlpha: number;
 }
 
 export interface LabelStyle {
@@ -83,34 +87,42 @@ export class GraphRenderer {
   private width: number;
   private height: number;
   private scale = 1;
+  private targetScale = 1;
   private offsetX = 0;
   private offsetY = 0;
+  private targetOffsetX = 0;
+  private targetOffsetY = 0;
   private backgroundColor: number;
+  private isDark: boolean;
   
   private initialized = false;
   private isDragging = false;
   private isPanning = false;
   private dragNode: RenderNode | null = null;
   private lastPointerPos = { x: 0, y: 0 };
+  private animationFrame: number | null = null;
   
+  // Obsidian-style colors
   private nodeStyle: NodeStyle = {
-    color: 0x6ee7b7,
+    color: 0x7f7f7f, // Gray (Obsidian default)
     size: 5,
-    selectedColor: 0x22c55e,
-    hoveredColor: 0x34d399,
-    connectedColor: 0xfbbf24,
+    selectedColor: 0x7f7f7f,
+    hoveredColor: 0x7f7f7f,
+    connectedColor: 0x7f7f7f,
+    dimmedAlpha: 0.15,
   };
   
   private edgeStyle: EdgeStyle = {
-    color: 0x6ee7b7,
+    color: 0x7f7f7f,
     width: 1,
-    highlightColor: 0xfbbf24,
+    highlightColor: 0x7f7f7f,
     highlightWidth: 2,
-    alpha: 0.3,
+    alpha: 0.4,
+    dimmedAlpha: 0.08,
   };
   
   private labelStyle: LabelStyle = {
-    color: '#9ca3af',
+    color: '#7f7f7f',
     size: 11,
     show: true,
     threshold: 0.4,
@@ -127,14 +139,15 @@ export class GraphRenderer {
     this.canvas = canvas;
     this.width = options.width || 800;
     this.height = options.height || 600;
-    this.backgroundColor = options.backgroundColor ?? 0x111827;
+    this.isDark = options.isDark ?? true;
+    // Obsidian colors: dark = #2d2d2d, light = #ffffff
+    this.backgroundColor = options.backgroundColor ?? (this.isDark ? 0x2d2d2d : 0xffffff);
   }
 
   async init(): Promise<void> {
     if (this.initialized) return;
     
     try {
-      // Create PixiJS Application with v7 constructor
       this.app = new PIXI.Application({
         view: this.canvas,
         width: this.width,
@@ -145,7 +158,6 @@ export class GraphRenderer {
         autoDensity: true,
       });
 
-      // Create containers
       this.viewport = new PIXI.Container();
       this.app.stage.addChild(this.viewport);
       
@@ -155,17 +167,16 @@ export class GraphRenderer {
       this.nodesContainer = new PIXI.Container();
       this.viewport.addChild(this.nodesContainer);
       
-      // Center viewport
       this.viewport.x = this.width / 2;
       this.viewport.y = this.height / 2;
       this.offsetX = this.viewport.x;
       this.offsetY = this.viewport.y;
+      this.targetOffsetX = this.offsetX;
+      this.targetOffsetY = this.offsetY;
       
-      // Create label canvas overlay for crisp text
       this.createLabelCanvas();
-      
-      // Setup interactions
       this.setupInteraction();
+      this.startAnimationLoop();
       
       this.initialized = true;
     } catch (error) {
@@ -192,7 +203,6 @@ export class GraphRenderer {
       this.labelCtx.scale(dpr, dpr);
     }
     
-    // Insert after canvas
     if (this.canvas.parentElement) {
       this.canvas.parentElement.style.position = 'relative';
       this.canvas.parentElement.appendChild(this.labelCanvas);
@@ -206,16 +216,44 @@ export class GraphRenderer {
     stage.eventMode = 'static';
     stage.hitArea = this.app.screen;
     
-    // Wheel zoom
     this.wheelHandler = this.handleWheel.bind(this);
     this.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
     
-    // Pointer events
     stage.on('pointerdown', this.handlePointerDown.bind(this));
     stage.on('pointermove', this.handlePointerMove.bind(this));
     stage.on('pointerup', this.handlePointerUp.bind(this));
     stage.on('pointerupoutside', this.handlePointerUp.bind(this));
     stage.on('pointerleave', this.handlePointerLeave.bind(this));
+  }
+
+  private startAnimationLoop(): void {
+    const animate = () => {
+      this.animationFrame = requestAnimationFrame(animate);
+      
+      // Smooth zoom interpolation (Obsidian-style)
+      const zoomLerp = 0.15;
+      const panLerp = 0.2;
+      
+      const scaleDiff = Math.abs(this.targetScale - this.scale);
+      const offsetXDiff = Math.abs(this.targetOffsetX - this.offsetX);
+      const offsetYDiff = Math.abs(this.targetOffsetY - this.offsetY);
+      
+      if (scaleDiff > 0.001 || offsetXDiff > 0.5 || offsetYDiff > 0.5) {
+        this.scale += (this.targetScale - this.scale) * zoomLerp;
+        this.offsetX += (this.targetOffsetX - this.offsetX) * panLerp;
+        this.offsetY += (this.targetOffsetY - this.offsetY) * panLerp;
+        
+        if (this.viewport) {
+          this.viewport.scale.set(this.scale);
+          this.viewport.x = this.offsetX;
+          this.viewport.y = this.offsetY;
+        }
+        
+        this.renderLabels();
+      }
+    };
+    
+    animate();
   }
 
   private handleWheel(e: WheelEvent): void {
@@ -226,23 +264,20 @@ export class GraphRenderer {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     
-    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(0.1, Math.min(5, this.scale * zoomFactor));
+    // Smooth zoom factor
+    const zoomIntensity = 0.1;
+    const zoomFactor = e.deltaY > 0 ? (1 - zoomIntensity) : (1 + zoomIntensity);
+    const newScale = Math.max(0.1, Math.min(5, this.targetScale * zoomFactor));
     
     // Zoom towards mouse position
-    const worldX = (mouseX - this.viewport.x) / this.scale;
-    const worldY = (mouseY - this.viewport.y) / this.scale;
+    const worldX = (mouseX - this.offsetX) / this.scale;
+    const worldY = (mouseY - this.offsetY) / this.scale;
     
-    this.scale = newScale;
-    this.viewport.scale.set(this.scale);
+    this.targetScale = newScale;
+    this.targetOffsetX = mouseX - worldX * newScale;
+    this.targetOffsetY = mouseY - worldY * newScale;
     
-    this.viewport.x = mouseX - worldX * this.scale;
-    this.viewport.y = mouseY - worldY * this.scale;
-    this.offsetX = this.viewport.x;
-    this.offsetY = this.viewport.y;
-    
-    this.scheduleRender();
-    this.onViewportChange?.(this.offsetX, this.offsetY, this.scale);
+    this.onViewportChange?.(this.targetOffsetX, this.targetOffsetY, this.targetScale);
   }
 
   private handlePointerDown(e: PIXI.FederatedPointerEvent): void {
@@ -269,24 +304,26 @@ export class GraphRenderer {
       this.dragNode.graphics.x = this.dragNode.x;
       this.dragNode.graphics.y = this.dragNode.y;
       this.drawEdges();
-      this.scheduleRender();
+      this.renderLabels();
       this.onNodeDrag?.(this.dragNode.id, this.dragNode.x, this.dragNode.y, true);
     } else if (this.isPanning && this.viewport) {
-      this.viewport.x += dx;
-      this.viewport.y += dy;
-      this.offsetX = this.viewport.x;
-      this.offsetY = this.viewport.y;
-      this.scheduleRender();
+      this.targetOffsetX += dx;
+      this.targetOffsetY += dy;
+      this.offsetX = this.targetOffsetX;
+      this.offsetY = this.targetOffsetY;
+      this.viewport.x = this.offsetX;
+      this.viewport.y = this.offsetY;
+      this.renderLabels();
       this.onViewportChange?.(this.offsetX, this.offsetY, this.scale);
     } else {
-      // Hover detection
+      // Hover detection - dim other nodes
       const node = this.getNodeAtPosition(e.globalX, e.globalY);
       const newHoveredId = node?.id || null;
       if (newHoveredId !== this.hoveredNodeId) {
         this.hoveredNodeId = newHoveredId;
         this.updateNodeStyles();
         this.drawEdges();
-        this.scheduleRender();
+        this.renderLabels();
       }
     }
   }
@@ -294,19 +331,19 @@ export class GraphRenderer {
   private handlePointerUp(e: PIXI.FederatedPointerEvent): void {
     if (this.isDragging && this.dragNode) {
       this.onNodeDrag?.(this.dragNode.id, this.dragNode.x, this.dragNode.y, false);
-    } else if (!this.isPanning) {
+    } else if (!this.isPanning || (Math.abs(e.globalX - this.lastPointerPos.x) < 5 && Math.abs(e.globalY - this.lastPointerPos.y) < 5)) {
       const node = this.getNodeAtPosition(e.globalX, e.globalY);
       if (node) {
         this.selectedNodeId = node.id;
         this.updateNodeStyles();
         this.drawEdges();
-        this.scheduleRender();
+        this.renderLabels();
         this.onNodeClick?.(node.id);
       } else if (this.selectedNodeId) {
         this.selectedNodeId = null;
         this.updateNodeStyles();
         this.drawEdges();
-        this.scheduleRender();
+        this.renderLabels();
       }
     }
     
@@ -323,15 +360,15 @@ export class GraphRenderer {
       this.hoveredNodeId = null;
       this.updateNodeStyles();
       this.drawEdges();
-      this.scheduleRender();
+      this.renderLabels();
     }
   }
 
   private getNodeAtPosition(globalX: number, globalY: number): RenderNode | null {
     if (!this.viewport) return null;
     
-    const worldX = (globalX - this.viewport.x) / this.scale;
-    const worldY = (globalY - this.viewport.y) / this.scale;
+    const worldX = (globalX - this.offsetX) / this.scale;
+    const worldY = (globalY - this.offsetY) / this.scale;
     
     const hitRadius = 15 / this.scale;
     let closest: RenderNode | null = null;
@@ -350,37 +387,42 @@ export class GraphRenderer {
     return closest;
   }
 
-  private scheduleRender(): void {
-    if (this.renderScheduled) return;
-    this.renderScheduled = true;
-    requestAnimationFrame(() => {
-      this.renderLabels();
-      this.renderScheduled = false;
-    });
-  }
-
   private renderLabels(): void {
     if (!this.labelCtx || !this.labelStyle.show || !this.viewport) return;
     
     const ctx = this.labelCtx;
     ctx.clearRect(0, 0, this.width, this.height);
     
-    // Skip if zoomed out too far
     if (this.scale < this.labelStyle.threshold) return;
     
     ctx.font = `${this.labelStyle.size}px Inter, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = this.labelStyle.color;
+    
+    const connectedToHovered = this.hoveredNodeId ? this.adjacencyMap.get(this.hoveredNodeId) : null;
     
     for (const node of this.nodes.values()) {
-      const screenX = this.viewport.x + node.x * this.scale;
-      const screenY = this.viewport.y + node.y * this.scale;
+      const screenX = this.offsetX + node.x * this.scale;
+      const screenY = this.offsetY + node.y * this.scale;
       
-      // Skip if outside viewport
-      if (screenX < -50 || screenX > this.width + 50 ||
-          screenY < -50 || screenY > this.height + 50) {
+      if (screenX < -100 || screenX > this.width + 100 ||
+          screenY < -100 || screenY > this.height + 100) {
         continue;
+      }
+      
+      // Dim labels when hovering other nodes
+      let alpha = 1;
+      if (this.hoveredNodeId && node.id !== this.hoveredNodeId && !connectedToHovered?.has(node.id)) {
+        alpha = 0.2;
+      }
+      
+      ctx.fillStyle = this.labelStyle.color.replace(')', `, ${alpha})`).replace('rgb', 'rgba');
+      if (!this.labelStyle.color.includes('rgb')) {
+        // Hex color
+        const r = parseInt(this.labelStyle.color.slice(1, 3), 16);
+        const g = parseInt(this.labelStyle.color.slice(3, 5), 16);
+        const b = parseInt(this.labelStyle.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
       }
       
       const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
@@ -443,7 +485,7 @@ export class GraphRenderer {
     
     this.edges = edges.map(e => ({ source: e.source, target: e.target }));
     this.drawEdges();
-    this.scheduleRender();
+    this.renderLabels();
   }
 
   updatePositionsFromArray(ids: string[], positions: Float32Array): void {
@@ -457,13 +499,15 @@ export class GraphRenderer {
       }
     }
     this.drawEdges();
-    this.scheduleRender();
+    this.renderLabels();
   }
 
   private drawEdges(): void {
     if (!this.edgesGraphics) return;
     
     this.edgesGraphics.clear();
+    
+    const connectedToHovered = this.hoveredNodeId ? this.adjacencyMap.get(this.hoveredNodeId) : null;
     
     for (const edge of this.edges) {
       const sourceNode = this.nodes.get(edge.source);
@@ -474,9 +518,12 @@ export class GraphRenderer {
         edge.source === this.selectedNodeId || edge.target === this.selectedNodeId ||
         edge.source === this.hoveredNodeId || edge.target === this.hoveredNodeId;
       
+      // Dim edges not connected to hovered node
+      const isDimmed = this.hoveredNodeId && !isHighlighted;
+      
       const color = isHighlighted ? this.edgeStyle.highlightColor : this.edgeStyle.color;
       const width = isHighlighted ? this.edgeStyle.highlightWidth : this.edgeStyle.width;
-      const alpha = isHighlighted ? 0.8 : this.edgeStyle.alpha;
+      const alpha = isDimmed ? this.edgeStyle.dimmedAlpha : (isHighlighted ? 0.8 : this.edgeStyle.alpha);
       
       this.edgesGraphics.lineStyle(width, color, alpha);
       this.edgesGraphics.moveTo(sourceNode.x, sourceNode.y);
@@ -491,17 +538,22 @@ export class GraphRenderer {
     for (const node of this.nodes.values()) {
       const isSelected = node.id === this.selectedNodeId;
       const isHovered = node.id === this.hoveredNodeId;
-      const isConnected = connectedToSelected?.has(node.id) || connectedToHovered?.has(node.id);
+      const isConnectedToHovered = connectedToHovered?.has(node.id);
+      const isConnectedToSelected = connectedToSelected?.has(node.id);
+      
+      // Dim nodes not connected to hovered node
+      const isDimmed = this.hoveredNodeId && !isHovered && !isConnectedToHovered;
       
       let color = this.nodeStyle.color;
       if (isSelected) color = this.nodeStyle.selectedColor;
       else if (isHovered) color = this.nodeStyle.hoveredColor;
-      else if (isConnected) color = this.nodeStyle.connectedColor;
+      else if (isConnectedToSelected || isConnectedToHovered) color = this.nodeStyle.connectedColor;
       
       const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
+      const alpha = isDimmed ? this.nodeStyle.dimmedAlpha : 1;
       
       node.graphics.clear();
-      node.graphics.beginFill(color);
+      node.graphics.beginFill(color, alpha);
       node.graphics.drawCircle(0, 0, size);
       node.graphics.endFill();
     }
@@ -519,14 +571,21 @@ export class GraphRenderer {
 
   setLabelStyle(style: Partial<LabelStyle>): void {
     Object.assign(this.labelStyle, style);
-    this.scheduleRender();
+    this.renderLabels();
+  }
+
+  setBackgroundColor(color: number): void {
+    this.backgroundColor = color;
+    if (this.app) {
+      this.app.renderer.background.color = color;
+    }
   }
 
   selectNode(nodeId: string | null): void {
     this.selectedNodeId = nodeId;
     this.updateNodeStyles();
     this.drawEdges();
-    this.scheduleRender();
+    this.renderLabels();
   }
 
   centerView(): void {
@@ -550,16 +609,12 @@ export class GraphRenderer {
     const padding = 100;
     const scaleX = (this.width - padding) / Math.max(graphWidth, 1);
     const scaleY = (this.height - padding) / Math.max(graphHeight, 1);
-    this.scale = Math.min(scaleX, scaleY, 1.5);
+    this.targetScale = Math.min(scaleX, scaleY, 1.5);
     
-    this.viewport.x = this.width / 2 - centerX * this.scale;
-    this.viewport.y = this.height / 2 - centerY * this.scale;
-    this.viewport.scale.set(this.scale);
-    this.offsetX = this.viewport.x;
-    this.offsetY = this.viewport.y;
+    this.targetOffsetX = this.width / 2 - centerX * this.targetScale;
+    this.targetOffsetY = this.height / 2 - centerY * this.targetScale;
     
-    this.scheduleRender();
-    this.onViewportChange?.(this.offsetX, this.offsetY, this.scale);
+    this.onViewportChange?.(this.targetOffsetX, this.targetOffsetY, this.targetScale);
   }
 
   resize(width: number, height: number): void {
@@ -580,7 +635,7 @@ export class GraphRenderer {
       this.labelCtx.scale(dpr, dpr);
     }
     
-    this.scheduleRender();
+    this.renderLabels();
   }
 
   getAllPositions(): Map<string, { x: number; y: number }> {
@@ -596,6 +651,10 @@ export class GraphRenderer {
   }
 
   destroy(): void {
+    if (this.animationFrame) {
+      cancelAnimationFrame(this.animationFrame);
+    }
+    
     if (this.labelCanvas?.parentElement) {
       this.labelCanvas.parentElement.removeChild(this.labelCanvas);
     }
