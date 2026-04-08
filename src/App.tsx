@@ -258,15 +258,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTabId, tabs, currentContent]);
 
-  // ── Auto-fullscreen graph when no file selected ─────
-  useEffect(() => {
-    if (showGraph && !activeTabId && !graphFullScreen) {
-      setGraphFullScreen(true);
-    } else if (showGraph && activeTabId && graphFullScreen) {
-      setGraphFullScreen(false);
-    }
-  }, [showGraph, activeTabId]);
-
   // ── Vault Operations ────────────────────────────────
   const handleOpenVault = async () => {
     try {

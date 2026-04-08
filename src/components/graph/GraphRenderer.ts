@@ -147,17 +147,25 @@ export class GraphRenderer {
   async init(): Promise<void> {
     if (this.initialized) return;
     
+    // Ensure minimum dimensions to prevent PixiJS errors
+    const minDimension = 100;
+    const safeWidth = Math.max(this.width, minDimension);
+    const safeHeight = Math.max(this.height, minDimension);
+    
     try {
       this.app = new PIXI.Application({
         view: this.canvas,
-        width: this.width,
-        height: this.height,
+        width: safeWidth,
+        height: safeHeight,
         backgroundColor: this.backgroundColor,
         antialias: true,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
       });
 
+      this.width = safeWidth;
+      this.height = safeHeight;
+      
       this.viewport = new PIXI.Container();
       this.app.stage.addChild(this.viewport);
       
@@ -618,19 +626,24 @@ export class GraphRenderer {
   }
 
   resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
+    // Ensure minimum dimensions to prevent rendering issues
+    const minDimension = 100;
+    const safeWidth = Math.max(width, minDimension);
+    const safeHeight = Math.max(height, minDimension);
+    
+    this.width = safeWidth;
+    this.height = safeHeight;
     
     if (this.app) {
-      this.app.renderer.resize(width, height);
+      this.app.renderer.resize(safeWidth, safeHeight);
     }
     
     if (this.labelCanvas && this.labelCtx) {
       const dpr = window.devicePixelRatio || 1;
-      this.labelCanvas.width = width * dpr;
-      this.labelCanvas.height = height * dpr;
-      this.labelCanvas.style.width = `${width}px`;
-      this.labelCanvas.style.height = `${height}px`;
+      this.labelCanvas.width = safeWidth * dpr;
+      this.labelCanvas.height = safeHeight * dpr;
+      this.labelCanvas.style.width = `${safeWidth}px`;
+      this.labelCanvas.style.height = `${safeHeight}px`;
       this.labelCtx.setTransform(1, 0, 0, 1, 0, 0);
       this.labelCtx.scale(dpr, dpr);
     }

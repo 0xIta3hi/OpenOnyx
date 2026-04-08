@@ -1,6 +1,6 @@
 /**
  * Graph View Component - WebGL-based with PixiJS
- * Matches Obsidian's visual style with smooth zoom and hover dimming
+ * Matches app theme with smooth zoom and hover dimming
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -40,12 +40,19 @@ interface GraphSettings {
   linkDistance: number;
 }
 
-// Obsidian-style colors
+// Get background color from CSS variables
+function getBackgroundColor(isDark: boolean): number {
+  // Match the app's bg-secondary which is used for sidebars/graph
+  // Dark: #101010, Light: #f0f0f6
+  return isDark ? 0x101010 : 0xf0f0f6;
+}
+
+// Default colors matching app theme
 const getDefaultSettings = (isDark: boolean): GraphSettings => ({
   searchTerm: '',
   existingFilesOnly: false,
   showOrphans: true,
-  // Obsidian uses grayscale - darker nodes on light bg, lighter on dark bg
+  // Grayscale nodes that match app theme
   nodeColor: isDark ? '#a0a0a0' : '#4a4a4a',
   connectedColor: isDark ? '#c0c0c0' : '#3a3a3a',
   edgeColor: isDark ? '#505050' : '#b0b0b0',
@@ -163,17 +170,22 @@ export function GraphView({
   const rendererRef = useRef<GraphRenderer | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const initDoneRef = useRef(false);
+  const prevThemeRef = useRef<Theme>(theme);
   
   const [showSettingsPanel, setShowSettingsPanel] = useState(true);
   const [simulating, setSimulating] = useState(false);
   const [alpha, setAlpha] = useState(0);
   const [graphData, setGraphData] = useState<GraphDataState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dataKey, setDataKey] = useState(0); // Force re-render on filter change
+  const [reinitCounter, setReinitCounter] = useState(0); // Force re-init on filter/theme change
   
   const isDark = theme === 'dark';
   const vaultHash = useMemo(() => getVaultHash(vaultPath || 'default'), [vaultPath]);
-  const settingsKey = `openobsidian-graph-settings-v6-${vaultHash}`;
+  
+  // Separate settings keys for dark and light themes
+  const settingsKeyDark = `openobsidian-graph-settings-v7-dark-${vaultHash}`;
+  const settingsKeyLight = `openobsidian-graph-settings-v7-light-${vaultHash}`;
+  const settingsKey = isDark ? settingsKeyDark : settingsKeyLight;
   const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
   
   const [settings, setSettings] = useState<GraphSettings>(() => {
@@ -184,7 +196,26 @@ export function GraphView({
     return getDefaultSettings(isDark);
   });
   
-  // Save settings
+  // Load settings when theme changes
+  useEffect(() => {
+    if (prevThemeRef.current !== theme) {
+      prevThemeRef.current = theme;
+      try {
+        const saved = localStorage.getItem(settingsKey);
+        if (saved) {
+          setSettings({ ...getDefaultSettings(isDark), ...JSON.parse(saved) });
+        } else {
+          setSettings(getDefaultSettings(isDark));
+        }
+      } catch {
+        setSettings(getDefaultSettings(isDark));
+      }
+      // Force re-init with new theme colors
+      setReinitCounter(c => c + 1);
+    }
+  }, [theme, isDark, settingsKey]);
+  
+  // Save settings whenever they change
   useEffect(() => {
     try {
       localStorage.setItem(settingsKey, JSON.stringify(settings));
@@ -302,8 +333,13 @@ export function GraphView({
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
     
-    // Obsidian colors: dark = #2d2d2d, light = #ffffff
-    const bgColor = isDark ? 0x2d2d2d : 0xffffff;
+    // Skip initialization if container has no size yet
+    if (rect.width < 10 || rect.height < 10) {
+      return;
+    }
+    
+    // Use app theme background colors
+    const bgColor = getBackgroundColor(isDark);
     
     const renderer = new GraphRenderer(canvas, {
       width: rect.width,
@@ -438,7 +474,7 @@ export function GraphView({
         rendererRef.current = null;
       }
     };
-  }, [filteredData.nodes.length, filteredData.edges.length, loading, isDark, dataKey]);
+  }, [filteredData.nodes.length, filteredData.edges.length, loading, isDark, reinitCounter]);
   
   // Update styles when visual settings change
   useEffect(() => {
@@ -593,7 +629,7 @@ export function GraphView({
                 checked={settings.existingFilesOnly}
                 onChange={(v) => {
                   setSettings(s => ({ ...s, existingFilesOnly: v }));
-                  setDataKey(k => k + 1);
+                  setReinitCounter(k => k + 1);
                 }}
                 info="Hide phantom (unresolved) links"
               />
@@ -602,7 +638,7 @@ export function GraphView({
                 checked={settings.showOrphans}
                 onChange={(v) => {
                   setSettings(s => ({ ...s, showOrphans: v }));
-                  setDataKey(k => k + 1);
+                  setReinitCounter(k => k + 1);
                 }}
                 info="Show notes with no links"
               />
