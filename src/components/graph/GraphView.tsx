@@ -1,827 +1,678 @@
 /**
- * Graph View - STATIC Knowledge Graph
- * No floating, no scattering. Positions are computed once then frozen.
- * Positions persist across sessions via localStorage.
+ * Graph View Component - WebGL-based with PixiJS
+ * Uses Web Worker for physics simulation and Canvas2D overlay for crisp labels
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import * as d3 from 'd3';
-import { Network, Maximize, Minimize, Settings, ChevronDown, ChevronRight, Search, X, RotateCcw, Info } from 'lucide-react';
-import { GraphData, GraphNode, GraphEdge, Theme } from '../../types';
+import { Network, Maximize, Minimize, Settings, X, RotateCcw, Target } from 'lucide-react';
+import { GraphNode, GraphEdge, Theme } from '../../types';
+import { GraphRenderer } from './GraphRenderer';
 import { getAPI } from '../../utils/api';
 
 const api = getAPI();
-const SETTINGS_KEY = 'openobsidian-graph-settings-v4';
-const POSITIONS_KEY = 'openobsidian-graph-positions-v1';
+
+// Get vault hash for localStorage keys
+function getVaultHash(path: string): string {
+  let hash = 0;
+  for (let i = 0; i < path.length; i++) {
+    const chr = path.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
 
 interface GraphSettings {
-  searchFilter: string;
-  showOrphans: boolean;
+  searchTerm: string;
   existingFilesOnly: boolean;
+  showOrphans: boolean;
   nodeColor: string;
+  connectedColor: string;
   edgeColor: string;
   nodeSize: number;
-  linkThickness: number;
-  showLabels: boolean;
+  linkWidth: number;
   textColor: string;
   textSize: number;
-  textThreshold: number;
+  showLabels: boolean;
+  labelThreshold: number;
   centerForce: number;
   repelForce: number;
   linkForce: number;
   linkDistance: number;
 }
 
-// Theme-specific default settings
 const getDefaultSettings = (isDark: boolean): GraphSettings => ({
-  searchFilter: '',
-  showOrphans: true,
+  searchTerm: '',
   existingFilesOnly: false,
+  showOrphans: true,
   nodeColor: isDark ? '#6ee7b7' : '#10b981',
+  connectedColor: '#fbbf24',
   edgeColor: isDark ? '#6ee7b7' : '#059669',
-  nodeSize: 3,
-  linkThickness: 0.8,
-  showLabels: true,
+  nodeSize: 5,
+  linkWidth: 1,
   textColor: isDark ? '#9ca3af' : '#4b5563',
-  textSize: 9,
-  textThreshold: 0,
-  centerForce: 30,
+  textSize: 11,
+  showLabels: true,
+  labelThreshold: 0.4,
+  centerForce: 10,
   repelForce: 100,
   linkForce: 50,
-  linkDistance: 60,
+  linkDistance: 100,
 });
 
-// Fallback for initial load
-const defaultSettings = getDefaultSettings(true);
-
-// Generate vault-specific storage key
-function getVaultKey(base: string, vaultPath: string | null | undefined): string {
-  if (!vaultPath) return base;
-  // Create a simple hash from vault path for the key
-  const hash = vaultPath.split('').reduce((acc, char) => {
-    return ((acc << 5) - acc) + char.charCodeAt(0);
-  }, 0).toString(36);
-  return `${base}-${hash}`;
-}
-
-function loadSettings(isDark: boolean, vaultPath: string | null | undefined): GraphSettings {
-  try {
-    const key = getVaultKey(SETTINGS_KEY, vaultPath);
-    const saved = localStorage.getItem(key);
-    return saved ? { ...getDefaultSettings(isDark), ...JSON.parse(saved) } : getDefaultSettings(isDark);
-  } catch { return getDefaultSettings(isDark); }
-}
-
-function saveSettings(s: GraphSettings, vaultPath: string | null | undefined) {
-  try {
-    const key = getVaultKey(SETTINGS_KEY, vaultPath);
-    localStorage.setItem(key, JSON.stringify(s));
-  } catch {}
-}
-
-// Position persistence
-function loadPositions(vaultPath: string | null | undefined): Map<string, {x: number, y: number}> {
-  try {
-    const key = getVaultKey(POSITIONS_KEY, vaultPath);
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      const arr = JSON.parse(saved) as Array<[string, {x: number, y: number}]>;
-      return new Map(arr);
-    }
-  } catch {}
-  return new Map();
-}
-
-function savePositions(positions: Map<string, {x: number, y: number}>, vaultPath: string | null | undefined) {
-  try {
-    const key = getVaultKey(POSITIONS_KEY, vaultPath);
-    const arr = Array.from(positions.entries());
-    localStorage.setItem(key, JSON.stringify(arr));
-  } catch {}
-}
-
-function clearPositions(vaultPath: string | null | undefined) {
-  try {
-    const key = getVaultKey(POSITIONS_KEY, vaultPath);
-    localStorage.removeItem(key);
-  } catch {}
+function hexToNumber(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16);
 }
 
 // UI Components
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <button className={`graph-toggle-switch ${checked ? 'active' : ''}`} onClick={() => onChange(!checked)} type="button">
-      <span className="graph-toggle-thumb" />
-    </button>
-  );
-}
-
-function Slider({ value, onChange, min, max, step = 1, label, info }: { 
-  value: number; onChange: (v: number) => void; min: number; max: number; step?: number; label: string; info?: string;
-}) {
-  return (
-    <div className="graph-setting-row">
-      <div className="graph-setting-label">
-        <span>{label}</span>
-        {info && <span className="graph-info-icon" title={info}><Info size={12} /></span>}
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} className="graph-slider-input" />
+    <div className="graph-section">
+      <button className="graph-section-header" onClick={() => setOpen(!open)}>
+        <span>{title}</span>
+        <span className="graph-section-arrow">{open ? '▼' : '▶'}</span>
+      </button>
+      {open && <div className="graph-section-content">{children}</div>}
     </div>
   );
 }
 
-function ColorPicker({ value, onChange, label, info }: { value: string; onChange: (v: string) => void; label: string; info?: string; }) {
+function Toggle({ label, checked, onChange, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; info?: string }) {
   return (
-    <div className="graph-setting-row">
-      <div className="graph-setting-label">
-        <span>{label}</span>
-        {info && <span className="graph-info-icon" title={info}><Info size={12} /></span>}
+    <label className="graph-toggle-row">
+      <span className="graph-toggle-label">
+        {label}
+        {info && <span className="graph-info-icon" title={info}>ℹ</span>}
+      </span>
+      <div className={`graph-toggle ${checked ? 'active' : ''}`} onClick={() => onChange(!checked)}>
+        <div className="graph-toggle-thumb" />
       </div>
-      <input type="color" value={value} onChange={e => onChange(e.target.value)} className="graph-color-input" />
+    </label>
+  );
+}
+
+function Slider({ label, value, onChange, min, max, step = 1, info }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; info?: string }) {
+  return (
+    <div className="graph-slider-row">
+      <label className="graph-slider-label">
+        {label}
+        {info && <span className="graph-info-icon" title={info}>ℹ</span>}
+      </label>
+      <div className="graph-slider-control">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="graph-slider"
+        />
+        <span className="graph-slider-value">{value}</span>
+      </div>
     </div>
   );
 }
 
-function ToggleRow({ checked, onChange, label, info }: { checked: boolean; onChange: (v: boolean) => void; label: string; info?: string; }) {
+function ColorPicker({ label, value, onChange, presets }: { label: string; value: string; onChange: (v: string) => void; presets?: string[] }) {
   return (
-    <div className="graph-setting-row">
-      <div className="graph-setting-label">
-        <span>{label}</span>
-        {info && <span className="graph-info-icon" title={info}><Info size={12} /></span>}
+    <div className="graph-color-row">
+      <label className="graph-color-label">{label}</label>
+      <div className="graph-color-control">
+        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="graph-color-input" />
+        {presets && (
+          <div className="graph-color-presets">
+            {presets.map((c) => (
+              <button key={c} className="graph-color-preset" style={{ backgroundColor: c }} onClick={() => onChange(c)} />
+            ))}
+          </div>
+        )}
       </div>
-      <Toggle checked={checked} onChange={onChange} />
     </div>
   );
 }
 
 interface GraphViewProps {
-  onNodeClick: (noteName: string) => void;
+  onNodeClick: (noteName: string, heading?: string) => void;
   onClose: () => void;
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
   theme?: Theme;
   vaultPath?: string | null;
-  localNodePath?: string | null;
+  localNodePath?: string;
 }
 
-export function GraphView({ 
-  onNodeClick, onClose, isFullScreen, onToggleFullScreen, 
-  theme = 'dark', vaultPath, localNodePath 
+interface GraphDataState {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export function GraphView({
+  onNodeClick,
+  onClose,
+  isFullScreen = false,
+  onToggleFullScreen,
+  theme = 'dark',
+  vaultPath,
+  localNodePath,
 }: GraphViewProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-  const transformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
-  const vaultPathRef = useRef(vaultPath);
-  const positionsRef = useRef<Map<string, {x: number, y: number}>>(loadPositions(vaultPath));
-  const initialFitDoneRef = useRef(positionsRef.current.size > 0);
-  const prevForceSettingsRef = useRef<string>('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<GraphRenderer | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  
+  const [showSettingsPanel, setShowSettingsPanel] = useState(true);
+  const [simulating, setSimulating] = useState(false);
+  const [alpha, setAlpha] = useState(0);
+  const [graphData, setGraphData] = useState<GraphDataState | null>(null);
+  const [loading, setLoading] = useState(true);
   
   const isDark = theme === 'dark';
+  const vaultHash = useMemo(() => getVaultHash(vaultPath || 'default'), [vaultPath]);
+  const settingsKey = `openobsidian-graph-settings-v5-${vaultHash}`;
+  const positionsKey = `openobsidian-graph-positions-v2-${vaultHash}`;
   
-  const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [isLocalView, setIsLocalView] = useState(!!localNodePath);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<GraphSettings>(() => loadSettings(isDark, vaultPath));
-  const [sections, setSections] = useState({ filters: true, display: false, text: false, forces: false });
-  const [layoutKey, setLayoutKey] = useState(0);
+  // Load settings from localStorage
+  const [settings, setSettings] = useState<GraphSettings>(() => {
+    try {
+      const saved = localStorage.getItem(settingsKey);
+      if (saved) return { ...getDefaultSettings(isDark), ...JSON.parse(saved) };
+    } catch {}
+    return getDefaultSettings(isDark);
+  });
   
-  // Update vaultPathRef when vaultPath changes
+  // Save settings
   useEffect(() => {
-    if (vaultPath !== vaultPathRef.current) {
-      vaultPathRef.current = vaultPath;
-      // Load settings and positions for new vault
-      setSettings(loadSettings(isDark, vaultPath));
-      positionsRef.current = loadPositions(vaultPath);
-      initialFitDoneRef.current = positionsRef.current.size > 0;
-      setLayoutKey(k => k + 1);
-    }
-  }, [vaultPath, isDark]);
+    try {
+      localStorage.setItem(settingsKey, JSON.stringify(settings));
+    } catch {}
+  }, [settings, settingsKey]);
   
-  const onNodeClickRef = useRef(onNodeClick);
-  useEffect(() => { onNodeClickRef.current = onNodeClick; }, [onNodeClick]);
-  useEffect(() => { saveSettings(settings, vaultPath); }, [settings, vaultPath]);
-
-  const updateSetting = useCallback(<K extends keyof GraphSettings>(key: K, value: GraphSettings[K]) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  }, []);
-
+  // Load graph data from API
   useEffect(() => {
-    setLoading(true);
-    api.getGraphData()
-      .then(data => setGraphData(data))
-      .catch(err => console.error('Failed to load graph:', err))
-      .finally(() => setLoading(false));
+    if (!vaultPath) return;
+    
+    const loadGraph = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getGraphData();
+        if (data) {
+          setGraphData(data);
+        }
+      } catch (err) {
+        console.error('Failed to load graph:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadGraph();
   }, [vaultPath]);
-
-  const adjacencyMap = useMemo(() => {
-    if (!graphData) return new Map<string, Set<string>>();
-    const map = new Map<string, Set<string>>();
-    graphData.edges.forEach(edge => {
-      const sid = typeof edge.source === 'string' ? edge.source : edge.source.id;
-      const tid = typeof edge.target === 'string' ? edge.target : edge.target.id;
-      if (!map.has(sid)) map.set(sid, new Set());
-      if (!map.has(tid)) map.set(tid, new Set());
-      map.get(sid)!.add(tid);
-      map.get(tid)!.add(sid);
+  
+  // Filter nodes based on settings
+  const filteredData = useMemo(() => {
+    if (!graphData) return { nodes: [], edges: [] };
+    
+    let nodes = [...graphData.nodes];
+    let edges = [...graphData.edges];
+    
+    // Search filter
+    if (settings.searchTerm) {
+      const term = settings.searchTerm.toLowerCase();
+      nodes = nodes.filter(n => n.name.toLowerCase().includes(term));
+    }
+    
+    // Create a set of valid node IDs
+    const nodeIds = new Set(nodes.map(n => n.id));
+    
+    // Filter edges to only include valid nodes
+    edges = edges.filter(e => {
+      const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
+      const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+      return nodeIds.has(sourceId) && nodeIds.has(targetId);
     });
-    return map;
-  }, [graphData]);
-
-  const { displayNodes, displayEdges } = useMemo(() => {
-    if (!graphData) return { displayNodes: [], displayEdges: [] };
     
-    let nodes = graphData.nodes.map(n => ({ ...n }));
-    let edges = graphData.edges.map(e => ({ ...e }));
+    // Build connected set
+    const connected = new Set<string>();
+    edges.forEach(e => {
+      const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
+      const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+      connected.add(sourceId);
+      connected.add(targetId);
+    });
     
-    if (settings.searchFilter.trim()) {
-      const search = settings.searchFilter.toLowerCase();
-      const matchIds = new Set(nodes.filter(n => n.name.toLowerCase().includes(search)).map(n => n.id));
-      nodes = nodes.filter(n => matchIds.has(n.id));
-      edges = edges.filter(e => {
-        const sid = typeof e.source === 'string' ? e.source : e.source.id;
-        const tid = typeof e.target === 'string' ? e.target : e.target.id;
-        return matchIds.has(sid) && matchIds.has(tid);
-      });
-    }
-    
-    if (settings.existingFilesOnly) {
-      const existIds = new Set(nodes.filter(n => n.path).map(n => n.id));
-      nodes = nodes.filter(n => existIds.has(n.id));
-      edges = edges.filter(e => {
-        const sid = typeof e.source === 'string' ? e.source : e.source.id;
-        const tid = typeof e.target === 'string' ? e.target : e.target.id;
-        return existIds.has(sid) && existIds.has(tid);
-      });
-    }
-    
+    // Filter orphans if needed
     if (!settings.showOrphans) {
-      const connected = new Set<string>();
-      edges.forEach(e => {
-        connected.add(typeof e.source === 'string' ? e.source : e.source.id);
-        connected.add(typeof e.target === 'string' ? e.target : e.target.id);
-      });
       nodes = nodes.filter(n => connected.has(n.id));
     }
     
-    if (isLocalView && localNodePath) {
-      const focalName = localNodePath.replace(/\.md$/, '').split('/').pop()!;
-      const focal = nodes.find(n => n.id === focalName || n.id === localNodePath || n.id === localNodePath.replace(/\.md$/, ''));
-      if (focal && adjacencyMap.has(focal.id)) {
-        const localIds = new Set([focal.id, ...adjacencyMap.get(focal.id)!]);
-        nodes = nodes.filter(n => localIds.has(n.id));
-        edges = edges.filter(e => {
-          const sid = typeof e.source === 'string' ? e.source : e.source.id;
-          const tid = typeof e.target === 'string' ? e.target : e.target.id;
-          return localIds.has(sid) && localIds.has(tid);
-        });
-      }
-    }
+    // Update connections count
+    const connectionCount = new Map<string, number>();
+    edges.forEach(e => {
+      const sourceId = typeof e.source === 'string' ? e.source : e.source.id;
+      const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+      connectionCount.set(sourceId, (connectionCount.get(sourceId) || 0) + 1);
+      connectionCount.set(targetId, (connectionCount.get(targetId) || 0) + 1);
+    });
     
-    return { displayNodes: nodes, displayEdges: edges };
-  }, [graphData, settings.searchFilter, settings.existingFilesOnly, settings.showOrphans, isLocalView, localNodePath, adjacencyMap]);
-
-  // Force settings key for tracking - but DON'T auto-relayout
-  // User must click "Recalculate Layout" to apply force changes to layout
-  const forceSettingsKey = `${settings.centerForce}-${settings.repelForce}-${settings.linkForce}-${settings.linkDistance}`;
-  
-  useEffect(() => {
-    prevForceSettingsRef.current = forceSettingsKey;
-  }, [forceSettingsKey]);
-
-  // MAIN RENDER - Compute layout ONCE, then render STATIC
-  useEffect(() => {
-    if (!svgRef.current || displayNodes.length === 0) return;
-
-    const svg = d3.select(svgRef.current);
-    const container = svgRef.current.parentElement!;
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    
-    svg.attr('width', width).attr('height', height);
-    svg.selectAll('*').remove();
-
-    const nodeColor = settings.nodeColor;
-    const phantomColor = isDark ? '#6b7280' : '#9ca3af';
-    const edgeColor = settings.edgeColor + (isDark ? '50' : '70');
-    const textColor = settings.textColor;
-    const selectedColor = '#22c55e';
-    const connectedColor = '#f59e0b';
-
-    const g = svg.append('g');
-
-    // Zoom - save transform on zoom, restore previous transform
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on('zoom', e => {
-        g.attr('transform', e.transform);
-        transformRef.current = e.transform;
-      });
-    zoomRef.current = zoom;
-    svg.call(zoom);
-    
-    // Restore previous transform immediately (no animation)
-    if (transformRef.current !== d3.zoomIdentity) {
-      svg.call(zoom.transform, transformRef.current);
-    }
-    
-    svg.on('click', e => { if (e.target === svgRef.current) setSelectedNode(null); });
-
-    const getRadius = (d: GraphNode) => {
-      const base = settings.nodeSize;
-      const connBonus = Math.min(Math.log2((d.connections || 0) + 1), 3);
-      return Math.max(2, Math.min(base + connBonus, 10));
-    };
-
-    // Check if we have cached positions
-    const needsLayout = displayNodes.some(n => !positionsRef.current.has(n.id));
-    let didLayout = false;
-
-    if (needsLayout) {
-      didLayout = true;
-      // COMPUTE LAYOUT using hierarchical radial algorithm
-      const simNodes = displayNodes.map(n => ({ ...n }));
-      const simEdges = displayEdges.map(e => ({ ...e }));
-      
-      // Build adjacency for layout
-      const adjMap = new Map<string, Set<string>>();
-      simEdges.forEach(e => {
-        const sid = typeof e.source === 'string' ? e.source : e.source.id;
-        const tid = typeof e.target === 'string' ? e.target : e.target.id;
-        if (!adjMap.has(sid)) adjMap.set(sid, new Set());
-        if (!adjMap.has(tid)) adjMap.set(tid, new Set());
-        adjMap.get(sid)!.add(tid);
-        adjMap.get(tid)!.add(sid);
-      });
-      
-      // Calculate connection counts
-      const connectionCounts = new Map<string, number>();
-      simNodes.forEach(n => {
-        connectionCounts.set(n.id, adjMap.get(n.id)?.size || 0);
-      });
-      
-      // Sort nodes by connection count (hubs first)
-      const sortedNodes = [...simNodes].sort((a, b) => 
-        (connectionCounts.get(b.id) || 0) - (connectionCounts.get(a.id) || 0)
-      );
-      
-      // Find connected components
-      const visited = new Set<string>();
-      const components: string[][] = [];
-      
-      const bfs = (startId: string): string[] => {
-        const component: string[] = [];
-        const queue = [startId];
-        visited.add(startId);
-        while (queue.length > 0) {
-          const current = queue.shift()!;
-          component.push(current);
-          const neighbors = adjMap.get(current) || new Set();
-          neighbors.forEach(neighbor => {
-            if (!visited.has(neighbor)) {
-              visited.add(neighbor);
-              queue.push(neighbor);
-            }
-          });
-        }
-        return component;
-      };
-      
-      sortedNodes.forEach(n => {
-        if (!visited.has(n.id)) {
-          const component = bfs(n.id);
-          components.push(component);
-        }
-      });
-      
-      // Sort components by size (largest first)
-      components.sort((a, b) => b.length - a.length);
-      
-      // Position nodes using radial layout per component
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const nodePositions = new Map<string, {x: number, y: number}>();
-      
-      // Calculate total nodes for spacing
-      const totalNodes = simNodes.length;
-      const baseRadius = Math.min(width, height) * 0.35;
-      
-      // Position each component
-      let componentAngleOffset = 0;
-      const componentAngleStep = components.length > 1 ? (2 * Math.PI) / components.length : 0;
-      
-      components.forEach((component, compIdx) => {
-        // Find hub node (most connected in this component)
-        let hubId = component[0];
-        let maxConn = 0;
-        component.forEach(id => {
-          const conn = connectionCounts.get(id) || 0;
-          if (conn > maxConn) {
-            maxConn = conn;
-            hubId = id;
-          }
-        });
-        
-        // Calculate component center offset for multiple components
-        const compCenterX = components.length > 1
-          ? centerX + Math.cos(componentAngleOffset) * baseRadius * 0.6
-          : centerX;
-        const compCenterY = components.length > 1
-          ? centerY + Math.sin(componentAngleOffset) * baseRadius * 0.6
-          : centerY;
-        
-        // BFS from hub to assign layers
-        const layers = new Map<string, number>();
-        const layerNodes: string[][] = [];
-        const bfsQueue = [hubId];
-        layers.set(hubId, 0);
-        
-        while (bfsQueue.length > 0) {
-          const current = bfsQueue.shift()!;
-          const currentLayer = layers.get(current)!;
-          
-          if (!layerNodes[currentLayer]) layerNodes[currentLayer] = [];
-          layerNodes[currentLayer].push(current);
-          
-          const neighbors = adjMap.get(current) || new Set();
-          neighbors.forEach(neighbor => {
-            if (!layers.has(neighbor) && component.includes(neighbor)) {
-              layers.set(neighbor, currentLayer + 1);
-              bfsQueue.push(neighbor);
-            }
-          });
-        }
-        
-        // Also add orphans from this component
-        component.forEach(id => {
-          if (!layers.has(id)) {
-            const outerLayer = layerNodes.length;
-            layers.set(id, outerLayer);
-            if (!layerNodes[outerLayer]) layerNodes[outerLayer] = [];
-            layerNodes[outerLayer].push(id);
-          }
-        });
-        
-        // Calculate radius per layer based on component size
-        const compSize = component.length;
-        const maxLayer = layerNodes.length;
-        const layerRadiusStep = Math.max(40, Math.min(80, baseRadius / (maxLayer + 1)));
-        
-        // Position nodes in concentric circles
-        layerNodes.forEach((nodesInLayer, layerIdx) => {
-          if (layerIdx === 0) {
-            // Hub at center
-            nodesInLayer.forEach(id => {
-              nodePositions.set(id, { x: compCenterX, y: compCenterY });
-            });
-          } else {
-            const layerRadius = layerIdx * layerRadiusStep;
-            const angleStep = (2 * Math.PI) / nodesInLayer.length;
-            const startAngle = Math.random() * Math.PI * 0.5; // Slight randomness
-            
-            nodesInLayer.forEach((id, idx) => {
-              const angle = startAngle + idx * angleStep;
-              nodePositions.set(id, {
-                x: compCenterX + Math.cos(angle) * layerRadius,
-                y: compCenterY + Math.sin(angle) * layerRadius
-              });
-            });
-          }
-        });
-        
-        componentAngleOffset += componentAngleStep;
-      });
-      
-      // Apply initial positions
-      simNodes.forEach(node => {
-        const pos = nodePositions.get(node.id);
-        if (pos) {
-          node.x = pos.x;
-          node.y = pos.y;
-        } else {
-          // Fallback for any missed nodes
-          node.x = centerX + (Math.random() - 0.5) * 100;
-          node.y = centerY + (Math.random() - 0.5) * 100;
-        }
-      });
-
-      // Run a SHORT force simulation to refine positions (but not scramble them)
-      const simulation = d3.forceSimulation<GraphNode>(simNodes)
-        .force('link', d3.forceLink<GraphNode, GraphEdge>(simEdges)
-          .id(d => d.id)
-          .distance(settings.linkDistance)
-          .strength(0.3)) // Gentler link force to preserve structure
-        .force('charge', d3.forceManyBody()
-          .strength(-settings.repelForce * 0.5) // Gentler repulsion
-          .distanceMax(200))
-        .force('center', d3.forceCenter(centerX, centerY)
-          .strength(0.05)) // Weak center force
-        .force('collision', d3.forceCollide().radius(d => getRadius(d as GraphNode) + 8))
-        .stop();
-
-      // Only run a few ticks to refine, not scramble
-      for (let i = 0; i < 100; i++) {
-        simulation.tick();
-      }
-
-      // Save positions to ref and localStorage
-      simNodes.forEach(node => {
-        if (node.x !== undefined && node.y !== undefined) {
-          positionsRef.current.set(node.id, { x: node.x, y: node.y });
-          const original = displayNodes.find(n => n.id === node.id);
-          if (original) {
-            original.x = node.x;
-            original.y = node.y;
-          }
-        }
-      });
-      // Persist to localStorage (vault-specific)
-      savePositions(positionsRef.current, vaultPath);
-    } else {
-      // Use cached positions
-      displayNodes.forEach(node => {
-        const cached = positionsRef.current.get(node.id);
-        if (cached) {
-          node.x = cached.x;
-          node.y = cached.y;
-        }
-      });
-    }
-
-    // Now render STATIC graph
-    const nodeMap = new Map(displayNodes.map(n => [n.id, n]));
-    
-    // Links
-    const linkGroup = g.append('g').attr('class', 'links');
-    linkGroup.selectAll('line')
-      .data(displayEdges)
-      .enter()
-      .append('line')
-      .attr('x1', d => {
-        const src = typeof d.source === 'string' ? nodeMap.get(d.source) : d.source;
-        return src?.x || 0;
-      })
-      .attr('y1', d => {
-        const src = typeof d.source === 'string' ? nodeMap.get(d.source) : d.source;
-        return src?.y || 0;
-      })
-      .attr('x2', d => {
-        const tgt = typeof d.target === 'string' ? nodeMap.get(d.target) : d.target;
-        return tgt?.x || 0;
-      })
-      .attr('y2', d => {
-        const tgt = typeof d.target === 'string' ? nodeMap.get(d.target) : d.target;
-        return tgt?.y || 0;
-      })
-      .attr('stroke', edgeColor)
-      .attr('stroke-width', settings.linkThickness);
-
-    // Nodes
-    const nodeGroup = g.append('g').attr('class', 'nodes');
-    const isConnected = (id: string) => selectedNode === id || adjacencyMap.get(selectedNode || '')?.has(id);
-
-    const nodes = nodeGroup.selectAll('g')
-      .data(displayNodes)
-      .enter()
-      .append('g')
-      .attr('class', 'node')
-      .attr('transform', d => `translate(${d.x},${d.y})`);
-
-    nodes.append('circle')
-      .attr('r', getRadius)
-      .attr('fill', d => {
-        if (selectedNode === d.id) return selectedColor;
-        if (selectedNode && isConnected(d.id)) return connectedColor;
-        return d.path ? nodeColor : phantomColor;
-      })
-      .attr('stroke', isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', d => d.path ? 'none' : '2 1')
-      .style('opacity', d => selectedNode && !isConnected(d.id) ? 0.3 : 1)
-      .style('cursor', 'pointer')
-      .on('click', (e, d) => {
-        e.stopPropagation();
-        setSelectedNode(prev => prev === d.id ? null : d.id);
-        onNodeClickRef.current(d.name);
-      });
-
-    // Labels
-    if (settings.showLabels) {
-      nodes.filter(d => (d.connections || 0) >= settings.textThreshold)
-        .append('text')
-        .text(d => d.name)
-        .attr('dy', d => getRadius(d) + settings.textSize + 2)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', `${settings.textSize}px`)
-        .attr('fill', textColor)
-        .style('pointer-events', 'none')
-        .style('opacity', d => selectedNode && !isConnected(d.id) ? 0.2 : 0.8);
-    }
-
-    // DRAG - moves node directly, NO simulation
-    const drag = d3.drag<SVGGElement, GraphNode>()
-      .on('drag', function(event, d) {
-        d.x = event.x;
-        d.y = event.y;
-        d3.select(this).attr('transform', `translate(${event.x},${event.y})`);
-        
-        // Update connected links
-        linkGroup.selectAll('line')
-          .attr('x1', (l: any) => {
-            const src = typeof l.source === 'string' ? nodeMap.get(l.source) : l.source;
-            return src?.x || 0;
-          })
-          .attr('y1', (l: any) => {
-            const src = typeof l.source === 'string' ? nodeMap.get(l.source) : l.source;
-            return src?.y || 0;
-          })
-          .attr('x2', (l: any) => {
-            const tgt = typeof l.target === 'string' ? nodeMap.get(l.target) : l.target;
-            return tgt?.x || 0;
-          })
-          .attr('y2', (l: any) => {
-            const tgt = typeof l.target === 'string' ? nodeMap.get(l.target) : l.target;
-            return tgt?.y || 0;
-          });
-      })
-      .on('end', function(_, d) {
-        positionsRef.current.set(d.id, { x: d.x!, y: d.y! });
-        // Persist after manual drag (vault-specific)
-        savePositions(positionsRef.current, vaultPath);
-      });
-    
-    nodes.call(drag as any);
-
-    // Fit to view ONLY on initial layout or after recalculate
-    if (didLayout || !initialFitDoneRef.current) {
-      setTimeout(() => {
-        const bounds = g.node()?.getBBox();
-        if (bounds && bounds.width > 0) {
-          const padding = 80;
-          const scale = Math.min(0.9, Math.min(
-            (width - padding) / bounds.width,
-            (height - padding) / bounds.height
-          ));
-          const tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
-          const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
-          svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-          initialFitDoneRef.current = true;
-        }
-      }, 50);
-    }
-
-  }, [displayNodes, displayEdges, isDark, selectedNode, settings, adjacencyMap, layoutKey, vaultPath]);
-
-  const handleZoom = (factor: number) => {
-    if (svgRef.current && zoomRef.current) {
-      d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy, factor);
-    }
-  };
-
-  // Reset only visual settings, preserve force settings and layout
-  const handleReset = () => {
-    const defaults = getDefaultSettings(isDark);
-    setSettings(prev => ({
-      ...prev,
-      // Reset visual settings only
-      nodeColor: defaults.nodeColor,
-      edgeColor: defaults.edgeColor,
-      textColor: defaults.textColor,
-      nodeSize: defaults.nodeSize,
-      linkThickness: defaults.linkThickness,
-      textSize: defaults.textSize,
-      textThreshold: defaults.textThreshold,
-      showLabels: defaults.showLabels,
-      // Keep force settings as-is to avoid relayout
-      // centerForce, repelForce, linkForce, linkDistance stay the same
+    nodes = nodes.map(n => ({
+      ...n,
+      connections: connectionCount.get(n.id) || 0,
     }));
-  };
+    
+    // Normalize edges to just source/target strings
+    const normalizedEdges = edges.map(e => ({
+      source: typeof e.source === 'string' ? e.source : e.source.id,
+      target: typeof e.target === 'string' ? e.target : e.target.id,
+    }));
+    
+    return { nodes, edges: normalizedEdges };
+  }, [graphData, settings.searchTerm, settings.showOrphans]);
   
-  // Full reset including forces (triggers relayout)
-  const handleFullReset = () => {
-    const defaults = getDefaultSettings(isDark);
-    positionsRef.current.clear();
-    clearPositions(vaultPath);
-    initialFitDoneRef.current = false;
-    transformRef.current = d3.zoomIdentity;
-    setSettings(defaults);
-    setLayoutKey(k => k + 1);
-  };
+  // Initialize renderer and worker
+  useEffect(() => {
+    if (!canvasRef.current || !containerRef.current || loading || filteredData.nodes.length === 0) return;
+    
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    
+    // Create renderer
+    const renderer = new GraphRenderer(canvas, {
+      width: rect.width,
+      height: rect.height,
+      backgroundColor: isDark ? 0x111827 : 0xffffff,
+    });
+    rendererRef.current = renderer;
+    
+    // Create worker
+    const worker = new Worker(
+      new URL('./graphWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    workerRef.current = worker;
+    
+    // Worker message handler
+    worker.onmessage = (e) => {
+      const { type, ids, positions, alpha: a } = e.data;
+      
+      if (type === 'tick' && renderer.isInitialized()) {
+        const posArray = new Float32Array(positions);
+        renderer.updatePositionsFromArray(ids, posArray);
+        setAlpha(a);
+      } else if (type === 'end') {
+        setSimulating(false);
+        setAlpha(0);
+        // Save positions
+        try {
+          const allPositions = renderer.getAllPositions();
+          const posObj: Record<string, { x: number; y: number }> = {};
+          allPositions.forEach((pos, id) => { posObj[id] = pos; });
+          localStorage.setItem(positionsKey, JSON.stringify(posObj));
+        } catch {}
+      }
+    };
+    
+    // Initialize renderer async
+    renderer.init().then(() => {
+      renderer.setCallbacks({
+        onNodeClick: (nodeId) => {
+          const node = filteredData.nodes.find(n => n.id === nodeId);
+          if (node) {
+            onNodeClick(node.name);
+          }
+        },
+        onNodeDrag: (nodeId, x, y, active) => {
+          worker.postMessage({ type: 'drag', data: { id: nodeId, x, y, active } });
+        },
+      });
+      
+      // Set initial styles
+      renderer.setNodeStyle({
+        color: hexToNumber(settings.nodeColor),
+        size: settings.nodeSize,
+        connectedColor: hexToNumber(settings.connectedColor),
+      });
+      renderer.setEdgeStyle({
+        color: hexToNumber(settings.edgeColor),
+        width: settings.linkWidth,
+      });
+      renderer.setLabelStyle({
+        color: settings.textColor,
+        size: settings.textSize,
+        show: settings.showLabels,
+        threshold: settings.labelThreshold,
+      });
+      
+      // Load saved positions or initialize
+      let savedPositions: Record<string, { x: number; y: number }> | null = null;
+      try {
+        const saved = localStorage.getItem(positionsKey);
+        if (saved) savedPositions = JSON.parse(saved);
+      } catch {}
+      
+      // Apply saved positions to nodes
+      const nodesWithPositions = filteredData.nodes.map(n => {
+        if (savedPositions && savedPositions[n.id]) {
+          return { ...n, ...savedPositions[n.id] };
+        }
+        return {
+          ...n,
+          x: (Math.random() - 0.5) * 500,
+          y: (Math.random() - 0.5) * 500,
+        };
+      });
+      
+      renderer.setData(nodesWithPositions, filteredData.edges);
+      
+      // Initialize worker
+      worker.postMessage({
+        type: 'init',
+        data: {
+          nodes: nodesWithPositions.map(n => ({
+            id: n.id,
+            x: n.x,
+            y: n.y,
+            connections: filteredData.edges.filter(e => e.source === n.id || e.target === n.id).length,
+          })),
+          edges: filteredData.edges.map(e => ({ source: e.source, target: e.target })),
+          forces: {
+            centerStrength: settings.centerForce / 100,
+            repelStrength: settings.repelForce * 10,
+            linkStrength: settings.linkForce / 50,
+            linkDistance: settings.linkDistance * 2.5,
+            collisionRadius: 60,
+          },
+        },
+      });
+      
+      // Start simulation if no saved positions
+      if (!savedPositions || Object.keys(savedPositions).length === 0) {
+        setSimulating(true);
+        worker.postMessage({ type: 'start' });
+      } else {
+        renderer.centerView();
+      }
+    }).catch(console.error);
+    
+    // Resize handler
+    const handleResize = () => {
+      const rect = container.getBoundingClientRect();
+      renderer.resize(rect.width, rect.height);
+    };
+    
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
+    
+    return () => {
+      resizeObserver.disconnect();
+      worker.terminate();
+      renderer.destroy();
+    };
+  }, [filteredData.nodes.length, filteredData.edges.length, loading, isDark]);
   
-  const handleResetLayout = () => {
-    positionsRef.current.clear();
-    clearPositions(vaultPath);
-    initialFitDoneRef.current = false;
-    transformRef.current = d3.zoomIdentity;
-    setLayoutKey(k => k + 1);
-  };
+  // Update styles when settings change
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !renderer.isInitialized()) return;
+    
+    renderer.setNodeStyle({
+      color: hexToNumber(settings.nodeColor),
+      size: settings.nodeSize,
+      connectedColor: hexToNumber(settings.connectedColor),
+    });
+    renderer.setEdgeStyle({
+      color: hexToNumber(settings.edgeColor),
+      width: settings.linkWidth,
+    });
+    renderer.setLabelStyle({
+      color: settings.textColor,
+      size: settings.textSize,
+      show: settings.showLabels,
+      threshold: settings.labelThreshold,
+    });
+  }, [settings.nodeColor, settings.connectedColor, settings.edgeColor, settings.nodeSize, settings.linkWidth, settings.textColor, settings.textSize, settings.showLabels, settings.labelThreshold]);
+  
+  // Update forces and reheat when force settings change
+  const updateForces = useCallback(() => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    
+    worker.postMessage({
+      type: 'forces',
+      data: {
+        centerStrength: settings.centerForce / 100,
+        repelStrength: settings.repelForce * 10,
+        linkStrength: settings.linkForce / 50,
+        linkDistance: settings.linkDistance * 2.5,
+      },
+    });
+  }, [settings.centerForce, settings.repelForce, settings.linkForce, settings.linkDistance]);
+  
+  const recalculateLayout = useCallback(() => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    
+    updateForces();
+    setSimulating(true);
+    worker.postMessage({ type: 'reheat' });
+  }, [updateForces]);
+  
+  const resetSettings = useCallback(() => {
+    setSettings(getDefaultSettings(isDark));
+  }, [isDark]);
+  
+  const centerView = useCallback(() => {
+    rendererRef.current?.centerView();
+  }, []);
 
-  const Section = ({ title, id, children }: { title: string; id: keyof typeof sections; children: React.ReactNode }) => (
-    <div className="graph-section">
-      <button className="graph-section-header" onClick={() => setSections(p => ({ ...p, [id]: !p[id] }))}>
-        {sections[id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span>{title}</span>
-      </button>
-      {sections[id] && <div className="graph-section-content">{children}</div>}
-    </div>
-  );
-
-  return (
-    <>
-      <div className="graph-header">
-        <h2><Network size={18} style={{ opacity: 0.6 }} /> {isLocalView ? 'Local Graph' : 'Graph View'}</h2>
-        <div className="graph-header-actions">
-          {localNodePath && (
-            <button className={`graph-view-toggle ${isLocalView ? 'local' : ''}`} onClick={() => setIsLocalView(v => !v)}>
-              {isLocalView ? '🌐 Global' : '📍 Local'}
+  if (loading) {
+    return (
+      <div className="graph-view-container">
+        <div className="graph-header">
+          <div className="graph-header-left">
+            <Network size={16} />
+            <span className="graph-title">Graph View</span>
+          </div>
+          <div className="graph-header-right">
+            <button className="graph-btn" onClick={onClose}>
+              <X size={14} />
             </button>
-          )}
-          <span className="graph-stats">{displayNodes.length} nodes</span>
-          <button className={`btn-icon ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(v => !v)} title="Settings">
-            <Settings size={16} />
-          </button>
-          {onToggleFullScreen && (
-            <button className="btn-icon" onClick={onToggleFullScreen} title="Fullscreen">
-              {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
-            </button>
-          )}
-          <button className="btn-icon" onClick={onClose} title="Close">✕</button>
+          </div>
+        </div>
+        <div className="graph-loading">
+          <div className="loading-spinner" />
+          <span>Loading graph...</span>
         </div>
       </div>
+    );
+  }
 
-      <div className="graph-body">
-        {showSettings && (
-          <div className="graph-settings">
-            <div className="graph-settings-header">
-              <span className="graph-settings-title">Settings</span>
-              <button className="graph-settings-reset" onClick={handleReset} title="Reset to defaults">
-                <RotateCcw size={14} />
-              </button>
-              <button className="graph-settings-close" onClick={() => setShowSettings(false)}>
-                <X size={14} />
-              </button>
+  return (
+    <div className={`graph-view-container ${isFullScreen ? 'fullscreen' : ''}`}>
+      {/* Header */}
+      <div className="graph-header">
+        <div className="graph-header-left">
+          <Network size={16} />
+          <span className="graph-title">Graph View</span>
+          <span className="graph-node-count">{filteredData.nodes.length} nodes</span>
+        </div>
+        <div className="graph-header-right">
+          {simulating && (
+            <div className="graph-sim-indicator">
+              <div className="graph-sim-spinner" />
+              <span>{Math.round(alpha * 100)}%</span>
             </div>
-
-            <Section title="Filters" id="filters">
-              <div className="graph-search">
-                <Search size={14} />
-                <input type="text" placeholder="Search files..." value={settings.searchFilter} onChange={e => updateSetting('searchFilter', e.target.value)} />
-                {settings.searchFilter && <button onClick={() => updateSetting('searchFilter', '')}><X size={12} /></button>}
+          )}
+          <button className="graph-btn" onClick={centerView} title="Center view">
+            <Target size={14} />
+          </button>
+          <button className="graph-btn" onClick={recalculateLayout} title="Recalculate layout">
+            <RotateCcw size={14} />
+          </button>
+          <button className="graph-btn" onClick={() => setShowSettingsPanel(!showSettingsPanel)} title="Settings">
+            <Settings size={14} />
+          </button>
+          {onToggleFullScreen && (
+            <button className="graph-btn" onClick={onToggleFullScreen} title={isFullScreen ? 'Exit fullscreen' : 'Fullscreen'}>
+              {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+          )}
+          <button className="graph-btn" onClick={onClose} title="Close">
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+      
+      {/* Main content */}
+      <div className="graph-main">
+        {/* Canvas area */}
+        <div ref={containerRef} className="graph-canvas-container">
+          <canvas ref={canvasRef} />
+        </div>
+        
+        {/* Settings panel */}
+        {showSettingsPanel && (
+          <div className="graph-settings-panel">
+            <Section title="Filters">
+              <div className="graph-search-row">
+                <input
+                  type="text"
+                  placeholder="Search nodes..."
+                  value={settings.searchTerm}
+                  onChange={(e) => setSettings(s => ({ ...s, searchTerm: e.target.value }))}
+                  className="graph-search-input"
+                />
               </div>
-              <ToggleRow label="Existing files only" checked={settings.existingFilesOnly} onChange={v => updateSetting('existingFilesOnly', v)} info="Only show notes that exist as files" />
-              <ToggleRow label="Show orphans" checked={settings.showOrphans} onChange={v => updateSetting('showOrphans', v)} info="Show notes with no connections" />
-            </Section>
-
-            <Section title="Display" id="display">
-              <ColorPicker label="Node color" value={settings.nodeColor} onChange={v => updateSetting('nodeColor', v)} info="Color of note nodes" />
-              <ColorPicker label="Edge color" value={settings.edgeColor} onChange={v => updateSetting('edgeColor', v)} info="Color of connection lines" />
-              <Slider label="Node size" value={settings.nodeSize} min={1} max={8} onChange={v => updateSetting('nodeSize', v)} info="Base size of nodes" />
-              <Slider label="Link thickness" value={settings.linkThickness} min={0.3} max={3} step={0.1} onChange={v => updateSetting('linkThickness', v)} info="Thickness of lines" />
-            </Section>
-
-            <Section title="Text" id="text">
-              <ToggleRow label="Show labels" checked={settings.showLabels} onChange={v => updateSetting('showLabels', v)} info="Display note names" />
-              <ColorPicker label="Text color" value={settings.textColor} onChange={v => updateSetting('textColor', v)} info="Color of labels" />
-              <Slider label="Text size" value={settings.textSize} min={6} max={14} onChange={v => updateSetting('textSize', v)} info="Font size in pixels" />
-              <Slider label="Show labels above" value={settings.textThreshold} min={0} max={10} onChange={v => updateSetting('textThreshold', v)} info="Min connections to show label" />
-            </Section>
-
-            <Section title="Forces" id="forces">
-              <p className="graph-forces-note">Adjust forces then click Recalculate to apply</p>
-              <Slider label="Center force" value={settings.centerForce} min={0} max={100} onChange={v => updateSetting('centerForce', v)} info="Pull toward center" />
-              <Slider label="Repel force" value={settings.repelForce} min={0} max={200} onChange={v => updateSetting('repelForce', v)} info="Push nodes apart" />
-              <Slider label="Link force" value={settings.linkForce} min={0} max={100} onChange={v => updateSetting('linkForce', v)} info="Pull connected nodes together" />
-              <Slider label="Link distance" value={settings.linkDistance} min={20} max={150} onChange={v => updateSetting('linkDistance', v)} info="Target distance between nodes" />
-              <button className="graph-relayout-btn" onClick={handleResetLayout}>
-                <RotateCcw size={12} /> Recalculate Layout
-              </button>
+              <Toggle
+                label="Existing files only"
+                checked={settings.existingFilesOnly}
+                onChange={(v) => setSettings(s => ({ ...s, existingFilesOnly: v }))}
+                info="Hide phantom (unresolved) links"
+              />
+              <Toggle
+                label="Show orphans"
+                checked={settings.showOrphans}
+                onChange={(v) => setSettings(s => ({ ...s, showOrphans: v }))}
+                info="Show notes with no links"
+              />
             </Section>
             
-            <div className="graph-reset-all">
-              <button className="graph-reset-all-btn" onClick={handleFullReset}>
-                Reset All to Defaults
+            <Section title="Display" defaultOpen={false}>
+              <ColorPicker
+                label="Node color"
+                value={settings.nodeColor}
+                onChange={(v) => setSettings(s => ({ ...s, nodeColor: v }))}
+                presets={['#6ee7b7', '#60a5fa', '#f472b6', '#facc15', '#a78bfa']}
+              />
+              <ColorPicker
+                label="Connected"
+                value={settings.connectedColor}
+                onChange={(v) => setSettings(s => ({ ...s, connectedColor: v }))}
+                presets={['#fbbf24', '#fb923c', '#f87171', '#4ade80', '#38bdf8']}
+              />
+              <ColorPicker
+                label="Edge color"
+                value={settings.edgeColor}
+                onChange={(v) => setSettings(s => ({ ...s, edgeColor: v }))}
+                presets={['#6ee7b7', '#6b7280', '#4b5563', '#9ca3af', '#d1d5db']}
+              />
+              <Slider
+                label="Node size"
+                value={settings.nodeSize}
+                onChange={(v) => setSettings(s => ({ ...s, nodeSize: v }))}
+                min={2}
+                max={15}
+              />
+              <Slider
+                label="Link width"
+                value={settings.linkWidth}
+                onChange={(v) => setSettings(s => ({ ...s, linkWidth: v }))}
+                min={0.5}
+                max={5}
+                step={0.5}
+              />
+            </Section>
+            
+            <Section title="Text" defaultOpen={false}>
+              <Toggle
+                label="Show labels"
+                checked={settings.showLabels}
+                onChange={(v) => setSettings(s => ({ ...s, showLabels: v }))}
+              />
+              <ColorPicker
+                label="Text color"
+                value={settings.textColor}
+                onChange={(v) => setSettings(s => ({ ...s, textColor: v }))}
+                presets={['#9ca3af', '#d1d5db', '#f3f4f6', '#6b7280', '#ffffff']}
+              />
+              <Slider
+                label="Text size"
+                value={settings.textSize}
+                onChange={(v) => setSettings(s => ({ ...s, textSize: v }))}
+                min={8}
+                max={18}
+              />
+              <Slider
+                label="Show at zoom"
+                value={settings.labelThreshold}
+                onChange={(v) => setSettings(s => ({ ...s, labelThreshold: v }))}
+                min={0.1}
+                max={1}
+                step={0.1}
+                info="Labels appear above this zoom level"
+              />
+            </Section>
+            
+            <Section title="Forces" defaultOpen={false}>
+              <Slider
+                label="Center force"
+                value={settings.centerForce}
+                onChange={(v) => setSettings(s => ({ ...s, centerForce: v }))}
+                min={0}
+                max={50}
+                info="Pulls nodes toward center"
+              />
+              <Slider
+                label="Repel force"
+                value={settings.repelForce}
+                onChange={(v) => setSettings(s => ({ ...s, repelForce: v }))}
+                min={10}
+                max={200}
+                info="Pushes nodes apart"
+              />
+              <Slider
+                label="Link force"
+                value={settings.linkForce}
+                onChange={(v) => setSettings(s => ({ ...s, linkForce: v }))}
+                min={0}
+                max={100}
+                info="Link spring strength"
+              />
+              <Slider
+                label="Link distance"
+                value={settings.linkDistance}
+                onChange={(v) => setSettings(s => ({ ...s, linkDistance: v }))}
+                min={20}
+                max={200}
+                info="Target distance between linked nodes"
+              />
+            </Section>
+            
+            <div className="graph-settings-actions">
+              <button className="graph-btn-secondary" onClick={resetSettings}>
+                Reset All
+              </button>
+              <button className="graph-btn-primary" onClick={recalculateLayout}>
+                Recalculate
               </button>
             </div>
           </div>
         )}
-
-        <div className="graph-canvas">
-          {loading ? (
-            <div className="graph-empty"><div className="loading-spinner" /><span>Loading...</span></div>
-          ) : displayNodes.length === 0 ? (
-            <div className="graph-empty"><Network size={48} strokeWidth={1} style={{ opacity: 0.3 }} /><span>No notes</span></div>
-          ) : (
-            <>
-              <svg ref={svgRef} />
-              <div className="graph-zoom-controls">
-                <button onClick={() => handleZoom(1.3)}>+</button>
-                <button onClick={() => handleZoom(0.7)}>−</button>
-              </div>
-            </>
-          )}
-        </div>
       </div>
-    </>
+    </div>
   );
 }
+
+export default GraphView;
