@@ -1318,6 +1318,8 @@ blockquote:has(.callout) {
   pointer-events: none;
   text-anchor: middle;
   dominant-baseline: central;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .graph-link {
@@ -2122,6 +2124,8 @@ blockquote:has(.callout) {
   height: 100%;
   background: var(--bg-primary);
   position: relative;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .graph-view-container.fullscreen {
