@@ -87,7 +87,7 @@ export default function App() {
     e.preventDefault();
     document.addEventListener('mousemove', handlePaneDrag);
     document.addEventListener('mouseup', stopPaneDrag);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = 'ew-resize';
   }, [handlePaneDrag, stopPaneDrag]);
 
   // Sidebar drag resizer
@@ -108,7 +108,7 @@ export default function App() {
     e.preventDefault();
     document.addEventListener('mousemove', handleSidebarDrag);
     document.addEventListener('mouseup', stopSidebarDrag);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = 'ew-resize';
   }, [handleSidebarDrag, stopSidebarDrag]);
 
   // Thought Model panel drag resizer
@@ -130,7 +130,7 @@ export default function App() {
     e.preventDefault();
     document.addEventListener('mousemove', handleThoughtModelDrag);
     document.addEventListener('mouseup', stopThoughtModelDrag);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = 'ew-resize';
   }, [handleThoughtModelDrag, stopThoughtModelDrag]);
 
   // ── File & Editor State ─────────────────────────────
@@ -682,7 +682,7 @@ export default function App() {
           <div
             className="resizer"
             onMouseDown={startSidebarDrag}
-            style={{ width: '4px', cursor: 'col-resize', zIndex: 100 }}
+            style={{ zIndex: 100 }}
           />
         )}
 
@@ -737,7 +737,6 @@ export default function App() {
                 <div
                   className="resizer"
                   onMouseDown={startPaneDrag}
-                  style={{ width: '4px', cursor: 'col-resize' }}
                 />
               )}
               
@@ -771,7 +770,7 @@ export default function App() {
             <div
               className="resizer"
               onMouseDown={startThoughtModelDrag}
-              style={{ width: '4px', cursor: 'col-resize', zIndex: 100 }}
+              style={{ zIndex: 100 }}
             />
             <div className="thought-model-panel" style={{ width: `${thoughtModelWidth}px` }}>
               <ThoughtModelPage

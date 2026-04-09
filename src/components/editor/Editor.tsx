@@ -12,12 +12,12 @@
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin } from '@codemirror/view';
+import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { search, highlightSelectionMatches } from '@codemirror/search';
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
 import { Tab, ViewMode } from '../../types';
 import { MarkdownPreview } from './MarkdownPreview';
 import { SearchReplace } from './SearchReplace';
@@ -145,6 +145,29 @@ function tagPlugin() {
   });
 }
 
+const markdownHighlightStyle = HighlightStyle.define([
+  {
+    tag: [t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6, t.heading],
+    color: 'var(--editor-heading)',
+    fontWeight: '700',
+  },
+  {
+    tag: [t.processingInstruction, t.contentSeparator],
+    color: 'var(--editor-heading-marker)',
+    fontWeight: '600',
+  },
+  { tag: [t.comment, t.quote, t.meta], color: 'var(--editor-muted-token)' },
+  { tag: [t.keyword, t.operator, t.punctuation], color: 'var(--editor-heading-marker)' },
+  { tag: [t.atom, t.bool, t.number, t.string, t.regexp], color: 'var(--editor-code)' },
+  { tag: [t.link, t.url], color: 'var(--editor-link)', textDecoration: 'underline' },
+  { tag: [t.strong], color: 'var(--editor-emphasis)', fontWeight: '700' },
+  { tag: [t.emphasis], color: 'var(--editor-emphasis)', fontStyle: 'italic' },
+  { tag: [t.strikethrough], color: 'var(--editor-muted-token)', textDecoration: 'line-through' },
+  { tag: [t.monospace], color: 'var(--editor-code)', fontFamily: 'var(--font-mono)' },
+  { tag: [t.name, t.propertyName, t.labelName], color: 'var(--text-primary)' },
+  { tag: [t.invalid], color: 'var(--danger)', textDecoration: 'wavy underline' },
+]);
+
 export function Editor({
   tabs, activeTabId, content, viewMode, availableNotes,
   onTabSelect, onTabClose, onContentChange,
@@ -205,7 +228,7 @@ export function Editor({
     e.preventDefault();
     document.addEventListener('mousemove', handleDrag);
     document.addEventListener('mouseup', stopDrag);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = 'ew-resize';
   }, [handleDrag, stopDrag]);
 
   // Handle image paste from clipboard
@@ -306,6 +329,7 @@ export function Editor({
       doc: content,
       extensions: [
         history(),
+        drawSelection(),
         search(),
         highlightSelectionMatches(),
         keymap.of([
@@ -314,8 +338,7 @@ export function Editor({
           indentWithTab,
         ]),
         markdown(),
-        syntaxHighlighting(defaultHighlightStyle),
-        oneDark,
+        syntaxHighlighting(markdownHighlightStyle),
         linkAutocomplete(),
         linkAutocompleteTheme,
         headingFold(),
@@ -328,30 +351,74 @@ export function Editor({
           }
         }),
         EditorView.theme({
-          '&': { height: '100%', fontSize: '15px' },
-          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-sans)', lineHeight: '1.6' },
-          '.cm-content': { padding: '20px 40px', maxWidth: '800px', margin: '0 auto' },
+          '&': {
+            height: '100%',
+            fontSize: '15px',
+            color: 'var(--text-primary)',
+            backgroundColor: 'transparent',
+            caretColor: 'var(--editor-caret)',
+          },
+          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-family)', lineHeight: '1.6' },
+          '.cm-content': {
+            padding: '20px 40px',
+            maxWidth: '800px',
+            margin: '0 auto',
+            caretColor: 'var(--editor-caret)',
+          },
+          '.cm-line': {
+            padding: '0 2px',
+            borderRadius: '4px',
+          },
+          '.cm-cursorLayer .cm-cursor': {
+            borderLeft: '2px solid var(--editor-caret)',
+          },
+          '.cm-dropCursor': {
+            borderLeft: '2px solid var(--editor-caret)',
+          },
+          '.cm-fatCursor': {
+            backgroundColor: 'var(--editor-caret)',
+          },
+          '.cm-activeLine': {
+            backgroundColor: 'var(--editor-active-line)',
+          },
+          '.cm-focused .cm-activeLine': {
+            boxShadow: 'inset 0 0 0 1px var(--editor-active-line-border)',
+          },
+          '.cm-selectionBackground': {
+            backgroundColor: 'var(--editor-selection)',
+          },
+          '.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
+            backgroundColor: 'var(--editor-selection-focused)',
+          },
+          '.cm-gutters': {
+            backgroundColor: 'transparent',
+            border: 'none',
+          },
           '.cm-wikilink': {
-            color: 'var(--text-link)',
+            color: 'var(--editor-link)',
             textDecoration: 'none',
             cursor: 'pointer',
             transition: 'color 0.2s',
+            borderBottom: '1px dotted transparent',
           },
           '.cm-wikilink:hover': {
-            color: 'var(--accent-glow)',
-            textDecoration: 'underline',
+            color: 'var(--editor-link-hover)',
+            borderBottomColor: 'var(--editor-link-hover)',
           },
           '.cm-tag-mark': {
-            color: 'var(--accent-secondary)',
-            fontWeight: 'bold',
+            color: 'var(--editor-tag)',
+            backgroundColor: 'var(--editor-tag-bg)',
+            fontWeight: '600',
+            borderRadius: '999px',
+            padding: '0 5px',
           },
           '.cm-searchMatch': {
-            backgroundColor: 'rgba(255, 200, 0, 0.3)',
-            borderBottom: '1px solid #f5c518',
+            backgroundColor: 'var(--editor-search-match)',
+            borderBottom: '1px solid var(--editor-search-match-border)',
           },
           '.cm-searchMatch-selected': {
-            backgroundColor: 'rgba(255, 200, 0, 0.5)',
-            border: '1px solid #f5c518',
+            backgroundColor: 'var(--editor-search-active)',
+            border: '1px solid var(--editor-search-active-border)',
             borderRadius: '1px',
           }
         }),
@@ -506,7 +573,6 @@ export function Editor({
           <div
             className="resizer"
             onMouseDown={startDrag}
-            style={{ width: '4px', cursor: 'col-resize' }}
           />
         )}
 
