@@ -19,6 +19,8 @@ export interface AppSettings {
   
   // Editor
   fontSize: number;
+  editorFontSize: number;
+  previewFontSize: number;
   lineHeight: number;
   tabSize: number;
   showLineNumbers: boolean;
@@ -49,6 +51,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontFamily: 'Inter, system-ui, sans-serif',
   
   fontSize: 15,
+  editorFontSize: 15,
+  previewFontSize: 15,
   lineHeight: 1.6,
   tabSize: 2,
   showLineNumbers: false,
@@ -189,7 +193,17 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                         min="12"
                         max="24"
                         value={localSettings.fontSize}
-                        onChange={(e) => updateSetting('fontSize', parseInt(e.target.value))}
+                        onChange={(e) => {
+                          const fontSize = parseInt(e.target.value);
+                          const updated = {
+                            ...localSettings,
+                            fontSize,
+                            editorFontSize: fontSize,
+                            previewFontSize: fontSize,
+                          };
+                          setLocalSettings(updated);
+                          onSettingsChange(updated);
+                        }}
                       />
                       <span>{localSettings.fontSize}px</span>
                     </div>
@@ -391,6 +405,14 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                   <div className="hotkey-item">
                     <span>Close Tab</span>
                     <kbd>Ctrl+W</kbd>
+                  </div>
+                  <div className="hotkey-item">
+                    <span>Zoom Editor Text</span>
+                    <kbd>Ctrl/Cmd+Scroll</kbd>
+                  </div>
+                  <div className="hotkey-item">
+                    <span>Zoom Current Pane Only</span>
+                    <kbd>Ctrl/Cmd+Shift+Scroll</kbd>
                   </div>
                 </div>
               </div>

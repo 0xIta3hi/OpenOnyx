@@ -32,6 +32,9 @@ import { getNoteName, generateId, debounce } from './utils/helpers';
 import { getAPI } from './utils/api';
 
 const api = getAPI();
+const MIN_EDITOR_FONT_SIZE = 12;
+const MAX_EDITOR_FONT_SIZE = 24;
+type FontZoomScope = 'both' | 'editor' | 'preview';
 
 export default function App() {
   // ── Global State ────────────────────────────────────
@@ -141,6 +144,46 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('editor');
   const [backlinks, setBacklinks] = useState<string[]>([]);
 
+  const adjustEditorFontSize = useCallback((delta: number, scope: FontZoomScope = 'both') => {
+    if (delta === 0) return;
+
+    setSettings(prev => {
+      const clampFontSize = (value: number) =>
+        Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, value));
+
+      const currentEditorSize = prev.editorFontSize ?? prev.fontSize;
+      const currentPreviewSize = prev.previewFontSize ?? prev.fontSize;
+
+      const nextEditorSize =
+        scope === 'both' || scope === 'editor'
+          ? clampFontSize(currentEditorSize + delta)
+          : currentEditorSize;
+      const nextPreviewSize =
+        scope === 'both' || scope === 'preview'
+          ? clampFontSize(currentPreviewSize + delta)
+          : currentPreviewSize;
+      const nextFontSize =
+        scope === 'both'
+          ? clampFontSize(prev.fontSize + delta)
+          : prev.fontSize;
+
+      if (
+        nextEditorSize === currentEditorSize &&
+        nextPreviewSize === currentPreviewSize &&
+        nextFontSize === prev.fontSize
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        fontSize: nextFontSize,
+        editorFontSize: nextEditorSize,
+        previewFontSize: nextPreviewSize,
+      };
+    });
+  }, []);
+
   // ── Modal State ─────────────────────────────────────
   const [modal, setModal] = useState<{
     type: 'prompt' | 'confirm';
@@ -180,6 +223,8 @@ export default function App() {
     root.style.setProperty('--accent-color', settings.accentColor);
     root.style.setProperty('--font-family', settings.fontFamily);
     root.style.setProperty('--editor-font-size', `${settings.fontSize}px`);
+    root.style.setProperty('--editor-pane-font-size', `${settings.editorFontSize ?? settings.fontSize}px`);
+    root.style.setProperty('--preview-font-size', `${settings.previewFontSize ?? settings.fontSize}px`);
     root.style.setProperty('--editor-line-height', `${settings.lineHeight}`);
     
     // Save settings to localStorage
@@ -707,6 +752,7 @@ export default function App() {
                       content={currentContent}
                       viewMode={viewMode}
                       availableNotes={allNoteNames}
+                      onAdjustFontSize={adjustEditorFontSize}
                       onTabSelect={async (id) => {
                         setActiveTabId(id);
                         const tab = tabs.find(t => t.id === id);

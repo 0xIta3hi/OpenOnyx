@@ -52,6 +52,8 @@
   --font-family: 'Inter', system-ui, sans-serif;
   --accent-color: #7c3aed;
   --editor-font-size: 15px;
+  --editor-pane-font-size: 15px;
+  --preview-font-size: 15px;
   --editor-line-height: 1.6;
   --editor-caret: #eef3ff;
   --editor-selection: rgba(117, 141, 255, 0.26);
@@ -634,7 +636,7 @@ body {
 .editor-container .cm-editor {
   height: 100%;
   font-family: var(--font-family);
-  font-size: var(--editor-font-size);
+  font-size: var(--editor-pane-font-size);
   color: var(--text-primary);
   cursor: text;
   caret-color: var(--editor-caret);
@@ -704,34 +706,55 @@ body {
   overflow-y: auto;
   height: 100%;
   font-family: var(--font-family);
-  font-size: var(--editor-font-size);
+  font-size: var(--preview-font-size);
 }
 
 .markdown-preview h1 {
-  font-size: var(--text-2xl);
+  font-size: calc(var(--preview-font-size) * 1.85);
   font-weight: 700;
   margin-bottom: var(--space-6);
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: var(--space-3);
   letter-spacing: -0.5px;
+  line-height: 1.25;
 }
 
 .markdown-preview h2 {
-  font-size: var(--text-xl);
+  font-size: calc(var(--preview-font-size) * 1.55);
   font-weight: 600;
   margin-top: var(--space-8);
   margin-bottom: var(--space-4);
   color: var(--text-primary);
   letter-spacing: -0.3px;
+  line-height: 1.3;
 }
 
 .markdown-preview h3 {
-  font-size: var(--text-lg);
+  font-size: calc(var(--preview-font-size) * 1.35);
   font-weight: 600;
   margin-top: var(--space-6);
   margin-bottom: var(--space-3);
   color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.markdown-preview h4 {
+  font-size: calc(var(--preview-font-size) * 1.2);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.markdown-preview h5 {
+  font-size: calc(var(--preview-font-size) * 1.1);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.markdown-preview h6 {
+  font-size: var(--preview-font-size);
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .markdown-preview p {

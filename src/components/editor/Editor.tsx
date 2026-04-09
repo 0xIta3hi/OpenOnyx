@@ -30,6 +30,7 @@ interface EditorProps {
   activeTabId: string;
   content: string;
   viewMode: ViewMode;
+  onAdjustFontSize: (delta: number, scope: 'both' | 'editor' | 'preview') => void;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
   onContentChange: (content: string) => void;
@@ -170,13 +171,15 @@ const markdownHighlightStyle = HighlightStyle.define([
 
 export function Editor({
   tabs, activeTabId, content, viewMode, availableNotes,
-  onTabSelect, onTabClose, onContentChange,
+  onAdjustFontSize, onTabSelect, onTabClose, onContentChange,
   onViewModeChange, onLinkClick, onGetNoteContent, onImagePaste
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
+  const wheelRemainderRef = useRef(0);
   
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -230,6 +233,43 @@ export function Editor({
     document.addEventListener('mouseup', stopDrag);
     document.body.style.cursor = 'ew-resize';
   }, [handleDrag, stopDrag]);
+
+  // Ctrl/Cmd + wheel to zoom editor/preview text size
+  const handleZoomWheel = useCallback((e: WheelEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    let scope: 'both' | 'editor' | 'preview' = 'both';
+    if (e.shiftKey) {
+      const targetNode = e.target as Node | null;
+      if (targetNode && editorRef.current?.contains(targetNode)) {
+        scope = 'editor';
+      } else if (targetNode && previewRef.current?.contains(targetNode)) {
+        scope = 'preview';
+      } else {
+        return;
+      }
+    }
+
+    wheelRemainderRef.current += e.deltaY;
+    const threshold = 80;
+    const steps = Math.trunc(Math.abs(wheelRemainderRef.current) / threshold);
+    if (steps === 0) return;
+
+    const direction = wheelRemainderRef.current < 0 ? 1 : -1;
+    onAdjustFontSize(direction * steps, scope);
+    wheelRemainderRef.current -= Math.sign(wheelRemainderRef.current) * steps * threshold;
+  }, [onAdjustFontSize]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('wheel', handleZoomWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleZoomWheel);
+  }, [handleZoomWheel]);
 
   // Handle image paste from clipboard
   const handlePaste = useCallback(async (e: ClipboardEvent) => {
@@ -353,12 +393,12 @@ export function Editor({
         EditorView.theme({
           '&': {
             height: '100%',
-            fontSize: '15px',
+            fontSize: 'var(--editor-pane-font-size)',
             color: 'var(--text-primary)',
             backgroundColor: 'transparent',
             caretColor: 'var(--editor-caret)',
           },
-          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-family)', lineHeight: '1.6' },
+          '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-family)', lineHeight: 'var(--editor-line-height)' },
           '.cm-content': {
             padding: '20px 40px',
             maxWidth: '800px',
@@ -576,7 +616,9 @@ export function Editor({
           />
         )}
 
-        <div style={{ 
+        <div
+          ref={previewRef}
+          style={{ 
           flex: viewMode === 'split' ? `0 0 calc(${100 - editorWidth}% - 4px)` : 1,
           overflow: 'auto', 
           height: '100%',
