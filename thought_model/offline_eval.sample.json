@@ -1,0 +1,71 @@
+{
+  "name": "sample-vault-offline-eval",
+  "description": "Sample offline relevance set for retrieval benchmarking on sample-vault.",
+  "queries": [
+    {
+      "id": "q-wiki-links",
+      "query": "how do wiki links connect notes in openobsidian",
+      "relevant_note_paths": [
+        "Getting Started.md",
+        "Feature Showcase.md",
+        "Welcome.md",
+        "Knowledge Management.md"
+      ]
+    },
+    {
+      "id": "q-hotkeys",
+      "query": "hotkeys for graph view, search and command palette",
+      "relevant_note_paths": [
+        "Keyboard Shortcuts.md",
+        "Getting Started.md",
+        "Welcome.md"
+      ]
+    },
+    {
+      "id": "q-markdown-reference",
+      "query": "markdown syntax for headings lists tables and code blocks",
+      "relevant_note_paths": [
+        "Markdown Guide.md",
+        "Feature Showcase.md"
+      ]
+    },
+    {
+      "id": "q-templates",
+      "query": "templates for daily notes and meeting notes with variables",
+      "relevant_note_paths": [
+        "Templates Guide.md",
+        "Welcome.md"
+      ]
+    },
+    {
+      "id": "q-knowledge-system",
+      "query": "zettelkasten and knowledge management best practices",
+      "relevant_note_paths": [
+        "Knowledge Management.md",
+        "Getting Started.md"
+      ]
+    },
+    {
+      "id": "q-projects",
+      "query": "project ideas and learning goals",
+      "relevant_note_paths": [
+        "Project Ideas.md"
+      ]
+    },
+    {
+      "id": "q-showcase",
+      "query": "feature showcase with callouts task lists math and images",
+      "relevant_note_paths": [
+        "Feature Showcase.md"
+      ]
+    },
+    {
+      "id": "q-onboarding",
+      "query": "getting started tutorial for new users",
+      "relevant_note_paths": [
+        "Getting Started.md",
+        "Welcome.md"
+      ]
+    }
+  ]
+}

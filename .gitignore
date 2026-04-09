@@ -4,4 +4,13 @@ dist-electron/
 release/
 *.log
 .DS_Store
-thought_model/
+thought_model/*
+!thought_model/README.md
+!thought_model/main.py
+!thought_model/requirements.txt
+!thought_model/simple_main.py
+!thought_model/evaluation.py
+!thought_model/offline_eval.sample.json
+thought_model/__pycache__/
+thought_model/venv/
+thought_model/evaluation_results*.json

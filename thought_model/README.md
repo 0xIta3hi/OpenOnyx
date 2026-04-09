@@ -78,3 +78,44 @@ Artifacts saved per vault:
 - `chunks.parquet` - Chunk data with cluster assignments
 - `tfidf_matrix.npz` - Sparse TF-IDF matrix
 - `metadata.joblib` - Stats and feature names
+
+## Benchmarking & Evaluation
+
+The repository now includes an offline evaluation harness:
+- `evaluation.py` - runs retrieval + clustering benchmark/comparison
+- `offline_eval.sample.json` - sample query relevance labels (`query -> relevant_note_paths`)
+
+### What it benchmarks
+
+Retrieval:
+- TF-IDF + cosine similarity (baseline)
+- BM25 retrieval (alternative)
+- Sentence embeddings + cosine similarity (optional, if `sentence-transformers` is installed)
+
+Clustering:
+- TF-IDF + KMeans (baseline)
+- TF-IDF + Agglomerative clustering (alternative)
+- Sentence embeddings + KMeans/HDBSCAN (optional; HDBSCAN requires `hdbscan`)
+
+Metrics:
+- Retrieval: Precision@K, Recall@K, MRR
+- Clustering: silhouette score, topic coherence proxy (NPMI)
+- Error buckets: lexical-overlap false positives, synonym-like misses, frontmatter leakage hits
+
+### Run evaluation
+
+```bash
+cd thought_model
+python evaluation.py \
+  --vault-path ../sample-vault \
+  --labels-file ./offline_eval.sample.json \
+  --top-k 5 \
+  --num-clusters 12 \
+  --output ./evaluation_results.json
+```
+
+Optional dependencies for embedding/HDBSCAN benchmarks:
+
+```bash
+pip install sentence-transformers hdbscan
+```

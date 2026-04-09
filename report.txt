@@ -1,0 +1,195 @@
+OpenObsidian Thought Model (ML) Report
+
+1. Problem Definition
+The ML part of this project solves two practical knowledge-management problems on local Markdown vaults:
+- Discover latent themes/topics across notes.
+- Retrieve semantically related passages for natural-language queries ("Ask My Vault").
+
+In this project, the "Thought Model" feature is implemented as a local Python service that builds a text representation of notes, clusters them into themes, and supports similarity search for query-time retrieval.
+
+2. Dataset Description
+Source data:
+- Input is all `.md` files inside a selected vault directory.
+- Hidden files/folders are skipped.
+- Each note is converted into plain text and split into chunks.
+
+Observed project artifacts already present:
+- `sample-vault/.thought_model/` contains trained artifacts.
+- `OO-Test-Vault/.thought_model/` contains trained artifacts.
+
+Observed dataset sizes from saved metadata/artifacts:
+- sample-vault: 12 notes, 14 chunks, 4 clusters.
+- OO-Test-Vault: 154 notes, 154 chunks, 12 clusters.
+
+Saved artifacts per vault:
+- `vectorizer.joblib` (TF-IDF vectorizer)
+- `kmeans.joblib` (KMeans model)
+- `chunks.parquet` (chunk table + assigned cluster)
+- `tfidf_matrix.npz` (sparse TF-IDF matrix)
+- `metadata.joblib` (counts, feature names sample, cluster count)
+
+3. Exploratory Data Analysis (EDA)
+Current EDA available in the codebase is lightweight and operational:
+- Counts tracked: total notes, total chunks, number of clusters.
+- Cluster membership is available in `chunks.parquet`.
+- Theme keywords are generated from cluster centroids.
+- Representative passages are selected by centroid similarity.
+
+Observed cluster balance (from existing artifacts):
+- sample-vault cluster counts: {0:3, 1:5, 2:2, 3:4}
+- OO-Test-Vault cluster counts: {0:20, 1:29, 2:6, 3:9, 4:15, 5:11, 6:10, 7:11, 8:18, 9:14, 10:9, 11:2}
+
+Missing in repository (held; suggestion):
+- No dedicated EDA report script/plots (e.g., cluster-size histogram, chunk length distribution, top token frequencies).
+- Suggestion: add a small `thought_model/analyze.py` to generate CSV/plots from `chunks.parquet` and `metadata.joblib`.
+
+4. Data Preprocessing
+Preprocessing pipeline (implemented):
+- Strip YAML frontmatter and metadata-like header lines.
+- Remove code blocks, inline code, markdown links, images, HTML tags, formatting markers.
+- Convert wiki-links to readable text.
+- Normalize whitespace.
+- Chunk text with paragraph-first strategy (target roughly 800-1200 chars in `main.py`).
+
+This reduces markdown noise and creates chunk-level training/search units that improve retrieval granularity.
+
+5. Model Building
+Primary model stack:
+- Vectorization: `TfidfVectorizer`
+  - Custom stop-word set (English stop words + metadata/system terms)
+  - `max_features=50000`
+  - `ngram_range=(1,2)`
+  - `max_df=0.95`, `min_df=1`
+- Clustering: `KMeans`
+  - `random_state=42`, `n_init=10`
+  - Dynamic K adjustment to avoid over-clustering small vaults
+- Retrieval: cosine similarity between query TF-IDF vector and chunk TF-IDF matrix.
+
+Serving/runtime:
+- FastAPI service (`thought_model/main.py`) exposes `/build`, `/status`, `/themes`, `/query`, `/clear`, `/health`.
+- Electron IPC layer calls this local service and returns results to React UI.
+
+6. Model Comparison
+Current state (implemented):
+- Offline benchmark harness added in `thought_model/evaluation.py`.
+- Retrieval comparison now includes:
+  1. TF-IDF + cosine similarity (baseline)
+  2. BM25 retrieval (alternative)
+  3. Sentence embeddings + cosine similarity (optional; MiniLM path, requires `sentence-transformers`)
+- Clustering comparison now includes:
+  1. TF-IDF + KMeans (baseline)
+  2. TF-IDF + Agglomerative clustering (alternative)
+  3. Sentence embeddings + KMeans/HDBSCAN (optional; HDBSCAN requires `hdbscan`)
+
+Latest benchmark run (executed):
+- Command: `python thought_model/evaluation.py --vault-path sample-vault --labels-file thought_model/offline_eval.sample.json --top-k 5 --num-clusters 12 --output thought_model/evaluation_results.json`
+- Dataset used: 12 notes, 14 chunks, 8 labeled queries (`effective_num_clusters=4`)
+- Retrieval comparison (P@5 / R@5 / MRR):
+  - TF-IDF + cosine: 0.4000 / 0.9688 / 0.8750
+  - BM25: 0.4250 / 1.0000 / 0.9375
+  - Sentence embeddings + cosine (MiniLM): 0.4000 / 0.9688 / 1.0000
+- Clustering comparison (silhouette / coherence NPMI):
+  - TF-IDF + KMeans: 0.0234 / 0.5517
+  - TF-IDF + Agglomerative: 0.0163 / 0.5280
+  - Sentence embeddings + KMeans: 0.1635 / 0.4340
+  - Sentence embeddings + HDBSCAN: no stable clusters (`num_clusters=0`)
+
+7. Model Evaluation & Error Analysis
+Current state (implemented):
+- Offline evaluation set added: `thought_model/offline_eval.sample.json` (`query -> relevant_note_paths`).
+- Retrieval metrics now tracked in benchmark output:
+  - Precision@K
+  - Recall@K
+  - MRR
+- Clustering metrics now tracked:
+  - silhouette score
+  - topic coherence proxy (NPMI over top terms)
+- Error buckets now reported:
+  - false positives from lexical overlap
+  - missed synonym-like matches (heuristic low-overlap misses)
+  - noisy frontmatter leakage hits
+- Evaluation output is persisted to JSON (e.g., `thought_model/evaluation_results.json`).
+
+Observed error-bucket counts from the latest run:
+- TF-IDF + cosine:
+  - lexical-overlap false positives: 2
+  - synonym-like misses: 1
+  - frontmatter leakage hits: 0
+- BM25:
+  - lexical-overlap false positives: 1
+  - synonym-like misses: 0
+  - frontmatter leakage hits: 0
+- Sentence embeddings + cosine:
+  - lexical-overlap false positives: 2
+  - synonym-like misses: 1
+  - frontmatter leakage hits: 0
+
+8. Model Improvement
+Improvements already present:
+- Custom stop-word list to suppress metadata/frontmatter noise.
+- Cache reuse of existing artifacts to skip rebuild when valid.
+- Dynamic cluster-count adjustment.
+- Chunk-level indexing for finer retrieval.
+
+Potential improvements (not yet implemented; held):
+- Better auto-K selection (silhouette/elbow-based).
+- Incremental indexing for changed notes only.
+- Better multilingual support (language-aware tokenization/stopwords).
+- Hybrid retrieval (BM25 + embeddings rerank).
+
+9. Outcome Analysis (REAL-WORLD FOCUS)
+Real-world value delivered now:
+- Users can discover emergent themes in personal/company knowledge vaults.
+- "Ask My Vault" supports practical semantic lookup across notes without cloud dependency.
+- All model artifacts remain local in `.thought_model`, matching local-first privacy goals.
+
+Business/user impact:
+- Faster recall of fragmented knowledge.
+- Better resurfacing of related notes/passages.
+- Useful for research notes, project documentation, and personal knowledge management.
+
+10. Ethical Considerations
+Positives:
+- Local processing reduces privacy risk compared to cloud inference.
+- No required telemetry in this ML pipeline path.
+
+Risks/considerations:
+- Model can surface sensitive notes if the vault contains confidential content.
+- TF-IDF lexical bias can overemphasize frequent writing style artifacts.
+- English-centric stop-word assumptions may reduce quality for multilingual notes.
+
+11. Limitations
+- Lexical TF-IDF retrieval is weaker on deep semantic paraphrases/synonyms.
+- KMeans assumes roughly spherical clusters and fixed K.
+- Evaluation labels are currently sample/offline and not yet a large production-grade benchmark set.
+- HDBSCAN can collapse to a noise-dominant outcome on very small datasets (observed `<=1` cluster on sample-vault).
+- No confidence calibration beyond raw cosine score.
+- Pipeline quality depends heavily on markdown cleanup and chunk boundaries.
+
+12. Future Improvements
+Recommended next steps:
+1. Add evaluation harness with saved benchmark queries + relevance labels.
+2. Introduce embedding-based retrieval option and compare against TF-IDF baseline.
+3. Add automatic cluster-quality monitoring and K tuning.
+4. Add incremental rebuilds for better performance on large vaults.
+5. Add explainability views (why a chunk matched; top contributing terms).
+
+13. Conclusion
+The ML component is a practical, local-first text intelligence system built around a clear and maintainable baseline (TF-IDF, KMeans, cosine similarity). It is production-integrated with Electron and React, persists artifacts per vault, and already delivers useful theme discovery + semantic search. The main gap is not core functionality, but formal comparison/evaluation infrastructure; adding that will make model quality measurable and continuously improvable.
+
+Works cited
+- `thought_model/main.py`
+- `thought_model/README.md`
+- `thought_model/requirements.txt`
+- `thought_model/evaluation.py`
+- `thought_model/offline_eval.sample.json`
+- `thought_model/evaluation_results.json`
+- `src/components/ThoughtModelPage.tsx`
+- `electron/ipc.ts`
+- `electron/preload.ts`
+- `src/types/index.ts`
+- `README.md`
+- `sample-vault/.thought_model/metadata.joblib`
+- `sample-vault/.thought_model/chunks.parquet`
+- `OO-Test-Vault/.thought_model/metadata.joblib`
+- `OO-Test-Vault/.thought_model/chunks.parquet`
