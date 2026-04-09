@@ -4,4 +4,4 @@ dist-electron/
 release/
 *.log
 .DS_Store
-thought_model/*
+thought_model/
