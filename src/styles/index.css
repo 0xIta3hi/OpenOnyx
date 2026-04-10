@@ -936,6 +936,7 @@ body {
   max-width: 100%;
   border-radius: var(--radius-md);
   margin: var(--space-4) 0;
+  cursor: zoom-in;
 }
 
 .markdown-preview table {

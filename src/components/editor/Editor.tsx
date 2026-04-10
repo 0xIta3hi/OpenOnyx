@@ -1030,6 +1030,7 @@ export function Editor({
             onCheckboxToggle={handleCheckboxToggle}
             onEmbed={onGetNoteContent}
             onGetLinkPreview={onGetNoteContent}
+            onImageClick={handleOpenImageLightbox}
           />
         </div>
       </div>

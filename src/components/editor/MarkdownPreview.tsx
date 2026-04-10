@@ -57,6 +57,7 @@ interface MarkdownPreviewProps {
   onCheckboxToggle?: (lineIndex: number, checked: boolean) => void;
   onEmbed?: (noteName: string) => string | null;
   onGetLinkPreview?: (noteName: string) => string | null;
+  onImageClick?: (src: string, alt: string) => void;
 }
 
 function parseImageRenderMeta(title?: string): { width?: number; crop: 'contain' | 'cover'; offsetX: number; offsetY: number } {
@@ -72,7 +73,7 @@ function parseImageRenderMeta(title?: string): { width?: number; crop: 'contain'
   return { width, crop, offsetX, offsetY };
 }
 
-export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbed, onGetLinkPreview }: MarkdownPreviewProps) {
+export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbed, onGetLinkPreview, onImageClick }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{
     noteName: string;
@@ -207,6 +208,17 @@ export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbe
     const handleClick = (e: Event) => {
       const target = e.target as HTMLElement;
 
+      // Handle image click for fullscreen preview
+      if (target.tagName === 'IMG' && onImageClick) {
+        const image = target as HTMLImageElement;
+        if (image.src) {
+          e.preventDefault();
+          e.stopPropagation();
+          onImageClick(image.src, image.alt || 'Image');
+          return;
+        }
+      }
+
       // Handle wiki-link clicks
       if (target.classList.contains('wiki-link')) {
         e.preventDefault();
@@ -239,7 +251,7 @@ export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbe
 
     container.addEventListener('click', handleClick);
     return () => container.removeEventListener('click', handleClick);
-  }, [onLinkClick, onCheckboxToggle]);
+  }, [onLinkClick, onCheckboxToggle, onImageClick]);
 
   // Handle link hover for preview
   useEffect(() => {
