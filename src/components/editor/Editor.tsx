@@ -268,10 +268,25 @@ class MarkdownImageWidget extends WidgetType {
     imageToggle.textContent = '↻';
     stage.appendChild(imageToggle);
 
+    const metaRow = document.createElement('div');
+    metaRow.className = 'cm-image-widget-meta';
+    metaRow.style.width = `${this.image.width ?? 420}px`;
+    metaRow.style.maxWidth = '100%';
+
     const widthLabel = document.createElement('span');
     widthLabel.className = 'cm-image-widget-width';
     widthLabel.textContent = `${this.image.width ?? 420}px`;
-    root.appendChild(widthLabel);
+    metaRow.appendChild(widthLabel);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'cm-image-widget-delete';
+    deleteButton.type = 'button';
+    deleteButton.dataset.action = 'delete-image';
+    deleteButton.title = 'Delete image';
+    deleteButton.textContent = 'Delete';
+    metaRow.appendChild(deleteButton);
+
+    root.appendChild(metaRow);
 
     const textWrap = document.createElement('div');
     textWrap.className = 'cm-image-widget-text-wrap';
@@ -394,9 +409,16 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
         const parsed = parseMarkdownImage(current, from, to);
         if (!parsed) return;
 
-        const button = target.closest('.cm-image-widget-toggle') as HTMLButtonElement | null;
+        const button = target.closest('[data-action]') as HTMLButtonElement | null;
         if (button) {
           const action = button.dataset.action;
+          if (action === 'delete-image') {
+            view.dispatch({
+              changes: { from, to, insert: '' },
+              selection: { anchor: from },
+            });
+            return;
+          }
           if (action === 'toggle-mode') {
             const editor = widget.querySelector('.cm-image-widget-text') as HTMLTextAreaElement | null;
             const isTextMode = widget.classList.contains('text-mode');
@@ -463,6 +485,8 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
             imageEl.style.width = `${nextWidth}px`;
             const widthBadge = widget.querySelector('.cm-image-widget-width') as HTMLElement | null;
             if (widthBadge) widthBadge.textContent = `${nextWidth}px`;
+            const metaRow = widget.querySelector('.cm-image-widget-meta') as HTMLElement | null;
+            if (metaRow) metaRow.style.width = `${nextWidth}px`;
             return;
           }
 

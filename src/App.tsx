@@ -590,23 +590,83 @@ export default function App() {
     }
   };
 
-  // Handle image paste/drop - embed as inline data URL (no attachments folder write)
+  // Handle image paste/drop - embed compressed inline data URL (no attachments folder write)
   const handleImagePaste = async (file: File): Promise<string | null> => {
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result;
-          if (typeof result === 'string' && result.startsWith('data:image/')) {
-            resolve(result);
-            return;
+    const readFileAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === 'string' && result.startsWith('data:image/')) {
+          resolve(result);
+          return;
+        }
+        reject(new Error('Unsupported image data'));
+      };
+      reader.onerror = () => reject(new Error('Failed to read image'));
+      reader.readAsDataURL(blob);
+    });
+
+    const loadImage = (imageFile: File) => new Promise<HTMLImageElement>((resolve, reject) => {
+      const blobUrl = URL.createObjectURL(imageFile);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(blobUrl);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error('Failed to decode image'));
+      };
+      image.src = blobUrl;
+    });
+
+    const compressImageData = async (imageFile: File): Promise<string> => {
+      const original = await readFileAsDataUrl(imageFile);
+      const image = await loadImage(imageFile);
+      const naturalWidth = image.naturalWidth || image.width || 1;
+      const naturalHeight = image.naturalHeight || image.height || 1;
+      const longestEdge = Math.max(naturalWidth, naturalHeight);
+      const baseMaxEdge = Math.min(1600, longestEdge);
+      const targetLength = 90000;
+      const scaleSteps = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4];
+      const qualitySteps = [0.84, 0.76, 0.68, 0.6, 0.52, 0.45];
+
+      let best = original;
+
+      for (const scale of scaleSteps) {
+        const maxEdge = Math.max(320, Math.round(baseMaxEdge * scale));
+        const ratio = Math.min(1, maxEdge / longestEdge);
+        const width = Math.max(1, Math.round(naturalWidth * ratio));
+        const height = Math.max(1, Math.round(naturalHeight * ratio));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) break;
+        context.drawImage(image, 0, 0, width, height);
+
+        for (const quality of qualitySteps) {
+          const webpData = canvas.toDataURL('image/webp', quality);
+          const candidate = webpData.startsWith('data:image/webp')
+            ? webpData
+            : canvas.toDataURL('image/jpeg', quality);
+
+          if (candidate.length < best.length) {
+            best = candidate;
           }
-          reject(new Error('Unsupported image data'));
-        };
-        reader.onerror = () => reject(new Error('Failed to read image'));
-        reader.readAsDataURL(file);
-      });
-      return dataUrl;
+
+          if (best.length <= targetLength) {
+            return best;
+          }
+        }
+      }
+
+      return best;
+    };
+
+    try {
+      return await compressImageData(file);
     } catch (err) {
       console.error('Failed to embed image:', err);
       return null;
