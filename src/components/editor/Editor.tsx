@@ -12,7 +12,7 @@
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin, drawSelection } from '@codemirror/view';
+import { EditorView, keymap, ViewUpdate, Decoration, DecorationSet, ViewPlugin, WidgetType, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { search, highlightSelectionMatches } from '@codemirror/search';
@@ -37,7 +37,7 @@ interface EditorProps {
   onViewModeChange: (mode: ViewMode) => void;
   onLinkClick: (linkName: string, heading?: string) => void;
   onGetNoteContent?: (noteName: string) => string | null;
-  onImagePaste?: (file: File) => Promise<string | null>; // Returns the path to insert
+  onImagePaste?: (file: File) => Promise<string | null>; // Returns image src/path to insert
 }
 
 /**
@@ -146,6 +146,399 @@ function tagPlugin() {
   });
 }
 
+type ImageCropMode = 'contain' | 'cover';
+
+interface MarkdownImageMatch {
+  from: number;
+  to: number;
+  alt: string;
+  src: string;
+  width?: number;
+  crop: ImageCropMode;
+  offsetX: number;
+  offsetY: number;
+}
+
+const MARKDOWN_IMAGE_GLOBAL_REGEX = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
+const MARKDOWN_IMAGE_SINGLE_REGEX = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/;
+
+function parseImageMeta(title?: string): { width?: number; crop: ImageCropMode; offsetX: number; offsetY: number } {
+  const raw = title || '';
+  const widthMatch = raw.match(/(?:^|[\s,])w(?:idth)?=(\d{2,4})/i);
+  const cropMatch = raw.match(/(?:^|[\s,])crop=(cover|contain)/i);
+  const offsetXMatch = raw.match(/(?:^|[\s,])ox=(-?\d{1,4})/i);
+  const offsetYMatch = raw.match(/(?:^|[\s,])oy=(-?\d{1,4})/i);
+
+  const parsedWidth = widthMatch ? Number(widthMatch[1]) : undefined;
+  const width = Number.isFinite(parsedWidth) ? Math.max(120, Math.min(1400, parsedWidth!)) : undefined;
+  const crop: ImageCropMode = (cropMatch?.[1] as ImageCropMode) || 'contain';
+  const offsetX = offsetXMatch ? Math.max(-1200, Math.min(1200, Number(offsetXMatch[1]))) : 0;
+  const offsetY = offsetYMatch ? Math.max(-1200, Math.min(1200, Number(offsetYMatch[1]))) : 0;
+  return { width, crop, offsetX, offsetY };
+}
+
+function parseMarkdownImage(markdown: string, from: number, to: number): MarkdownImageMatch | null {
+  const match = markdown.match(MARKDOWN_IMAGE_SINGLE_REGEX);
+  if (!match) return null;
+
+  const [, alt, src, title] = match;
+  const { width, crop, offsetX, offsetY } = parseImageMeta(title);
+  return { from, to, alt, src, width, crop, offsetX, offsetY };
+}
+
+function buildMarkdownImage(
+  alt: string,
+  src: string,
+  width?: number,
+  crop: ImageCropMode = 'contain',
+  offsetX = 0,
+  offsetY = 0,
+): string {
+  const attrs: string[] = [];
+  if (width) attrs.push(`w=${Math.round(width)}`);
+  if (crop === 'cover') {
+    attrs.push('crop=cover');
+    if (offsetX !== 0) attrs.push(`ox=${Math.round(offsetX)}`);
+    if (offsetY !== 0) attrs.push(`oy=${Math.round(offsetY)}`);
+  }
+  const title = attrs.join(' ');
+  return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
+}
+
+function applyWidgetImageStyles(img: HTMLImageElement, image: MarkdownImageMatch): void {
+  const width = image.width ?? 420;
+  img.style.width = `${width}px`;
+  img.style.maxWidth = '100%';
+  if (image.crop === 'cover') {
+    img.style.objectFit = 'cover';
+    img.style.aspectRatio = '4 / 3';
+    img.style.objectPosition = `calc(50% + ${Math.round(image.offsetX)}px) calc(50% + ${Math.round(image.offsetY)}px)`;
+  } else {
+    img.style.objectFit = 'contain';
+    img.style.aspectRatio = 'auto';
+    img.style.objectPosition = 'center center';
+  }
+}
+
+class MarkdownImageWidget extends WidgetType {
+  constructor(private readonly image: MarkdownImageMatch) {
+    super();
+  }
+
+  eq(other: MarkdownImageWidget): boolean {
+    return this.image.alt === other.image.alt &&
+      this.image.src === other.image.src &&
+      this.image.width === other.image.width &&
+      this.image.crop === other.image.crop &&
+      this.image.offsetX === other.image.offsetX &&
+      this.image.offsetY === other.image.offsetY &&
+      this.image.from === other.image.from &&
+      this.image.to === other.image.to;
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement('div');
+    root.className = 'cm-image-widget';
+    root.setAttribute('contenteditable', 'false');
+    root.dataset.from = String(this.image.from);
+    root.dataset.to = String(this.image.to);
+    root.dataset.width = String(this.image.width ?? 420);
+    root.dataset.crop = this.image.crop;
+    root.dataset.ox = String(this.image.offsetX);
+    root.dataset.oy = String(this.image.offsetY);
+    root.dataset.alt = this.image.alt;
+    root.dataset.src = this.image.src;
+
+    const stage = document.createElement('div');
+    stage.className = 'cm-image-widget-stage';
+    root.appendChild(stage);
+
+    const img = document.createElement('img');
+    img.className = 'cm-image-widget-image';
+    img.src = this.image.src;
+    img.alt = this.image.alt || 'Image';
+    applyWidgetImageStyles(img, this.image);
+    stage.appendChild(img);
+
+    const imageToggle = document.createElement('button');
+    imageToggle.className = 'cm-image-widget-toggle';
+    imageToggle.type = 'button';
+    imageToggle.dataset.action = 'toggle-mode';
+    imageToggle.title = 'Switch between image and markdown text mode';
+    imageToggle.textContent = '↻';
+    stage.appendChild(imageToggle);
+
+    const widthLabel = document.createElement('span');
+    widthLabel.className = 'cm-image-widget-width';
+    widthLabel.textContent = `${this.image.width ?? 420}px`;
+    root.appendChild(widthLabel);
+
+    const textWrap = document.createElement('div');
+    textWrap.className = 'cm-image-widget-text-wrap';
+    const textEditor = document.createElement('textarea');
+    textEditor.className = 'cm-image-widget-text';
+    textEditor.value = buildMarkdownImage(
+      this.image.alt,
+      this.image.src,
+      this.image.width,
+      this.image.crop,
+      this.image.offsetX,
+      this.image.offsetY,
+    );
+    textEditor.spellcheck = false;
+    textWrap.appendChild(textEditor);
+
+    const textToggle = document.createElement('button');
+    textToggle.className = 'cm-image-widget-toggle text-toggle';
+    textToggle.type = 'button';
+    textToggle.dataset.action = 'toggle-mode';
+    textToggle.title = 'Back to image mode';
+    textToggle.textContent = '↻';
+    textWrap.appendChild(textToggle);
+    root.appendChild(textWrap);
+
+    return root;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
+  let activeDragCleanup: (() => void) | null = null;
+
+  const getMaxRenderableWidth = (view: EditorView) => {
+    const content = view.dom.querySelector('.cm-content') as HTMLElement | null;
+    const scroller = view.dom.querySelector('.cm-scroller') as HTMLElement | null;
+    const raw = (content?.getBoundingClientRect().width || scroller?.getBoundingClientRect().width || view.dom.getBoundingClientRect().width) - 24;
+    const safe = Number.isFinite(raw) ? Math.floor(raw) : 1400;
+    return Math.max(120, Math.min(1400, safe));
+  };
+
+  const clampWidth = (candidate: number, maxWidth: number) => Math.max(120, Math.min(maxWidth, Math.round(candidate)));
+
+  const cleanupDrag = () => {
+    if (activeDragCleanup) {
+      activeDragCleanup();
+      activeDragCleanup = null;
+    }
+    document.body.style.cursor = 'default';
+  };
+
+  return ViewPlugin.fromClass(class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = this.buildDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = this.buildDecorations(update.view);
+      }
+    }
+
+    destroy() {
+      cleanupDrag();
+    }
+
+    buildDecorations(view: EditorView): DecorationSet {
+      const decorations: any[] = [];
+      const doc = view.state.doc;
+
+      for (let i = 1; i <= doc.lines; i++) {
+        const line = doc.line(i);
+        const regex = new RegExp(MARKDOWN_IMAGE_GLOBAL_REGEX.source, 'g');
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(line.text)) !== null) {
+          const from = line.from + match.index;
+          const to = from + match[0].length;
+          const parsed = parseMarkdownImage(match[0], from, to);
+          if (!parsed) continue;
+
+          decorations.push(
+            Decoration.replace({
+              widget: new MarkdownImageWidget(parsed),
+            }).range(from, to)
+          );
+        }
+      }
+
+      return Decoration.set(decorations, true);
+    }
+  }, {
+    decorations: v => v.decorations,
+    eventHandlers: {
+      mousedown: (e: MouseEvent, view: EditorView) => {
+        const target = e.target as HTMLElement;
+        const textEditor = target.closest('.cm-image-widget-text') as HTMLTextAreaElement | null;
+        if (textEditor) {
+          e.stopPropagation();
+          return;
+        }
+
+        const widget = target.closest('.cm-image-widget') as HTMLElement | null;
+        if (!widget) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        view.dom.blur();
+
+        const from = Number(widget.dataset.from);
+        const to = Number(widget.dataset.to);
+        if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return;
+
+        const current = view.state.doc.sliceString(from, to);
+        const parsed = parseMarkdownImage(current, from, to);
+        if (!parsed) return;
+
+        const button = target.closest('.cm-image-widget-toggle') as HTMLButtonElement | null;
+        if (button) {
+          const action = button.dataset.action;
+          if (action === 'toggle-mode') {
+            const editor = widget.querySelector('.cm-image-widget-text') as HTMLTextAreaElement | null;
+            const isTextMode = widget.classList.contains('text-mode');
+            if (!isTextMode) {
+              widget.classList.add('text-mode');
+              if (editor) {
+                editor.value = current;
+                editor.focus();
+                editor.select();
+              }
+              return;
+            }
+
+            const nextRaw = (editor?.value || '').trim();
+            const nextParsed = nextRaw ? parseMarkdownImage(nextRaw, from, to) : null;
+            if (nextParsed) {
+              view.dispatch({
+                changes: { from, to, insert: nextRaw },
+                selection: { anchor: from + nextRaw.length },
+              });
+              widget.classList.remove('text-mode');
+            }
+            return;
+          }
+          return;
+        }
+
+        if (widget.classList.contains('text-mode')) return;
+
+        const imageEl = widget.querySelector('.cm-image-widget-image') as HTMLImageElement | null;
+        if (!imageEl) return;
+
+        cleanupDrag();
+
+        const stage = target.closest('.cm-image-widget-stage') as HTMLElement | null;
+        if (!stage) return;
+
+        const rect = imageEl.getBoundingClientRect();
+        const edgeThreshold = 10;
+        const nearLeft = Math.abs(e.clientX - rect.left) <= edgeThreshold;
+        const nearRight = Math.abs(rect.right - e.clientX) <= edgeThreshold;
+        const isResizeFromEdge = nearLeft || nearRight;
+        const isImageSurface = !!target.closest('.cm-image-widget-stage');
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = (parsed.width ?? Math.round(imageEl.getBoundingClientRect().width)) || 420;
+        const startOx = parsed.offsetX;
+        const startOy = parsed.offsetY;
+        const maxWidth = getMaxRenderableWidth(view);
+        const resizeDirection = nearLeft ? -1 : 1;
+        let moved = false;
+
+        const onMove = (event: MouseEvent) => {
+          const dx = event.clientX - startX;
+          const dy = event.clientY - startY;
+          if (!moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
+            moved = true;
+          }
+          if (!moved) return;
+
+          if (isResizeFromEdge) {
+            const nextWidth = clampWidth(startWidth + resizeDirection * dx, maxWidth);
+            imageEl.style.width = `${nextWidth}px`;
+            const widthBadge = widget.querySelector('.cm-image-widget-width') as HTMLElement | null;
+            if (widthBadge) widthBadge.textContent = `${nextWidth}px`;
+            return;
+          }
+
+          const nextOx = Math.max(-1200, Math.min(1200, Math.round(startOx + dx)));
+          const nextOy = Math.max(-1200, Math.min(1200, Math.round(startOy + dy)));
+          imageEl.style.objectFit = 'cover';
+          imageEl.style.aspectRatio = '4 / 3';
+          imageEl.style.objectPosition = `calc(50% + ${nextOx}px) calc(50% + ${nextOy}px)`;
+        };
+
+        const onUp = (event: MouseEvent) => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+          document.body.style.cursor = 'default';
+          activeDragCleanup = null;
+
+          if (!moved) {
+            if (isImageSurface) {
+              onOpenLightbox(parsed.src, parsed.alt || 'Image');
+            }
+            return;
+          }
+
+          const dx = event.clientX - startX;
+          const dy = event.clientY - startY;
+          const nextWidth = isResizeFromEdge ? clampWidth(startWidth + resizeDirection * dx, maxWidth) : startWidth;
+          const nextCrop = isResizeFromEdge ? parsed.crop : 'cover';
+          const nextOx = isResizeFromEdge ? parsed.offsetX : Math.max(-1200, Math.min(1200, Math.round(startOx + dx)));
+          const nextOy = isResizeFromEdge ? parsed.offsetY : Math.max(-1200, Math.min(1200, Math.round(startOy + dy)));
+
+          const replacement = buildMarkdownImage(parsed.alt, parsed.src, nextWidth, nextCrop, nextOx, nextOy);
+          view.dispatch({
+            changes: { from, to, insert: replacement },
+            selection: { anchor: from + replacement.length },
+          });
+        };
+
+        activeDragCleanup = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        document.body.style.cursor = isResizeFromEdge ? 'ew-resize' : 'grab';
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      },
+
+      mousemove: (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const widget = target.closest('.cm-image-widget') as HTMLElement | null;
+        if (!widget || widget.classList.contains('text-mode')) return;
+        const imageEl = widget.querySelector('.cm-image-widget-image') as HTMLImageElement | null;
+        if (!imageEl) return;
+        const rect = imageEl.getBoundingClientRect();
+        const edgeThreshold = 10;
+        const nearLeft = Math.abs(e.clientX - rect.left) <= edgeThreshold;
+        const nearRight = Math.abs(rect.right - e.clientX) <= edgeThreshold;
+        imageEl.style.cursor = (nearLeft || nearRight) ? 'ew-resize' : 'grab';
+      },
+
+      mouseleave: (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const imageEl = target.closest('.cm-image-widget')?.querySelector('.cm-image-widget-image') as HTMLImageElement | null;
+        if (imageEl) imageEl.style.cursor = 'grab';
+      },
+
+      click: (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('.cm-image-widget') && !target.closest('.cm-image-widget-text')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+    },
+  });
+}
+
 const markdownHighlightStyle = HighlightStyle.define([
   {
     tag: [t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6, t.heading],
@@ -183,6 +576,11 @@ export function Editor({
   
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [imageLightbox, setImageLightbox] = useState<{ src: string; alt: string } | null>(null);
+
+  const handleOpenImageLightbox = useCallback((src: string, alt: string) => {
+    setImageLightbox({ src, alt });
+  }, []);
 
   // Update available notes for autocomplete
   useEffect(() => {
@@ -385,6 +783,7 @@ export function Editor({
         foldTheme,
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
+        imageWidgetPlugin(handleOpenImageLightbox),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onContentChange(update.state.doc.toString());
@@ -634,6 +1033,26 @@ export function Editor({
           />
         </div>
       </div>
+
+      {imageLightbox && (
+        <div className="editor-image-lightbox-backdrop" onClick={() => setImageLightbox(null)}>
+          <div className="editor-image-lightbox-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="editor-image-lightbox-close"
+              onClick={() => setImageLightbox(null)}
+              aria-label="Close image preview"
+            >
+              ×
+            </button>
+            <img
+              src={imageLightbox.src}
+              alt={imageLightbox.alt || 'Image preview'}
+              className="editor-image-lightbox-image"
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

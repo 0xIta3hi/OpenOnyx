@@ -590,17 +590,25 @@ export default function App() {
     }
   };
 
-  // Handle image paste - save image to attachments folder and return path
+  // Handle image paste/drop - embed as inline data URL (no attachments folder write)
   const handleImagePaste = async (file: File): Promise<string | null> => {
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-      const imagePath = await api.saveImage(base64, file.name);
-      return imagePath;
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result === 'string' && result.startsWith('data:image/')) {
+            resolve(result);
+            return;
+          }
+          reject(new Error('Unsupported image data'));
+        };
+        reader.onerror = () => reject(new Error('Failed to read image'));
+        reader.readAsDataURL(file);
+      });
+      return dataUrl;
     } catch (err) {
-      console.error('Failed to save image:', err);
+      console.error('Failed to embed image:', err);
       return null;
     }
   };

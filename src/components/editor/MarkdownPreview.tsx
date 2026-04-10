@@ -59,6 +59,19 @@ interface MarkdownPreviewProps {
   onGetLinkPreview?: (noteName: string) => string | null;
 }
 
+function parseImageRenderMeta(title?: string): { width?: number; crop: 'contain' | 'cover'; offsetX: number; offsetY: number } {
+  const raw = title || '';
+  const widthMatch = raw.match(/(?:^|[\s,])w(?:idth)?=(\d{2,4})/i);
+  const cropMatch = raw.match(/(?:^|[\s,])crop=(cover|contain)/i);
+  const offsetXMatch = raw.match(/(?:^|[\s,])ox=(-?\d{1,4})/i);
+  const offsetYMatch = raw.match(/(?:^|[\s,])oy=(-?\d{1,4})/i);
+  const width = widthMatch ? Math.max(120, Math.min(1400, Number(widthMatch[1]))) : undefined;
+  const crop = (cropMatch?.[1] as 'contain' | 'cover') || 'contain';
+  const offsetX = offsetXMatch ? Math.max(-1200, Math.min(1200, Number(offsetXMatch[1]))) : 0;
+  const offsetY = offsetYMatch ? Math.max(-1200, Math.min(1200, Number(offsetYMatch[1]))) : 0;
+  return { width, crop, offsetX, offsetY };
+}
+
 export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbed, onGetLinkPreview }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{
@@ -132,6 +145,31 @@ export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbe
       ' <span class="tag" data-tag="$1">$1</span>'
     );
 
+    // Render markdown image metadata controls: ![alt](src "w=420 crop=cover")
+    processed = processed.replace(
+      /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
+      (match, alt, src, title) => {
+        const { width, crop, offsetX, offsetY } = parseImageRenderMeta(title);
+        if (!width && crop === 'contain') return match;
+
+        const styleParts: string[] = [];
+        if (width) {
+          styleParts.push(`max-width:${Math.round(width)}px`);
+          styleParts.push('width:100%');
+        }
+        if (crop === 'cover') {
+          styleParts.push('aspect-ratio:4 / 3');
+          styleParts.push('object-fit:cover');
+          styleParts.push(`object-position:calc(50% + ${Math.round(offsetX)}px) calc(50% + ${Math.round(offsetY)}px)`);
+        }
+
+        const safeAlt = String(alt).replace(/"/g, '&quot;');
+        const safeSrc = String(src).replace(/"/g, '&quot;');
+        const styleAttr = styleParts.length ? ` style="${styleParts.join(';')}"` : '';
+        return `<img src="${safeSrc}" alt="${safeAlt}"${styleAttr} />`;
+      }
+    );
+
     // Process callouts before markdown parsing
     processed = processCallouts(processed);
 
@@ -157,6 +195,7 @@ export function MarkdownPreview({ content, onLinkClick, onCheckboxToggle, onEmbe
     return DOMPurify.sanitize(html, {
       ADD_ATTR: ['data-link', 'data-tag', 'data-line', 'data-heading', 'data-embed', 'data-callout', 'data-foldable', 'data-collapsed', 'checked', 'type', 'style'],
       ADD_TAGS: ['span', 'input', 'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'mspace', 'msqrt', 'mfrac', 'table', 'tbody', 'tr', 'mtd', 'mtr', 'annotation'],
+      ADD_DATA_URI_TAGS: ['img'],
     });
   }, [content, onEmbed]);
 
