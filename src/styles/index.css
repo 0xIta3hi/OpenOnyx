@@ -646,6 +646,8 @@ body {
   padding: var(--space-6);
   line-height: var(--editor-line-height);
   cursor: default;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .editor-container .cm-editor .cm-scroller::-webkit-scrollbar,
@@ -655,7 +657,7 @@ body {
 }
 
 .editor-container .cm-editor .cm-content {
-  max-width: 800px;
+  max-width: 850px;
   margin: 0 auto;
   caret-color: var(--editor-caret) !important;
   cursor: text;
