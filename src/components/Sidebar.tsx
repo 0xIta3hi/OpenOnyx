@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { ChevronRight, Folder, FolderOpen, FileText, FilePlus, FolderPlus, RefreshCw, FileEdit, Trash2, Star, ChevronDown } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, FileText, FilePlus, FolderPlus, RefreshCw, FileEdit, Trash2, Star, ChevronDown, ChevronLeft } from 'lucide-react';
 import { FileEntry } from '../types';
 import { getNoteName } from '../utils/helpers';
 import { getAPI } from '../utils/api';
@@ -23,12 +23,13 @@ interface SidebarProps {
   onRenameFile: (oldPath: string, newName: string) => void;
   onRefresh: () => void;
   onToggleStar: (path: string) => void;
+  onCollapse: () => void;
 }
 
 export function Sidebar({
   visible, fileTree, activeFilePath, starredNotes,
   onFileSelect, onNewNote, onNewFolder,
-  onDeleteFile, onRenameFile, onRefresh, onToggleStar
+  onDeleteFile, onRenameFile, onRefresh, onToggleStar, onCollapse
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
@@ -192,6 +193,13 @@ export function Sidebar({
               title="Refresh"
             >
               <RefreshCw size={16} strokeWidth={1.5} />
+            </button>
+            <button
+              className="sidebar-btn"
+              onClick={onCollapse}
+              title="Collapse Explorer"
+            >
+              <ChevronLeft size={16} strokeWidth={1.5} />
             </button>
           </div>
         </div>

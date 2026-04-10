@@ -172,7 +172,7 @@ export function GraphView({
   const initDoneRef = useRef(false);
   const prevThemeRef = useRef<Theme>(theme);
   
-  const [showSettingsPanel, setShowSettingsPanel] = useState(true);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [alpha, setAlpha] = useState(0);
   const [graphData, setGraphData] = useState<GraphDataState | null>(null);

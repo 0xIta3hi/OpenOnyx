@@ -1170,6 +1170,12 @@ blockquote:has(.callout) {
   justify-content: space-between;
 }
 
+.backlinks-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .backlinks-count {
   font-size: var(--text-xs);
   background: var(--bg-elevated);
@@ -1177,6 +1183,25 @@ blockquote:has(.callout) {
   padding: 2px 8px;
   border-radius: var(--radius-full);
   font-weight: 500;
+}
+
+.backlinks-close-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.backlinks-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .backlinks-list {

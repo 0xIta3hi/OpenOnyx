@@ -6,19 +6,26 @@
  */
 
 import React from 'react';
+import { X } from 'lucide-react';
 import { getNoteName } from '../utils/helpers';
 
 interface BacklinksPanelProps {
   backlinks: string[];
   onBacklinkClick: (path: string) => void;
+  onClose: () => void;
 }
 
-export function BacklinksPanel({ backlinks, onBacklinkClick }: BacklinksPanelProps) {
+export function BacklinksPanel({ backlinks, onBacklinkClick, onClose }: BacklinksPanelProps) {
   return (
     <div className="backlinks-panel">
       <div className="backlinks-header">
         <span>Backlinks</span>
-        <span className="backlinks-count">{backlinks.length}</span>
+        <div className="backlinks-header-right">
+          <span className="backlinks-count">{backlinks.length}</span>
+          <button className="backlinks-close-btn" onClick={onClose} title="Close backlinks panel">
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="backlinks-list">

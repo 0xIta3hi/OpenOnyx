@@ -700,7 +700,7 @@ export default function App() {
               setShowThoughtModel(false);
               setShowGraph(g => !g);
             }}
-            onCommandPalette={() => setShowCommandPalette(true)}
+            onToggleExplorer={() => setShowSidebar(s => !s)}
             onSettings={() => setShowSettings(true)}
             onDailyNote={handleCreateDailyNote}
             onToggleTags={() => setShowTags(t => !t)}
@@ -722,6 +722,7 @@ export default function App() {
           onDeleteFile={handleDeleteFile}
           onRenameFile={handleRenameFile}
           onRefresh={refreshFileTree}
+          onCollapse={() => setShowSidebar(false)}
           onToggleStar={(path) => {
             setStarredNotes(prev => 
               prev.includes(path) 
@@ -868,6 +869,7 @@ export default function App() {
               <BacklinksPanel
                 backlinks={backlinks}
                 onBacklinkClick={openFile}
+                onClose={() => setShowBacklinks(false)}
               />
             )}
             
