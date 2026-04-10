@@ -6,7 +6,7 @@
  * exposed to the renderer via secure IPC channels.
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell } from 'electron';
 import * as path from 'path';
 import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
@@ -15,6 +15,15 @@ import { registerIpcHandlers } from './ipc';
 let mainWindow: BrowserWindow | null = null;
 let fsManager: FileSystemManager | null = null;
 let searchEngine: SearchEngine | null = null;
+
+function isExternalHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 /** Create the main application window */
 function createWindow(): void {
@@ -47,6 +56,30 @@ function createWindow(): void {
   // Debugging: Forward renderer console logs to main process console
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[RENDERER] ${message} (at ${sourceId}:${line})`);
+  });
+
+  // Always open external HTTP(S) links in the user's default browser.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalHttpUrl(url)) {
+      void shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!mainWindow || !isExternalHttpUrl(navigationUrl)) return;
+
+    let isSameOrigin = false;
+    try {
+      isSameOrigin = new URL(navigationUrl).origin === new URL(mainWindow.webContents.getURL()).origin;
+    } catch {
+      isSameOrigin = false;
+    }
+
+    if (isSameOrigin) return;
+    event.preventDefault();
+    void shell.openExternal(navigationUrl);
   });
 
   // // Open DevTools by default for debugging
