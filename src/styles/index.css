@@ -638,23 +638,32 @@ body {
   font-family: var(--font-family);
   font-size: var(--editor-pane-font-size);
   color: var(--text-primary);
-  cursor: text;
+  cursor: default;
   caret-color: var(--editor-caret);
 }
 
 .editor-container .cm-editor .cm-scroller {
   padding: var(--space-6);
   line-height: var(--editor-line-height);
+  cursor: default;
+}
+
+.editor-container .cm-editor .cm-scroller::-webkit-scrollbar,
+.editor-container .cm-editor .cm-scroller::-webkit-scrollbar-track,
+.editor-container .cm-editor .cm-scroller::-webkit-scrollbar-thumb {
+  cursor: default;
 }
 
 .editor-container .cm-editor .cm-content {
   max-width: 800px;
   margin: 0 auto;
   caret-color: var(--editor-caret) !important;
+  cursor: text;
 }
 
 .editor-container .cm-editor .cm-line {
   caret-color: var(--editor-caret) !important;
+  cursor: text;
 }
 
 .editor-container .cm-editor .cm-gutters {
