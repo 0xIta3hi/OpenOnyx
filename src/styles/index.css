@@ -747,25 +747,27 @@ body {
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: 1px solid var(--border-medium);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 55%, var(--border-medium));
   border-radius: 50%;
-  background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
-  color: var(--text-secondary);
-  font-size: 14px;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  color: var(--text-primary);
+  font-size: 19px;
+  font-weight: 700;
   line-height: 1;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   z-index: 2;
 }
 
 .cm-image-widget-toggle:hover {
   border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--bg-elevated) 98%, var(--accent-glow));
   color: var(--text-primary);
 }
 
