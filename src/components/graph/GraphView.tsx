@@ -142,7 +142,7 @@ function ColorPicker({ label, value, onChange, presets }: { label: string; value
 }
 
 interface GraphViewProps {
-  onNodeClick: (noteName: string, heading?: string) => void;
+  onNodeClick: (noteName: string, heading?: string, notePath?: string) => void;
   onClose: () => void;
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
@@ -386,7 +386,7 @@ export function GraphView({
         onNodeClick: (nodeId) => {
           const node = filteredData.nodes.find(n => n.id === nodeId);
           if (node) {
-            onNodeClick(node.name);
+            onNodeClick(node.name, undefined, node.path || undefined);
           }
         },
         onNodeDrag: (nodeId, x, y, active) => {

@@ -865,7 +865,17 @@ export default function App() {
                   overflow: 'hidden'
                 }}>
                   <GraphView
-                    onNodeClick={handleLinkClick}
+                    onNodeClick={async (linkName, heading, notePath) => {
+                      setViewMode('preview');
+                      if (graphFullScreen) {
+                        setGraphFullScreen(false);
+                      }
+                      if (notePath) {
+                        await openFile(notePath, 'preview');
+                        return;
+                      }
+                      await handleLinkClick(linkName, heading);
+                    }}
                     onClose={() => setShowGraph(false)}
                     isFullScreen={graphFullScreen}
                     onToggleFullScreen={() => setGraphFullScreen(f => !f)}

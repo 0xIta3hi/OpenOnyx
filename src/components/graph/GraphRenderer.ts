@@ -106,6 +106,7 @@ export class GraphRenderer {
   private isPanning = false;
   private dragNode: RenderNode | null = null;
   private lastPointerPos = { x: 0, y: 0 };
+  private pointerDownPos = { x: 0, y: 0 };
   private animationFrame: number | null = null;
   
   // Obsidian-style colors
@@ -251,6 +252,7 @@ export class GraphRenderer {
     const y = e.clientY - rect.top;
     
     this.lastPointerPos = { x, y };
+    this.pointerDownPos = { x, y };
     
     const node = this.getNodeAtPosition(x, y);
     if (node) {
@@ -298,9 +300,16 @@ export class GraphRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const movedDistance = Math.hypot(x - this.pointerDownPos.x, y - this.pointerDownPos.y);
+    const clickThreshold = 5;
     
     if (this.isDragging && this.dragNode) {
       this.onNodeDrag?.(this.dragNode.id, this.dragNode.x, this.dragNode.y, false);
+      if (movedDistance <= clickThreshold) {
+        this.selectedNodeId = this.dragNode.id;
+        this.render();
+        this.onNodeClick?.(this.dragNode.id);
+      }
     } else if (!this.isPanning || (Math.abs(x - this.lastPointerPos.x) < 5 && Math.abs(y - this.lastPointerPos.y) < 5)) {
       const node = this.getNodeAtPosition(x, y);
       if (node) {
