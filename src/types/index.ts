@@ -61,7 +61,7 @@ export interface Command {
 }
 
 export type ViewMode = 'editor' | 'preview' | 'split';
-export type Theme = 'dark' | 'light';
+export type Theme = 'dark' | 'light' | 'custom';
 
 // ── Thought Model Types ──────────────────────────────
 

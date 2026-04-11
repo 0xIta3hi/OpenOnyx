@@ -47,7 +47,7 @@ function cleanChunkText(text: string): string {
 
 interface ThoughtModelPageProps {
   vaultPath: string | null;
-  theme: 'dark' | 'light';
+  theme: 'dark' | 'light' | 'custom';
   onOpenNote: (path: string) => void;
   onClose: () => void;
   isFullScreen?: boolean;

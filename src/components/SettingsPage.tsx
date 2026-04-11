@@ -13,9 +13,13 @@ import { X, Palette, Type, FileText, Keyboard, Info, FolderOpen, RotateCcw } fro
 
 export interface AppSettings {
   // Appearance
-  theme: 'dark' | 'light' | 'system';
+  theme: 'dark' | 'light' | 'system' | 'custom';
   accentColor: string;
   fontFamily: string;
+  
+  // Custom Colors (used when theme === 'custom')
+  customBgPrimary: string;
+  customTextPrimary: string;
   
   // Editor
   fontSize: number;
@@ -49,6 +53,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   accentColor: '#7c3aed',
   fontFamily: 'Inter, system-ui, sans-serif',
+  
+  customBgPrimary: '#151515',
+  customTextPrimary: '#e6e6e6',
   
   fontSize: 15,
   editorFontSize: 15,
@@ -145,9 +152,37 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                       <option value="dark">Dark</option>
                       <option value="light">Light</option>
                       <option value="system">System</option>
+                      <option value="custom">Custom</option>
                     </select>
                   </label>
                 </div>
+
+                {localSettings.theme === 'custom' && (
+                  <>
+                    <div className="setting-group">
+                      <label className="setting-label">
+                        <span>Custom Background Color</span>
+                        <input
+                          type="color"
+                          value={localSettings.customBgPrimary}
+                          onChange={(e) => updateSetting('customBgPrimary', e.target.value)}
+                          className="setting-color"
+                        />
+                      </label>
+                    </div>
+                    <div className="setting-group">
+                      <label className="setting-label">
+                        <span>Custom Text Color</span>
+                        <input
+                          type="color"
+                          value={localSettings.customTextPrimary}
+                          onChange={(e) => updateSetting('customTextPrimary', e.target.value)}
+                          className="setting-color"
+                        />
+                      </label>
+                    </div>
+                  </>
+                )}
 
                 <div className="setting-group">
                   <label className="setting-label">

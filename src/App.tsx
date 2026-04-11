@@ -227,6 +227,23 @@ export default function App() {
     root.style.setProperty('--preview-font-size', `${settings.previewFontSize ?? settings.fontSize}px`);
     root.style.setProperty('--editor-line-height', `${settings.lineHeight}`);
     
+    if (theme === 'custom') {
+      root.style.setProperty('--bg-primary', settings.customBgPrimary);
+      root.style.setProperty('--text-primary', settings.customTextPrimary);
+      // derive some other basic colors for decent UI
+      root.style.setProperty('--bg-secondary', settings.customBgPrimary);
+      root.style.setProperty('--bg-elevated', settings.customBgPrimary);
+      root.style.setProperty('--text-secondary', settings.customTextPrimary);
+      root.style.setProperty('--text-muted', settings.customTextPrimary);
+    } else {
+      root.style.removeProperty('--bg-primary');
+      root.style.removeProperty('--text-primary');
+      root.style.removeProperty('--bg-secondary');
+      root.style.removeProperty('--bg-elevated');
+      root.style.removeProperty('--text-secondary');
+      root.style.removeProperty('--text-muted');
+    }
+    
     // Save settings to localStorage
     localStorage.setItem('notework-settings', JSON.stringify(settings));
   }, [settings, theme]);

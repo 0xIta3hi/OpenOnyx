@@ -117,21 +117,21 @@
 
 /* Light Theme Override */
 [data-theme="light"] {
-  --bg-primary: #f8f8fc;
-  --bg-secondary: #f0f0f6;
-  --bg-tertiary: #e8e8f0;
-  --bg-elevated: #ffffff;
-  --bg-hover: #e0e0ec;
-  --bg-active: #d0d0e0;
-  --bg-glass: rgba(248, 248, 252, 0.9);
+  --bg-primary: #f4f4f0;      /* Soft, warm paper color to reduce glare */
+  --bg-secondary: #ebebe6;    /* Slightly darker for sidebar */
+  --bg-tertiary: #e0e0da;
+  --bg-elevated: #fdfdfc;     /* Very light off-white, not pure white */
+  --bg-hover: #e4e4df;
+  --bg-active: #d6d6d0;
+  --bg-glass: rgba(244, 244, 240, 0.9);
 
-  --text-primary: #1a1a2e;
-  --text-secondary: #333344;
-  --text-tertiary: #4d4d60;
-  --text-muted: #707086;
+  --text-primary: #2c2c2a;    /* Softened black/very dark gray */
+  --text-secondary: #4e4e4a;
+  --text-tertiary: #6c6c68;
+  --text-muted: #8c8c86;
   --text-link: var(--text-primary);
 
-  --bg-input: #ffffff;
+  --bg-input: #fdfdfc;
 
   --accent-primary: #333344;
   --accent-secondary: #555570;
