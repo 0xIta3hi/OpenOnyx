@@ -126,9 +126,9 @@
   --bg-glass: rgba(248, 248, 252, 0.9);
 
   --text-primary: #1a1a2e;
-  --text-secondary: #555570;
-  --text-tertiary: #8888a0;
-  --text-muted: #aaaabc;
+  --text-secondary: #333344;
+  --text-tertiary: #4d4d60;
+  --text-muted: #707086;
   --text-link: var(--text-primary);
 
   --bg-input: #ffffff;
