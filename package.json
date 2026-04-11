@@ -4,8 +4,9 @@
   "description": "A local-first knowledge management tool with graph-based note linking",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/dev/start-electron.cjs\"",
-    "build": "tsc && vite build && tsc -p tsconfig.electron.json",
+    "dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/dev/start-electron.cjs\"",
+    "build": "tsc && vite build && npm run build:electron",
+    "build:electron": "tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder",
     "lint": "tsc --noEmit"
   },
