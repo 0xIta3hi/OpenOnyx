@@ -25,6 +25,7 @@ interface GraphSettings {
   searchTerm: string;
   existingFilesOnly: boolean;
   showOrphans: boolean;
+  backgroundColor: string;
   nodeColor: string;
   connectedColor: string;
   edgeColor: string;
@@ -40,18 +41,12 @@ interface GraphSettings {
   linkDistance: number;
 }
 
-// Get background color from CSS variables
-function getBackgroundColor(isDark: boolean): number {
-  // Match the app's bg-secondary which is used for sidebars/graph
-  // Dark: #101010, Light: #f0f0f6
-  return isDark ? 0x101010 : 0xf0f0f6;
-}
-
 // Default colors matching app theme
 const getDefaultSettings = (isDark: boolean): GraphSettings => ({
   searchTerm: '',
   existingFilesOnly: false,
   showOrphans: true,
+  backgroundColor: isDark ? '#101010' : '#f0f0f6',
   // Grayscale nodes that match app theme
   nodeColor: isDark ? '#a0a0a0' : '#4a4a4a',
   connectedColor: isDark ? '#c0c0c0' : '#3a3a3a',
@@ -214,7 +209,7 @@ export function GraphView({
       // Update background color immediately without full re-init
       const renderer = rendererRef.current;
       if (renderer && renderer.isInitialized()) {
-        renderer.setBackgroundColor(getBackgroundColor(isDark));
+        renderer.setBackgroundColor(hexToNumber(settings.backgroundColor || (isDark ? '#101010' : '#f0f0f6')));
       }
       
       // Force re-init with new theme colors
@@ -346,7 +341,7 @@ export function GraphView({
     }
     
     // Use app theme background colors
-    const bgColor = getBackgroundColor(isDark);
+    const bgColor = hexToNumber(settings.backgroundColor || (isDark ? '#101010' : '#f0f0f6'));
     
     const renderer = new GraphRenderer(canvas, {
       width: rect.width,
@@ -663,6 +658,18 @@ export function GraphView({
             </Section>
             
             <Section title="Display" defaultOpen={false}>
+              <ColorPicker
+                label="Background"
+                value={settings.backgroundColor || (isDark ? '#101010' : '#f0f0f6')}
+                onChange={(v) => {
+                  setSettings(s => ({ ...s, backgroundColor: v }));
+                  const renderer = rendererRef.current;
+                  if (renderer && renderer.isInitialized()) {
+                    renderer.setBackgroundColor(hexToNumber(v));
+                  }
+                }}
+                presets={['#101010', '#151515', '#f0f0f6', '#ffffff']}
+              />
               <ColorPicker
                 label="Node color"
                 value={settings.nodeColor}
