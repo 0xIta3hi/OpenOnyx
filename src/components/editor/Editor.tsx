@@ -30,6 +30,7 @@ interface EditorProps {
   activeTabId: string;
   content: string;
   viewMode: ViewMode;
+  specialContent?: React.ReactNode;
   onAdjustFontSize: (delta: number, scope: 'both' | 'editor' | 'preview') => void;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
@@ -588,6 +589,7 @@ const markdownHighlightStyle = HighlightStyle.define([
 
 export function Editor({
   tabs, activeTabId, content, viewMode, availableNotes,
+  specialContent,
   onAdjustFontSize, onTabSelect, onTabClose, onContentChange,
   onViewModeChange, onLinkClick, onGetNoteContent, onImagePaste
 }: EditorProps) {
@@ -601,6 +603,7 @@ export function Editor({
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [imageLightbox, setImageLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const isSpecialTab = !!specialContent;
 
   const handleOpenImageLightbox = useCallback((src: string, alt: string) => {
     setImageLightbox({ src, alt });
@@ -769,6 +772,13 @@ export function Editor({
 
   // Initialize/update CodeMirror
   useEffect(() => {
+    if (isSpecialTab) {
+      if (viewRef.current) {
+        viewRef.current.destroy();
+        viewRef.current = null;
+      }
+      return;
+    }
     if (!editorRef.current) return;
 
     // If view already exists, just update content
@@ -905,10 +915,11 @@ export function Editor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [activeTabId]); // Re-create when tab changes
+  }, [activeTabId, isSpecialTab]); // Re-create when tab changes
 
   // Update content when it changes externally (tab switch)
   useEffect(() => {
+    if (isSpecialTab) return;
     if (viewRef.current) {
       const currentDoc = viewRef.current.state.doc.toString();
       if (currentDoc !== content) {
@@ -921,10 +932,11 @@ export function Editor({
         });
       }
     }
-  }, [content]);
+  }, [content, isSpecialTab]);
 
   // Handle custom search event from Ribbon or App
   useEffect(() => {
+    if (isSpecialTab) return;
     const handleOpenSearch = () => {
       setIsSearchOpen(true);
     };
@@ -946,7 +958,7 @@ export function Editor({
       document.removeEventListener('editor:open-search', handleOpenSearch as EventListener);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [isSpecialTab]);
 
   return (
     <>
@@ -985,33 +997,35 @@ export function Editor({
           </span>
         </div>
 
-        <div className="editor-actions">
-          <div className="view-mode-toggle">
-            <button
-              className={`view-mode-btn ${viewMode === 'editor' ? 'active' : ''}`}
-              onClick={() => onViewModeChange('editor')}
-            >
-              Edit
-            </button>
-            <button
-              className={`view-mode-btn ${viewMode === 'split' ? 'active' : ''}`}
-              onClick={() => onViewModeChange('split')}
-            >
-              Split
-            </button>
-            <button
-              className={`view-mode-btn ${viewMode === 'preview' ? 'active' : ''}`}
-              onClick={() => onViewModeChange('preview')}
-            >
-              Read
-            </button>
+        {!isSpecialTab && (
+          <div className="editor-actions">
+            <div className="view-mode-toggle">
+              <button
+                className={`view-mode-btn ${viewMode === 'editor' ? 'active' : ''}`}
+                onClick={() => onViewModeChange('editor')}
+              >
+                Edit
+              </button>
+              <button
+                className={`view-mode-btn ${viewMode === 'split' ? 'active' : ''}`}
+                onClick={() => onViewModeChange('split')}
+              >
+                Split
+              </button>
+              <button
+                className={`view-mode-btn ${viewMode === 'preview' ? 'active' : ''}`}
+                onClick={() => onViewModeChange('preview')}
+              >
+                Read
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Editor & Preview Container */}
-      <div 
-        className="editor-container" 
+      <div
+        className="editor-container"
         ref={containerRef}
         style={{
           display: 'flex',
@@ -1020,6 +1034,12 @@ export function Editor({
           position: 'relative',
         }}
       >
+        {isSpecialTab ? (
+          <div style={{ flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            {specialContent}
+          </div>
+        ) : (
+          <>
         {/* VS Code-style Search/Replace Panel */}
         <SearchReplace 
           getView={() => viewRef.current} 
@@ -1063,6 +1083,8 @@ export function Editor({
             onImageClick={handleOpenImageLightbox}
           />
         </div>
+          </>
+        )}
       </div>
 
       {imageLightbox && (

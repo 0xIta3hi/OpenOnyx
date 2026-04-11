@@ -1,0 +1,10 @@
+--- src/components/canvas/CanvasView.tsx
++++ src/components/canvas/CanvasView.tsx
+@@ -87,6 +87,7 @@
+   const [fileModal, setFileModal] = useState(false);
+   const [linkModal, setLinkModal] = useState(false);
+   const [linkUrl, setLinkUrl] = useState('');
++  const [alignLines, setAlignLines] = useState<{ x: number[], y: number[] }>({ x: [], y: [] });
+ 
+   /* refs */
+   const wrapRef = useRef<HTMLDivElement>(null);

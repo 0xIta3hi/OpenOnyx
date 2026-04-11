@@ -1,5 +1,5 @@
 import React from 'react';
-import { FilePlus, Search, Network, Settings, FolderOpen, Calendar, Hash, List, Brain } from 'lucide-react';
+import { FilePlus, Search, Network, Settings, FolderOpen, Calendar, Hash, List, Brain, Layout } from 'lucide-react';
 import { getAPI } from '../utils/api';
 
 interface RibbonProps {
@@ -12,6 +12,7 @@ interface RibbonProps {
   onToggleTags?: () => void;
   onToggleOutline?: () => void;
   onThoughtModel?: () => void;
+  onCanvas?: () => void;
 }
 
 export function Ribbon({ 
@@ -23,7 +24,8 @@ export function Ribbon({
   onDailyNote,
   onToggleTags,
   onToggleOutline,
-  onThoughtModel
+  onThoughtModel,
+  onCanvas
 }: RibbonProps) {
   const handleSearch = () => {
     document.dispatchEvent(new CustomEvent('editor:open-search'));
@@ -62,6 +64,11 @@ export function Ribbon({
         {onThoughtModel && (
           <button className="ribbon-btn" onClick={onThoughtModel} title="Thought Model">
             <Brain size={20} strokeWidth={1.5} />
+          </button>
+        )}
+        {onCanvas && (
+          <button className="ribbon-btn" onClick={onCanvas} title="Canvas (Ctrl+Shift+C)">
+            <Layout size={20} strokeWidth={1.5} />
           </button>
         )}
       </div>

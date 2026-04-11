@@ -580,6 +580,7 @@ body {
   padding: var(--space-2) var(--space-4);
   background: transparent;
   border: none;
+  border-radius: 10px 10px 0 0;
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-sm);
@@ -5086,3 +5087,641 @@ blockquote:has(.callout) {
   margin: 0;
   font-size: var(--text-sm);
 }
+
+/* ══════════════════════════════════════════════════════════
+   Canvas — Obsidian-style infinite workspace
+   ══════════════════════════════════════════════════════════
+
+   Architecture:
+     .cv                 – Root wrapper (fills container)
+       .cv-area          – Viewport that captures mouse events
+         .cv-dots        – SVG dot-grid background
+         .cv-transform   – CSS-transform layer (translate + scale)
+           .cv-edges     – SVG for all edge paths
+           .cv-node.*    – Absolutely-positioned DOM cards
+       .cv-controls      – Right-side vertical toolbar
+       .cv-add-bar       – Bottom-center add-card row
+       .cv-card-menu     – Floating menu above selected card
+       .cv-close         – Close button (top-right)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Canvas tokens ────────────────────────────────── */
+:root {
+  --cv-dot: rgba(255, 255, 255, 0.07);
+  --cv-edge: rgba(255, 255, 255, 0.35);
+  --cv-sel:  var(--accent-color, #7c3aed);
+  --cv-node-bg: var(--bg-elevated, #222);
+  --cv-node-border: var(--border-medium, rgba(255,255,255,0.1));
+  --cv-ctrl-bg: var(--bg-elevated, #222);
+  --cv-ctrl-border: var(--border-medium, rgba(255,255,255,0.1));
+  --cv-ctrl-hover: var(--bg-hover, #333);
+}
+[data-theme="light"] {
+  --cv-dot: rgba(0, 0, 0, 0.07);
+  --cv-edge: rgba(0, 0, 0, 0.3);
+  --cv-node-bg: #fff;
+  --cv-node-border: rgba(0,0,0,0.12);
+  --cv-ctrl-bg: #fff;
+  --cv-ctrl-border: rgba(0,0,0,0.1);
+  --cv-ctrl-hover: #f0f0f0;
+}
+
+/* ═══ Root wrapper ═══ */
+.cv {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  font-family: var(--font-sans);
+  user-select: none;
+}
+
+/* ═══ Viewport area ═══ */
+.cv-area {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* ── Transform layer ── */
+.cv-transform {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+/* ═══ Dot-pattern SVG background ═══ */
+.cv-dots {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══ SVG Edges layer ═══ */
+.cv-edges {
+  position: absolute;
+  overflow: visible;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+.cv-edges > * { pointer-events: auto; }
+
+.cv-edge .cv-edge-display {
+  pointer-events: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke-width 0.12s ease;
+}
+.cv-edge.sel .cv-edge-display {
+  stroke-width: 3 !important;
+  filter: drop-shadow(0 0 4px var(--cv-sel));
+}
+.cv-edge-label {
+  font-size: 12px;
+  fill: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* ═══ Selection box ═══ */
+.cv-sel-box {
+  position: absolute;
+  border: 1.5px dashed var(--cv-sel);
+  background: rgba(124, 58, 237, 0.06);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ═════════════════════════════════════════════════════
+   NODES
+   ═════════════════════════════════════════════════════ */
+.cv-node {
+  --node-color: var(--cv-node-border);
+  position: absolute;
+  background: var(--cv-node-bg);
+  border: 1px solid var(--node-color);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 0.15s ease;
+}
+.cv-node:not(.editing) { cursor: grab; }
+.cv-node:not(.editing):active { cursor: grabbing; }
+[data-dragging="true"] .cv-node { cursor: grabbing; }
+
+.cv-node:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18), 0 2px 4px rgba(0,0,0,0.1);
+}
+.cv-node.sel {
+  border-color: var(--cv-sel) !important;
+  box-shadow: 0 0 0 1.5px var(--cv-sel) !important;
+}
+.cv-node.editing {
+  cursor: auto;
+  z-index: 10;
+}
+
+/* ── Node body ── */
+.cv-node-body {
+  padding: 14px 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  flex: 1;
+}
+.cv-embedded-md {
+  padding: 1px 4px;
+  min-height: 0;
+  height: 100%;
+  overscroll-behavior: contain;
+}
+.cv-embedded-md .markdown-preview {
+  padding: 1px 2px 0;
+  max-width: none;
+  margin: 0;
+  overflow: visible;
+  height: auto;
+}
+.cv-embedded-md .markdown-preview > :first-child {
+  margin-top: 2px !important;
+}
+.cv-embedded-md .markdown-preview ul,
+.cv-embedded-md .markdown-preview ol {
+  margin-left: 0;
+  padding-left: 1.1em;
+}
+.cv-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* ── Text editing ── */
+.cv-text-edit {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  padding: 14px 16px;
+  font-family: var(--font-family, var(--font-sans));
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+
+/* ── File node ── */
+.cv-file-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cv-file-icon { color: var(--accent-color); flex-shrink: 0; }
+.cv-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ── Link node ── */
+.cv-link-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cv-link-icon { color: #53dfdd; flex-shrink: 0; }
+.cv-link-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ── Group node ── */
+.cv-node-group {
+  background: var(--node-color-subtle, rgba(120, 120, 120, 0.05));
+  border: 1px solid var(--node-color, var(--cv-node-border));
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
+  z-index: 8 !important;
+  pointer-events: none;
+}
+.cv-node-group:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+}
+.cv-node-group.sel {
+  border-color: var(--cv-sel) !important;
+  box-shadow: 0 0 0 2px var(--cv-sel) !important;
+}
+.cv-node-group .cv-group-label,
+.cv-node-group .cv-group-input,
+.cv-node-group .cv-resize {
+  pointer-events: auto;
+}
+.cv-group-label {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  height: calc(26px * var(--zm, 1));
+  padding: 0 calc(12px * var(--zm, 1));
+  font-size: calc(13px * var(--zm, 1));
+  font-weight: 500;
+  color: #fff;
+  background: var(--node-color, var(--cv-sel));
+  border-top-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  transform: none;
+  pointer-events: auto;
+}
+.cv-group-input {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  height: calc(26px * var(--zm, 1));
+  padding: 0 calc(12px * var(--zm, 1));
+  font-size: calc(13px * var(--zm, 1));
+  font-weight: 500;
+  color: #fff;
+  background: var(--node-color, var(--cv-sel));
+  border-top-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  border: none;
+  outline: none;
+  z-index: 10;
+  font-family: var(--font-sans);
+}
+
+/* ── Connection ports ── */
+.cv-port {
+  position: absolute;
+  width: calc(10px * var(--zm, 1));
+  height: calc(10px * var(--zm, 1));
+  background: var(--cv-sel);
+  border-radius: 50%;
+  opacity: 0;
+  cursor: crosshair;
+  transition: opacity 0.12s, transform 0.12s;
+  z-index: 20;
+}
+.cv-node:hover .cv-port,
+.cv-node.sel .cv-port {
+  opacity: 0.5;
+}
+.cv-port:hover {
+  opacity: 1 !important;
+  transform: scale(1.25) !important;
+}
+.cv-port-top    { top: calc(-5px * var(--zm, 1)); left: 50%; margin-left: calc(-5px * var(--zm, 1)); }
+.cv-port-bottom { bottom: calc(-5px * var(--zm, 1)); left: 50%; margin-left: calc(-5px * var(--zm, 1)); }
+.cv-port-left   { left: calc(-5px * var(--zm, 1)); top: 50%; margin-top: calc(-5px * var(--zm, 1)); }
+.cv-port-right  { right: calc(-5px * var(--zm, 1)); top: 50%; margin-top: calc(-5px * var(--zm, 1)); }
+
+/* ── Resize handles ── */
+.cv-resize {
+  position: absolute;
+  width: calc(8px * var(--zm, 1));
+  height: calc(8px * var(--zm, 1));
+  background: var(--cv-sel);
+  border-radius: 2px;
+  z-index: 20;
+  opacity: 0.8;
+}
+.cv-resize-nw { top: calc(-4px * var(--zm, 1)); left: calc(-4px * var(--zm, 1)); cursor: nw-resize; }
+.cv-resize-ne { top: calc(-4px * var(--zm, 1)); right: calc(-4px * var(--zm, 1)); cursor: ne-resize; }
+.cv-resize-sw { bottom: calc(-4px * var(--zm, 1)); left: calc(-4px * var(--zm, 1)); cursor: sw-resize; }
+.cv-resize-se { bottom: calc(-4px * var(--zm, 1)); right: calc(-4px * var(--zm, 1)); cursor: se-resize; }
+
+/* ═════════════════════════════════════════════════════
+   CARD MENU (above selected node)
+   ═════════════════════════════════════════════════════ */
+.cv-card-menu {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22);
+  z-index: 100;
+  animation: cv-pop 0.12s ease-out;
+}
+@keyframes cv-pop {
+  from { opacity: 0; transform: translate(-50%, -100%) translateY(4px); }
+  to   { opacity: 1; transform: translate(-50%, -100%) translateY(0); }
+}
+
+.cv-card-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.cv-card-btn:hover { background: var(--cv-ctrl-hover); color: var(--text-primary); }
+.cv-card-btn-del:hover { background: rgba(220,60,60,0.12); color: #f87171; }
+
+.cv-card-menu-div {
+  width: 1px;
+  height: 18px;
+  background: var(--cv-ctrl-border);
+  margin: 0 2px;
+}
+
+/* ── Color picker row ── */
+.cv-color-row {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  animation: cv-pop 0.1s ease-out;
+  z-index: 101;
+}
+.cv-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.cv-swatch:hover { transform: scale(1.15); border-color: var(--text-primary); }
+.cv-swatch.on { box-shadow: 0 0 0 2px var(--cv-sel); }
+.cv-swatch-none {
+  background: var(--bg-primary);
+  border: 2px dashed var(--cv-node-border);
+}
+
+/* ═════════════════════════════════════════════════════
+   RIGHT-SIDE CONTROLS (vertical, Obsidian-style)
+   ═════════════════════════════════════════════════════ */
+.cv-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 60;
+}
+.cv-ctrl-group {
+  display: flex;
+  flex-direction: column;
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.cv-ctrl {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  font-size: 13px;
+  position: relative;
+}
+.cv-ctrl + .cv-ctrl {
+  border-top: 1px solid var(--cv-ctrl-border);
+}
+.cv-ctrl:hover  { background: var(--cv-ctrl-hover); color: var(--text-primary); }
+.cv-ctrl.on     { color: var(--cv-sel); }
+.cv-ctrl:disabled { opacity: 0.3; cursor: not-allowed; }
+.cv-ctrl-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  padding: 0 2px;
+}
+
+/* ═════════════════════════════════════════════════════
+   BOTTOM ADD BAR
+   ═════════════════════════════════════════════════════ */
+.cv-add-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  z-index: 60;
+}
+.cv-add-btn {
+  position: relative;
+  width: 42px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.cv-add-btn:hover {
+  background: var(--cv-ctrl-hover);
+  color: var(--text-primary);
+}
+.cv-add-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--cv-sel);
+  line-height: 1;
+}
+
+/* ═════════════════════════════════════════════════════
+   CLOSE BUTTON
+   ═════════════════════════════════════════════════════ */
+.cv-close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 60;
+  transition: background 0.1s, color 0.1s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.cv-close:hover {
+  background: var(--cv-ctrl-hover);
+  color: var(--text-primary);
+}
+
+/* ═════════════════════════════════════════════════════
+   MODALS (file selector, link input)
+   ═════════════════════════════════════════════════════ */
+.cv-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(3px);
+  animation: cv-fade 0.12s ease;
+}
+@keyframes cv-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.cv-modal {
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 12px;
+  width: 360px;
+  max-height: 420px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  display: flex;
+  flex-direction: column;
+  animation: cv-modal-in 0.18s ease-out;
+}
+.cv-modal-sm { max-height: 200px; }
+@keyframes cv-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cv-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cv-ctrl-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.cv-modal-head button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  transition: background 0.1s;
+}
+.cv-modal-head button:hover { background: var(--cv-ctrl-hover); color: var(--text-primary); }
+
+.cv-modal-body {
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+.cv-modal-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px;
+  font-size: 13px;
+}
+.cv-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  transition: background 0.1s;
+}
+.cv-file-row:hover { background: var(--cv-ctrl-hover); color: var(--text-primary); }
+.cv-file-row svg { color: var(--accent-color); flex-shrink: 0; }
+
+.cv-link-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-sans);
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+.cv-link-input:focus { border-color: var(--cv-sel); }
+
+.cv-link-go {
+  width: 100%;
+  padding: 8px;
+  background: var(--cv-sel);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: opacity 0.15s;
+}
+.cv-link-go:hover { opacity: 0.9; }
+

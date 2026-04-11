@@ -120,7 +120,7 @@ export function Sidebar({
             onClick={() => {
               if (entry.isDirectory) {
                 toggleDir(entry.path);
-              } else if (entry.extension === '.md') {
+              } else if (entry.extension === '.md' || entry.extension === '.canvas') {
                 onFileSelect(entry.path);
               }
             }}
