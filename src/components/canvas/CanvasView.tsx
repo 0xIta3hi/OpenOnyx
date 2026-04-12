@@ -1575,15 +1575,17 @@ export function CanvasView({
 
 /* ── Dot grid ── */
 function DotGrid({ zoom, offX, offY }: { zoom: number; offX: number; offY: number }) {
-  const r = 0.5;
   const gap = GRID_SIZE * zoom;
+  const dotRadius = Math.max(0.1, Math.min(0.5, 0.5 * zoom));
+  const dotOpacity = Math.max(0, Math.min(1, (gap - 1.8) / 4));
+  if (dotOpacity <= 0.01) return null;
   const ox = ((offX % gap) + gap) % gap;
   const oy = ((offY % gap) + gap) % gap;
   return (
     <svg className="cv-dots">
       <defs>
         <pattern id="cvDot" width={gap} height={gap} patternUnits="userSpaceOnUse" x={ox} y={oy}>
-          <circle cx={gap / 2} cy={gap / 2} r={r * Math.max(1, zoom)} fill="var(--cv-dot)" />
+          <circle cx={gap / 2} cy={gap / 2} r={dotRadius} fill="var(--cv-dot)" opacity={dotOpacity} />
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#cvDot)" />
