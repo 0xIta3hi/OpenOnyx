@@ -1211,6 +1211,15 @@ export function CanvasView({
   /* ═══ CURSOR ═══ */
   const cursor = drag.type === 'pan' ? 'grabbing' : drag.type === 'node' ? 'grabbing' : tool === 'pan' ? 'grab' : tool === 'edge' ? 'crosshair' : 'default';
   const uiZoomMult = Math.min(1.35, Math.max(0.85, 1 / vp.zoom));
+  const renderVp = useMemo(() => {
+    const dpr = typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1;
+    const snapToPixel = (value: number) => Math.round(value * dpr) / dpr;
+    return {
+      x: snapToPixel(vp.x),
+      y: snapToPixel(vp.y),
+      zoom: vp.zoom,
+    };
+  }, [vp]);
 
   const nodeMap = useMemo(() => {
     const m = new Map<string, CanvasNode>();
@@ -1335,10 +1344,10 @@ export function CanvasView({
       <div ref={areaRef} className="cv-area" onMouseDown={onAreaDown} onContextMenu={e => e.preventDefault()}>
 
         {/* Dot-pattern background (SVG stays in viewport space) */}
-        {grid && <DotGrid zoom={vp.zoom} offX={vp.x} offY={vp.y} />}
+        {grid && <DotGrid zoom={renderVp.zoom} offX={renderVp.x} offY={renderVp.y} />}
 
         {/* Transform group */}
-        <div className="cv-transform" style={{ transform: `translate(${vp.x}px,${vp.y}px) scale(${vp.zoom})` }}>
+        <div className="cv-transform" style={{ transform: `translate(${renderVp.x}px,${renderVp.y}px) scale(${renderVp.zoom})` }}>
 
           {/* SVG edges */}
           <svg className="cv-edges">
@@ -1423,8 +1432,8 @@ export function CanvasView({
       {/* ══ Card-menu (above selected node) ══ */}
       {menuAnchor && !editingId && (
         <div className="cv-card-menu" style={{
-          left: vp.x + menuAnchor.x * vp.zoom,
-          top: vp.y + menuAnchor.y * vp.zoom - 8,
+          left: renderVp.x + menuAnchor.x * renderVp.zoom,
+          top: renderVp.y + menuAnchor.y * renderVp.zoom - 8,
         }}>
           {firstSel && <button className="cv-card-btn" title="Color" onClick={() => setColorPickerFor(colorPickerFor === firstSel.id ? null : firstSel.id)}><Palette size={14} /></button>}
           {firstSel && <button className="cv-card-btn" title="Duplicate" onClick={() => duplicateNode(firstSel.id)}><Copy size={14} /></button>}
@@ -1577,7 +1586,7 @@ export function CanvasView({
 function DotGrid({ zoom, offX, offY }: { zoom: number; offX: number; offY: number }) {
   const gap = GRID_SIZE * zoom;
   const dotRadius = Math.max(0.1, Math.min(0.5, 0.5 * zoom));
-  const dotOpacity = Math.max(0, Math.min(1, (gap - 1.8) / 4));
+  const dotOpacity = Math.max(0, Math.min(0.72, (gap - 1.8) / 5.8));
   if (dotOpacity <= 0.01) return null;
   const ox = ((offX % gap) + gap) % gap;
   const oy = ((offY % gap) + gap) % gap;
@@ -1743,16 +1752,14 @@ function EmbeddedFileNode({ node, vaultPath, enableMarkdownPreview }: { node: Ca
   if (isMarkdown && !enableMarkdownPreview) {
     return (
       <div className="cv-node-body cv-file-body" data-cv-no-drag="true">
-        <FileText size={15} className="cv-file-icon" />
-        <span className="cv-file-name">{node.file.split('/').pop()}</span>
+        <span className="cv-file-name">{node.file.split('/').pop()?.replace(/\.md$/, '')}</span>
       </div>
     );
   }
 
   return (
     <div className="cv-node-body cv-file-body">
-      <FileText size={15} className="cv-file-icon" />
-      <span className="cv-file-name">{node.file.split('/').pop()}</span>
+      <span className="cv-file-name">{node.file.split('/').pop()?.replace(/\.md$/, '')}</span>
     </div>
   );
 }
@@ -1774,12 +1781,12 @@ function NodeCard({ node, selected, editing, editText, zoomMult, vaultPath, enab
     left: node.x, top: node.y, width: node.width, height: node.height,
     ...(borderColor && !isGroup ? {
       '--node-color': borderColor,
-      background: `linear-gradient(${colorWithAlpha(borderColor, 0.12)}, ${colorWithAlpha(borderColor, 0.12)}), var(--cv-node-bg)`,
+      background: `linear-gradient(180deg, ${colorWithAlpha(borderColor, 0.11)} 0%, ${colorWithAlpha(borderColor, 0.055)} 40%, ${colorWithAlpha(borderColor, 0.032)} 100%), var(--cv-node-bg)`,
     } as any : {}),
     ...(borderColor && isGroup ? {
       '--node-color': borderColor,
-      borderColor: colorWithAlpha(borderColor, 0.45),
-      background: colorWithAlpha(borderColor, 0.08),
+      borderColor: colorWithAlpha(borderColor, 0.46),
+      background: colorWithAlpha(borderColor, 0.055),
     } as any : {}),
   };
 
@@ -1828,7 +1835,6 @@ function NodeCard({ node, selected, editing, editText, zoomMult, vaultPath, enab
 
       {node.type === 'link' && (
         <div className="cv-node-body cv-link-body">
-          <Globe size={15} className="cv-link-icon" />
           <span className="cv-link-host">{(() => { try { return new URL((node as CanvasLinkNode).url).hostname; } catch { return (node as CanvasLinkNode).url; } })()}</span>
         </div>
       )}
