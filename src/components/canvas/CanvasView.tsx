@@ -35,12 +35,18 @@ import {
 } from './canvasDocument';
 
 /* ─────── Constants ─────── */
-const MIN_ZOOM = 0.15;
+const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
-const ZOOM_SENSITIVITY = 0.002;
+const ZOOM_STEP_INTENSITY = 0.1;
+const ZOOM_LERP = 0.15;
+const PAN_LERP = 0.2;
 const HISTORY_LIMIT = 60;
 const CULLING_PADDING = 320;
 const RECOVERY_SUFFIX = '.recovery.canvas';
+const MIN_MD_EMBED_PREVIEW_ZOOM = 0.85;
+const MAX_MD_EMBED_PREVIEWS = 20;
+
+const embeddedMarkdownCache = new Map<string, string>();
 
 interface Props {
   onClose: () => void;
@@ -168,9 +174,13 @@ export function CanvasView({
   const linkRef = useRef<HTMLInputElement>(null);
   const recentMenuRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);      // always-latest snapshot for move handler
+  const vpRef = useRef<CanvasViewport>(vp);
+  const targetVpRef = useRef<CanvasViewport>(vp);
+  const zoomAnimFrameRef = useRef<number | null>(null);
   const loadingCanvasRef = useRef(false);
   const lastSavedPayloadRef = useRef('');
   nodesRef.current = nodes;
+  vpRef.current = vp;
 
   /* ── history ── */
   const [hist, setHist] = useState<Snap[]>([{ nodes: [], edges: [] }]);
@@ -219,6 +229,64 @@ export function CanvasView({
     const s = hist[histIdx + 1];
     setNodes(clone(s.nodes)); setEdges(clone(s.edges)); setHistIdx(histIdx + 1);
   }, [hist, histIdx]);
+
+  const stopSmoothZoom = useCallback(() => {
+    if (zoomAnimFrameRef.current !== null) {
+      cancelAnimationFrame(zoomAnimFrameRef.current);
+      zoomAnimFrameRef.current = null;
+    }
+  }, []);
+
+  const setViewportImmediate = useCallback((nextVp: React.SetStateAction<CanvasViewport>) => {
+    stopSmoothZoom();
+    setVp(prev => {
+      const next = typeof nextVp === 'function'
+        ? (nextVp as (current: CanvasViewport) => CanvasViewport)(prev)
+        : nextVp;
+      vpRef.current = next;
+      targetVpRef.current = next;
+      return next;
+    });
+  }, [stopSmoothZoom]);
+
+  const startSmoothZoom = useCallback(() => {
+    if (zoomAnimFrameRef.current !== null) return;
+
+    const animate = () => {
+      let finished = false;
+      setVp(prev => {
+        const target = targetVpRef.current;
+        const zoomDiff = Math.abs(target.zoom - prev.zoom);
+        const xDiff = Math.abs(target.x - prev.x);
+        const yDiff = Math.abs(target.y - prev.y);
+
+        if (zoomDiff <= 0.001 && xDiff <= 0.5 && yDiff <= 0.5) {
+          const snapped = { ...target };
+          vpRef.current = snapped;
+          finished = true;
+          return snapped;
+        }
+
+        const next = {
+          x: prev.x + (target.x - prev.x) * PAN_LERP,
+          y: prev.y + (target.y - prev.y) * PAN_LERP,
+          zoom: prev.zoom + (target.zoom - prev.zoom) * ZOOM_LERP,
+        };
+        vpRef.current = next;
+        return next;
+      });
+
+      if (finished) {
+        zoomAnimFrameRef.current = null;
+        return;
+      }
+      zoomAnimFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    zoomAnimFrameRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  useEffect(() => () => stopSmoothZoom(), [stopSmoothZoom]);
 
   /* ── canvas file load/save ── */
   useEffect(() => {
@@ -680,7 +748,7 @@ export function CanvasView({
       if (drag.type === 'none') return;
       switch (drag.type) {
         case 'pan':
-          setVp(p => ({ ...p, x: e.clientX - drag.startX, y: e.clientY - drag.startY }));
+          setViewportImmediate(p => ({ ...p, x: e.clientX - drag.startX, y: e.clientY - drag.startY }));
           break;
         case 'node': {
           const dx = (e.clientX - drag.startX) / vp.zoom;
@@ -861,7 +929,7 @@ export function CanvasView({
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [drag, vp, selNodes, edges, s2c, snap, push]);
+  }, [drag, vp, selNodes, edges, s2c, snap, push, setViewportImmediate]);
 
   /* ═══ WHEEL / ZOOM ═══ */
   useEffect(() => {
@@ -885,38 +953,49 @@ export function CanvasView({
 
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      if (e.ctrlKey || e.metaKey) {
-        const d = -e.deltaY * ZOOM_SENSITIVITY;
-        const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, vp.zoom * (1 + d)));
-        const mx = e.clientX - r.left, my = e.clientY - r.top;
-        const ratio = nz / vp.zoom;
-        setVp({ x: mx - (mx - vp.x) * ratio, y: my - (my - vp.y) * ratio, zoom: nz });
-      } else {
-        setVp(p => ({ ...p, x: p.x - e.deltaX, y: p.y - e.deltaY }));
-      }
+      const current = vpRef.current;
+      const zoomFactor = e.deltaY > 0 ? (1 - ZOOM_STEP_INTENSITY) : (1 + ZOOM_STEP_INTENSITY);
+      const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetVpRef.current.zoom * zoomFactor));
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const worldX = (mx - current.x) / current.zoom;
+      const worldY = (my - current.y) / current.zoom;
+      targetVpRef.current = {
+        x: mx - worldX * nz,
+        y: my - worldY * nz,
+        zoom: nz,
+      };
+      startSmoothZoom();
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [vp]);
+  }, [startSmoothZoom]);
 
   const zoomBy = useCallback((d: number) => {
     const r = areaRef.current?.getBoundingClientRect();
     if (!r) return;
     const cx = r.width / 2, cy = r.height / 2;
-    const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, vp.zoom + d));
-    const ratio = nz / vp.zoom;
-    setVp({ x: cx - (cx - vp.x) * ratio, y: cy - (cy - vp.y) * ratio, zoom: nz });
-  }, [vp]);
+    const current = vpRef.current;
+    const zoomFactor = d > 0 ? (1 + ZOOM_STEP_INTENSITY) : (1 - ZOOM_STEP_INTENSITY);
+    const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetVpRef.current.zoom * zoomFactor));
+    const worldX = (cx - current.x) / current.zoom;
+    const worldY = (cy - current.y) / current.zoom;
+    targetVpRef.current = {
+      x: cx - worldX * nz,
+      y: cy - worldY * nz,
+      zoom: nz,
+    };
+    startSmoothZoom();
+  }, [startSmoothZoom]);
 
   const zoomFit = useCallback(() => {
-    if (!nodes.length) { setVp({ x: 0, y: 0, zoom: 1 }); return; }
+    if (!nodes.length) { setViewportImmediate({ x: 0, y: 0, zoom: 1 }); return; }
     const r = areaRef.current?.getBoundingClientRect(); if (!r) return;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     nodes.forEach(n => { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + n.width); y1 = Math.max(y1, n.y + n.height); });
     const pad = 80, cw = x1 - x0 + pad * 2, ch = y1 - y0 + pad * 2;
     const z = Math.min(1, r.width / cw, r.height / ch);
-    setVp({ x: (r.width - cw * z) / 2 - (x0 - pad) * z, y: (r.height - ch * z) / 2 - (y0 - pad) * z, zoom: z });
-  }, [nodes]);
+    setViewportImmediate({ x: (r.width - cw * z) / 2 - (x0 - pad) * z, y: (r.height - ch * z) / 2 - (y0 - pad) * z, zoom: z });
+  }, [nodes, setViewportImmediate]);
 
   /* ═══ KEYBOARD ═══ */
   useEffect(() => {
@@ -996,6 +1075,36 @@ export function CanvasView({
     () => edges.filter(e => visibleNodeIds.has(e.fromNode) || visibleNodeIds.has(e.toNode)),
     [edges, visibleNodeIds],
   );
+
+  const markdownPreviewNodeIds = useMemo(() => {
+    const selectedIds: string[] = [];
+    const selectedSet = new Set<string>();
+
+    visibleNodes.forEach(node => {
+      if (node.type !== 'file' || !selNodes.has(node.id)) return;
+      const filePath = (node as CanvasFileNode).file || '';
+      if (!filePath.toLowerCase().endsWith('.md')) return;
+      selectedSet.add(node.id);
+      selectedIds.push(node.id);
+    });
+
+    if (vp.zoom < MIN_MD_EMBED_PREVIEW_ZOOM) {
+      return selectedSet;
+    }
+
+    const ids = [...selectedIds];
+    visibleNodes.forEach(node => {
+      if (ids.length >= MAX_MD_EMBED_PREVIEWS) return;
+      if (node.type !== 'file') return;
+      if (selectedSet.has(node.id)) return;
+      const filePath = (node as CanvasFileNode).file || '';
+      if (!filePath.toLowerCase().endsWith('.md')) return;
+      ids.push(node.id);
+      selectedSet.add(node.id);
+    });
+
+    return selectedSet;
+  }, [visibleNodes, selNodes, vp.zoom]);
 
   const selectedNodesArray = useMemo(() => nodes.filter(n => selNodes.has(n.id)), [nodes, selNodes]);
   const selectionBounds = useMemo(() => {
@@ -1088,6 +1197,7 @@ export function CanvasView({
             <NodeCard key={n.id} node={n} selected={selNodes.has(n.id)}
               editing={editingId === n.id} editText={editText}
               zoomMult={uiZoomMult}
+              enableMarkdownPreview={markdownPreviewNodeIds.has(n.id)}
               vaultPath={vaultPath}
               onMouseDown={e => onNodeDown(e, n.id)}
               onDoubleClick={() => startEdit(n.id)}
@@ -1212,9 +1322,9 @@ export function CanvasView({
           <button className="cv-ctrl" title="Add text card" onClick={() => addNode('text')}><Type size={16} /></button>
         </div>
         <div className="cv-ctrl-group">
-          <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(0.15)}><Plus size={16} /></button>
-          <button className="cv-ctrl cv-ctrl-label" title="Reset zoom" onClick={() => setVp(p => ({ ...p, zoom: 1 }))}>{Math.round(vp.zoom * 100)}%</button>
-          <button className="cv-ctrl" title="Zoom out" onClick={() => zoomBy(-0.15)}><Minus size={16} /></button>
+          <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(1)}><Plus size={16} /></button>
+          <button className="cv-ctrl cv-ctrl-label" title="Reset zoom" onClick={() => setViewportImmediate(p => ({ ...p, zoom: 1 }))}>{Math.round(vp.zoom * 100)}%</button>
+          <button className="cv-ctrl" title="Zoom out" onClick={() => zoomBy(-1)}><Minus size={16} /></button>
           <button className="cv-ctrl" title="Zoom to fit" onClick={zoomFit}><Maximize size={15} /></button>
         </div>
         <div className="cv-ctrl-group">
@@ -1231,7 +1341,7 @@ export function CanvasView({
         world={minimapWorldBounds}
         viewport={visibleWorldRect}
         onNavigate={(x, y) => {
-          setVp(prev => ({
+          setViewportImmediate(prev => ({
             ...prev,
             x: areaSize.width / 2 - x * prev.zoom,
             y: areaSize.height / 2 - y * prev.zoom,
@@ -1403,19 +1513,32 @@ function CanvasMiniMap({
   );
 }
 
-function EmbeddedFileNode({ node, vaultPath }: { node: CanvasFileNode, vaultPath: string }) {
+function EmbeddedFileNode({ node, vaultPath, enableMarkdownPreview }: { node: CanvasFileNode, vaultPath: string; enableMarkdownPreview: boolean }) {
   const [content, setContent] = useState<string | null>(null);
   const isImage = /\.(png|jpe?g|gif|webp|svg)$/i.test(node.file);
+  const isMarkdown = node.file.toLowerCase().endsWith('.md');
 
   useEffect(() => {
     let mounted = true;
-    if (node.file.endsWith('.md')) {
-      getAPI().readFile(node.file).then(c => {
-        if (mounted) setContent(c);
-      }).catch(e => console.error('Failed to load embedded note:', e));
+
+    if (!isMarkdown || !enableMarkdownPreview) {
+      return () => { mounted = false; };
     }
+
+    const cached = embeddedMarkdownCache.get(node.file);
+    if (typeof cached === 'string') {
+      setContent(cached);
+      return () => { mounted = false; };
+    }
+
+    getAPI().readFile(node.file).then(c => {
+      if (!mounted) return;
+      embeddedMarkdownCache.set(node.file, c);
+      setContent(c);
+    }).catch(e => console.error('Failed to load embedded note:', e));
+
     return () => { mounted = false; };
-  }, [node.file]);
+  }, [node.file, isMarkdown, enableMarkdownPreview]);
 
   if (isImage) {
     const imgSrc = `file://${vaultPath}/${node.file}`;
@@ -1426,10 +1549,19 @@ function EmbeddedFileNode({ node, vaultPath }: { node: CanvasFileNode, vaultPath
     );
   }
 
-  if (content !== null) {
+  if (isMarkdown && enableMarkdownPreview && content !== null) {
     return (
       <div className="cv-node-body cv-embedded-md" data-cv-no-drag="true" style={{ overflowY: 'auto' }}>
         <MarkdownPreview content={content} onLinkClick={() => {}} />
+      </div>
+    );
+  }
+
+  if (isMarkdown && !enableMarkdownPreview) {
+    return (
+      <div className="cv-node-body cv-file-body" data-cv-no-drag="true">
+        <FileText size={15} className="cv-file-icon" />
+        <span className="cv-file-name">{node.file.split('/').pop()}</span>
       </div>
     );
   }
@@ -1444,14 +1576,14 @@ function EmbeddedFileNode({ node, vaultPath }: { node: CanvasFileNode, vaultPath
 
 /* ── Node card ── */
 interface NodeCardProps {
-  node: CanvasNode; selected: boolean; editing: boolean; editText: string; zoomMult: number; vaultPath: string;
+  node: CanvasNode; selected: boolean; editing: boolean; editText: string; zoomMult: number; vaultPath: string; enableMarkdownPreview: boolean;
   onMouseDown: (e: React.MouseEvent) => void; onDoubleClick: () => void;
   onPortDown: (side: EdgeSide, e: React.MouseEvent) => void;
   onResizeDown: (handle: string, e: React.MouseEvent) => void;
   onEditChange: (v: string) => void; onEditBlur: () => void; onEditKeyDown: (e: React.KeyboardEvent) => void;
 }
 
-function NodeCard({ node, selected, editing, editText, zoomMult, vaultPath, onMouseDown, onDoubleClick, onPortDown, onResizeDown, onEditChange, onEditBlur, onEditKeyDown }: NodeCardProps) {
+function NodeCard({ node, selected, editing, editText, zoomMult, vaultPath, enableMarkdownPreview, onMouseDown, onDoubleClick, onPortDown, onResizeDown, onEditChange, onEditBlur, onEditKeyDown }: NodeCardProps) {
   const isGroup = node.type === 'group';
   const borderColor = resolveCanvasColor(node.color);
 
@@ -1509,7 +1641,7 @@ function NodeCard({ node, selected, editing, editText, zoomMult, vaultPath, onMo
         )
       )}
 
-      {node.type === 'file' && <EmbeddedFileNode node={node as CanvasFileNode} vaultPath={vaultPath} />}
+      {node.type === 'file' && <EmbeddedFileNode node={node as CanvasFileNode} vaultPath={vaultPath} enableMarkdownPreview={enableMarkdownPreview} />}
 
       {node.type === 'link' && (
         <div className="cv-node-body cv-link-body">
