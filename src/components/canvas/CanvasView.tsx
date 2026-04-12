@@ -37,14 +37,19 @@ import {
 /* ─────── Constants ─────── */
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
+const WHEEL_ZOOM_SENSITIVITY = 0.0016;
 const ZOOM_STEP_INTENSITY = 0.1;
-const ZOOM_LERP = 0.15;
+const ZOOM_LERP = 0.2;
 const PAN_LERP = 0.2;
 const HISTORY_LIMIT = 60;
 const CULLING_PADDING = 320;
 const RECOVERY_SUFFIX = '.recovery.canvas';
-const MIN_MD_EMBED_PREVIEW_ZOOM = 0.85;
-const MAX_MD_EMBED_PREVIEWS = 20;
+const MIN_MD_EMBED_PREVIEW_ZOOM = 1.05;
+const MAX_SELECTED_MD_PREVIEWS = 2;
+const MAX_MD_EMBED_PREVIEWS = 8;
+const MIN_MD_PREVIEW_SCREEN_WIDTH = 240;
+const MIN_MD_PREVIEW_SCREEN_HEIGHT = 140;
+const MD_PREVIEW_RESUME_DELAY_MS = 160;
 
 const embeddedMarkdownCache = new Map<string, string>();
 
@@ -177,8 +182,10 @@ export function CanvasView({
   const vpRef = useRef<CanvasViewport>(vp);
   const targetVpRef = useRef<CanvasViewport>(vp);
   const zoomAnimFrameRef = useRef<number | null>(null);
+  const previewResumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingCanvasRef = useRef(false);
   const lastSavedPayloadRef = useRef('');
+  const [suspendMarkdownPreviews, setSuspendMarkdownPreviews] = useState(false);
   nodesRef.current = nodes;
   vpRef.current = vp;
 
@@ -287,6 +294,24 @@ export function CanvasView({
   }, []);
 
   useEffect(() => () => stopSmoothZoom(), [stopSmoothZoom]);
+
+  const delayMarkdownPreviews = useCallback(() => {
+    setSuspendMarkdownPreviews(true);
+    if (previewResumeTimerRef.current !== null) {
+      clearTimeout(previewResumeTimerRef.current);
+    }
+    previewResumeTimerRef.current = setTimeout(() => {
+      setSuspendMarkdownPreviews(false);
+      previewResumeTimerRef.current = null;
+    }, MD_PREVIEW_RESUME_DELAY_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (previewResumeTimerRef.current !== null) {
+      clearTimeout(previewResumeTimerRef.current);
+      previewResumeTimerRef.current = null;
+    }
+  }, []);
 
   /* ── canvas file load/save ── */
   useEffect(() => {
@@ -953,39 +978,47 @@ export function CanvasView({
 
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      const current = vpRef.current;
-      const zoomFactor = e.deltaY > 0 ? (1 - ZOOM_STEP_INTENSITY) : (1 + ZOOM_STEP_INTENSITY);
-      const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetVpRef.current.zoom * zoomFactor));
+      const base = targetVpRef.current;
+      const normalizedDelta = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? e.deltaY * 16
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? e.deltaY * window.innerHeight
+          : e.deltaY;
+      const zoomFactor = Math.exp(-normalizedDelta * WHEEL_ZOOM_SENSITIVITY);
+      const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, base.zoom * zoomFactor));
+      if (Math.abs(nz - base.zoom) < 0.0001) return;
       const mx = e.clientX - r.left, my = e.clientY - r.top;
-      const worldX = (mx - current.x) / current.zoom;
-      const worldY = (my - current.y) / current.zoom;
+      const worldX = (mx - base.x) / base.zoom;
+      const worldY = (my - base.y) / base.zoom;
       targetVpRef.current = {
         x: mx - worldX * nz,
         y: my - worldY * nz,
         zoom: nz,
       };
+      delayMarkdownPreviews();
       startSmoothZoom();
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [startSmoothZoom]);
+  }, [delayMarkdownPreviews, startSmoothZoom]);
 
   const zoomBy = useCallback((d: number) => {
     const r = areaRef.current?.getBoundingClientRect();
     if (!r) return;
     const cx = r.width / 2, cy = r.height / 2;
-    const current = vpRef.current;
+    const base = targetVpRef.current;
     const zoomFactor = d > 0 ? (1 + ZOOM_STEP_INTENSITY) : (1 - ZOOM_STEP_INTENSITY);
-    const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetVpRef.current.zoom * zoomFactor));
-    const worldX = (cx - current.x) / current.zoom;
-    const worldY = (cy - current.y) / current.zoom;
+    const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, base.zoom * zoomFactor));
+    const worldX = (cx - base.x) / base.zoom;
+    const worldY = (cy - base.y) / base.zoom;
     targetVpRef.current = {
       x: cx - worldX * nz,
       y: cy - worldY * nz,
       zoom: nz,
     };
+    delayMarkdownPreviews();
     startSmoothZoom();
-  }, [startSmoothZoom]);
+  }, [delayMarkdownPreviews, startSmoothZoom]);
 
   const zoomFit = useCallback(() => {
     if (!nodes.length) { setViewportImmediate({ x: 0, y: 0, zoom: 1 }); return; }
@@ -1079,32 +1112,51 @@ export function CanvasView({
   const markdownPreviewNodeIds = useMemo(() => {
     const selectedIds: string[] = [];
     const selectedSet = new Set<string>();
+    const viewportCenterX = visibleWorldRect.x + visibleWorldRect.width / 2;
+    const viewportCenterY = visibleWorldRect.y + visibleWorldRect.height / 2;
 
     visibleNodes.forEach(node => {
       if (node.type !== 'file' || !selNodes.has(node.id)) return;
       const filePath = (node as CanvasFileNode).file || '';
       if (!filePath.toLowerCase().endsWith('.md')) return;
+      if (selectedIds.length >= MAX_SELECTED_MD_PREVIEWS) return;
       selectedSet.add(node.id);
       selectedIds.push(node.id);
     });
 
-    if (vp.zoom < MIN_MD_EMBED_PREVIEW_ZOOM) {
+    if (suspendMarkdownPreviews || vp.zoom < MIN_MD_EMBED_PREVIEW_ZOOM) {
       return selectedSet;
     }
 
     const ids = [...selectedIds];
-    visibleNodes.forEach(node => {
+    const candidates = visibleNodes
+      .filter(node => {
+        if (node.type !== 'file') return false;
+        if (selectedSet.has(node.id)) return false;
+        const filePath = (node as CanvasFileNode).file || '';
+        if (!filePath.toLowerCase().endsWith('.md')) return false;
+        const screenWidth = node.width * vp.zoom;
+        const screenHeight = node.height * vp.zoom;
+        return screenWidth >= MIN_MD_PREVIEW_SCREEN_WIDTH && screenHeight >= MIN_MD_PREVIEW_SCREEN_HEIGHT;
+      })
+      .sort((a, b) => {
+        const acx = a.x + a.width / 2;
+        const acy = a.y + a.height / 2;
+        const bcx = b.x + b.width / 2;
+        const bcy = b.y + b.height / 2;
+        const ad = Math.abs(acx - viewportCenterX) + Math.abs(acy - viewportCenterY);
+        const bd = Math.abs(bcx - viewportCenterX) + Math.abs(bcy - viewportCenterY);
+        return ad - bd;
+      });
+
+    candidates.forEach(node => {
       if (ids.length >= MAX_MD_EMBED_PREVIEWS) return;
-      if (node.type !== 'file') return;
-      if (selectedSet.has(node.id)) return;
-      const filePath = (node as CanvasFileNode).file || '';
-      if (!filePath.toLowerCase().endsWith('.md')) return;
       ids.push(node.id);
       selectedSet.add(node.id);
     });
 
     return selectedSet;
-  }, [visibleNodes, selNodes, vp.zoom]);
+  }, [visibleNodes, selNodes, vp.zoom, visibleWorldRect, suspendMarkdownPreviews]);
 
   const selectedNodesArray = useMemo(() => nodes.filter(n => selNodes.has(n.id)), [nodes, selNodes]);
   const selectionBounds = useMemo(() => {
