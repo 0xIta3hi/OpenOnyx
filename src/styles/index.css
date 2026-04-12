@@ -5395,7 +5395,7 @@ blockquote:has(.callout) {
   font-weight: 700;
   font-size: 20px;
   line-height: 1.3;
-  color: #ffffff;
+  color: var(--text-primary);
   max-width: 100%;
   word-break: break-word;
 }
@@ -5418,7 +5418,7 @@ blockquote:has(.callout) {
   font-weight: 700;
   font-size: 20px;
   line-height: 1.3;
-  color: #ffffff;
+  color: var(--text-primary);
   max-width: 100%;
   word-break: break-all;
 }
