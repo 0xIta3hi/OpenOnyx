@@ -41,6 +41,10 @@ const WHEEL_ZOOM_SENSITIVITY = 0.0016;
 const ZOOM_STEP_INTENSITY = 0.1;
 const ZOOM_LERP = 0.2;
 const PAN_LERP = 0.2;
+const PAN_VELOCITY_BLEND = 0.22;
+const PAN_VELOCITY_MAX_SAMPLE_MS = 80;
+const PAN_INERTIA_DECAY = 0.9;
+const PAN_INERTIA_MIN_SPEED = 0.02;
 const HISTORY_LIMIT = 60;
 const CULLING_PADDING = 320;
 const RECOVERY_SUFFIX = '.recovery.canvas';
@@ -182,6 +186,9 @@ export function CanvasView({
   const vpRef = useRef<CanvasViewport>(vp);
   const targetVpRef = useRef<CanvasViewport>(vp);
   const zoomAnimFrameRef = useRef<number | null>(null);
+  const panInertiaFrameRef = useRef<number | null>(null);
+  const panVelocityRef = useRef({ x: 0, y: 0 });
+  const panSampleRef = useRef<{ x: number; y: number; at: number } | null>(null);
   const previewResumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingCanvasRef = useRef(false);
   const lastSavedPayloadRef = useRef('');
@@ -244,8 +251,18 @@ export function CanvasView({
     }
   }, []);
 
+  const stopPanInertia = useCallback(() => {
+    if (panInertiaFrameRef.current !== null) {
+      cancelAnimationFrame(panInertiaFrameRef.current);
+      panInertiaFrameRef.current = null;
+    }
+    panVelocityRef.current = { x: 0, y: 0 };
+    panSampleRef.current = null;
+  }, []);
+
   const setViewportImmediate = useCallback((nextVp: React.SetStateAction<CanvasViewport>) => {
     stopSmoothZoom();
+    stopPanInertia();
     setVp(prev => {
       const next = typeof nextVp === 'function'
         ? (nextVp as (current: CanvasViewport) => CanvasViewport)(prev)
@@ -254,7 +271,7 @@ export function CanvasView({
       targetVpRef.current = next;
       return next;
     });
-  }, [stopSmoothZoom]);
+  }, [stopSmoothZoom, stopPanInertia]);
 
   const startSmoothZoom = useCallback(() => {
     if (zoomAnimFrameRef.current !== null) return;
@@ -293,7 +310,57 @@ export function CanvasView({
     zoomAnimFrameRef.current = requestAnimationFrame(animate);
   }, []);
 
-  useEffect(() => () => stopSmoothZoom(), [stopSmoothZoom]);
+  const startPanInertia = useCallback(() => {
+    if (panInertiaFrameRef.current !== null) return;
+
+    const speed = Math.hypot(panVelocityRef.current.x, panVelocityRef.current.y);
+    if (speed < PAN_INERTIA_MIN_SPEED) {
+      panVelocityRef.current = { x: 0, y: 0 };
+      panSampleRef.current = null;
+      return;
+    }
+
+    stopSmoothZoom();
+    let lastAt = performance.now();
+
+    const step = (now: number) => {
+      const dt = Math.max(1, Math.min(34, now - lastAt));
+      lastAt = now;
+
+      const decay = Math.pow(PAN_INERTIA_DECAY, dt / 16.6667);
+      const v = panVelocityRef.current;
+      const nextV = { x: v.x * decay, y: v.y * decay };
+      panVelocityRef.current = nextV;
+
+      const nextSpeed = Math.hypot(nextV.x, nextV.y);
+      if (nextSpeed < PAN_INERTIA_MIN_SPEED) {
+        panInertiaFrameRef.current = null;
+        panVelocityRef.current = { x: 0, y: 0 };
+        panSampleRef.current = null;
+        return;
+      }
+
+      setVp(prev => {
+        const next = {
+          ...prev,
+          x: prev.x + nextV.x * dt,
+          y: prev.y + nextV.y * dt,
+        };
+        vpRef.current = next;
+        targetVpRef.current = next;
+        return next;
+      });
+
+      panInertiaFrameRef.current = requestAnimationFrame(step);
+    };
+
+    panInertiaFrameRef.current = requestAnimationFrame(step);
+  }, [stopSmoothZoom]);
+
+  useEffect(() => () => {
+    stopSmoothZoom();
+    stopPanInertia();
+  }, [stopSmoothZoom, stopPanInertia]);
 
   const delayMarkdownPreviews = useCallback(() => {
     setSuspendMarkdownPreviews(true);
@@ -628,7 +695,11 @@ export function CanvasView({
   /* ═══ MOUSE: DOWN ═══ */
   const onAreaDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && (tool === 'pan' || e.shiftKey))) {
-      setDrag({ type: 'pan', startX: e.clientX - vp.x, startY: e.clientY - vp.y });
+      stopSmoothZoom();
+      stopPanInertia();
+      panVelocityRef.current = { x: 0, y: 0 };
+      panSampleRef.current = { x: vpRef.current.x, y: vpRef.current.y, at: performance.now() };
+      setDrag({ type: 'pan', startX: e.clientX - vpRef.current.x, startY: e.clientY - vpRef.current.y });
       e.preventDefault(); return;
     }
     if (e.button === 0 && tool === 'select') {
@@ -636,9 +707,10 @@ export function CanvasView({
       setDrag({ type: 'select', startX: p.x, startY: p.y });
       setSelNodes(new Set()); setSelEdges(new Set()); setColorPickerFor(null);
     }
-  }, [tool, vp, s2c]);
+  }, [tool, s2c, stopPanInertia, stopSmoothZoom]);
 
   const onNodeDown = useCallback((e: React.MouseEvent, id: string) => {
+    stopPanInertia();
     e.stopPropagation();
     const target = e.target as HTMLElement | null;
     const inNoDragArea = !!target?.closest('[data-cv-no-drag="true"]');
@@ -717,14 +789,16 @@ export function CanvasView({
       movingIds,
       originById,
     });
-  }, [editingId, tool, nodes, selNodes, s2c]);
+  }, [editingId, tool, nodes, selNodes, s2c, stopPanInertia]);
 
   const onPortDown = useCallback((e: React.MouseEvent, id: string, side: EdgeSide) => {
+    stopPanInertia();
     e.stopPropagation();
     setDrag({ type: 'edge', startX: e.clientX, startY: e.clientY, edgeFromNode: id, edgeFromSide: side });
-  }, []);
+  }, [stopPanInertia]);
 
   const onResizeDown = useCallback((e: React.MouseEvent, id: string, handle: string) => {
+    stopPanInertia();
     e.stopPropagation();
     const n = nodes.find(x => x.id === id);
     if (!n || n.locked) return;
@@ -736,9 +810,10 @@ export function CanvasView({
       resizeHandle: handle,
       resizeOrigin: { x: n.x, y: n.y, width: n.width, height: n.height },
     });
-  }, [nodes]);
+  }, [nodes, stopPanInertia]);
 
   const onSelectionResizeDown = useCallback((e: React.MouseEvent, handle: string) => {
+    stopPanInertia();
     e.stopPropagation();
     const selected = nodes.filter(n => selNodes.has(n.id) && !n.locked);
     if (selected.length < 2) return;
@@ -765,16 +840,40 @@ export function CanvasView({
       selectionBounds: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
       selectionOriginById,
     });
-  }, [nodes, selNodes]);
+  }, [nodes, selNodes, stopPanInertia]);
 
   /* ═══ MOUSE: MOVE ═══ */
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (drag.type === 'none') return;
       switch (drag.type) {
-        case 'pan':
-          setViewportImmediate(p => ({ ...p, x: e.clientX - drag.startX, y: e.clientY - drag.startY }));
+        case 'pan': {
+          const nextX = e.clientX - drag.startX;
+          const nextY = e.clientY - drag.startY;
+          const now = performance.now();
+          const prev = panSampleRef.current;
+
+          if (prev) {
+            const dt = now - prev.at;
+            if (dt > 0 && dt <= PAN_VELOCITY_MAX_SAMPLE_MS) {
+              const rawVX = (nextX - prev.x) / dt;
+              const rawVY = (nextY - prev.y) / dt;
+              panVelocityRef.current = {
+                x: panVelocityRef.current.x * (1 - PAN_VELOCITY_BLEND) + rawVX * PAN_VELOCITY_BLEND,
+                y: panVelocityRef.current.y * (1 - PAN_VELOCITY_BLEND) + rawVY * PAN_VELOCITY_BLEND,
+              };
+            }
+          }
+
+          panSampleRef.current = { x: nextX, y: nextY, at: now };
+          setVp(prevVp => {
+            const next = { ...prevVp, x: nextX, y: nextY };
+            vpRef.current = next;
+            targetVpRef.current = next;
+            return next;
+          });
           break;
+        }
         case 'node': {
           const dx = (e.clientX - drag.startX) / vp.zoom;
           const dy = (e.clientY - drag.startY) / vp.zoom;
@@ -928,6 +1027,34 @@ export function CanvasView({
       }
     };
     const onUp = (e: MouseEvent) => {
+      if (drag.type === 'pan') {
+        const endX = e.clientX - drag.startX;
+        const endY = e.clientY - drag.startY;
+        const now = performance.now();
+        const prev = panSampleRef.current;
+
+        if (prev) {
+          const dt = now - prev.at;
+          if (dt > 0 && dt <= PAN_VELOCITY_MAX_SAMPLE_MS) {
+            const rawVX = (endX - prev.x) / dt;
+            const rawVY = (endY - prev.y) / dt;
+            panVelocityRef.current = {
+              x: panVelocityRef.current.x * (1 - PAN_VELOCITY_BLEND) + rawVX * PAN_VELOCITY_BLEND,
+              y: panVelocityRef.current.y * (1 - PAN_VELOCITY_BLEND) + rawVY * PAN_VELOCITY_BLEND,
+            };
+          }
+        }
+
+        setVp(prevVp => {
+          const next = { ...prevVp, x: endX, y: endY };
+          vpRef.current = next;
+          targetVpRef.current = next;
+          return next;
+        });
+
+        startPanInertia();
+      }
+
       if (drag.type === 'edge') {
         const cp = s2c(e.clientX, e.clientY);
         for (const n of [...nodesRef.current].reverse()) {
@@ -954,7 +1081,7 @@ export function CanvasView({
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [drag, vp, selNodes, edges, s2c, snap, push, setViewportImmediate]);
+  }, [drag, vp, selNodes, edges, s2c, snap, push, startPanInertia]);
 
   /* ═══ WHEEL / ZOOM ═══ */
   useEffect(() => {
@@ -977,6 +1104,7 @@ export function CanvasView({
       }
 
       e.preventDefault();
+      stopPanInertia();
       const r = el.getBoundingClientRect();
       const base = targetVpRef.current;
       const normalizedDelta = e.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -1000,11 +1128,12 @@ export function CanvasView({
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [delayMarkdownPreviews, startSmoothZoom]);
+  }, [delayMarkdownPreviews, startSmoothZoom, stopPanInertia]);
 
   const zoomBy = useCallback((d: number) => {
     const r = areaRef.current?.getBoundingClientRect();
     if (!r) return;
+    stopPanInertia();
     const cx = r.width / 2, cy = r.height / 2;
     const base = targetVpRef.current;
     const zoomFactor = d > 0 ? (1 + ZOOM_STEP_INTENSITY) : (1 - ZOOM_STEP_INTENSITY);
@@ -1018,7 +1147,7 @@ export function CanvasView({
     };
     delayMarkdownPreviews();
     startSmoothZoom();
-  }, [delayMarkdownPreviews, startSmoothZoom]);
+  }, [delayMarkdownPreviews, startSmoothZoom, stopPanInertia]);
 
   const zoomFit = useCallback(() => {
     if (!nodes.length) { setViewportImmediate({ x: 0, y: 0, zoom: 1 }); return; }
