@@ -1,0 +1,1860 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-04-12T05:25:09.564Z",
+  "generatedBy": "GitHub Copilot GPT-5.3-Codex",
+  "nodes": [
+    {
+      "id": "title-1",
+      "type": "text",
+      "text": "# Vault Atlas\\n\\nA cleaner, section-first board layout\\nTotal notes: 154  •  Sections: 9",
+      "x": 1140,
+      "y": 40,
+      "width": 980,
+      "height": 170,
+      "color": "5"
+    },
+    {
+      "id": "chip-2",
+      "type": "text",
+      "text": "Section blocks",
+      "x": 170,
+      "y": 250,
+      "width": 260,
+      "height": 62,
+      "color": "1"
+    },
+    {
+      "id": "chip-3",
+      "type": "text",
+      "text": "Minimal crossing lines",
+      "x": 460,
+      "y": 250,
+      "width": 260,
+      "height": 62,
+      "color": "2"
+    },
+    {
+      "id": "chip-4",
+      "type": "text",
+      "text": "All markdown notes included",
+      "x": 750,
+      "y": 250,
+      "width": 260,
+      "height": 62,
+      "color": "3"
+    },
+    {
+      "id": "chip-5",
+      "type": "text",
+      "text": "Reference-inspired spacing",
+      "x": 1040,
+      "y": 250,
+      "width": 260,
+      "height": 62,
+      "color": "4"
+    },
+    {
+      "id": "group-6",
+      "type": "group",
+      "x": 120,
+      "y": 430,
+      "width": 980,
+      "height": 2957,
+      "color": "1",
+      "label": "03 - Resources"
+    },
+    {
+      "id": "section-7",
+      "type": "text",
+      "text": "# 03 - Resources\\n\\n78 notes",
+      "x": 146,
+      "y": 448,
+      "width": 928,
+      "height": 88,
+      "color": "1"
+    },
+    {
+      "id": "file-9",
+      "type": "file",
+      "file": "03 - Resources/Books/Atomic Habits Notes.md",
+      "x": 146,
+      "y": 554,
+      "width": 430,
+      "height": 245,
+      "color": "1"
+    },
+    {
+      "id": "file-10",
+      "type": "file",
+      "file": "03 - Resources/Books/Books MOC.md",
+      "x": 146,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-11",
+      "type": "file",
+      "file": "03 - Resources/Books/Deep Work Notes.md",
+      "x": 369,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-12",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Active Recall.md",
+      "x": 592,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-13",
+      "type": "file",
+      "file": "03 - Resources/Concepts/AI Ethics.md",
+      "x": 815,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-14",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Backlinks.md",
+      "x": 146,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-15",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Critical Thinking.md",
+      "x": 369,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-16",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Learning MOC.md",
+      "x": 592,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-17",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Mental Models.md",
+      "x": 815,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-18",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Personal Knowledge Management.md",
+      "x": 146,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-19",
+      "type": "file",
+      "file": "03 - Resources/Concepts/Problem Solving.md",
+      "x": 369,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-20",
+      "type": "file",
+      "file": "03 - Resources/Courses/Courses Index.md",
+      "x": 592,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-21",
+      "type": "file",
+      "file": "03 - Resources/Mathematics/Calculus Basics.md",
+      "x": 815,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-22",
+      "type": "file",
+      "file": "03 - Resources/Mathematics/Linear Algebra.md",
+      "x": 146,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-23",
+      "type": "file",
+      "file": "03 - Resources/Mathematics/Mathematics for ML.md",
+      "x": 369,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-24",
+      "type": "file",
+      "file": "03 - Resources/Mathematics/Mathematics MOC.md",
+      "x": 592,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-25",
+      "type": "file",
+      "file": "03 - Resources/Mathematics/Probability Basics.md",
+      "x": 815,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-26",
+      "type": "file",
+      "file": "03 - Resources/Mathematics/Statistics Fundamentals.md",
+      "x": 146,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-27",
+      "type": "file",
+      "file": "03 - Resources/Philosophy/First Principles Thinking.md",
+      "x": 369,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-28",
+      "type": "file",
+      "file": "03 - Resources/Philosophy/Philosophy MOC.md",
+      "x": 592,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-29",
+      "type": "file",
+      "file": "03 - Resources/Philosophy/Stoicism.md",
+      "x": 815,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-30",
+      "type": "file",
+      "file": "03 - Resources/Productivity/Focus Strategies.md",
+      "x": 146,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-31",
+      "type": "file",
+      "file": "03 - Resources/Productivity/PARA Method.md",
+      "x": 369,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-32",
+      "type": "file",
+      "file": "03 - Resources/Productivity/Productivity MOC.md",
+      "x": 592,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-33",
+      "type": "file",
+      "file": "03 - Resources/Productivity/Productivity Systems.md",
+      "x": 815,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-34",
+      "type": "file",
+      "file": "03 - Resources/Productivity/Time Blocking.md",
+      "x": 146,
+      "y": 1585,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-35",
+      "type": "file",
+      "file": "03 - Resources/Programming/Accessibility Basics.md",
+      "x": 369,
+      "y": 1585,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-36",
+      "type": "file",
+      "file": "03 - Resources/Programming/Algorithm Patterns.md",
+      "x": 592,
+      "y": 1585,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-37",
+      "type": "file",
+      "file": "03 - Resources/Programming/Async Programming.md",
+      "x": 815,
+      "y": 1585,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-38",
+      "type": "file",
+      "file": "03 - Resources/Programming/Authentication Patterns.md",
+      "x": 146,
+      "y": 1713,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-39",
+      "type": "file",
+      "file": "03 - Resources/Programming/Browser DevTools.md",
+      "x": 369,
+      "y": 1713,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-40",
+      "type": "file",
+      "file": "03 - Resources/Programming/Clean Code Principles.md",
+      "x": 592,
+      "y": 1713,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-41",
+      "type": "file",
+      "file": "03 - Resources/Programming/Closures.md",
+      "x": 815,
+      "y": 1713,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-42",
+      "type": "file",
+      "file": "03 - Resources/Programming/Code Organization.md",
+      "x": 146,
+      "y": 1841,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-43",
+      "type": "file",
+      "file": "03 - Resources/Programming/Code Review Checklist.md",
+      "x": 369,
+      "y": 1841,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-44",
+      "type": "file",
+      "file": "03 - Resources/Programming/CSS Flexbox.md",
+      "x": 592,
+      "y": 1841,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-45",
+      "type": "file",
+      "file": "03 - Resources/Programming/Data Structures.md",
+      "x": 815,
+      "y": 1841,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-46",
+      "type": "file",
+      "file": "03 - Resources/Programming/Debugging Strategies.md",
+      "x": 146,
+      "y": 1969,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-47",
+      "type": "file",
+      "file": "03 - Resources/Programming/Deployment Strategies.md",
+      "x": 369,
+      "y": 1969,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-48",
+      "type": "file",
+      "file": "03 - Resources/Programming/Design Patterns.md",
+      "x": 592,
+      "y": 1969,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-49",
+      "type": "file",
+      "file": "03 - Resources/Programming/Docker.md",
+      "x": 815,
+      "y": 1969,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-50",
+      "type": "file",
+      "file": "03 - Resources/Programming/Environment Variables.md",
+      "x": 146,
+      "y": 2097,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-51",
+      "type": "file",
+      "file": "03 - Resources/Programming/Error Handling.md",
+      "x": 369,
+      "y": 2097,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-52",
+      "type": "file",
+      "file": "03 - Resources/Programming/Event Loop.md",
+      "x": 592,
+      "y": 2097,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-53",
+      "type": "file",
+      "file": "03 - Resources/Programming/Functional Programming.md",
+      "x": 815,
+      "y": 2097,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-54",
+      "type": "file",
+      "file": "03 - Resources/Programming/Git Version Control.md",
+      "x": 146,
+      "y": 2225,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-55",
+      "type": "file",
+      "file": "03 - Resources/Programming/GraphQL Basics.md",
+      "x": 369,
+      "y": 2225,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-56",
+      "type": "file",
+      "file": "03 - Resources/Programming/JavaScript.md",
+      "x": 592,
+      "y": 2225,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-57",
+      "type": "file",
+      "file": "03 - Resources/Programming/Logging Best Practices.md",
+      "x": 815,
+      "y": 2225,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-58",
+      "type": "file",
+      "file": "03 - Resources/Programming/Microservices Architecture.md",
+      "x": 146,
+      "y": 2353,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-59",
+      "type": "file",
+      "file": "03 - Resources/Programming/Monorepo Setup.md",
+      "x": 369,
+      "y": 2353,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-60",
+      "type": "file",
+      "file": "03 - Resources/Programming/Node.js.md",
+      "x": 592,
+      "y": 2353,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-61",
+      "type": "file",
+      "file": "03 - Resources/Programming/NPM Packages.md",
+      "x": 815,
+      "y": 2353,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-62",
+      "type": "file",
+      "file": "03 - Resources/Programming/Object-Oriented Programming.md",
+      "x": 146,
+      "y": 2481,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-63",
+      "type": "file",
+      "file": "03 - Resources/Programming/Package Managers.md",
+      "x": 369,
+      "y": 2481,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-64",
+      "type": "file",
+      "file": "03 - Resources/Programming/Performance Optimization.md",
+      "x": 592,
+      "y": 2481,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-65",
+      "type": "file",
+      "file": "03 - Resources/Programming/Programming MOC.md",
+      "x": 815,
+      "y": 2481,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-66",
+      "type": "file",
+      "file": "03 - Resources/Programming/Programming MOC.md.md",
+      "x": 146,
+      "y": 2609,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-67",
+      "type": "file",
+      "file": "03 - Resources/Programming/Promises Deep Dive.md",
+      "x": 369,
+      "y": 2609,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-68",
+      "type": "file",
+      "file": "03 - Resources/Programming/Python Programming.md",
+      "x": 592,
+      "y": 2609,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-69",
+      "type": "file",
+      "file": "03 - Resources/Programming/React Hooks.md",
+      "x": 815,
+      "y": 2609,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-70",
+      "type": "file",
+      "file": "03 - Resources/Programming/Regex Patterns.md",
+      "x": 146,
+      "y": 2737,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-71",
+      "type": "file",
+      "file": "03 - Resources/Programming/REST API Design.md",
+      "x": 369,
+      "y": 2737,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-72",
+      "type": "file",
+      "file": "03 - Resources/Programming/SQL Database.md",
+      "x": 592,
+      "y": 2737,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-73",
+      "type": "file",
+      "file": "03 - Resources/Programming/State Management.md",
+      "x": 815,
+      "y": 2737,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-74",
+      "type": "file",
+      "file": "03 - Resources/Programming/System Design.md",
+      "x": 146,
+      "y": 2865,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-75",
+      "type": "file",
+      "file": "03 - Resources/Programming/System Design.md.md",
+      "x": 369,
+      "y": 2865,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-76",
+      "type": "file",
+      "file": "03 - Resources/Programming/Terminal Commands.md",
+      "x": 592,
+      "y": 2865,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-77",
+      "type": "file",
+      "file": "03 - Resources/Programming/Testing Strategies.md",
+      "x": 815,
+      "y": 2865,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-78",
+      "type": "file",
+      "file": "03 - Resources/Programming/TypeScript.md",
+      "x": 146,
+      "y": 2993,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-79",
+      "type": "file",
+      "file": "03 - Resources/Programming/Version Control Workflows.md",
+      "x": 369,
+      "y": 2993,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-80",
+      "type": "file",
+      "file": "03 - Resources/Programming/VS Code Tips.md",
+      "x": 592,
+      "y": 2993,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-81",
+      "type": "file",
+      "file": "03 - Resources/Programming/Web Components.md",
+      "x": 815,
+      "y": 2993,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-82",
+      "type": "file",
+      "file": "03 - Resources/Programming/Web Security.md",
+      "x": 146,
+      "y": 3121,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-83",
+      "type": "file",
+      "file": "03 - Resources/Science/Computer Science Basics.md",
+      "x": 369,
+      "y": 3121,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-84",
+      "type": "file",
+      "file": "03 - Resources/Science/Science MOC.md",
+      "x": 592,
+      "y": 3121,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-85",
+      "type": "file",
+      "file": "03 - Resources/Writing/Technical Writing.md",
+      "x": 815,
+      "y": 3121,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-86",
+      "type": "file",
+      "file": "03 - Resources/Writing/Writing MOC.md",
+      "x": 146,
+      "y": 3249,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "group-87",
+      "type": "group",
+      "x": 1270,
+      "y": 430,
+      "width": 980,
+      "height": 1165,
+      "color": "2",
+      "label": "01 - Projects"
+    },
+    {
+      "id": "section-88",
+      "type": "text",
+      "text": "# 01 - Projects\\n\\n25 notes",
+      "x": 1296,
+      "y": 448,
+      "width": 928,
+      "height": 88,
+      "color": "2"
+    },
+    {
+      "id": "file-90",
+      "type": "file",
+      "file": "01 - Projects/MachineLearning/Data Preprocessing.md",
+      "x": 1296,
+      "y": 554,
+      "width": 430,
+      "height": 245,
+      "color": "2"
+    },
+    {
+      "id": "file-91",
+      "type": "file",
+      "file": "01 - Projects/MachineLearning/Machine Learning Research.md",
+      "x": 1296,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-92",
+      "type": "file",
+      "file": "01 - Projects/MachineLearning/Model Evaluation.md",
+      "x": 1519,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-93",
+      "type": "file",
+      "file": "01 - Projects/MachineLearning/Natural Language Processing.md",
+      "x": 1742,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-94",
+      "type": "file",
+      "file": "01 - Projects/MachineLearning/Neural Networks Fundamentals.md",
+      "x": 1965,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-95",
+      "type": "file",
+      "file": "01 - Projects/MachineLearning/Transformer Architecture.md",
+      "x": 1296,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-96",
+      "type": "file",
+      "file": "01 - Projects/MobileApp/App Architecture.md",
+      "x": 1519,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-97",
+      "type": "file",
+      "file": "01 - Projects/MobileApp/Mobile App Project.md",
+      "x": 1742,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-98",
+      "type": "file",
+      "file": "01 - Projects/MobileApp/Mobile UI Patterns.md",
+      "x": 1965,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-99",
+      "type": "file",
+      "file": "01 - Projects/MobileApp/React Native.md",
+      "x": 1296,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-100",
+      "type": "file",
+      "file": "01 - Projects/Personal/Goals 2024.md",
+      "x": 1519,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-101",
+      "type": "file",
+      "file": "01 - Projects/Personal/Habit Tracking.md",
+      "x": 1742,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-102",
+      "type": "file",
+      "file": "01 - Projects/Personal/Personal Finance Tracker.md",
+      "x": 1965,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-103",
+      "type": "file",
+      "file": "01 - Projects/Research/Knowledge Management.md",
+      "x": 1296,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-104",
+      "type": "file",
+      "file": "01 - Projects/Research/Literature Review Template.md",
+      "x": 1519,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-105",
+      "type": "file",
+      "file": "01 - Projects/Research/Research Notes.md",
+      "x": 1742,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-106",
+      "type": "file",
+      "file": "01 - Projects/Research/Zettelkasten Method.md",
+      "x": 1965,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-107",
+      "type": "file",
+      "file": "01 - Projects/WebDev/API Design Principles.md",
+      "x": 1296,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-108",
+      "type": "file",
+      "file": "01 - Projects/WebDev/CSS Grid Layout.md",
+      "x": 1519,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-109",
+      "type": "file",
+      "file": "01 - Projects/WebDev/HTML Semantics.md",
+      "x": 1742,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-110",
+      "type": "file",
+      "file": "01 - Projects/WebDev/JavaScript Frameworks.md",
+      "x": 1965,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-111",
+      "type": "file",
+      "file": "01 - Projects/WebDev/React Best Practices.md",
+      "x": 1296,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-112",
+      "type": "file",
+      "file": "01 - Projects/WebDev/Responsive Design.md",
+      "x": 1519,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-113",
+      "type": "file",
+      "file": "01 - Projects/WebDev/SEO Basics.md",
+      "x": 1742,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-114",
+      "type": "file",
+      "file": "01 - Projects/WebDev/Web Development Portfolio.md",
+      "x": 1965,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "group-115",
+      "type": "group",
+      "x": 2420,
+      "y": 430,
+      "width": 980,
+      "height": 1165,
+      "color": "3",
+      "label": "02 - Areas"
+    },
+    {
+      "id": "section-116",
+      "type": "text",
+      "text": "# 02 - Areas\\n\\n24 notes",
+      "x": 2446,
+      "y": 448,
+      "width": 928,
+      "height": 88,
+      "color": "3"
+    },
+    {
+      "id": "file-118",
+      "type": "file",
+      "file": "02 - Areas/Career/Career Development.md",
+      "x": 2446,
+      "y": 554,
+      "width": 430,
+      "height": 245,
+      "color": "3"
+    },
+    {
+      "id": "file-119",
+      "type": "file",
+      "file": "02 - Areas/Career/Interview Preparation.md",
+      "x": 2446,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-120",
+      "type": "file",
+      "file": "02 - Areas/Career/Networking Tips.md",
+      "x": 2669,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-121",
+      "type": "file",
+      "file": "02 - Areas/Career/Resume Writing.md",
+      "x": 2892,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-122",
+      "type": "file",
+      "file": "02 - Areas/Career/Salary Negotiation.md",
+      "x": 3115,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-123",
+      "type": "file",
+      "file": "02 - Areas/Career/Side Projects.md",
+      "x": 2446,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-124",
+      "type": "file",
+      "file": "02 - Areas/Career/Technical Skills Roadmap.md",
+      "x": 2669,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-125",
+      "type": "file",
+      "file": "02 - Areas/Career/Work Life Balance.md",
+      "x": 2892,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-126",
+      "type": "file",
+      "file": "02 - Areas/Finance/Budgeting Basics.md",
+      "x": 3115,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-127",
+      "type": "file",
+      "file": "02 - Areas/Finance/Finance MOC.md",
+      "x": 2446,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-128",
+      "type": "file",
+      "file": "02 - Areas/Finance/Investment Basics.md",
+      "x": 2669,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-129",
+      "type": "file",
+      "file": "02 - Areas/Finance/Tax Planning.md",
+      "x": 2892,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-130",
+      "type": "file",
+      "file": "02 - Areas/Health/Exercise Routine.md",
+      "x": 3115,
+      "y": 1073,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-131",
+      "type": "file",
+      "file": "02 - Areas/Health/Health and Fitness.md",
+      "x": 2446,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-132",
+      "type": "file",
+      "file": "02 - Areas/Health/Meditation Practice.md",
+      "x": 2669,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-133",
+      "type": "file",
+      "file": "02 - Areas/Health/Mental Health.md",
+      "x": 2892,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-134",
+      "type": "file",
+      "file": "02 - Areas/Health/Nutrition Basics.md",
+      "x": 3115,
+      "y": 1201,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-135",
+      "type": "file",
+      "file": "02 - Areas/Health/Sleep Hygiene.md",
+      "x": 2446,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-136",
+      "type": "file",
+      "file": "02 - Areas/Learning/Learning Goals.md",
+      "x": 2669,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-137",
+      "type": "file",
+      "file": "02 - Areas/Learning/Learning Resources.md",
+      "x": 2892,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-138",
+      "type": "file",
+      "file": "02 - Areas/Learning/Learning Techniques.md",
+      "x": 3115,
+      "y": 1329,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-139",
+      "type": "file",
+      "file": "02 - Areas/Learning/Spaced Repetition.md",
+      "x": 2446,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-140",
+      "type": "file",
+      "file": "02 - Areas/Relationships/Communication Skills.md",
+      "x": 2669,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-141",
+      "type": "file",
+      "file": "02 - Areas/Relationships/Relationships MOC.md",
+      "x": 2892,
+      "y": 1457,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "group-142",
+      "type": "group",
+      "x": 3570,
+      "y": 430,
+      "width": 980,
+      "height": 653,
+      "color": "4",
+      "label": "05 - Daily Notes"
+    },
+    {
+      "id": "section-143",
+      "type": "text",
+      "text": "# 05 - Daily Notes\\n\\n8 notes",
+      "x": 3596,
+      "y": 448,
+      "width": 928,
+      "height": 88,
+      "color": "4"
+    },
+    {
+      "id": "file-145",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-15.md",
+      "x": 3596,
+      "y": 554,
+      "width": 430,
+      "height": 245,
+      "color": "4"
+    },
+    {
+      "id": "file-146",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-16.md",
+      "x": 3596,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "file-147",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-16.md.md",
+      "x": 3819,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-148",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-17.md",
+      "x": 4042,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-149",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-18.md",
+      "x": 4265,
+      "y": 817,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-150",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-19.md",
+      "x": 3596,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-151",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-20.md",
+      "x": 3819,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "file-152",
+      "type": "file",
+      "file": "05 - Daily Notes/2024-01-21.md",
+      "x": 4042,
+      "y": 945,
+      "width": 205,
+      "height": 112,
+      "color": "5"
+    },
+    {
+      "id": "group-153",
+      "type": "group",
+      "x": 120,
+      "y": 3587,
+      "width": 980,
+      "height": 653,
+      "color": "5",
+      "label": "06 - Templates"
+    },
+    {
+      "id": "section-154",
+      "type": "text",
+      "text": "# 06 - Templates\\n\\n6 notes",
+      "x": 146,
+      "y": 3605,
+      "width": 928,
+      "height": 88,
+      "color": "5"
+    },
+    {
+      "id": "file-156",
+      "type": "file",
+      "file": "06 - Templates/Book Notes Template.md",
+      "x": 146,
+      "y": 3711,
+      "width": 430,
+      "height": 245,
+      "color": "5"
+    },
+    {
+      "id": "file-157",
+      "type": "file",
+      "file": "06 - Templates/Daily Note Template.md",
+      "x": 146,
+      "y": 3974,
+      "width": 205,
+      "height": 112,
+      "color": "6"
+    },
+    {
+      "id": "file-158",
+      "type": "file",
+      "file": "06 - Templates/Decision Log Template.md",
+      "x": 369,
+      "y": 3974,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-159",
+      "type": "file",
+      "file": "06 - Templates/Meeting Notes Template.md",
+      "x": 592,
+      "y": 3974,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-160",
+      "type": "file",
+      "file": "06 - Templates/Project Template.md",
+      "x": 815,
+      "y": 3974,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-161",
+      "type": "file",
+      "file": "06 - Templates/Weekly Review Template.md",
+      "x": 146,
+      "y": 4102,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "group-162",
+      "type": "group",
+      "x": 1270,
+      "y": 1735.5,
+      "width": 980,
+      "height": 560,
+      "color": "6",
+      "label": "00 - Inbox"
+    },
+    {
+      "id": "section-163",
+      "type": "text",
+      "text": "# 00 - Inbox\\n\\n5 notes",
+      "x": 1296,
+      "y": 1753.5,
+      "width": 928,
+      "height": 88,
+      "color": "6"
+    },
+    {
+      "id": "file-165",
+      "type": "file",
+      "file": "00 - Inbox/Clippings.md",
+      "x": 1311,
+      "y": 1859.5,
+      "width": 430,
+      "height": 245,
+      "color": "6"
+    },
+    {
+      "id": "file-166",
+      "type": "file",
+      "file": "00 - Inbox/Fleeting Notes.md",
+      "x": 1296,
+      "y": 2122.5,
+      "width": 205,
+      "height": 112,
+      "color": "1"
+    },
+    {
+      "id": "file-167",
+      "type": "file",
+      "file": "00 - Inbox/Idea Inbox.md",
+      "x": 1519,
+      "y": 2122.5,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-168",
+      "type": "file",
+      "file": "00 - Inbox/Quick Notes.md",
+      "x": 1742,
+      "y": 2122.5,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-169",
+      "type": "file",
+      "file": "00 - Inbox/Reading Queue.md",
+      "x": 1980,
+      "y": 2122.5,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "group-170",
+      "type": "group",
+      "x": 2420,
+      "y": 1769,
+      "width": 980,
+      "height": 560,
+      "color": "1",
+      "label": "04 - Archive"
+    },
+    {
+      "id": "section-171",
+      "type": "text",
+      "text": "# 04 - Archive\\n\\n4 notes",
+      "x": 2446,
+      "y": 1787,
+      "width": 928,
+      "height": 88,
+      "color": "1"
+    },
+    {
+      "id": "file-173",
+      "type": "file",
+      "file": "04 - Archive/CompletedProjects/Blog Platform Project.md",
+      "x": 2446,
+      "y": 1893,
+      "width": 430,
+      "height": 245,
+      "color": "1"
+    },
+    {
+      "id": "file-174",
+      "type": "file",
+      "file": "04 - Archive/CompletedProjects/Task Manager CLI.md",
+      "x": 2446,
+      "y": 2156,
+      "width": 205,
+      "height": 112,
+      "color": "2"
+    },
+    {
+      "id": "file-175",
+      "type": "file",
+      "file": "04 - Archive/OldNotes/2023 Year Review.md",
+      "x": 2669,
+      "y": 2156,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-176",
+      "type": "file",
+      "file": "04 - Archive/OldNotes/Project Retrospective.md",
+      "x": 2892,
+      "y": 2156,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "group-177",
+      "type": "group",
+      "x": 3570,
+      "y": 1289,
+      "width": 980,
+      "height": 560,
+      "color": "2",
+      "label": "Index"
+    },
+    {
+      "id": "section-178",
+      "type": "text",
+      "text": "# Index\\n\\n3 notes",
+      "x": 3596,
+      "y": 1307,
+      "width": 928,
+      "height": 88,
+      "color": "2"
+    },
+    {
+      "id": "file-180",
+      "type": "file",
+      "file": "Index/Home.md",
+      "x": 3596,
+      "y": 1413,
+      "width": 430,
+      "height": 245,
+      "color": "2"
+    },
+    {
+      "id": "file-181",
+      "type": "file",
+      "file": "Index/Maps of Content.md",
+      "x": 3596,
+      "y": 1676,
+      "width": 205,
+      "height": 112,
+      "color": "3"
+    },
+    {
+      "id": "file-182",
+      "type": "file",
+      "file": "Index/Quick Links.md",
+      "x": 3819,
+      "y": 1676,
+      "width": 205,
+      "height": 112,
+      "color": "4"
+    },
+    {
+      "id": "group-183",
+      "type": "group",
+      "x": 120,
+      "y": 4440,
+      "width": 980,
+      "height": 560,
+      "color": "3",
+      "label": "Daily Notes"
+    },
+    {
+      "id": "section-184",
+      "type": "text",
+      "text": "# Daily Notes\\n\\n1 notes",
+      "x": 146,
+      "y": 4458,
+      "width": 928,
+      "height": 88,
+      "color": "3"
+    },
+    {
+      "id": "file-186",
+      "type": "file",
+      "file": "Daily Notes/2026-04-10.md",
+      "x": 146,
+      "y": 4564,
+      "width": 430,
+      "height": 245,
+      "color": "3"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-8",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-7",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "1"
+    },
+    {
+      "id": "edge-89",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-88",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "2"
+    },
+    {
+      "id": "edge-117",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-116",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "3"
+    },
+    {
+      "id": "edge-144",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-143",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "4"
+    },
+    {
+      "id": "edge-155",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-154",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "5"
+    },
+    {
+      "id": "edge-164",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-163",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "6"
+    },
+    {
+      "id": "edge-172",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-171",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "1"
+    },
+    {
+      "id": "edge-179",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-178",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "2"
+    },
+    {
+      "id": "edge-185",
+      "fromNode": "title-1",
+      "fromSide": "bottom",
+      "toNode": "section-184",
+      "toSide": "top",
+      "toEnd": "none",
+      "color": "3"
+    }
+  ]
+}
