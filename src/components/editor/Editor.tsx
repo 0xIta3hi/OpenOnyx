@@ -663,12 +663,20 @@ export function Editor({
   const handleZoomWheel = useCallback((e: WheelEvent) => {
     if (!(e.ctrlKey || e.metaKey)) return;
 
+    const targetNode = e.target as Node | null;
+    const targetElement = targetNode instanceof HTMLElement ? targetNode : null;
+    if (isSpecialTab) {
+      const isCanvasNoteBody = !!targetElement?.closest('.cv-embedded-md');
+      if (!isCanvasNoteBody) return;
+    }
+
     e.preventDefault();
     e.stopPropagation();
 
     let scope: 'both' | 'editor' | 'preview' = 'both';
-    if (e.shiftKey) {
-      const targetNode = e.target as Node | null;
+    if (isSpecialTab) {
+      scope = 'preview';
+    } else if (e.shiftKey) {
       if (targetNode && editorRef.current?.contains(targetNode)) {
         scope = 'editor';
       } else if (targetNode && previewRef.current?.contains(targetNode)) {
@@ -686,7 +694,7 @@ export function Editor({
     const direction = wheelRemainderRef.current < 0 ? 1 : -1;
     onAdjustFontSize(direction * steps, scope);
     wheelRemainderRef.current -= Math.sign(wheelRemainderRef.current) * steps * threshold;
-  }, [onAdjustFontSize]);
+  }, [onAdjustFontSize, isSpecialTab]);
 
   useEffect(() => {
     const container = containerRef.current;

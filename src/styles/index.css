@@ -4514,15 +4514,50 @@ blockquote:has(.callout) {
 }
 
 .starred-list {
-  padding: var(--space-1) 0;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.starred-list .file-item {
-  padding-left: var(--space-4);
+.starred-list .starred-item {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+  align-items: flex-start;
+  gap: 8px;
+  --depth: 0;
+}
+
+.starred-list .starred-item.active {
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, transparent);
 }
 
 .star-icon {
   flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.starred-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.starred-text .name {
+  width: 100%;
+}
+
+.starred-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* ── Quick Switcher Enhancements ────────────────────────────────────── */

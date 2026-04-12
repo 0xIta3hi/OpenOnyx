@@ -167,6 +167,12 @@ export function Sidebar({
     });
   };
 
+  const getStarredParentPath = (path: string) => {
+    const idx = path.lastIndexOf('/');
+    if (idx <= 0) return 'Vault root';
+    return path.slice(0, idx);
+  };
+
   return (
     <>
       <div className={`sidebar ${!visible ? 'collapsed' : ''}`}>
@@ -223,12 +229,15 @@ export function Sidebar({
                 {starredNotes.map(path => (
                   <button
                     key={path}
-                    className={`file-item ${activeFilePath === path ? 'active' : ''}`}
+                    className={`file-tree-item starred-item ${activeFilePath === path ? 'active' : ''}`}
                     onClick={() => onFileSelect(path)}
                     onContextMenu={(e) => handleContextMenu(e, path, false)}
                   >
                     <Star size={14} className="star-icon" fill="var(--accent-warning)" stroke="var(--accent-warning)" />
-                    <span className="name">{getNoteName(path)}</span>
+                    <span className="starred-text">
+                      <span className="name">{getNoteName(path)}</span>
+                      <span className="starred-path">{getStarredParentPath(path)}</span>
+                    </span>
                   </button>
                 ))}
               </div>

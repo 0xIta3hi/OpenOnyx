@@ -869,12 +869,17 @@ export function CanvasView({
     const onWheel = (e: WheelEvent) => {
       const target = e.target as HTMLElement | null;
       const scrollHost = target?.closest('.cv-node-body') as HTMLElement | null;
+      const inEmbeddedNoteBody = !!target?.closest('.cv-embedded-md');
       const canScrollNodeBody = !!scrollHost && (
         scrollHost.scrollHeight > scrollHost.clientHeight ||
         scrollHost.scrollWidth > scrollHost.clientWidth
       );
 
       if (!e.ctrlKey && !e.metaKey && canScrollNodeBody) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && inEmbeddedNoteBody) {
         return;
       }
 
