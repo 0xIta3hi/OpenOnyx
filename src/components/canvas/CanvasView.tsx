@@ -49,11 +49,13 @@ const HISTORY_LIMIT = 60;
 const CULLING_PADDING = 320;
 const RECOVERY_SUFFIX = '.recovery.canvas';
 const MIN_MD_EMBED_PREVIEW_ZOOM = 1.05;
+const FULL_MD_EMBED_PREVIEW_ZOOM = 1.4;
 const MAX_SELECTED_MD_PREVIEWS = 2;
 const MAX_MD_EMBED_PREVIEWS = 8;
 const MIN_MD_PREVIEW_SCREEN_WIDTH = 240;
 const MIN_MD_PREVIEW_SCREEN_HEIGHT = 140;
 const MD_PREVIEW_RESUME_DELAY_MS = 160;
+const MD_PREVIEW_REFRESH_INTERVAL_MS = 1200;
 
 const embeddedMarkdownCache = new Map<string, string>();
 
@@ -1266,6 +1268,16 @@ export function CanvasView({
       return selectedSet;
     }
 
+    if (vp.zoom >= FULL_MD_EMBED_PREVIEW_ZOOM) {
+      visibleNodes.forEach(node => {
+        if (node.type !== 'file') return;
+        const filePath = (node as CanvasFileNode).file || '';
+        if (!filePath.toLowerCase().endsWith('.md')) return;
+        selectedSet.add(node.id);
+      });
+      return selectedSet;
+    }
+
     const ids = [...selectedIds];
     const candidates = visibleNodes
       .filter(node => {
@@ -1712,6 +1724,7 @@ function EmbeddedFileNode({ node, vaultPath, enableMarkdownPreview }: { node: Ca
 
   useEffect(() => {
     let mounted = true;
+    let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
     if (!isMarkdown || !enableMarkdownPreview) {
       return () => { mounted = false; };
@@ -1720,16 +1733,25 @@ function EmbeddedFileNode({ node, vaultPath, enableMarkdownPreview }: { node: Ca
     const cached = embeddedMarkdownCache.get(node.file);
     if (typeof cached === 'string') {
       setContent(cached);
-      return () => { mounted = false; };
     }
 
-    getAPI().readFile(node.file).then(c => {
-      if (!mounted) return;
-      embeddedMarkdownCache.set(node.file, c);
-      setContent(c);
-    }).catch(e => console.error('Failed to load embedded note:', e));
+    const refreshContent = () => {
+      getAPI().readFile(node.file).then(c => {
+        if (!mounted) return;
+        embeddedMarkdownCache.set(node.file, c);
+        setContent(prev => (prev === c ? prev : c));
+      }).catch(e => console.error('Failed to load embedded note:', e));
+    };
 
-    return () => { mounted = false; };
+    refreshContent();
+    refreshTimer = setInterval(refreshContent, MD_PREVIEW_REFRESH_INTERVAL_MS);
+
+    return () => {
+      mounted = false;
+      if (refreshTimer !== null) {
+        clearInterval(refreshTimer);
+      }
+    };
   }, [node.file, isMarkdown, enableMarkdownPreview]);
 
   if (isImage) {
