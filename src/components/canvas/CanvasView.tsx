@@ -13,8 +13,8 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   Plus, Minus, Maximize, Grid3X3, ArrowUpRight,
   RotateCcw, RotateCw, Type, FileText, Globe,
-  SquareDashed, Trash2, Palette, Copy, X, Layout,
-  MousePointer, Hand, Spline, ZoomIn,
+  SquareDashed, Trash2, Palette, Copy, X,
+  Lock, Unlock,
 } from 'lucide-react';
 import {
   CanvasNode, CanvasEdge, CanvasData, CanvasViewport,
@@ -28,12 +28,19 @@ import {
 import { generateId } from '../../utils/helpers';
 import { getAPI } from '../../utils/api';
 import { MarkdownPreview } from '../editor/MarkdownPreview';
+import {
+  parseCanvasDocument,
+  serializeCanvasDocument,
+  type CanvasDiagnostics,
+} from './canvasDocument';
 
 /* ─────── Constants ─────── */
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 5;
 const ZOOM_SENSITIVITY = 0.002;
 const HISTORY_LIMIT = 60;
+const CULLING_PADDING = 320;
+const RECOVERY_SUFFIX = '.recovery.canvas';
 
 interface Props {
   onClose: () => void;
@@ -44,11 +51,25 @@ interface Props {
   fileTree: any[];
   canvasFilePath: string | null;
   onOpenFile?: (p: string) => void;
+  onNewCanvas?: () => void;
+  onDuplicateCanvas?: () => void;
+  onSaveCanvasAs?: () => void;
+  recentCanvasFiles?: string[];
+  onOpenRecentCanvas?: (p: string) => void;
 }
 
 /* ─────── History entry ─────── */
 interface Snap { nodes: CanvasNode[]; edges: CanvasEdge[] }
 const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
+
+type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
+
+function rectIntersects(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
 
 /* ─────── Edge helpers ─────── */
 function bestSides(a: CanvasNode, b: CanvasNode): [EdgeSide, EdgeSide] {
@@ -97,7 +118,21 @@ function colorWithAlpha(color: string, alpha: number): string {
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════ */
-export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, vaultPath, fileTree, canvasFilePath, onOpenFile }: Props) {
+export function CanvasView({
+  onClose,
+  isFullScreen,
+  onToggleFullScreen,
+  theme,
+  vaultPath,
+  fileTree,
+  canvasFilePath,
+  onOpenFile,
+  onNewCanvas,
+  onDuplicateCanvas,
+  onSaveCanvasAs,
+  recentCanvasFiles,
+  onOpenRecentCanvas,
+}: Props) {
 
   /* ── state ── */
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
@@ -117,19 +152,56 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
   const [linkModal, setLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [alignLines, setAlignLines] = useState<{ x: number[], y: number[] }>({ x: [], y: [] });
+  const [docMeta, setDocMeta] = useState<Record<string, unknown>>({});
+  const [diagnostics, setDiagnostics] = useState<CanvasDiagnostics | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [recoveryUsed, setRecoveryUsed] = useState(false);
+  const [showRecentCanvasMenu, setShowRecentCanvasMenu] = useState(false);
+  const [areaSize, setAreaSize] = useState({ width: 1, height: 1 });
 
   /* refs */
   const wrapRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
+  const recentMenuRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);      // always-latest snapshot for move handler
   const loadingCanvasRef = useRef(false);
+  const lastSavedPayloadRef = useRef('');
   nodesRef.current = nodes;
 
   /* ── history ── */
   const [hist, setHist] = useState<Snap[]>([{ nodes: [], edges: [] }]);
   const [histIdx, setHistIdx] = useState(0);
+
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setAreaSize({ width: Math.max(1, rect.width), height: Math.max(1, rect.height) });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!showRecentCanvasMenu) return;
+    const onDocDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (recentMenuRef.current?.contains(target)) return;
+      setShowRecentCanvasMenu(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [showRecentCanvasMenu]);
 
   const push = useCallback((n: CanvasNode[], e: CanvasEdge[]) => {
     setHist(prev => [...prev.slice(0, histIdx + 1), { nodes: clone(n), edges: clone(e) }].slice(-HISTORY_LIMIT));
@@ -156,6 +228,13 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
       if (!canvasFilePath) {
         setNodes([]);
         setEdges([]);
+        setDocMeta({});
+        setDiagnostics(null);
+        setShowDiagnostics(false);
+        setRecoveryUsed(false);
+        setSaveState('saved');
+        setLastSavedAt(null);
+        lastSavedPayloadRef.current = '';
         setSelNodes(new Set());
         setSelEdges(new Set());
         setHist([{ nodes: [], edges: [] }]);
@@ -166,20 +245,37 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
       loadingCanvasRef.current = true;
       try {
         const raw = await getAPI().readFile(canvasFilePath);
-        let parsed: CanvasData = {};
+        let parsed = parseCanvasDocument(raw || '');
+        let usedRecovery = false;
 
-        try {
-          parsed = raw?.trim() ? JSON.parse(raw) : {};
-        } catch {
-          parsed = {};
+        if (parsed.diagnostics.parseError || parsed.diagnostics.errors.length > 0) {
+          try {
+            const recoveryRaw = await getAPI().readFile(`${canvasFilePath}${RECOVERY_SUFFIX}`);
+            const recovered = parseCanvasDocument(recoveryRaw || '');
+            const hasUsableData = (recovered.data.nodes?.length || 0) + (recovered.data.edges?.length || 0) > 0;
+            if (!recovered.diagnostics.parseError && hasUsableData) {
+              parsed = recovered;
+              usedRecovery = true;
+            }
+          } catch {
+            // Recovery file may not exist yet.
+          }
         }
 
-        const nextNodes = Array.isArray(parsed.nodes) ? (parsed.nodes as CanvasNode[]) : [];
-        const nextEdges = Array.isArray(parsed.edges) ? (parsed.edges as CanvasEdge[]) : [];
+        const nextNodes = Array.isArray(parsed.data.nodes) ? (parsed.data.nodes as CanvasNode[]) : [];
+        const nextEdges = Array.isArray(parsed.data.edges) ? (parsed.data.edges as CanvasEdge[]) : [];
+        const normalizedPayload = serializeCanvasDocument({ nodes: nextNodes, edges: nextEdges }, parsed.metadata);
 
         if (cancelled) return;
         setNodes(nextNodes);
         setEdges(nextEdges);
+        setDocMeta(parsed.metadata);
+        setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
+        setShowDiagnostics(parsed.diagnostics.repaired);
+        setRecoveryUsed(usedRecovery);
+        setSaveState('saved');
+        setLastSavedAt(Date.now());
+        lastSavedPayloadRef.current = normalizedPayload;
         setSelNodes(new Set());
         setSelEdges(new Set());
         setHist([{ nodes: clone(nextNodes), edges: clone(nextEdges) }]);
@@ -189,6 +285,20 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
         if (cancelled) return;
         setNodes([]);
         setEdges([]);
+        setDocMeta({});
+        setDiagnostics({
+          warnings: [],
+          errors: ['Failed to load canvas file.'],
+          droppedNodes: 0,
+          droppedEdges: 0,
+          repaired: true,
+          parseError: error instanceof Error ? error.message : 'Unknown file read error.',
+        });
+        setShowDiagnostics(true);
+        setRecoveryUsed(false);
+        setSaveState('error');
+        setLastSavedAt(null);
+        lastSavedPayloadRef.current = '';
         setSelNodes(new Set());
         setSelEdges(new Set());
         setHist([{ nodes: [], edges: [] }]);
@@ -205,15 +315,36 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
   useEffect(() => {
     if (!canvasFilePath || loadingCanvasRef.current) return;
 
+    const payload = serializeCanvasDocument({ nodes, edges }, docMeta);
+    if (payload === lastSavedPayloadRef.current) {
+      setSaveState(prev => (prev === 'saving' || prev === 'error' ? prev : 'saved'));
+      return;
+    }
+
+    setSaveState(prev => (prev === 'saving' ? prev : 'unsaved'));
+
     const timer = setTimeout(() => {
-      const payload = JSON.stringify({ nodes, edges }, null, 2);
-      getAPI().writeFile(canvasFilePath, payload).catch((error) => {
-        console.error('Failed to save canvas file:', canvasFilePath, error);
-      });
-    }, 250);
+      setSaveState('saving');
+      getAPI().writeFile(canvasFilePath, payload)
+        .then(async () => {
+          lastSavedPayloadRef.current = payload;
+          setSaveState('saved');
+          setLastSavedAt(Date.now());
+
+          try {
+            await getAPI().writeFile(`${canvasFilePath}${RECOVERY_SUFFIX}`, payload);
+          } catch (snapshotError) {
+            console.warn('Failed to update canvas recovery snapshot:', snapshotError);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to save canvas file:', canvasFilePath, error);
+          setSaveState('error');
+        });
+    }, 300);
 
     return () => clearTimeout(timer);
-  }, [canvasFilePath, nodes, edges]);
+  }, [canvasFilePath, nodes, edges, docMeta]);
 
   /* ── coordinate helpers ── */
   const s2c = useCallback((sx: number, sy: number) => {
@@ -273,6 +404,134 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
     setNodes(nn); setSelNodes(new Set([dup.id])); push(nn, edges);
   }, [nodes, edges, push]);
 
+  const toggleLockSelected = useCallback(() => {
+    const targets = nodes.filter(n => selNodes.has(n.id));
+    if (!targets.length) return;
+    const lockAll = !targets.every(n => n.locked);
+    const next = nodes.map(n => (selNodes.has(n.id) ? { ...n, locked: lockAll } : n));
+    setNodes(next);
+    push(next, edges);
+  }, [nodes, selNodes, edges, push]);
+
+  const bringToFront = useCallback(() => {
+    if (!selNodes.size) return;
+    const selected = nodes.filter(n => selNodes.has(n.id));
+    const others = nodes.filter(n => !selNodes.has(n.id));
+    const next = [...others, ...selected];
+    setNodes(next);
+    push(next, edges);
+  }, [nodes, selNodes, edges, push]);
+
+  const sendToBack = useCallback(() => {
+    if (!selNodes.size) return;
+    const selected = nodes.filter(n => selNodes.has(n.id));
+    const others = nodes.filter(n => !selNodes.has(n.id));
+    const next = [...selected, ...others];
+    setNodes(next);
+    push(next, edges);
+  }, [nodes, selNodes, edges, push]);
+
+  const alignSelected = useCallback((mode: 'left' | 'right' | 'top' | 'bottom' | 'hcenter' | 'vcenter') => {
+    const selected = nodes.filter(n => selNodes.has(n.id) && !n.locked);
+    if (selected.length < 2) return;
+
+    const bounds = {
+      left: Math.min(...selected.map(n => n.x)),
+      right: Math.max(...selected.map(n => n.x + n.width)),
+      top: Math.min(...selected.map(n => n.y)),
+      bottom: Math.max(...selected.map(n => n.y + n.height)),
+    };
+    const centerX = (bounds.left + bounds.right) / 2;
+    const centerY = (bounds.top + bounds.bottom) / 2;
+
+    const next = nodes.map(n => {
+      if (!selNodes.has(n.id) || n.locked) return n;
+      if (mode === 'left') return { ...n, x: bounds.left };
+      if (mode === 'right') return { ...n, x: bounds.right - n.width };
+      if (mode === 'top') return { ...n, y: bounds.top };
+      if (mode === 'bottom') return { ...n, y: bounds.bottom - n.height };
+      if (mode === 'hcenter') return { ...n, x: centerX - n.width / 2 };
+      return { ...n, y: centerY - n.height / 2 };
+    });
+
+    setNodes(next);
+    push(next, edges);
+  }, [nodes, selNodes, edges, push]);
+
+  const distributeSelected = useCallback((axis: 'x' | 'y') => {
+    const selected = nodes.filter(n => selNodes.has(n.id) && !n.locked);
+    if (selected.length < 3) return;
+
+    const sorted = [...selected].sort((a, b) => axis === 'x' ? a.x - b.x : a.y - b.y);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    if (axis === 'x') {
+      const start = first.x + first.width / 2;
+      const end = last.x + last.width / 2;
+      const step = (end - start) / (sorted.length - 1);
+      const nextById: Record<string, number> = {};
+      sorted.forEach((node, idx) => {
+        const targetCenter = start + step * idx;
+        nextById[node.id] = targetCenter - node.width / 2;
+      });
+      const next = nodes.map(n => (nextById[n.id] !== undefined ? { ...n, x: nextById[n.id] } : n));
+      setNodes(next);
+      push(next, edges);
+      return;
+    }
+
+    const start = first.y + first.height / 2;
+    const end = last.y + last.height / 2;
+    const step = (end - start) / (sorted.length - 1);
+    const nextById: Record<string, number> = {};
+    sorted.forEach((node, idx) => {
+      const targetCenter = start + step * idx;
+      nextById[node.id] = targetCenter - node.height / 2;
+    });
+    const next = nodes.map(n => (nextById[n.id] !== undefined ? { ...n, y: nextById[n.id] } : n));
+    setNodes(next);
+    push(next, edges);
+  }, [nodes, selNodes, edges, push]);
+
+  const repairAndSave = useCallback(async () => {
+    if (!canvasFilePath) return;
+    const payload = serializeCanvasDocument({ nodes, edges }, docMeta);
+    setSaveState('saving');
+    try {
+      await getAPI().writeFile(canvasFilePath, payload);
+      await getAPI().writeFile(`${canvasFilePath}${RECOVERY_SUFFIX}`, payload);
+      lastSavedPayloadRef.current = payload;
+      setSaveState('saved');
+      setLastSavedAt(Date.now());
+      setShowDiagnostics(false);
+      setDiagnostics(null);
+    } catch (error) {
+      console.error('Repair save failed:', error);
+      setSaveState('error');
+    }
+  }, [canvasFilePath, nodes, edges, docMeta]);
+
+  const restoreFromRecovery = useCallback(async () => {
+    if (!canvasFilePath) return;
+    try {
+      const recoveryRaw = await getAPI().readFile(`${canvasFilePath}${RECOVERY_SUFFIX}`);
+      const parsed = parseCanvasDocument(recoveryRaw || '');
+      const nextNodes = Array.isArray(parsed.data.nodes) ? (parsed.data.nodes as CanvasNode[]) : [];
+      const nextEdges = Array.isArray(parsed.data.edges) ? (parsed.data.edges as CanvasEdge[]) : [];
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      setDocMeta(parsed.metadata);
+      setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
+      setShowDiagnostics(parsed.diagnostics.repaired);
+      setRecoveryUsed(true);
+      push(nextNodes, nextEdges);
+    } catch (error) {
+      console.error('Failed to restore recovery snapshot:', error);
+      setSaveState('error');
+    }
+  }, [canvasFilePath, push]);
+
   /* ═══ MOUSE: DOWN ═══ */
   const onAreaDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && (tool === 'pan' || e.shiftKey))) {
@@ -322,16 +581,21 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
     else if (!selNodes.has(id)) { setSelNodes(new Set([id])); setSelEdges(new Set()); }
     setColorPickerFor(null);
     const n = nodes.find(x => x.id === id)!;
+    if (n.locked) {
+      return;
+    }
     const p = s2c(e.clientX, e.clientY);
 
     const movingIds = new Set<string>();
     const getMoving = (nodeId: string) => {
       if (movingIds.has(nodeId)) return;
-      movingIds.add(nodeId);
       const node = nodes.find(x => x.id === nodeId);
+      if (!node || node.locked) return;
+      movingIds.add(nodeId);
       if (node && node.type === 'group') {
         nodes.forEach(child => {
           if (child.id === node.id) return;
+          if (child.locked) return;
           if (child.x >= node.x && child.y >= node.y && 
               child.x + child.width <= node.x + node.width && 
               child.y + child.height <= node.y + node.height) {
@@ -370,7 +634,7 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
   const onResizeDown = useCallback((e: React.MouseEvent, id: string, handle: string) => {
     e.stopPropagation();
     const n = nodes.find(x => x.id === id);
-    if (!n) return;
+    if (!n || n.locked) return;
     setDrag({
       type: 'resize',
       nodeId: id,
@@ -380,6 +644,35 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
       resizeOrigin: { x: n.x, y: n.y, width: n.width, height: n.height },
     });
   }, [nodes]);
+
+  const onSelectionResizeDown = useCallback((e: React.MouseEvent, handle: string) => {
+    e.stopPropagation();
+    const selected = nodes.filter(n => selNodes.has(n.id) && !n.locked);
+    if (selected.length < 2) return;
+
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const selectionOriginById: Record<string, { x: number; y: number; width: number; height: number }> = {};
+
+    selected.forEach(n => {
+      x0 = Math.min(x0, n.x);
+      y0 = Math.min(y0, n.y);
+      x1 = Math.max(x1, n.x + n.width);
+      y1 = Math.max(y1, n.y + n.height);
+      selectionOriginById[n.id] = { x: n.x, y: n.y, width: n.width, height: n.height };
+    });
+
+    setDrag({
+      type: 'resize',
+      startX: e.clientX,
+      startY: e.clientY,
+      resizeHandle: handle,
+      selectionBounds: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
+      selectionOriginById,
+    });
+  }, [nodes, selNodes]);
 
   /* ═══ MOUSE: MOVE ═══ */
   useEffect(() => {
@@ -475,8 +768,46 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
           break;
         }
         case 'resize': {
+          if (drag.selectionBounds && drag.selectionOriginById) {
+            const base = drag.selectionBounds;
+            const dx = (e.clientX - drag.startX) / vp.zoom;
+            const dy = (e.clientY - drag.startY) / vp.zoom;
+            const h = drag.resizeHandle || 'se';
+            let nx = base.x;
+            let ny = base.y;
+            let nw = base.width;
+            let nh = base.height;
+
+            if (h.includes('e')) nw = Math.max(MIN_NODE_WIDTH * 1.5, base.width + dx);
+            if (h.includes('w')) {
+              nw = Math.max(MIN_NODE_WIDTH * 1.5, base.width - dx);
+              nx = base.x + (base.width - nw);
+            }
+            if (h.includes('s')) nh = Math.max(MIN_NODE_HEIGHT * 1.5, base.height + dy);
+            if (h.includes('n')) {
+              nh = Math.max(MIN_NODE_HEIGHT * 1.5, base.height - dy);
+              ny = base.y + (base.height - nh);
+            }
+
+            const sx = base.width > 0 ? nw / base.width : 1;
+            const sy = base.height > 0 ? nh / base.height : 1;
+
+            setNodes(prev => prev.map(node => {
+              const origin = drag.selectionOriginById?.[node.id];
+              if (!origin || node.locked) return node;
+              return {
+                ...node,
+                x: nx + (origin.x - base.x) * sx,
+                y: ny + (origin.y - base.y) * sy,
+                width: Math.max(MIN_NODE_WIDTH, origin.width * sx),
+                height: Math.max(MIN_NODE_HEIGHT, origin.height * sy),
+              };
+            }));
+            break;
+          }
+
           const n = nodesRef.current.find(x => x.id === drag.nodeId);
-          if (!n) break;
+          if (!n || n.locked) break;
           const base = drag.resizeOrigin || { x: n.x, y: n.y, width: n.width, height: n.height };
           const dx = (e.clientX - drag.startX) / vp.zoom;
           const dy = (e.clientY - drag.startY) / vp.zoom;
@@ -604,6 +935,7 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
   /* ═══ EDITING ═══ */
   const startEdit = useCallback((id: string) => {
     const n = nodes.find(x => x.id === id); if (!n) return;
+    if (n.locked && (n.type === 'text' || n.type === 'group')) return;
     if (n.type === 'text') { setEditText((n as CanvasTextNode).text); setEditingId(id); }
     if (n.type === 'group') { setEditText((n as CanvasGroupNode).label || ''); setEditingId(id); }
     if (n.type === 'link') window.open((n as CanvasLinkNode).url, '_blank');
@@ -634,8 +966,71 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
   const cursor = drag.type === 'pan' ? 'grabbing' : drag.type === 'node' ? 'grabbing' : tool === 'pan' ? 'grab' : tool === 'edge' ? 'crosshair' : 'default';
   const uiZoomMult = Math.min(1.35, Math.max(0.85, 1 / vp.zoom));
 
+  const nodeMap = useMemo(() => {
+    const m = new Map<string, CanvasNode>();
+    nodes.forEach(n => m.set(n.id, n));
+    return m;
+  }, [nodes]);
+
+  const visibleWorldRect = useMemo(() => {
+    const x = (-vp.x) / vp.zoom - CULLING_PADDING;
+    const y = (-vp.y) / vp.zoom - CULLING_PADDING;
+    const width = areaSize.width / vp.zoom + CULLING_PADDING * 2;
+    const height = areaSize.height / vp.zoom + CULLING_PADDING * 2;
+    return { x, y, width, height };
+  }, [vp, areaSize]);
+
+  const visibleNodes = useMemo(
+    () => nodes.filter(n => rectIntersects({ x: n.x, y: n.y, width: n.width, height: n.height }, visibleWorldRect)),
+    [nodes, visibleWorldRect],
+  );
+
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
+
+  const visibleEdges = useMemo(
+    () => edges.filter(e => visibleNodeIds.has(e.fromNode) || visibleNodeIds.has(e.toNode)),
+    [edges, visibleNodeIds],
+  );
+
+  const selectedNodesArray = useMemo(() => nodes.filter(n => selNodes.has(n.id)), [nodes, selNodes]);
+  const selectionBounds = useMemo(() => {
+    if (selectedNodesArray.length < 2) return null;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    selectedNodesArray.forEach(n => {
+      x0 = Math.min(x0, n.x);
+      y0 = Math.min(y0, n.y);
+      x1 = Math.max(x1, n.x + n.width);
+      y1 = Math.max(y1, n.y + n.height);
+    });
+    return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  }, [selectedNodesArray]);
+
+  const minimapWorldBounds = useMemo(() => {
+    if (!nodes.length) return { x: -400, y: -300, width: 800, height: 600 };
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    nodes.forEach(n => {
+      x0 = Math.min(x0, n.x);
+      y0 = Math.min(y0, n.y);
+      x1 = Math.max(x1, n.x + n.width);
+      y1 = Math.max(y1, n.y + n.height);
+    });
+    const pad = 200;
+    return { x: x0 - pad, y: y0 - pad, width: Math.max(1, x1 - x0 + pad * 2), height: Math.max(1, y1 - y0 + pad * 2) };
+  }, [nodes]);
+
   /* ── first selected node (for card-menu position) ── */
   const firstSel = selNodes.size === 1 ? nodes.find(n => selNodes.has(n.id)) : null;
+  const menuAnchor = firstSel
+    ? { x: firstSel.x + firstSel.width / 2, y: firstSel.y }
+    : selectionBounds
+      ? { x: selectionBounds.x + selectionBounds.width / 2, y: selectionBounds.y }
+      : null;
 
   /* ═══ RENDER ═══ */
   return (
@@ -652,7 +1047,7 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
 
           {/* SVG edges */}
           <svg className="cv-edges">
-            {edges.map(ed => <EdgePath key={ed.id} edge={ed} nodes={nodes} selected={selEdges.has(ed.id)}
+            {visibleEdges.map(ed => <EdgePath key={ed.id} edge={ed} nodeMap={nodeMap} selected={selEdges.has(ed.id)}
               onClick={(ev) => { ev.stopPropagation(); setSelNodes(new Set()); setSelEdges(new Set([ed.id])); }} />)}
             {tempEdge && <TempEdgePath from={tempEdge} />}
             {drag.type === 'node' && alignLines.x.map((x, i) => (
@@ -666,8 +1061,25 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
           {/* Selection rect */}
           {selBox && <div className="cv-sel-box" style={{ left: selBox.x, top: selBox.y, width: selBox.w, height: selBox.h }} />}
 
+          {/* Multi-selection transform box */}
+          {selectionBounds && (
+            <div
+              className="cv-multi-box"
+              style={{ left: selectionBounds.x, top: selectionBounds.y, width: selectionBounds.width, height: selectionBounds.height }}
+            >
+              {['nw', 'ne', 'sw', 'se'].map(handle => (
+                <div
+                  key={handle}
+                  className={`cv-resize cv-resize-${handle}`}
+                  onMouseDown={(e) => onSelectionResizeDown(e, handle)}
+                  style={{ '--zm': uiZoomMult } as any}
+                />
+              ))}
+            </div>
+          )}
+
           {/* Nodes */}
-          {nodes.map(n => (
+          {visibleNodes.map(n => (
             <NodeCard key={n.id} node={n} selected={selNodes.has(n.id)}
               editing={editingId === n.id} editText={editText}
               zoomMult={uiZoomMult}
@@ -682,17 +1094,65 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
         </div>
       </div>
 
+      {/* Save state */}
+      {canvasFilePath && (
+        <div className={`cv-save-pill cv-save-${saveState}`}>
+          {saveState === 'saving' ? 'Saving...' : saveState === 'unsaved' ? 'Unsaved' : saveState === 'error' ? 'Save failed' : 'Saved'}
+          {lastSavedAt && saveState === 'saved' ? <span> {new Date(lastSavedAt).toLocaleTimeString()}</span> : null}
+        </div>
+      )}
+
+      {/* Diagnostics panel */}
+      {showDiagnostics && diagnostics && (
+        <div className="cv-diagnostics">
+          <div className="cv-diagnostics-title">
+            Canvas import diagnostics
+            {recoveryUsed ? <span className="cv-diagnostics-badge">Recovered from snapshot</span> : null}
+          </div>
+          {diagnostics.parseError ? <div className="cv-diagnostics-line">Parse error: {diagnostics.parseError}</div> : null}
+          {diagnostics.errors.slice(0, 3).map((msg, index) => (
+            <div key={`err-${index}`} className="cv-diagnostics-line">{msg}</div>
+          ))}
+          {diagnostics.warnings.slice(0, 3).map((msg, index) => (
+            <div key={`warn-${index}`} className="cv-diagnostics-line">{msg}</div>
+          ))}
+          <div className="cv-diagnostics-actions">
+            <button className="cv-link-go" onClick={() => { void repairAndSave(); }}>Repair & Save</button>
+            {canvasFilePath ? <button className="cv-file-row" onClick={() => { void restoreFromRecovery(); }}>Restore Snapshot</button> : null}
+            <button className="cv-file-row" onClick={() => setShowDiagnostics(false)}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
       {/* ══ Card-menu (above selected node) ══ */}
-      {firstSel && !editingId && (
+      {menuAnchor && !editingId && (
         <div className="cv-card-menu" style={{
-          left: vp.x + (firstSel.x + firstSel.width / 2) * vp.zoom,
-          top: vp.y + firstSel.y * vp.zoom - 8,
+          left: vp.x + menuAnchor.x * vp.zoom,
+          top: vp.y + menuAnchor.y * vp.zoom - 8,
         }}>
-          <button className="cv-card-btn" title="Color" onClick={() => setColorPickerFor(colorPickerFor === firstSel.id ? null : firstSel.id)}><Palette size={14} /></button>
-          <button className="cv-card-btn" title="Duplicate" onClick={() => duplicateNode(firstSel.id)}><Copy size={14} /></button>
+          {firstSel && <button className="cv-card-btn" title="Color" onClick={() => setColorPickerFor(colorPickerFor === firstSel.id ? null : firstSel.id)}><Palette size={14} /></button>}
+          {firstSel && <button className="cv-card-btn" title="Duplicate" onClick={() => duplicateNode(firstSel.id)}><Copy size={14} /></button>}
+          <button className="cv-card-btn" title="Lock or unlock" onClick={toggleLockSelected}>
+            {selectedNodesArray.length > 0 && selectedNodesArray.every(n => n.locked) ? <Unlock size={14} /> : <Lock size={14} />}
+          </button>
+          <button className="cv-card-btn" title="Bring to front" onClick={bringToFront}><span className="cv-card-short">F</span></button>
+          <button className="cv-card-btn" title="Send to back" onClick={sendToBack}><span className="cv-card-short">B</span></button>
+
+          {selNodes.size > 1 && (
+            <>
+              <div className="cv-card-menu-div" />
+              <button className="cv-card-btn" title="Align left" onClick={() => alignSelected('left')}><span className="cv-card-short">L</span></button>
+              <button className="cv-card-btn" title="Align top" onClick={() => alignSelected('top')}><span className="cv-card-short">T</span></button>
+              <button className="cv-card-btn" title="Center horizontally" onClick={() => alignSelected('hcenter')}><span className="cv-card-short">CH</span></button>
+              <button className="cv-card-btn" title="Center vertically" onClick={() => alignSelected('vcenter')}><span className="cv-card-short">CV</span></button>
+              <button className="cv-card-btn" title="Distribute horizontal" onClick={() => distributeSelected('x')}><span className="cv-card-short">DX</span></button>
+              <button className="cv-card-btn" title="Distribute vertical" onClick={() => distributeSelected('y')}><span className="cv-card-short">DY</span></button>
+            </>
+          )}
+
           <div className="cv-card-menu-div" />
           <button className="cv-card-btn cv-card-btn-del" title="Delete" onClick={deleteSelected}><Trash2 size={14} /></button>
-          {colorPickerFor === firstSel.id && (
+          {firstSel && colorPickerFor === firstSel.id && (
             <div className="cv-color-row">
               <button className="cv-swatch cv-swatch-none" onClick={() => { updateNode(firstSel.id, { color: undefined }); setColorPickerFor(null); }} />
               {Object.entries(CANVAS_PRESET_COLORS).map(([k, hex]) => (
@@ -706,8 +1166,45 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
 
       {/* ══ Right-side controls (Obsidian-style) ══ */}
       <div className="cv-controls">
+        {(onNewCanvas || onDuplicateCanvas || onSaveCanvasAs || (recentCanvasFiles && recentCanvasFiles.length > 0)) && (
+          <div className="cv-ctrl-group cv-canvas-actions" ref={recentMenuRef}>
+            {onNewCanvas && <button className="cv-ctrl" title="New canvas file" onClick={onNewCanvas}><Plus size={15} /></button>}
+            {onDuplicateCanvas && <button className="cv-ctrl" title="Duplicate this canvas" onClick={onDuplicateCanvas}><Copy size={15} /></button>}
+            {onSaveCanvasAs && <button className="cv-ctrl" title="Save canvas as" onClick={onSaveCanvasAs}><ArrowUpRight size={15} /></button>}
+            {onOpenRecentCanvas && (
+              <button
+                className="cv-ctrl"
+                title="Open recent canvas"
+                onClick={() => setShowRecentCanvasMenu(v => !v)}
+                disabled={!recentCanvasFiles?.length}
+              >
+                <FileText size={15} />
+              </button>
+            )}
+
+            {showRecentCanvasMenu && !!recentCanvasFiles?.length && (
+              <div className="cv-recent-menu">
+                <div className="cv-recent-title">Recent canvases</div>
+                {recentCanvasFiles.slice(0, 8).map((path) => (
+                  <button
+                    key={path}
+                    className="cv-recent-item"
+                    onClick={() => {
+                      onOpenRecentCanvas?.(path);
+                      setShowRecentCanvasMenu(false);
+                    }}
+                    title={path}
+                  >
+                    {path.split('/').pop() || path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="cv-ctrl-group">
-          <button className="cv-ctrl" title="Add card" onClick={() => addNode('text')}><Plus size={18} /></button>
+          <button className="cv-ctrl" title="Add text card" onClick={() => addNode('text')}><Type size={16} /></button>
         </div>
         <div className="cv-ctrl-group">
           <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(0.15)}><Plus size={16} /></button>
@@ -723,6 +1220,19 @@ export function CanvasView({ onClose, isFullScreen, onToggleFullScreen, theme, v
           <button className="cv-ctrl" title="Redo" onClick={redo} disabled={histIdx >= hist.length - 1}><RotateCw size={15} /></button>
         </div>
       </div>
+
+      <CanvasMiniMap
+        nodes={nodes}
+        world={minimapWorldBounds}
+        viewport={visibleWorldRect}
+        onNavigate={(x, y) => {
+          setVp(prev => ({
+            ...prev,
+            x: areaSize.width / 2 - x * prev.zoom,
+            y: areaSize.height / 2 - y * prev.zoom,
+          }));
+        }}
+      />
 
       {/* ══ Bottom toolbar (add row) ══ */}
       <div className="cv-add-bar">
@@ -786,9 +1296,9 @@ function DotGrid({ zoom, offX, offY }: { zoom: number; offX: number; offY: numbe
 }
 
 /* ── Edge (bezier) ── */
-function EdgePath({ edge, nodes, selected, onClick }: { edge: CanvasEdge; nodes: CanvasNode[]; selected: boolean; onClick: (e: React.MouseEvent) => void }) {
-  const a = nodes.find(n => n.id === edge.fromNode);
-  const b = nodes.find(n => n.id === edge.toNode);
+function EdgePath({ edge, nodeMap, selected, onClick }: { edge: CanvasEdge; nodeMap: Map<string, CanvasNode>; selected: boolean; onClick: (e: React.MouseEvent) => void }) {
+  const a = nodeMap.get(edge.fromNode);
+  const b = nodeMap.get(edge.toNode);
   if (!a || !b) return null;
   const [fs0, ts0] = bestSides(a, b);
   const fs = edge.fromSide || fs0, ts = edge.toSide || ts0;
@@ -819,6 +1329,72 @@ function TempEdgePath({ from }: { from: { fx: number; fy: number; tx: number; ty
       <path d={d} fill="none" stroke="var(--accent-color)" strokeWidth={2} strokeDasharray="6 3" opacity={0.7} />
       <circle cx={from.tx} cy={from.ty} r={4} fill="var(--accent-color)" />
     </g>
+  );
+}
+
+function CanvasMiniMap({
+  nodes,
+  world,
+  viewport,
+  onNavigate,
+}: {
+  nodes: CanvasNode[];
+  world: { x: number; y: number; width: number; height: number };
+  viewport: { x: number; y: number; width: number; height: number };
+  onNavigate: (x: number, y: number) => void;
+}) {
+  const w = 180;
+  const h = 130;
+  const sx = w / Math.max(1, world.width);
+  const sy = h / Math.max(1, world.height);
+
+  const toMini = (x: number, y: number) => ({
+    x: (x - world.x) * sx,
+    y: (y - world.y) * sy,
+  });
+
+  const onMiniDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const worldX = world.x + (px / w) * world.width;
+    const worldY = world.y + (py / h) * world.height;
+    onNavigate(worldX, worldY);
+  };
+
+  const viewportMini = {
+    x: (viewport.x - world.x) * sx,
+    y: (viewport.y - world.y) * sy,
+    width: viewport.width * sx,
+    height: viewport.height * sy,
+  };
+
+  return (
+    <div className="cv-minimap-wrap">
+      <svg className="cv-minimap" width={w} height={h} onMouseDown={onMiniDown}>
+        <rect x={0} y={0} width={w} height={h} className="cv-minimap-bg" />
+        {nodes.map(node => {
+          const p = toMini(node.x, node.y);
+          return (
+            <rect
+              key={node.id}
+              x={p.x}
+              y={p.y}
+              width={Math.max(1.5, node.width * sx)}
+              height={Math.max(1.5, node.height * sy)}
+              className={`cv-minimap-node${node.locked ? ' locked' : ''}`}
+            />
+          );
+        })}
+        <rect
+          x={viewportMini.x}
+          y={viewportMini.y}
+          width={Math.max(8, viewportMini.width)}
+          height={Math.max(8, viewportMini.height)}
+          className="cv-minimap-viewport"
+        />
+      </svg>
+    </div>
   );
 }
 
@@ -888,18 +1464,20 @@ function NodeCard({ node, selected, editing, editText, zoomMult, vaultPath, onMo
   };
 
   return (
-    <div className={`cv-node cv-node-${node.type}${selected ? ' sel' : ''}${editing ? ' editing' : ''}`}
+    <div className={`cv-node cv-node-${node.type}${selected ? ' sel' : ''}${editing ? ' editing' : ''}${node.locked ? ' locked' : ''}`}
       style={style} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick} data-id={node.id}>
 
       {/* Connection ports (only non-group) */}
-      {!isGroup && selected && (['top', 'right', 'bottom', 'left'] as EdgeSide[]).map(s => (
+      {!isGroup && selected && !node.locked && (['top', 'right', 'bottom', 'left'] as EdgeSide[]).map(s => (
         <div key={s} className={`cv-port cv-port-${s}`} onMouseDown={e => onPortDown(s, e)} style={{ '--zm': zoomMult } as any} />
       ))}
 
       {/* Resize handles */}
-      {selected && ['nw', 'ne', 'sw', 'se'].map(h => (
+      {selected && !node.locked && ['nw', 'ne', 'sw', 'se'].map(h => (
         <div key={h} className={`cv-resize cv-resize-${h}`} onMouseDown={e => onResizeDown(h, e)} style={{ '--zm': zoomMult } as any} />
       ))}
+
+      {node.locked && <div className="cv-lock-badge">Locked</div>}
 
       {/* Group label */}
       {isGroup && (

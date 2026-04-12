@@ -1,0 +1,69 @@
+# Canvas Build Summary
+
+## What Has Been Built
+
+1. .canvas persistence is implemented
+- Canvas state is saved as JSON with `nodes` and `edges`.
+- Reopening a .canvas file restores the same layout.
+- Core logic is in `src/App.tsx`, `src/components/canvas/CanvasView.tsx`, and `src/types/canvas.ts`.
+
+2. Obsidian-style JSON canvas compatibility path exists
+- .canvas files are treated as canvas documents (not markdown notes).
+- The data model follows JSON-canvas style structure so imported Obsidian canvases can be opened and worked with.
+
+3. Multiple .canvas files are supported
+- One .canvas file maps to one independent layout.
+- Canvas files no longer overwrite each other.
+- Rename flow preserves .canvas extension behavior.
+
+4. Canvas and graph tab workflow support
+- Graph can open in tab workflow.
+- Canvas opens in canvas view path instead of raw text view.
+- Special tab-body rendering was added in the editor shell.
+
+5. Canvas interaction and UX improvements
+- Improved drag pointer tracking.
+- Improved resize behavior to follow cursor more accurately.
+- Added alignment guides/snap behavior.
+- Group interaction/layering behavior improved for selection-through scenarios.
+
+6. Canvas visual refinements
+- Better control scaling at low zoom.
+- Reduced zoom blur artifacts.
+- Softer tab corner styling.
+- Embedded note spacing and padding tuned.
+
+7. Embedded content improvements in file nodes
+- Better markdown embedding and scrolling behavior.
+- Better handling of image/file previews in canvas nodes.
+
+## Future Builds (Roadmap)
+
+1. Replace browser prompt with in-app modal for new canvas naming
+- Use the same modal UX as note creation.
+
+2. Full JSON-canvas spec hardening
+- Strict validation and round-trip support for optional fields.
+- Add compatibility tests for imported Obsidian canvases.
+
+3. Canvas tab management polish
+- Add New Canvas, Duplicate Canvas, Save As, and recent canvases list.
+
+4. Performance for large canvases
+- Viewport culling/virtualization for nodes.
+- Edge batching and rendering optimizations.
+
+5. Rich editing toolset
+- Multi-select transform handles.
+- Align/distribute controls.
+- Lock nodes and z-order commands.
+- Minimap.
+
+6. Import/export diagnostics
+- Validation UI for malformed or partial canvas JSON.
+- One-click repairs for common issues.
+
+7. Autosave status and recovery
+- Saved/unsaved indicator.
+- Recovery snapshots for crash resilience.
+

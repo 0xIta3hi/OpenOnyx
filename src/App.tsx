@@ -74,6 +74,7 @@ export default function App() {
   });
   const [starredNotes, setStarredNotes] = useState<string[]>([]);
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
+  const [recentCanvasFiles, setRecentCanvasFiles] = useState<string[]>([]);
   const [noteContentCache, setNoteContentCache] = useState<Map<string, string>>(new Map());
   
   // Split pane references and dragging
@@ -378,17 +379,46 @@ export default function App() {
     }
   };
 
-  const createCanvasDocumentWithPrompt = useCallback(async (): Promise<string | null> => {
+  const promptForInput = useCallback((title: string, message: string, defaultValue = ''): Promise<string | null> => {
+    return new Promise(resolve => {
+      setModal({
+        type: 'prompt',
+        title,
+        message,
+        defaultValue,
+        onConfirm: (result) => {
+          if (typeof result !== 'string') {
+            resolve(null);
+            return;
+          }
+          const trimmed = result.trim();
+          resolve(trimmed ? trimmed : null);
+        },
+      });
+    });
+  }, []);
+
+  const getUniqueCanvasPath = useCallback(async (requestedName: string): Promise<string> => {
+    const safeBase = requestedName.replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled canvas';
+    const canonical = isCanvasFile(safeBase) ? safeBase : `${safeBase}.canvas`;
+    const stem = canonical.replace(/\.canvas$/i, '');
+
+    let candidate = canonical;
+    let suffix = 2;
+    while (await api.fileExists(candidate)) {
+      candidate = `${stem} ${suffix}.canvas`;
+      suffix += 1;
+    }
+    return candidate;
+  }, []);
+
+  const createCanvasDocumentWithPrompt = useCallback(async (defaultName = 'Untitled canvas'): Promise<string | null> => {
     if (!vaultPath) return null;
 
-    const input = window.prompt('New canvas name:', 'Untitled canvas');
-    if (input === null) return null;
+    const input = await promptForInput('New Canvas', 'Enter canvas name:', defaultName);
+    if (!input) return null;
 
-    const trimmed = input.trim();
-    if (!trimmed) return null;
-
-    const safeBase = trimmed.replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled canvas';
-    const filePath = isCanvasFile(safeBase) ? safeBase : `${safeBase}.canvas`;
+    const filePath = await getUniqueCanvasPath(input);
     const initialCanvas = JSON.stringify({ nodes: [], edges: [] }, null, 2);
 
     try {
@@ -396,10 +426,9 @@ export default function App() {
       await refreshFileTree();
       return filePath;
     } catch {
-      // If file exists or create fails, try opening it as-is.
-      return filePath;
+      return null;
     }
-  }, [vaultPath, refreshFileTree]);
+  }, [vaultPath, refreshFileTree, promptForInput, getUniqueCanvasPath]);
 
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
@@ -410,6 +439,10 @@ export default function App() {
     });
 
     if (isCanvasFile(filePath)) {
+      setRecentCanvasFiles(prev => {
+        const filtered = prev.filter(p => p !== filePath);
+        return [filePath, ...filtered].slice(0, 12);
+      });
       setShowThoughtModel(false);
       setShowGraph(false);
       setShowCanvas(false);
@@ -484,10 +517,57 @@ export default function App() {
   };
 
   const handleToggleCanvas = async () => {
-    const path = await createCanvasDocumentWithPrompt();
+    const path = await createCanvasDocumentWithPrompt('Untitled canvas');
     if (!path) return;
     await openFile(path, 'preview');
   };
+
+  const getActiveCanvasPath = useCallback((): string | null => {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && isCanvasFile(tab.path)) return tab.path;
+    if (showCanvas && canvasFilePath) return canvasFilePath;
+    return null;
+  }, [tabs, activeTabId, showCanvas, canvasFilePath]);
+
+  const readCanvasDocument = useCallback(async (): Promise<{ path: string; content: string } | null> => {
+    const path = getActiveCanvasPath();
+    if (!path) return null;
+    try {
+      const content = await api.readFile(path);
+      return {
+        path,
+        content: content?.trim() ? content : JSON.stringify({ nodes: [], edges: [] }, null, 2),
+      };
+    } catch {
+      return { path, content: JSON.stringify({ nodes: [], edges: [] }, null, 2) };
+    }
+  }, [getActiveCanvasPath]);
+
+  const handleDuplicateCanvas = useCallback(async () => {
+    const source = await readCanvasDocument();
+    if (!source) return;
+    const baseName = source.path.replace(/\.canvas$/i, '').split('/').pop() || 'Canvas copy';
+    const targetName = await promptForInput('Duplicate Canvas', 'Enter duplicate canvas name:', `${baseName} copy`);
+    if (!targetName) return;
+
+    const targetPath = await getUniqueCanvasPath(targetName);
+    await api.createFile(targetPath, source.content);
+    await refreshFileTree();
+    await openFile(targetPath, 'preview');
+  }, [readCanvasDocument, promptForInput, getUniqueCanvasPath, refreshFileTree, openFile]);
+
+  const handleSaveCanvasAs = useCallback(async () => {
+    const source = await readCanvasDocument();
+    if (!source) return;
+    const baseName = source.path.replace(/\.canvas$/i, '').split('/').pop() || 'Canvas';
+    const targetName = await promptForInput('Save Canvas As', 'Enter new canvas name:', `${baseName} copy`);
+    if (!targetName) return;
+
+    const targetPath = await getUniqueCanvasPath(targetName);
+    await api.createFile(targetPath, source.content);
+    await refreshFileTree();
+    await openFile(targetPath, 'preview');
+  }, [readCanvasDocument, promptForInput, getUniqueCanvasPath, refreshFileTree, openFile]);
 
   const handleNewNote = async () => {
     if (!vaultPath) return;
@@ -872,7 +952,15 @@ export default function App() {
     { id: 'editor-mode', label: 'Editor View', action: () => setViewMode('editor'), category: 'View' },
     { id: 'preview-mode', label: 'Preview View', action: () => setViewMode('preview'), category: 'View' },
     { id: 'split-mode', label: 'Split View', action: () => setViewMode('split'), category: 'View' },
-    { id: 'canvas', label: 'Toggle Canvas', shortcut: 'Ctrl+Shift+C', action: () => { void handleToggleCanvas(); }, category: 'View' },
+    { id: 'canvas', label: 'New Canvas', shortcut: 'Ctrl+Shift+C', action: () => { void handleToggleCanvas(); }, category: 'Canvas' },
+    { id: 'canvas-duplicate', label: 'Duplicate Active Canvas', action: () => { void handleDuplicateCanvas(); }, category: 'Canvas' },
+    { id: 'canvas-save-as', label: 'Save Canvas As', action: () => { void handleSaveCanvasAs(); }, category: 'Canvas' },
+    ...recentCanvasFiles.slice(0, 8).map((path, index) => ({
+      id: `canvas-recent-${index}`,
+      label: `Open Recent Canvas: ${getNoteName(path)}`,
+      action: () => { void openFile(path, 'preview'); },
+      category: 'Canvas',
+    })),
     { id: 'unlinked-mentions', label: 'Toggle Unlinked Mentions', action: () => setShowUnlinkedMentions(u => !u), category: 'View' },
   ];
 
@@ -979,6 +1067,11 @@ export default function App() {
                           fileTree={fileTree}
                           canvasFilePath={activeTab.path}
                           onOpenFile={(path) => openFile(path)}
+                          onNewCanvas={() => { void handleToggleCanvas(); }}
+                          onDuplicateCanvas={() => { void handleDuplicateCanvas(); }}
+                          onSaveCanvasAs={() => { void handleSaveCanvasAs(); }}
+                          recentCanvasFiles={recentCanvasFiles}
+                          onOpenRecentCanvas={(path) => { void openFile(path, 'preview'); }}
                         />
                       ) : activeTabIsGraph ? (
                         <GraphView
@@ -1090,6 +1183,11 @@ export default function App() {
                     fileTree={fileTree}
                     canvasFilePath={canvasFilePath}
                     onOpenFile={(path) => openFile(path)}
+                    onNewCanvas={() => { void handleToggleCanvas(); }}
+                    onDuplicateCanvas={() => { void handleDuplicateCanvas(); }}
+                    onSaveCanvasAs={() => { void handleSaveCanvasAs(); }}
+                    recentCanvasFiles={recentCanvasFiles}
+                    onOpenRecentCanvas={(path) => { void openFile(path, 'preview'); }}
                   />
                 </div>
               )}

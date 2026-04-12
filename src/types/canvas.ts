@@ -35,6 +35,7 @@ export interface CanvasNodeBase {
   width: number;
   height: number;
   color?: CanvasColor;
+  locked?: boolean;
 }
 
 export interface CanvasTextNode extends CanvasNodeBase {
@@ -79,6 +80,7 @@ export interface CanvasEdge {
 export interface CanvasData {
   nodes?: CanvasNode[];
   edges?: CanvasEdge[];
+  [key: string]: unknown;
 }
 
 // ── Internal Canvas State ────────────────────────────
@@ -101,6 +103,8 @@ export interface DragState {
   edgeFromNode?: string;
   edgeFromSide?: EdgeSide;
   resizeHandle?: string;
+  selectionBounds?: { x: number; y: number; width: number; height: number };
+  selectionOriginById?: Record<string, { x: number; y: number; width: number; height: number }>;
 }
 
 export interface SelectionBox {

@@ -5201,6 +5201,18 @@ blockquote:has(.callout) {
   z-index: 5;
 }
 
+.cv-multi-box {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--cv-sel) 70%, transparent);
+  background: color-mix(in srgb, var(--cv-sel) 8%, transparent);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.cv-multi-box .cv-resize {
+  pointer-events: auto;
+}
+
 /* ═════════════════════════════════════════════════════
    NODES
    ═════════════════════════════════════════════════════ */
@@ -5230,6 +5242,25 @@ blockquote:has(.callout) {
 .cv-node.editing {
   cursor: auto;
   z-index: 10;
+}
+
+.cv-node.locked {
+  border-style: dashed;
+}
+
+.cv-lock-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
+  border: 1px solid var(--cv-node-border);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  pointer-events: none;
 }
 
 /* ── Node body ── */
@@ -5452,6 +5483,12 @@ blockquote:has(.callout) {
 .cv-card-btn:hover { background: var(--cv-ctrl-hover); color: var(--text-primary); }
 .cv-card-btn-del:hover { background: rgba(220,60,60,0.12); color: #f87171; }
 
+.cv-card-short {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
 .cv-card-menu-div {
   width: 1px;
   height: 18px;
@@ -5500,6 +5537,78 @@ blockquote:has(.callout) {
   flex-direction: column;
   gap: 8px;
   z-index: 60;
+}
+
+.cv-canvas-actions {
+  position: relative;
+}
+
+.cv-recent-menu {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--cv-ctrl-bg);
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.26);
+  padding: 6px;
+}
+
+.cv-recent-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--cv-ctrl-border);
+  margin-bottom: 4px;
+}
+
+.cv-recent-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 7px;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv-recent-item:hover {
+  background: var(--cv-ctrl-hover);
+}
+
+.cv-save-pill {
+  position: absolute;
+  top: 12px;
+  left: 56px;
+  z-index: 65;
+  border-radius: 999px;
+  border: 1px solid var(--cv-ctrl-border);
+  background: color-mix(in srgb, var(--cv-ctrl-bg) 88%, transparent);
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cv-save-unsaved {
+  color: #f59e0b;
+}
+
+.cv-save-saving {
+  color: #38bdf8;
+}
+
+.cv-save-error {
+  color: #f87171;
 }
 .cv-ctrl-group {
   display: flex;
@@ -5724,4 +5833,93 @@ blockquote:has(.callout) {
   transition: opacity 0.15s;
 }
 .cv-link-go:hover { opacity: 0.9; }
+
+.cv-diagnostics {
+  position: absolute;
+  left: 12px;
+  bottom: 68px;
+  width: min(420px, calc(100% - 24px));
+  z-index: 210;
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cv-ctrl-bg) 92%, transparent);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+  padding: 10px;
+  backdrop-filter: blur(4px);
+}
+
+.cv-diagnostics-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.cv-diagnostics-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--cv-ctrl-border);
+  color: var(--text-secondary);
+}
+
+.cv-diagnostics-line {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.cv-diagnostics-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.cv-diagnostics-actions .cv-link-go,
+.cv-diagnostics-actions .cv-file-row {
+  margin: 0;
+  width: auto;
+  padding: 6px 10px;
+}
+
+.cv-minimap-wrap {
+  position: absolute;
+  right: 12px;
+  bottom: 70px;
+  z-index: 58;
+  border: 1px solid var(--cv-ctrl-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cv-ctrl-bg) 88%, transparent);
+  padding: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.cv-minimap {
+  display: block;
+  cursor: pointer;
+}
+
+.cv-minimap-bg {
+  fill: color-mix(in srgb, var(--bg-primary) 86%, transparent);
+}
+
+.cv-minimap-node {
+  fill: color-mix(in srgb, var(--text-secondary) 48%, transparent);
+  stroke: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+  stroke-width: 0.7;
+}
+
+.cv-minimap-node.locked {
+  fill: color-mix(in srgb, #f59e0b 35%, transparent);
+  stroke: color-mix(in srgb, #f59e0b 60%, transparent);
+}
+
+.cv-minimap-viewport {
+  fill: color-mix(in srgb, var(--cv-sel) 16%, transparent);
+  stroke: color-mix(in srgb, var(--cv-sel) 75%, transparent);
+  stroke-width: 1;
+}
 

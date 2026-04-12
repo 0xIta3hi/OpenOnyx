@@ -8,7 +8,8 @@
     "build": "tsc && vite build && npm run build:electron",
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:canvas-compat": "node scripts/test-canvas-compat.cjs"
   },
   "keywords": [
     "notes",
