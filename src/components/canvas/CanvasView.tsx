@@ -1743,6 +1743,16 @@ function EmbeddedFileNode({ node, vaultPath, enableMarkdownPreview }: { node: Ca
       }).catch(e => console.error('Failed to load embedded note:', e));
     };
 
+    const onLiveNoteChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string; content?: string }>).detail;
+      if (!detail || detail.path !== node.file || typeof detail.content !== 'string') return;
+      const nextContent = detail.content;
+      embeddedMarkdownCache.set(node.file, nextContent);
+      setContent(prev => (prev === nextContent ? prev : nextContent));
+    };
+
+    window.addEventListener('notework:note-content-changed', onLiveNoteChange as EventListener);
+
     refreshContent();
     refreshTimer = setInterval(refreshContent, MD_PREVIEW_REFRESH_INTERVAL_MS);
 
@@ -1751,6 +1761,7 @@ function EmbeddedFileNode({ node, vaultPath, enableMarkdownPreview }: { node: Ca
       if (refreshTimer !== null) {
         clearInterval(refreshTimer);
       }
+      window.removeEventListener('notework:note-content-changed', onLiveNoteChange as EventListener);
     };
   }, [node.file, isMarkdown, enableMarkdownPreview]);
 

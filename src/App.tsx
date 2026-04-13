@@ -599,6 +599,11 @@ export default function App() {
     if (isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH) return;
 
     await api.writeFile(tab.path, currentContent);
+    if (tab.path.toLowerCase().endsWith('.md')) {
+      window.dispatchEvent(new CustomEvent('notework:note-content-changed', {
+        detail: { path: tab.path, content: currentContent },
+      }));
+    }
     setTabs(prev =>
       prev.map(t => t.id === activeTabId ? { ...t, isModified: false } : t)
     );
@@ -608,6 +613,13 @@ export default function App() {
   // Auto-save with debounce
   const handleContentChange = useCallback((content: string) => {
     setCurrentContent(content);
+
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && !isCanvasFile(activeTab.path) && activeTab.path !== GRAPH_TAB_PATH && activeTab.path.toLowerCase().endsWith('.md')) {
+      window.dispatchEvent(new CustomEvent('notework:note-content-changed', {
+        detail: { path: activeTab.path, content },
+      }));
+    }
     
     // Mark tab as modified
     setTabs(prev =>
@@ -620,6 +632,11 @@ export default function App() {
       const tab = tabs.find(t => t.id === activeTabId);
       if (tab) {
         await api.writeFile(tab.path, content);
+        if (tab.path.toLowerCase().endsWith('.md')) {
+          window.dispatchEvent(new CustomEvent('notework:note-content-changed', {
+            detail: { path: tab.path, content },
+          }));
+        }
         setTabs(prev =>
           prev.map(t => t.id === activeTabId ? { ...t, isModified: false } : t)
         );
