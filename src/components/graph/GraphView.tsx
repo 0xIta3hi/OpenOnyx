@@ -10,6 +10,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { HexColorPicker } from "react-colorful";
 import {
   Network,
   Maximize,
@@ -185,16 +186,55 @@ function ColorPicker({
   onChange: (v: string) => void;
   presets?: string[];
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
   return (
     <div className="graph-color-row">
       <label className="graph-color-label">{label}</label>
       <div className="graph-color-control">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="graph-color-input"
-        />
+        <div style={{ position: "relative" }} ref={popoverRef}>
+          <button
+            className="graph-color-input"
+            style={{ backgroundColor: value }}
+            onClick={() => setIsOpen(!isOpen)}
+          />
+          {isOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                marginTop: "8px",
+                zIndex: 1000,
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border-medium)",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "var(--shadow-lg)",
+                padding: "8px",
+              }}
+            >
+              <HexColorPicker color={value} onChange={onChange} />
+            </div>
+          )}
+        </div>
         {presets && (
           <div className="graph-color-presets">
             {presets.map((c) => (

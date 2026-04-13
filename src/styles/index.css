@@ -17,8 +17,8 @@
   --bg-active: #262626;
   --bg-glass: rgba(10, 10, 10, 0.75);
 
-  --text-primary: #d6d6d6; /* Clean, very bright gray */
-  --text-secondary: rgb(207, 207, 207); /* Muted text */
+  --text-primary: #d2d2d2; /* Clean, very bright gray */
+  --text-secondary: rgb(167, 167, 167); /* Muted text */
   --text-tertiary: #606060;
   --text-muted: #404040;
   --text-link: var(--text-primary); /* Monochromatic */
@@ -2245,7 +2245,7 @@ blockquote:has(.callout) {
   border: 2px solid var(--border-medium);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  background: transparent;
+  display: block;
 }
 
 .graph-color-input::-webkit-color-swatch-wrapper {
@@ -2580,7 +2580,7 @@ blockquote:has(.callout) {
   border-radius: var(--radius-sm);
   cursor: pointer;
   padding: 0;
-  background: transparent;
+  display: block;
 }
 
 .graph-color-input::-webkit-color-swatch-wrapper {
@@ -2918,6 +2918,7 @@ blockquote:has(.callout) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
 }
 
 .graph-color-label {
@@ -2929,6 +2930,7 @@ blockquote:has(.callout) {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-direction: row-reverse;
 }
 
 .graph-color-presets {
