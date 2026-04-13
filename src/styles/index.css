@@ -5145,6 +5145,7 @@ blockquote:has(.callout) {
   --cv-bg: #0a0a0a;
   --cv-dot: rgba(255, 255, 255, 0.07);
   --cv-edge: rgba(255, 255, 255, 0.35);
+  --cv-scribble: rgba(232, 238, 255, 0.9);
   --cv-sel:  var(--accent-color, #7c3aed);
   --cv-node-bg: var(--bg-elevated, #222);
   --cv-node-border: var(--border-medium, rgba(255,255,255,0.1));
@@ -5156,6 +5157,7 @@ blockquote:has(.callout) {
   --cv-bg: var(--bg-primary);
   --cv-dot: rgba(0, 0, 0, 0.07);
   --cv-edge: rgba(0, 0, 0, 0.3);
+  --cv-scribble: rgba(17, 24, 39, 0.78);
   --cv-node-bg: #fff;
   --cv-node-border: rgba(0,0,0,0.12);
   --cv-ctrl-bg: #fff;
@@ -5211,6 +5213,15 @@ blockquote:has(.callout) {
   z-index: 1;
 }
 .cv-edges > * { pointer-events: auto; }
+
+.cv-scribbles {
+  position: absolute;
+  overflow: visible;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
 
 .cv-edge .cv-edge-display {
   pointer-events: none;

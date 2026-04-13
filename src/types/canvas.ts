@@ -91,7 +91,7 @@ export interface CanvasViewport {
 }
 
 export interface DragState {
-  type: 'none' | 'pan' | 'node' | 'edge' | 'select' | 'resize';
+  type: 'none' | 'pan' | 'node' | 'edge' | 'select' | 'resize' | 'draw';
   nodeId?: string;
   startX: number;
   startY: number;
@@ -114,7 +114,7 @@ export interface SelectionBox {
   height: number;
 }
 
-export type CanvasToolMode = 'select' | 'pan' | 'edge';
+export type CanvasToolMode = 'select' | 'pan' | 'edge' | 'draw';
 
 // Default sizes for new nodes
 export const DEFAULT_NODE_WIDTH = 260;

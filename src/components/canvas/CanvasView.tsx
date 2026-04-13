@@ -13,7 +13,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   Plus, Minus, Maximize, Grid3X3, ArrowUpRight,
   RotateCcw, RotateCw, Type, FileText, Globe,
-  SquareDashed, Trash2, Palette, Copy, X,
+  SquareDashed, Trash2, Palette, Copy, X, PenLine,
   Lock, Unlock,
 } from 'lucide-react';
 import {
@@ -56,8 +56,23 @@ const MIN_MD_PREVIEW_SCREEN_WIDTH = 240;
 const MIN_MD_PREVIEW_SCREEN_HEIGHT = 140;
 const MD_PREVIEW_RESUME_DELAY_MS = 160;
 const MD_PREVIEW_REFRESH_INTERVAL_MS = 1200;
+const CANVAS_SCRIBBLES_KEY = 'noteworkScribblesV1';
+const DEFAULT_SCRIBBLE_WIDTH = 2.4;
+const MIN_SCRIBBLE_POINT_DIST = 0.8;
 
 const embeddedMarkdownCache = new Map<string, string>();
+
+interface CanvasScribblePoint {
+  x: number;
+  y: number;
+}
+
+interface CanvasScribbleStroke {
+  id: string;
+  points: CanvasScribblePoint[];
+  width: number;
+  color?: string;
+}
 
 interface Props {
   onClose: () => void;
@@ -76,7 +91,7 @@ interface Props {
 }
 
 /* ─────── History entry ─────── */
-interface Snap { nodes: CanvasNode[]; edges: CanvasEdge[] }
+interface Snap { nodes: CanvasNode[]; edges: CanvasEdge[]; scribbles: CanvasScribbleStroke[] }
 const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 
 type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
@@ -132,6 +147,52 @@ function colorWithAlpha(color: string, alpha: number): string {
   return color;
 }
 
+function sanitizeCanvasScribbles(value: unknown): CanvasScribbleStroke[] {
+  if (!Array.isArray(value)) return [];
+  const out: CanvasScribbleStroke[] = [];
+
+  value.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const record = item as Record<string, unknown>;
+    if (!Array.isArray(record.points)) return;
+
+    const points = record.points
+      .map(p => {
+        if (!p || typeof p !== 'object') return null;
+        const pt = p as Record<string, unknown>;
+        const x = typeof pt.x === 'number' && Number.isFinite(pt.x) ? pt.x : null;
+        const y = typeof pt.y === 'number' && Number.isFinite(pt.y) ? pt.y : null;
+        return x === null || y === null ? null : { x, y };
+      })
+      .filter((p): p is CanvasScribblePoint => p !== null);
+
+    if (points.length < 2) return;
+
+    const widthRaw = record.width;
+    const width = typeof widthRaw === 'number' && Number.isFinite(widthRaw)
+      ? Math.max(0.8, Math.min(12, widthRaw))
+      : DEFAULT_SCRIBBLE_WIDTH;
+
+    out.push({
+      id: typeof record.id === 'string' && record.id.trim() ? record.id : `scribble-${index}-${generateId()}`,
+      points,
+      width,
+      color: typeof record.color === 'string' ? record.color : undefined,
+    });
+  });
+
+  return out;
+}
+
+function pointsToStrokePath(points: CanvasScribblePoint[]): string {
+  if (!points.length) return '';
+  if (points.length === 1) {
+    const p = points[0];
+    return `M${p.x},${p.y} l0.01,0`;
+  }
+  return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+}
+
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════ */
@@ -177,6 +238,8 @@ export function CanvasView({
   const [recoveryUsed, setRecoveryUsed] = useState(false);
   const [showRecentCanvasMenu, setShowRecentCanvasMenu] = useState(false);
   const [areaSize, setAreaSize] = useState({ width: 1, height: 1 });
+  const [scribbles, setScribbles] = useState<CanvasScribbleStroke[]>([]);
+  const [activeScribble, setActiveScribble] = useState<CanvasScribbleStroke | null>(null);
 
   /* refs */
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -185,6 +248,8 @@ export function CanvasView({
   const linkRef = useRef<HTMLInputElement>(null);
   const recentMenuRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes);      // always-latest snapshot for move handler
+  const scribblesRef = useRef(scribbles);
+  const activeScribbleRef = useRef<CanvasScribbleStroke | null>(null);
   const vpRef = useRef<CanvasViewport>(vp);
   const targetVpRef = useRef<CanvasViewport>(vp);
   const zoomAnimFrameRef = useRef<number | null>(null);
@@ -196,10 +261,12 @@ export function CanvasView({
   const lastSavedPayloadRef = useRef('');
   const [suspendMarkdownPreviews, setSuspendMarkdownPreviews] = useState(false);
   nodesRef.current = nodes;
+  scribblesRef.current = scribbles;
+  activeScribbleRef.current = activeScribble;
   vpRef.current = vp;
 
   /* ── history ── */
-  const [hist, setHist] = useState<Snap[]>([{ nodes: [], edges: [] }]);
+  const [hist, setHist] = useState<Snap[]>([{ nodes: [], edges: [], scribbles: [] }]);
   const [histIdx, setHistIdx] = useState(0);
 
   useEffect(() => {
@@ -229,21 +296,21 @@ export function CanvasView({
     return () => document.removeEventListener('mousedown', onDocDown);
   }, [showRecentCanvasMenu]);
 
-  const push = useCallback((n: CanvasNode[], e: CanvasEdge[]) => {
-    setHist(prev => [...prev.slice(0, histIdx + 1), { nodes: clone(n), edges: clone(e) }].slice(-HISTORY_LIMIT));
+  const push = useCallback((n: CanvasNode[], e: CanvasEdge[], s: CanvasScribbleStroke[] = scribblesRef.current) => {
+    setHist(prev => [...prev.slice(0, histIdx + 1), { nodes: clone(n), edges: clone(e), scribbles: clone(s) }].slice(-HISTORY_LIMIT));
     setHistIdx(i => Math.min(i + 1, HISTORY_LIMIT - 1));
   }, [histIdx]);
 
   const undo = useCallback(() => {
     if (histIdx <= 0) return;
     const s = hist[histIdx - 1];
-    setNodes(clone(s.nodes)); setEdges(clone(s.edges)); setHistIdx(histIdx - 1);
+    setNodes(clone(s.nodes)); setEdges(clone(s.edges)); setScribbles(clone(s.scribbles)); setHistIdx(histIdx - 1);
   }, [hist, histIdx]);
 
   const redo = useCallback(() => {
     if (histIdx >= hist.length - 1) return;
     const s = hist[histIdx + 1];
-    setNodes(clone(s.nodes)); setEdges(clone(s.edges)); setHistIdx(histIdx + 1);
+    setNodes(clone(s.nodes)); setEdges(clone(s.edges)); setScribbles(clone(s.scribbles)); setHistIdx(histIdx + 1);
   }, [hist, histIdx]);
 
   const stopSmoothZoom = useCallback(() => {
@@ -390,6 +457,8 @@ export function CanvasView({
       if (!canvasFilePath) {
         setNodes([]);
         setEdges([]);
+        setScribbles([]);
+        setActiveScribble(null);
         setDocMeta({});
         setDiagnostics(null);
         setShowDiagnostics(false);
@@ -399,7 +468,7 @@ export function CanvasView({
         lastSavedPayloadRef.current = '';
         setSelNodes(new Set());
         setSelEdges(new Set());
-        setHist([{ nodes: [], edges: [] }]);
+        setHist([{ nodes: [], edges: [], scribbles: [] }]);
         setHistIdx(0);
         return;
       }
@@ -426,12 +495,20 @@ export function CanvasView({
 
         const nextNodes = Array.isArray(parsed.data.nodes) ? (parsed.data.nodes as CanvasNode[]) : [];
         const nextEdges = Array.isArray(parsed.data.edges) ? (parsed.data.edges as CanvasEdge[]) : [];
-        const normalizedPayload = serializeCanvasDocument({ nodes: nextNodes, edges: nextEdges }, parsed.metadata);
+        const metadata = { ...parsed.metadata };
+        const nextScribbles = sanitizeCanvasScribbles(metadata[CANVAS_SCRIBBLES_KEY]);
+        delete metadata[CANVAS_SCRIBBLES_KEY];
+        const normalizedPayload = serializeCanvasDocument(
+          { nodes: nextNodes, edges: nextEdges },
+          { ...metadata, [CANVAS_SCRIBBLES_KEY]: nextScribbles },
+        );
 
         if (cancelled) return;
         setNodes(nextNodes);
         setEdges(nextEdges);
-        setDocMeta(parsed.metadata);
+        setScribbles(nextScribbles);
+        setActiveScribble(null);
+        setDocMeta(metadata);
         setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
         setShowDiagnostics(parsed.diagnostics.repaired);
         setRecoveryUsed(usedRecovery);
@@ -440,13 +517,15 @@ export function CanvasView({
         lastSavedPayloadRef.current = normalizedPayload;
         setSelNodes(new Set());
         setSelEdges(new Set());
-        setHist([{ nodes: clone(nextNodes), edges: clone(nextEdges) }]);
+        setHist([{ nodes: clone(nextNodes), edges: clone(nextEdges), scribbles: clone(nextScribbles) }]);
         setHistIdx(0);
       } catch (error) {
         console.error('Failed to load canvas file:', canvasFilePath, error);
         if (cancelled) return;
         setNodes([]);
         setEdges([]);
+        setScribbles([]);
+        setActiveScribble(null);
         setDocMeta({});
         setDiagnostics({
           warnings: [],
@@ -463,7 +542,7 @@ export function CanvasView({
         lastSavedPayloadRef.current = '';
         setSelNodes(new Set());
         setSelEdges(new Set());
-        setHist([{ nodes: [], edges: [] }]);
+        setHist([{ nodes: [], edges: [], scribbles: [] }]);
         setHistIdx(0);
       } finally {
         if (!cancelled) loadingCanvasRef.current = false;
@@ -477,7 +556,7 @@ export function CanvasView({
   useEffect(() => {
     if (!canvasFilePath || loadingCanvasRef.current) return;
 
-    const payload = serializeCanvasDocument({ nodes, edges }, docMeta);
+    const payload = serializeCanvasDocument({ nodes, edges }, { ...docMeta, [CANVAS_SCRIBBLES_KEY]: scribbles });
     if (payload === lastSavedPayloadRef.current) {
       setSaveState(prev => (prev === 'saving' || prev === 'error' ? prev : 'saved'));
       return;
@@ -506,7 +585,7 @@ export function CanvasView({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [canvasFilePath, nodes, edges, docMeta]);
+  }, [canvasFilePath, nodes, edges, docMeta, scribbles]);
 
   /* ── coordinate helpers ── */
   const s2c = useCallback((sx: number, sy: number) => {
@@ -658,7 +737,7 @@ export function CanvasView({
 
   const repairAndSave = useCallback(async () => {
     if (!canvasFilePath) return;
-    const payload = serializeCanvasDocument({ nodes, edges }, docMeta);
+    const payload = serializeCanvasDocument({ nodes, edges }, { ...docMeta, [CANVAS_SCRIBBLES_KEY]: scribbles });
     setSaveState('saving');
     try {
       await getAPI().writeFile(canvasFilePath, payload);
@@ -672,7 +751,7 @@ export function CanvasView({
       console.error('Repair save failed:', error);
       setSaveState('error');
     }
-  }, [canvasFilePath, nodes, edges, docMeta]);
+  }, [canvasFilePath, nodes, edges, docMeta, scribbles]);
 
   const restoreFromRecovery = useCallback(async () => {
     if (!canvasFilePath) return;
@@ -681,13 +760,17 @@ export function CanvasView({
       const parsed = parseCanvasDocument(recoveryRaw || '');
       const nextNodes = Array.isArray(parsed.data.nodes) ? (parsed.data.nodes as CanvasNode[]) : [];
       const nextEdges = Array.isArray(parsed.data.edges) ? (parsed.data.edges as CanvasEdge[]) : [];
+      const metadata = { ...parsed.metadata };
+      const nextScribbles = sanitizeCanvasScribbles(metadata[CANVAS_SCRIBBLES_KEY]);
+      delete metadata[CANVAS_SCRIBBLES_KEY];
       setNodes(nextNodes);
       setEdges(nextEdges);
-      setDocMeta(parsed.metadata);
+      setScribbles(nextScribbles);
+      setDocMeta(metadata);
       setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
       setShowDiagnostics(parsed.diagnostics.repaired);
       setRecoveryUsed(true);
-      push(nextNodes, nextEdges);
+      push(nextNodes, nextEdges, nextScribbles);
     } catch (error) {
       console.error('Failed to restore recovery snapshot:', error);
       setSaveState('error');
@@ -696,6 +779,21 @@ export function CanvasView({
 
   /* ═══ MOUSE: DOWN ═══ */
   const onAreaDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 0 && tool === 'draw') {
+      const p = s2c(e.clientX, e.clientY);
+      const stroke: CanvasScribbleStroke = {
+        id: generateId(),
+        points: [p],
+        width: DEFAULT_SCRIBBLE_WIDTH,
+      };
+      setActiveScribble(stroke);
+      setSelNodes(new Set());
+      setSelEdges(new Set());
+      setColorPickerFor(null);
+      setDrag({ type: 'draw', startX: e.clientX, startY: e.clientY });
+      e.preventDefault();
+      return;
+    }
     if (e.button === 1 || (e.button === 0 && (tool === 'pan' || e.shiftKey))) {
       stopSmoothZoom();
       stopPanInertia();
@@ -712,6 +810,9 @@ export function CanvasView({
   }, [tool, s2c, stopPanInertia, stopSmoothZoom]);
 
   const onNodeDown = useCallback((e: React.MouseEvent, id: string) => {
+    if (tool === 'draw') {
+      return;
+    }
     stopPanInertia();
     e.stopPropagation();
     const target = e.target as HTMLElement | null;
@@ -1026,6 +1127,18 @@ export function CanvasView({
           setNodes(prev => prev.map(nd => nd.id === drag.nodeId ? { ...nd, x: nx, y: ny, width: nw, height: nh } : nd));
           break;
         }
+        case 'draw': {
+          const active = activeScribbleRef.current;
+          if (!active) break;
+          const point = s2c(e.clientX, e.clientY);
+          const last = active.points[active.points.length - 1];
+          const minDist = MIN_SCRIBBLE_POINT_DIST / Math.max(vp.zoom, 0.25);
+          if (last && Math.hypot(point.x - last.x, point.y - last.y) < minDist) break;
+          const nextStroke = { ...active, points: [...active.points, point] };
+          activeScribbleRef.current = nextStroke;
+          setActiveScribble(nextStroke);
+          break;
+        }
       }
     };
     const onUp = (e: MouseEvent) => {
@@ -1075,6 +1188,18 @@ export function CanvasView({
         }
         setTempEdge(null);
       }
+
+      if (drag.type === 'draw') {
+        const finalized = activeScribbleRef.current;
+        if (finalized && finalized.points.length > 1) {
+          const nextScribbles = [...scribblesRef.current, finalized];
+          setScribbles(nextScribbles);
+          push(nodesRef.current, edges, nextScribbles);
+        }
+        setActiveScribble(null);
+        activeScribbleRef.current = null;
+      }
+
       if (drag.type === 'node' || drag.type === 'resize') push(nodesRef.current, edges);
       setDrag({ type: 'none', startX: 0, startY: 0 });
       setAlignLines({ x: [], y: [] });
@@ -1174,7 +1299,17 @@ export function CanvasView({
       if (e.key === 'v' && !ctrl) setTool('select');
       if (e.key === 'h' && !ctrl) setTool('pan');
       if (e.key === 'c' && !ctrl) setTool('edge');
-      if (e.key === 'Escape') { setSelNodes(new Set()); setSelEdges(new Set()); setTool('select'); setEditingId(null); setColorPickerFor(null); }
+      if (e.key === 'd' && !ctrl) setTool('draw');
+      if (e.key === 'Escape') {
+        setSelNodes(new Set());
+        setSelEdges(new Set());
+        setTool('select');
+        setEditingId(null);
+        setColorPickerFor(null);
+        setActiveScribble(null);
+        activeScribbleRef.current = null;
+        setDrag({ type: 'none', startX: 0, startY: 0 });
+      }
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
@@ -1211,7 +1346,15 @@ export function CanvasView({
   }, [fileTree]);
 
   /* ═══ CURSOR ═══ */
-  const cursor = drag.type === 'pan' ? 'grabbing' : drag.type === 'node' ? 'grabbing' : tool === 'pan' ? 'grab' : tool === 'edge' ? 'crosshair' : 'default';
+  const cursor = drag.type === 'pan'
+    ? 'grabbing'
+    : drag.type === 'node'
+      ? 'grabbing'
+      : drag.type === 'draw' || tool === 'draw' || tool === 'edge'
+        ? 'crosshair'
+        : tool === 'pan'
+          ? 'grab'
+          : 'default';
   const uiZoomMult = Math.min(1.35, Math.max(0.85, 1 / vp.zoom));
   const renderVp = useMemo(() => {
     const dpr = typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1;
@@ -1374,6 +1517,36 @@ export function CanvasView({
             ))}
           </svg>
 
+          <svg className="cv-scribbles">
+            {scribbles.map((stroke) => {
+              const d = pointsToStrokePath(stroke.points);
+              if (!d) return null;
+              return (
+                <path
+                  key={stroke.id}
+                  d={d}
+                  fill="none"
+                  stroke={stroke.color || 'var(--cv-scribble)'}
+                  strokeWidth={stroke.width}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.92}
+                />
+              );
+            })}
+            {activeScribble ? (
+              <path
+                d={pointsToStrokePath(activeScribble.points)}
+                fill="none"
+                stroke={activeScribble.color || 'var(--cv-scribble)'}
+                strokeWidth={activeScribble.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.92}
+              />
+            ) : null}
+          </svg>
+
           {/* Selection rect */}
           {selBox && <div className="cv-sel-box" style={{ left: selBox.x, top: selBox.y, width: selBox.w, height: selBox.h }} />}
 
@@ -1522,6 +1695,15 @@ export function CanvasView({
 
         <div className="cv-ctrl-group">
           <button className="cv-ctrl" title="Add text card" onClick={() => addNode('text')}><Type size={16} /></button>
+        </div>
+        <div className="cv-ctrl-group">
+          <button
+            className={`cv-ctrl${tool === 'draw' ? ' on' : ''}`}
+            title="Draw scribble (D)"
+            onClick={() => setTool(prev => prev === 'draw' ? 'select' : 'draw')}
+          >
+            <PenLine size={15} />
+          </button>
         </div>
         <div className="cv-ctrl-group">
           <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(1)}><Plus size={16} /></button>
