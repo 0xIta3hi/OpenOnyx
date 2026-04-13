@@ -1,22 +1,33 @@
 /**
  * ThoughtModelPage - ML-powered vault analysis and semantic search
- * 
+ *
  * Features:
  * - One-click "Build My Thought Model" with progress tracking
  * - Themes view showing clusters of related thoughts
  * - "Ask My Vault" semantic search interface
- * 
+ *
  * Renders as a split pane (like GraphView) instead of full-screen overlay.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Brain, Loader2, AlertCircle, CheckCircle, Search,
-  Sparkles, FileText, RefreshCw, ChevronDown, ChevronRight,
-  Zap, X, Maximize, Minimize
-} from 'lucide-react';
-import { getAPI } from '../utils/api';
-import type { ThoughtModelStatus } from '../types';
+  Brain,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+  Search,
+  Sparkles,
+  FileText,
+  RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  Zap,
+  X,
+  Maximize,
+  Minimize,
+} from "lucide-react";
+import { getAPI } from "../utils/api";
+import type { ThoughtModelStatus } from "../types";
 
 const api = getAPI();
 
@@ -24,30 +35,38 @@ const api = getAPI();
  * Strip YAML frontmatter and metadata from text for display
  */
 function cleanChunkText(text: string): string {
-  if (!text) return '';
-  
+  if (!text) return "";
+
   // Remove YAML frontmatter block (---...---)
-  let cleaned = text.replace(/^---[\s\S]*?---\s*/m, '');
-  
+  let cleaned = text.replace(/^---[\s\S]*?---\s*/m, "");
+
   // Remove individual frontmatter-like lines at start
-  const lines = cleaned.split('\n');
-  while (lines.length > 0 && /^\s*(title|tags|date|description|aliases|created|updated|category|type|status|author|draft|render):/i.test(lines[0])) {
+  const lines = cleaned.split("\n");
+  while (
+    lines.length > 0 &&
+    /^\s*(title|tags|date|description|aliases|created|updated|category|type|status|author|draft|render):/i.test(
+      lines[0],
+    )
+  ) {
     lines.shift();
   }
-  cleaned = lines.join('\n').trim();
-  
+  cleaned = lines.join("\n").trim();
+
   // Remove any remaining standalone metadata patterns
-  cleaned = cleaned.replace(/^(title|tags|date|description|aliases|created|updated):\s*.*$/gim, '');
-  
+  cleaned = cleaned.replace(
+    /^(title|tags|date|description|aliases|created|updated):\s*.*$/gim,
+    "",
+  );
+
   // Clean up multiple newlines
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-  
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+
   return cleaned;
 }
 
 interface ThoughtModelPageProps {
   vaultPath: string | null;
-  theme: 'dark' | 'light' | 'custom';
+  theme: "dark" | "light" | "custom";
   onOpenNote: (path: string) => void;
   onClose: () => void;
   isFullScreen?: boolean;
@@ -75,18 +94,18 @@ interface QueryResult {
   cluster_id: number;
 }
 
-export function ThoughtModelPage({ 
-  vaultPath, 
-  theme, 
-  onOpenNote, 
+export function ThoughtModelPage({
+  vaultPath,
+  theme,
+  onOpenNote,
   onClose,
   isFullScreen,
-  onToggleFullScreen 
+  onToggleFullScreen,
 }: ThoughtModelPageProps) {
   // Build state
-  const [status, setStatus] = useState<ThoughtModelStatus>('idle');
+  const [status, setStatus] = useState<ThoughtModelStatus>("idle");
   const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [serviceHealthy, setServiceHealthy] = useState<boolean | null>(null);
@@ -97,10 +116,10 @@ export function ThoughtModelPage({
   const [totalChunks, setTotalChunks] = useState(0);
 
   // Query state
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [queryResults, setQueryResults] = useState<QueryResult[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
-  const [activeTab, setActiveTab] = useState<'themes' | 'search'>('themes');
+  const [activeTab, setActiveTab] = useState<"themes" | "search">("themes");
 
   // Theme expansion state
   const [expandedThemes, setExpandedThemes] = useState<Set<number>>(new Set());
@@ -134,13 +153,13 @@ export function ThoughtModelPage({
   // Start building the thought model
   const handleBuild = useCallback(async () => {
     if (!vaultPath) {
-      setError('No vault selected');
+      setError("No vault selected");
       return;
     }
 
-    setStatus('indexing');
+    setStatus("indexing");
     setProgress(0);
-    setMessage('Starting...');
+    setMessage("Starting...");
     setError(null);
 
     try {
@@ -153,33 +172,34 @@ export function ThoughtModelPage({
         try {
           const statusResponse = await api.thoughtModel.status(newJobId);
           setProgress(statusResponse.progress ?? 0);
-          setMessage(statusResponse.message ?? '');
+          setMessage(statusResponse.message ?? "");
 
-          if (statusResponse.status === 'done') {
+          if (statusResponse.status === "done") {
             if (pollIntervalRef.current) {
               clearInterval(pollIntervalRef.current);
             }
-            setStatus('done');
+            setStatus("done");
             setTotalNotes(statusResponse.total_notes ?? 0);
             setTotalChunks(statusResponse.total_chunks ?? 0);
-            
+
             // Load themes
             const themesResponse = await api.thoughtModel.themes(newJobId);
             setThemes(themesResponse.themes);
-          } else if (statusResponse.status === 'failed') {
+          } else if (statusResponse.status === "failed") {
             if (pollIntervalRef.current) {
               clearInterval(pollIntervalRef.current);
             }
-            setStatus('failed');
-            setError(statusResponse.message ?? 'Unknown error');
+            setStatus("failed");
+            setError(statusResponse.message ?? "Unknown error");
           }
         } catch (err) {
-          console.error('Status poll failed:', err);
+          console.error("Status poll failed:", err);
         }
       }, 500);
     } catch (err) {
-      setStatus('failed');
-      const errorMsg = err instanceof Error ? err.message : 'Failed to start build';
+      setStatus("failed");
+      const errorMsg =
+        err instanceof Error ? err.message : "Failed to start build";
       setError(errorMsg);
     }
   }, [vaultPath]);
@@ -193,14 +213,14 @@ export function ThoughtModelPage({
       const response = await api.thoughtModel.query(jobId, query, 10);
       setQueryResults(response.results);
     } catch (err) {
-      console.error('Query failed:', err);
+      console.error("Query failed:", err);
     } finally {
       setIsQuerying(false);
     }
   }, [query, jobId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       handleQuery();
     }
   };
@@ -219,7 +239,7 @@ export function ThoughtModelPage({
 
   // Toggle theme expansion
   const toggleTheme = (clusterId: number) => {
-    setExpandedThemes(prev => {
+    setExpandedThemes((prev) => {
       const next = new Set(prev);
       if (next.has(clusterId)) {
         next.delete(clusterId);
@@ -241,7 +261,11 @@ export function ThoughtModelPage({
           </h2>
           <div className="thought-model-controls">
             {onToggleFullScreen && (
-              <button className="btn btn-ghost" onClick={onToggleFullScreen} title={isFullScreen ? 'Exit fullscreen' : 'Fullscreen'}>
+              <button
+                className="btn btn-ghost"
+                onClick={onToggleFullScreen}
+                title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
+              >
                 {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
               </button>
             )}
@@ -254,11 +278,19 @@ export function ThoughtModelPage({
           <div className="thought-model-center">
             <AlertCircle size={40} className="thought-model-icon error" />
             <h3>Service Not Running</h3>
-            <p className="text-muted">Start the Python ML service in a terminal:</p>
+            <p className="text-muted">
+              Start the Python ML service in a terminal:
+            </p>
             <div className="thought-model-code">
-              <code>cd thought_model && pip install -r requirements.txt && python main.py</code>
+              <code>
+                cd thought_model && pip install -r requirements.txt && python
+                main.py
+              </code>
             </div>
-            <button className="btn btn-primary" onClick={() => window.location.reload()}>
+            <button
+              className="btn btn-primary"
+              onClick={() => window.location.reload()}
+            >
               <RefreshCw size={14} />
               Retry
             </button>
@@ -276,7 +308,7 @@ export function ThoughtModelPage({
           Thought Model
         </h2>
         <div className="thought-model-controls">
-          {status === 'done' && (
+          {status === "done" && (
             <div className="thought-model-stats">
               <span>{totalNotes} notes</span>
               <span>{totalChunks} chunks</span>
@@ -284,7 +316,11 @@ export function ThoughtModelPage({
             </div>
           )}
           {onToggleFullScreen && (
-            <button className="btn btn-ghost" onClick={onToggleFullScreen} title={isFullScreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <button
+              className="btn btn-ghost"
+              onClick={onToggleFullScreen}
+              title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
+            >
               {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           )}
@@ -296,12 +332,13 @@ export function ThoughtModelPage({
 
       <div className="thought-model-content">
         {/* Status: Idle - Show build button */}
-        {status === 'idle' && (
+        {status === "idle" && (
           <div className="thought-model-center">
             <Brain size={48} className="thought-model-icon" />
             <h3>Build Your Thought Model</h3>
             <p className="text-muted">
-              Analyze your vault using ML to discover themes and enable semantic search.
+              Analyze your vault using ML to discover themes and enable semantic
+              search.
             </p>
             <button
               className="btn btn-primary btn-lg"
@@ -318,20 +355,23 @@ export function ThoughtModelPage({
         )}
 
         {/* Status: Indexing - Show progress */}
-        {status === 'indexing' && (
+        {status === "indexing" && (
           <div className="thought-model-center">
             <Loader2 size={40} className="thought-model-spinner" />
             <h3>Building...</h3>
             <p className="text-muted">{message}</p>
             <div className="thought-model-progress">
-              <div className="thought-model-progress-bar" style={{ width: `${progress}%` }} />
+              <div
+                className="thought-model-progress-bar"
+                style={{ width: `${progress}%` }}
+              />
             </div>
             <span className="text-muted text-sm">{Math.round(progress)}%</span>
           </div>
         )}
 
         {/* Status: Failed - Show error */}
-        {status === 'failed' && (
+        {status === "failed" && (
           <div className="thought-model-center">
             <AlertCircle size={40} className="thought-model-icon error" />
             <h3>Build Failed</h3>
@@ -344,35 +384,42 @@ export function ThoughtModelPage({
         )}
 
         {/* Status: Done - Show themes and search */}
-        {status === 'done' && (
+        {status === "done" && (
           <div className="thought-model-results">
             {/* Tab switcher */}
             <div className="thought-model-tabs">
               <button
-                className={`thought-model-tab ${activeTab === 'themes' ? 'active' : ''}`}
-                onClick={() => setActiveTab('themes')}
+                className={`thought-model-tab ${activeTab === "themes" ? "active" : ""}`}
+                onClick={() => setActiveTab("themes")}
               >
                 <Sparkles size={14} />
                 Themes
               </button>
               <button
-                className={`thought-model-tab ${activeTab === 'search' ? 'active' : ''}`}
-                onClick={() => setActiveTab('search')}
+                className={`thought-model-tab ${activeTab === "search" ? "active" : ""}`}
+                onClick={() => setActiveTab("search")}
               >
                 <Search size={14} />
                 Search
               </button>
               <div style={{ flex: 1 }} />
-              <button className="btn btn-ghost btn-sm" onClick={handleRebuild} title="Rebuild">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={handleRebuild}
+                title="Rebuild"
+              >
                 <RefreshCw size={12} />
               </button>
             </div>
 
             {/* Themes Tab */}
-            {activeTab === 'themes' && (
+            {activeTab === "themes" && (
               <div className="thought-model-themes">
                 {themes.map((themeData) => (
-                  <div key={themeData.cluster_id} className="thought-model-theme-card">
+                  <div
+                    key={themeData.cluster_id}
+                    className="thought-model-theme-card"
+                  >
                     <button
                       className="thought-model-theme-header"
                       onClick={() => toggleTheme(themeData.cluster_id)}
@@ -385,15 +432,18 @@ export function ThoughtModelPage({
                       <div className="thought-model-theme-info">
                         <div className="thought-model-keywords">
                           {themeData.keywords.slice(0, 5).map((kw, i) => (
-                            <span key={i} className="thought-model-keyword">{kw}</span>
+                            <span key={i} className="thought-model-keyword">
+                              {kw}
+                            </span>
                           ))}
                         </div>
                         <span className="text-muted text-sm">
-                          {themeData.note_count} notes • {themeData.representative_chunks.length} passages
+                          {themeData.note_count} notes •{" "}
+                          {themeData.representative_chunks.length} passages
                         </span>
                       </div>
                     </button>
-                    
+
                     {expandedThemes.has(themeData.cluster_id) && (
                       <div className="thought-model-theme-chunks">
                         {themeData.representative_chunks.map((chunk) => (
@@ -406,7 +456,9 @@ export function ThoughtModelPage({
                               <FileText size={12} />
                               <span>{chunk.note_title}</span>
                             </div>
-                            <p className="thought-model-chunk-text">{cleanChunkText(chunk.chunk_text)}</p>
+                            <p className="thought-model-chunk-text">
+                              {cleanChunkText(chunk.chunk_text)}
+                            </p>
                           </div>
                         ))}
                       </div>
@@ -417,7 +469,7 @@ export function ThoughtModelPage({
             )}
 
             {/* Search Tab */}
-            {activeTab === 'search' && (
+            {activeTab === "search" && (
               <div className="thought-model-search">
                 <div className="thought-model-search-box">
                   <Search size={16} className="thought-model-search-icon" />
@@ -431,7 +483,10 @@ export function ThoughtModelPage({
                     className="thought-model-search-input"
                   />
                   {query && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => setQuery('')}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setQuery("")}
+                    >
                       <X size={14} />
                     </button>
                   )}
@@ -440,14 +495,20 @@ export function ThoughtModelPage({
                     onClick={handleQuery}
                     disabled={!query.trim() || isQuerying}
                   >
-                    {isQuerying ? <Loader2 size={14} className="thought-model-spinner" /> : <Search size={14} />}
+                    {isQuerying ? (
+                      <Loader2 size={14} className="thought-model-spinner" />
+                    ) : (
+                      <Search size={14} />
+                    )}
                   </button>
                 </div>
 
                 {/* Results */}
                 {queryResults.length > 0 && (
                   <div className="thought-model-search-results">
-                    <p className="text-muted text-sm">{queryResults.length} results</p>
+                    <p className="text-muted text-sm">
+                      {queryResults.length} results
+                    </p>
                     {queryResults.map((result, index) => (
                       <div
                         key={index}
@@ -466,10 +527,14 @@ export function ThoughtModelPage({
                         <p className="thought-model-result-text">
                           {(() => {
                             const cleaned = cleanChunkText(result.chunk_text);
-                            return cleaned.length > 200 ? cleaned.slice(0, 200) + '...' : cleaned;
+                            return cleaned.length > 200
+                              ? cleaned.slice(0, 200) + "..."
+                              : cleaned;
                           })()}
                         </p>
-                        <span className="thought-model-result-path">{result.note_path}</span>
+                        <span className="thought-model-result-path">
+                          {result.note_path}
+                        </span>
                       </div>
                     ))}
                   </div>

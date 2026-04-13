@@ -8,13 +8,17 @@ import {
   GroupBackgroundStyle,
   MIN_NODE_HEIGHT,
   MIN_NODE_WIDTH,
-} from '../../types/canvas';
-import { generateId } from '../../utils/helpers';
+} from "../../types/canvas";
+import { generateId } from "../../utils/helpers";
 
-const NODE_TYPES = new Set<CanvasNodeType>(['text', 'file', 'link', 'group']);
-const EDGE_SIDES = new Set<EdgeSide>(['top', 'right', 'bottom', 'left']);
-const EDGE_ENDS = new Set<EdgeEnd>(['none', 'arrow']);
-const GROUP_BG_STYLES = new Set<GroupBackgroundStyle>(['cover', 'ratio', 'repeat']);
+const NODE_TYPES = new Set<CanvasNodeType>(["text", "file", "link", "group"]);
+const EDGE_SIDES = new Set<EdgeSide>(["top", "right", "bottom", "left"]);
+const EDGE_ENDS = new Set<EdgeEnd>(["none", "arrow"]);
+const GROUP_BG_STYLES = new Set<GroupBackgroundStyle>([
+  "cover",
+  "ratio",
+  "repeat",
+]);
 
 export interface CanvasDiagnostics {
   warnings: string[];
@@ -32,15 +36,15 @@ export interface ParsedCanvasDocument {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
   }
   return null;
 }
 
 function toFiniteNumber(value: unknown, fallback: number): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
   }
@@ -48,43 +52,54 @@ function toFiniteNumber(value: unknown, fallback: number): number {
 }
 
 function toOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function toOptionalBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function toEdgeSide(value: unknown): EdgeSide | undefined {
-  if (typeof value === 'string' && EDGE_SIDES.has(value as EdgeSide)) {
+  if (typeof value === "string" && EDGE_SIDES.has(value as EdgeSide)) {
     return value as EdgeSide;
   }
   return undefined;
 }
 
 function toEdgeEnd(value: unknown): EdgeEnd | undefined {
-  if (typeof value === 'string' && EDGE_ENDS.has(value as EdgeEnd)) {
+  if (typeof value === "string" && EDGE_ENDS.has(value as EdgeEnd)) {
     return value as EdgeEnd;
   }
   return undefined;
 }
 
-function toGroupBackgroundStyle(value: unknown): GroupBackgroundStyle | undefined {
-  if (typeof value === 'string' && GROUP_BG_STYLES.has(value as GroupBackgroundStyle)) {
+function toGroupBackgroundStyle(
+  value: unknown,
+): GroupBackgroundStyle | undefined {
+  if (
+    typeof value === "string" &&
+    GROUP_BG_STYLES.has(value as GroupBackgroundStyle)
+  ) {
     return value as GroupBackgroundStyle;
   }
   return undefined;
 }
 
-function sanitizeNode(rawNode: unknown, index: number, diagnostics: CanvasDiagnostics): CanvasNode | null {
+function sanitizeNode(
+  rawNode: unknown,
+  index: number,
+  diagnostics: CanvasDiagnostics,
+): CanvasNode | null {
   const record = asRecord(rawNode);
   if (!record) {
     diagnostics.droppedNodes += 1;
-    diagnostics.errors.push(`Dropped node #${index + 1}: node is not an object.`);
+    diagnostics.errors.push(
+      `Dropped node #${index + 1}: node is not an object.`,
+    );
     return null;
   }
 
-  const type = typeof record.type === 'string' ? record.type : undefined;
+  const type = typeof record.type === "string" ? record.type : undefined;
   if (!type || !NODE_TYPES.has(type as CanvasNodeType)) {
     diagnostics.droppedNodes += 1;
     diagnostics.errors.push(`Dropped node #${index + 1}: invalid node type.`);
@@ -92,8 +107,10 @@ function sanitizeNode(rawNode: unknown, index: number, diagnostics: CanvasDiagno
   }
 
   const fallbackId = `node-${index + 1}-${generateId()}`;
-  const id = typeof record.id === 'string' && record.id.trim() ? record.id : fallbackId;
-  if (id === fallbackId) diagnostics.warnings.push(`Repaired node #${index + 1}: missing id.`);
+  const id =
+    typeof record.id === "string" && record.id.trim() ? record.id : fallbackId;
+  if (id === fallbackId)
+    diagnostics.warnings.push(`Repaired node #${index + 1}: missing id.`);
 
   const width = Math.max(MIN_NODE_WIDTH, toFiniteNumber(record.width, 260));
   const height = Math.max(MIN_NODE_HEIGHT, toFiniteNumber(record.height, 160));
@@ -110,34 +127,34 @@ function sanitizeNode(rawNode: unknown, index: number, diagnostics: CanvasDiagno
     color: toOptionalString(record.color),
   } as Record<string, unknown>;
 
-  if (type === 'text') {
+  if (type === "text") {
     return {
       ...base,
-      type: 'text',
-      text: typeof record.text === 'string' ? record.text : '',
+      type: "text",
+      text: typeof record.text === "string" ? record.text : "",
     } as CanvasNode;
   }
 
-  if (type === 'file') {
+  if (type === "file") {
     return {
       ...base,
-      type: 'file',
-      file: typeof record.file === 'string' ? record.file : '',
+      type: "file",
+      file: typeof record.file === "string" ? record.file : "",
       subpath: toOptionalString(record.subpath),
     } as CanvasNode;
   }
 
-  if (type === 'link') {
+  if (type === "link") {
     return {
       ...base,
-      type: 'link',
-      url: typeof record.url === 'string' ? record.url : '',
+      type: "link",
+      url: typeof record.url === "string" ? record.url : "",
     } as CanvasNode;
   }
 
   return {
     ...base,
-    type: 'group',
+    type: "group",
     label: toOptionalString(record.label),
     background: toOptionalString(record.background),
     backgroundStyle: toGroupBackgroundStyle(record.backgroundStyle),
@@ -153,27 +170,35 @@ function sanitizeEdge(
   const record = asRecord(rawEdge);
   if (!record) {
     diagnostics.droppedEdges += 1;
-    diagnostics.errors.push(`Dropped edge #${index + 1}: edge is not an object.`);
+    diagnostics.errors.push(
+      `Dropped edge #${index + 1}: edge is not an object.`,
+    );
     return null;
   }
 
-  const fromNode = typeof record.fromNode === 'string' ? record.fromNode : '';
-  const toNode = typeof record.toNode === 'string' ? record.toNode : '';
+  const fromNode = typeof record.fromNode === "string" ? record.fromNode : "";
+  const toNode = typeof record.toNode === "string" ? record.toNode : "";
   if (!fromNode || !toNode) {
     diagnostics.droppedEdges += 1;
-    diagnostics.errors.push(`Dropped edge #${index + 1}: missing fromNode/toNode.`);
+    diagnostics.errors.push(
+      `Dropped edge #${index + 1}: missing fromNode/toNode.`,
+    );
     return null;
   }
 
   if (!nodeIds.has(fromNode) || !nodeIds.has(toNode)) {
     diagnostics.droppedEdges += 1;
-    diagnostics.errors.push(`Dropped edge #${index + 1}: references unknown node(s).`);
+    diagnostics.errors.push(
+      `Dropped edge #${index + 1}: references unknown node(s).`,
+    );
     return null;
   }
 
   const fallbackId = `edge-${index + 1}-${generateId()}`;
-  const id = typeof record.id === 'string' && record.id.trim() ? record.id : fallbackId;
-  if (id === fallbackId) diagnostics.warnings.push(`Repaired edge #${index + 1}: missing id.`);
+  const id =
+    typeof record.id === "string" && record.id.trim() ? record.id : fallbackId;
+  if (id === fallbackId)
+    diagnostics.warnings.push(`Repaired edge #${index + 1}: missing id.`);
 
   return {
     ...record,
@@ -206,10 +231,11 @@ export function parseCanvasDocument(raw: string): ParsedCanvasDocument {
       if (record) {
         parsedRoot = record;
       } else {
-        diagnostics.parseError = 'Root document is not an object.';
+        diagnostics.parseError = "Root document is not an object.";
       }
     } catch (error) {
-      diagnostics.parseError = error instanceof Error ? error.message : 'Invalid JSON.';
+      diagnostics.parseError =
+        error instanceof Error ? error.message : "Invalid JSON.";
     }
   }
 
@@ -221,7 +247,7 @@ export function parseCanvasDocument(raw: string): ParsedCanvasDocument {
   const nodes = rawNodes
     .map((rawNode, index) => sanitizeNode(rawNode, index, diagnostics))
     .filter((node): node is CanvasNode => node !== null);
-  const nodeIds = new Set(nodes.map(node => node.id));
+  const nodeIds = new Set(nodes.map((node) => node.id));
 
   const rawEdges = Array.isArray(parsedRoot.edges) ? parsedRoot.edges : [];
   const edges = rawEdges
@@ -242,7 +268,10 @@ export function parseCanvasDocument(raw: string): ParsedCanvasDocument {
   };
 }
 
-export function serializeCanvasDocument(data: CanvasData, metadata?: Record<string, unknown>): string {
+export function serializeCanvasDocument(
+  data: CanvasData,
+  metadata?: Record<string, unknown>,
+): string {
   const payload: CanvasData = {
     ...(metadata || {}),
     nodes: Array.isArray(data.nodes) ? data.nodes : [],

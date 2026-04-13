@@ -1,12 +1,20 @@
 /**
  * Properties Panel - Frontmatter/Metadata Editor
- * 
+ *
  * Displays and allows editing of YAML frontmatter properties.
  * Supports common property types: text, list, date, tags.
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
-import { Settings, Plus, Trash2, Calendar, Tag, FileText, List } from 'lucide-react';
+import React, { useMemo, useState, useCallback } from "react";
+import {
+  Settings,
+  Plus,
+  Trash2,
+  Calendar,
+  Tag,
+  FileText,
+  List,
+} from "lucide-react";
 
 interface PropertiesPanelProps {
   content: string;
@@ -17,11 +25,14 @@ interface PropertiesPanelProps {
 interface Property {
   key: string;
   value: string | string[];
-  type: 'text' | 'list' | 'date' | 'tags';
+  type: "text" | "list" | "date" | "tags";
 }
 
 // Parse YAML frontmatter
-function parseFrontmatter(content: string): { properties: Property[]; bodyStart: number } {
+function parseFrontmatter(content: string): {
+  properties: Property[];
+  bodyStart: number;
+} {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!match) {
     return { properties: [], bodyStart: 0 };
@@ -32,8 +43,8 @@ function parseFrontmatter(content: string): { properties: Property[]; bodyStart:
   const properties: Property[] = [];
 
   // Simple YAML parser for common cases
-  const lines = yaml.split('\n');
-  let currentKey = '';
+  const lines = yaml.split("\n");
+  let currentKey = "";
   let currentList: string[] = [];
   let inList = false;
 
@@ -52,7 +63,7 @@ function parseFrontmatter(content: string): { properties: Property[]; bodyStart:
       properties.push({
         key: currentKey,
         value: currentList,
-        type: currentKey === 'tags' ? 'tags' : 'list',
+        type: currentKey === "tags" ? "tags" : "list",
       });
       inList = false;
       currentList = [];
@@ -68,23 +79,26 @@ function parseFrontmatter(content: string): { properties: Property[]; bodyStart:
         // Could be start of a list
         inList = true;
         currentList = [];
-      } else if (value.startsWith('[') && value.endsWith(']')) {
+      } else if (value.startsWith("[") && value.endsWith("]")) {
         // Inline array
-        const items = value.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+        const items = value
+          .slice(1, -1)
+          .split(",")
+          .map((s) => s.trim().replace(/^["']|["']$/g, ""));
         properties.push({
           key: currentKey,
           value: items,
-          type: currentKey === 'tags' ? 'tags' : 'list',
+          type: currentKey === "tags" ? "tags" : "list",
         });
       } else {
         // Detect type
-        let type: Property['type'] = 'text';
+        let type: Property["type"] = "text";
         if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
-          type = 'date';
+          type = "date";
         }
         properties.push({
           key: currentKey,
-          value: value.replace(/^["']|["']$/g, ''),
+          value: value.replace(/^["']|["']$/g, ""),
           type,
         });
       }
@@ -96,7 +110,7 @@ function parseFrontmatter(content: string): { properties: Property[]; bodyStart:
     properties.push({
       key: currentKey,
       value: currentList,
-      type: currentKey === 'tags' ? 'tags' : 'list',
+      type: currentKey === "tags" ? "tags" : "list",
     });
   }
 
@@ -105,16 +119,19 @@ function parseFrontmatter(content: string): { properties: Property[]; bodyStart:
 
 // Serialize properties back to YAML frontmatter
 function serializeFrontmatter(properties: Property[]): string {
-  if (properties.length === 0) return '';
+  if (properties.length === 0) return "";
 
-  let yaml = '---\n';
+  let yaml = "---\n";
   for (const prop of properties) {
     if (Array.isArray(prop.value)) {
       if (prop.value.length === 0) {
         yaml += `${prop.key}: []\n`;
-      } else if (prop.value.length <= 3 && prop.value.every(v => !v.includes(','))) {
+      } else if (
+        prop.value.length <= 3 &&
+        prop.value.every((v) => !v.includes(","))
+      ) {
         // Inline array for short lists
-        yaml += `${prop.key}: [${prop.value.join(', ')}]\n`;
+        yaml += `${prop.key}: [${prop.value.join(", ")}]\n`;
       } else {
         // Multi-line list
         yaml += `${prop.key}:\n`;
@@ -126,46 +143,62 @@ function serializeFrontmatter(properties: Property[]): string {
       yaml += `${prop.key}: ${prop.value}\n`;
     }
   }
-  yaml += '---\n';
+  yaml += "---\n";
   return yaml;
 }
 
-export function PropertiesPanel({ content, onContentChange, visible }: PropertiesPanelProps) {
+export function PropertiesPanel({
+  content,
+  onContentChange,
+  visible,
+}: PropertiesPanelProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [newKey, setNewKey] = useState('');
+  const [newKey, setNewKey] = useState("");
   const [showAddProperty, setShowAddProperty] = useState(false);
 
-  const { properties, bodyStart } = useMemo(() => parseFrontmatter(content), [content]);
+  const { properties, bodyStart } = useMemo(
+    () => parseFrontmatter(content),
+    [content],
+  );
   const body = content.slice(bodyStart);
 
-  const updateProperty = useCallback((key: string, value: string | string[]) => {
-    const newProps = properties.map(p => 
-      p.key === key ? { ...p, value } : p
-    );
-    const newFrontmatter = serializeFrontmatter(newProps);
-    onContentChange(newFrontmatter + body);
-  }, [properties, body, onContentChange]);
+  const updateProperty = useCallback(
+    (key: string, value: string | string[]) => {
+      const newProps = properties.map((p) =>
+        p.key === key ? { ...p, value } : p,
+      );
+      const newFrontmatter = serializeFrontmatter(newProps);
+      onContentChange(newFrontmatter + body);
+    },
+    [properties, body, onContentChange],
+  );
 
-  const deleteProperty = useCallback((key: string) => {
-    const newProps = properties.filter(p => p.key !== key);
-    const newFrontmatter = serializeFrontmatter(newProps);
-    onContentChange(newFrontmatter + body);
-  }, [properties, body, onContentChange]);
+  const deleteProperty = useCallback(
+    (key: string) => {
+      const newProps = properties.filter((p) => p.key !== key);
+      const newFrontmatter = serializeFrontmatter(newProps);
+      onContentChange(newFrontmatter + body);
+    },
+    [properties, body, onContentChange],
+  );
 
-  const addProperty = useCallback((key: string, type: Property['type']) => {
-    if (!key.trim()) return;
-    
-    const newProp: Property = {
-      key: key.trim(),
-      value: type === 'list' || type === 'tags' ? [] : '',
-      type,
-    };
-    const newProps = [...properties, newProp];
-    const newFrontmatter = serializeFrontmatter(newProps);
-    onContentChange(newFrontmatter + body);
-    setNewKey('');
-    setShowAddProperty(false);
-  }, [properties, body, onContentChange]);
+  const addProperty = useCallback(
+    (key: string, type: Property["type"]) => {
+      if (!key.trim()) return;
+
+      const newProp: Property = {
+        key: key.trim(),
+        value: type === "list" || type === "tags" ? [] : "",
+        type,
+      };
+      const newProps = [...properties, newProp];
+      const newFrontmatter = serializeFrontmatter(newProps);
+      onContentChange(newFrontmatter + body);
+      setNewKey("");
+      setShowAddProperty(false);
+    },
+    [properties, body, onContentChange],
+  );
 
   if (!visible) return null;
 
@@ -174,7 +207,7 @@ export function PropertiesPanel({ content, onContentChange, visible }: Propertie
       <div className="properties-header">
         <Settings size={14} strokeWidth={2} />
         <span>Properties</span>
-        <button 
+        <button
           className="properties-add-btn"
           onClick={() => setShowAddProperty(!showAddProperty)}
           title="Add property"
@@ -193,16 +226,16 @@ export function PropertiesPanel({ content, onContentChange, visible }: Propertie
             className="property-add-input"
           />
           <div className="property-type-buttons">
-            <button onClick={() => addProperty(newKey, 'text')} title="Text">
+            <button onClick={() => addProperty(newKey, "text")} title="Text">
               <FileText size={12} />
             </button>
-            <button onClick={() => addProperty(newKey, 'date')} title="Date">
+            <button onClick={() => addProperty(newKey, "date")} title="Date">
               <Calendar size={12} />
             </button>
-            <button onClick={() => addProperty(newKey, 'list')} title="List">
+            <button onClick={() => addProperty(newKey, "list")} title="List">
               <List size={12} />
             </button>
-            <button onClick={() => addProperty(newKey, 'tags')} title="Tags">
+            <button onClick={() => addProperty(newKey, "tags")} title="Tags">
               <Tag size={12} />
             </button>
           </div>
@@ -217,13 +250,21 @@ export function PropertiesPanel({ content, onContentChange, visible }: Propertie
             <small>Add YAML frontmatter to define properties.</small>
           </div>
         ) : (
-          properties.map(prop => (
+          properties.map((prop) => (
             <div key={prop.key} className="property-item">
               <div className="property-key">
-                {prop.type === 'date' && <Calendar size={12} className="property-type-icon" />}
-                {prop.type === 'tags' && <Tag size={12} className="property-type-icon" />}
-                {prop.type === 'list' && <List size={12} className="property-type-icon" />}
-                {prop.type === 'text' && <FileText size={12} className="property-type-icon" />}
+                {prop.type === "date" && (
+                  <Calendar size={12} className="property-type-icon" />
+                )}
+                {prop.type === "tags" && (
+                  <Tag size={12} className="property-type-icon" />
+                )}
+                {prop.type === "list" && (
+                  <List size={12} className="property-type-icon" />
+                )}
+                {prop.type === "text" && (
+                  <FileText size={12} className="property-type-icon" />
+                )}
                 <span>{prop.key}</span>
               </div>
               <div className="property-value">
@@ -232,11 +273,14 @@ export function PropertiesPanel({ content, onContentChange, visible }: Propertie
                     {prop.value.map((v, i) => (
                       <span key={i} className="property-tag">
                         {v}
-                        <button 
+                        <button
                           className="property-tag-remove"
                           onClick={() => {
                             const arr = prop.value as string[];
-                            updateProperty(prop.key, arr.filter((_: string, j: number) => j !== i));
+                            updateProperty(
+                              prop.key,
+                              arr.filter((_: string, j: number) => j !== i),
+                            );
                           }}
                         >
                           ×
@@ -248,14 +292,17 @@ export function PropertiesPanel({ content, onContentChange, visible }: Propertie
                       className="property-tag-input"
                       placeholder="Add..."
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && e.currentTarget.value) {
-                          updateProperty(prop.key, [...prop.value as string[], e.currentTarget.value]);
-                          e.currentTarget.value = '';
+                        if (e.key === "Enter" && e.currentTarget.value) {
+                          updateProperty(prop.key, [
+                            ...(prop.value as string[]),
+                            e.currentTarget.value,
+                          ]);
+                          e.currentTarget.value = "";
                         }
                       }}
                     />
                   </div>
-                ) : prop.type === 'date' ? (
+                ) : prop.type === "date" ? (
                   <input
                     type="date"
                     value={prop.value as string}
@@ -271,7 +318,7 @@ export function PropertiesPanel({ content, onContentChange, visible }: Propertie
                   />
                 )}
               </div>
-              <button 
+              <button
                 className="property-delete"
                 onClick={() => deleteProperty(prop.key)}
                 title="Delete property"

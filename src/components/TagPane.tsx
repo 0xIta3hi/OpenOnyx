@@ -1,13 +1,13 @@
 /**
  * Tag Pane - Browse and Filter by Tags
- * 
+ *
  * Shows all tags in the vault with counts,
  * allows clicking to filter/search by tag.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Hash, ChevronRight, ChevronDown } from 'lucide-react';
-import { getAPI } from '../utils/api';
+import React, { useState, useEffect } from "react";
+import { Hash, ChevronRight, ChevronDown } from "lucide-react";
+import { getAPI } from "../utils/api";
 
 interface TagPaneProps {
   visible: boolean;
@@ -30,22 +30,24 @@ export function TagPane({ visible, onTagClick }: TagPaneProps) {
       try {
         const api = getAPI();
         const tagMap = await api.getAllTags();
-        
-        const tagList: TagData[] = Object.entries(tagMap).map(([name, files]) => ({
-          name,
-          count: files.length,
-          files,
-        }));
-        
+
+        const tagList: TagData[] = Object.entries(tagMap).map(
+          ([name, files]) => ({
+            name,
+            count: files.length,
+            files,
+          }),
+        );
+
         // Sort by count descending, then alphabetically
         tagList.sort((a, b) => {
           if (b.count !== a.count) return b.count - a.count;
           return a.name.localeCompare(b.name);
         });
-        
+
         setTags(tagList);
       } catch (err) {
-        console.error('Failed to load tags:', err);
+        console.error("Failed to load tags:", err);
       } finally {
         setLoading(false);
       }
@@ -57,7 +59,7 @@ export function TagPane({ visible, onTagClick }: TagPaneProps) {
   }, [visible]);
 
   const toggleExpand = (tagName: string) => {
-    setExpandedTags(prev => {
+    setExpandedTags((prev) => {
       const next = new Set(prev);
       if (next.has(tagName)) {
         next.delete(tagName);
@@ -84,7 +86,7 @@ export function TagPane({ visible, onTagClick }: TagPaneProps) {
         ) : tags.length === 0 ? (
           <div className="tag-empty">No tags found</div>
         ) : (
-          tags.map(tag => (
+          tags.map((tag) => (
             <div key={tag.name} className="tag-group">
               <button
                 className="tag-item"
@@ -101,16 +103,16 @@ export function TagPane({ visible, onTagClick }: TagPaneProps) {
                 <span className="tag-name">{tag.name}</span>
                 <span className="tag-badge">{tag.count}</span>
               </button>
-              
+
               {expandedTags.has(tag.name) && (
                 <div className="tag-files">
-                  {tag.files.map(file => (
+                  {tag.files.map((file) => (
                     <button
                       key={file}
                       className="tag-file"
                       onClick={() => onTagClick(file)}
                     >
-                      {file.replace('.md', '')}
+                      {file.replace(".md", "")}
                     </button>
                   ))}
                 </div>

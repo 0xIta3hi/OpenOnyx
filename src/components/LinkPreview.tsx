@@ -1,13 +1,13 @@
 /**
  * Link Preview Component
- * 
+ *
  * Shows a tooltip preview when hovering over wiki-links in preview mode.
  * Displays the first few lines of the linked note's content.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import React, { useState, useEffect, useRef } from "react";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 interface LinkPreviewProps {
   noteName: string;
@@ -16,21 +16,26 @@ interface LinkPreviewProps {
   onClose: () => void;
 }
 
-export function LinkPreview({ noteName, content, position, onClose }: LinkPreviewProps) {
+export function LinkPreview({
+  noteName,
+  content,
+  position,
+  onClose,
+}: LinkPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
-  
+
   // Render first ~200 chars of content as preview
   const previewContent = React.useMemo(() => {
     if (!content) return '<p class="preview-empty">Note not found</p>';
-    
+
     // Remove frontmatter
-    let text = content.replace(/^---[\s\S]*?---\s*/m, '');
-    
+    let text = content.replace(/^---[\s\S]*?---\s*/m, "");
+
     // Truncate to ~500 chars for preview
     if (text.length > 500) {
-      text = text.slice(0, 500) + '...';
+      text = text.slice(0, 500) + "...";
     }
-    
+
     // Render markdown
     const html = marked.parse(text, { async: false }) as string;
     return DOMPurify.sanitize(html);
@@ -38,26 +43,26 @@ export function LinkPreview({ noteName, content, position, onClose }: LinkPrevie
 
   // Position adjustment to keep within viewport
   const [adjustedPosition, setAdjustedPosition] = useState(position);
-  
+
   useEffect(() => {
     if (previewRef.current) {
       const rect = previewRef.current.getBoundingClientRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      
+
       let x = position.x;
       let y = position.y;
-      
+
       // Adjust horizontal
       if (x + rect.width > vw - 20) {
         x = Math.max(20, vw - rect.width - 20);
       }
-      
+
       // Adjust vertical
       if (y + rect.height > vh - 20) {
         y = Math.max(20, position.y - rect.height - 10);
       }
-      
+
       setAdjustedPosition({ x, y });
     }
   }, [position]);
@@ -67,7 +72,7 @@ export function LinkPreview({ noteName, content, position, onClose }: LinkPrevie
       ref={previewRef}
       className="link-preview"
       style={{
-        position: 'fixed',
+        position: "fixed",
         left: adjustedPosition.x,
         top: adjustedPosition.y,
         zIndex: 10000,
@@ -77,7 +82,7 @@ export function LinkPreview({ noteName, content, position, onClose }: LinkPrevie
       <div className="link-preview-header">
         <span className="link-preview-title">{noteName}</span>
       </div>
-      <div 
+      <div
         className="link-preview-content"
         dangerouslySetInnerHTML={{ __html: previewContent }}
       />

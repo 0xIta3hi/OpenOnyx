@@ -1,44 +1,54 @@
 /**
  * App - Root Application Component
- * 
+ *
  * Manages the global application state including vault selection,
  * theme, active notes, and layout. Coordinates between all major
  * components via prop drilling (simple and predictable for this scale).
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { TitleBar } from './components/TitleBar';
-import { Sidebar } from './components/Sidebar';
-import { Editor } from './components/editor/Editor';
-import { GraphView } from './components/graph/GraphView';
-import { CanvasView } from './components/canvas/CanvasView';
-import { SearchModal } from './components/SearchModal';
-import { CommandPalette } from './components/CommandPalette';
-import { BacklinksPanel } from './components/BacklinksPanel';
-import { StatusBar } from './components/StatusBar';
-import { WelcomeScreen } from './components/WelcomeScreen';
-import { Modal } from './components/Modal';
-import { Ribbon } from './components/Ribbon';
-import { OutlinePane } from './components/OutlinePane';
-import { TagPane } from './components/TagPane';
-import { OutgoingLinksPanel } from './components/OutgoingLinksPanel';
-import { PropertiesPanel } from './components/PropertiesPanel';
-import { SettingsPage, AppSettings, DEFAULT_SETTINGS } from './components/SettingsPage';
-import { TemplateModal } from './components/TemplateModal';
-import { UnlinkedMentionsPanel } from './components/UnlinkedMentionsPanel';
-import { ThoughtModelPage } from './components/ThoughtModelPage';
-import { FileText, Layout } from 'lucide-react';
-import { Tab, ViewMode, Theme, Command, FileEntry } from './types';
-import { getNoteName, generateId, debounce } from './utils/helpers';
-import { getAPI } from './utils/api';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
+import { TitleBar } from "./components/TitleBar";
+import { Sidebar } from "./components/Sidebar";
+import { Editor } from "./components/editor/Editor";
+import { GraphView } from "./components/graph/GraphView";
+import { CanvasView } from "./components/canvas/CanvasView";
+import { SearchModal } from "./components/SearchModal";
+import { CommandPalette } from "./components/CommandPalette";
+import { BacklinksPanel } from "./components/BacklinksPanel";
+import { StatusBar } from "./components/StatusBar";
+import { WelcomeScreen } from "./components/WelcomeScreen";
+import { Modal } from "./components/Modal";
+import { Ribbon } from "./components/Ribbon";
+import { OutlinePane } from "./components/OutlinePane";
+import { TagPane } from "./components/TagPane";
+import { OutgoingLinksPanel } from "./components/OutgoingLinksPanel";
+import { PropertiesPanel } from "./components/PropertiesPanel";
+import {
+  SettingsPage,
+  AppSettings,
+  DEFAULT_SETTINGS,
+} from "./components/SettingsPage";
+import { TemplateModal } from "./components/TemplateModal";
+import { UnlinkedMentionsPanel } from "./components/UnlinkedMentionsPanel";
+import { ThoughtModelPage } from "./components/ThoughtModelPage";
+import { FileText, Layout } from "lucide-react";
+import { Tab, ViewMode, Theme, Command, FileEntry } from "./types";
+import { getNoteName, generateId, debounce } from "./utils/helpers";
+import { getAPI } from "./utils/api";
 
 const api = getAPI();
 const MIN_EDITOR_FONT_SIZE = 12;
 const MAX_EDITOR_FONT_SIZE = 24;
-type FontZoomScope = 'both' | 'editor' | 'preview';
+type FontZoomScope = "both" | "editor" | "preview";
 
-const isCanvasFile = (path: string) => path.toLowerCase().endsWith('.canvas');
-const GRAPH_TAB_PATH = '__graph__.view';
+const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
+const GRAPH_TAB_PATH = "__graph__.view";
 
 export default function App() {
   // ── Global State ────────────────────────────────────
@@ -63,24 +73,26 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     // Load settings from localStorage on initial render
     try {
-      const saved = localStorage.getItem('notework-settings');
+      const saved = localStorage.getItem("notework-settings");
       if (saved) {
         return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
       }
     } catch (e) {
-      console.error('Failed to load settings:', e);
+      console.error("Failed to load settings:", e);
     }
     return DEFAULT_SETTINGS;
   });
   const [starredNotes, setStarredNotes] = useState<string[]>([]);
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
   const [recentCanvasFiles, setRecentCanvasFiles] = useState<string[]>([]);
-  const [noteContentCache, setNoteContentCache] = useState<Map<string, string>>(new Map());
-  
+  const [noteContentCache, setNoteContentCache] = useState<Map<string, string>>(
+    new Map(),
+  );
+
   // Split pane references and dragging
   const mainContentRef = useRef<HTMLDivElement>(null);
   const [editorPaneWidth, setEditorPaneWidth] = useState(50);
-  
+
   const handlePaneDrag = useCallback((e: MouseEvent) => {
     if (!mainContentRef.current) return;
     const rect = mainContentRef.current.getBoundingClientRect();
@@ -89,42 +101,48 @@ export default function App() {
   }, []);
 
   const stopPaneDrag = useCallback(() => {
-    document.removeEventListener('mousemove', handlePaneDrag);
-    document.removeEventListener('mouseup', stopPaneDrag);
-    document.body.style.cursor = 'default';
+    document.removeEventListener("mousemove", handlePaneDrag);
+    document.removeEventListener("mouseup", stopPaneDrag);
+    document.body.style.cursor = "default";
   }, [handlePaneDrag]);
 
-  const startPaneDrag = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    document.addEventListener('mousemove', handlePaneDrag);
-    document.addEventListener('mouseup', stopPaneDrag);
-    document.body.style.cursor = 'ew-resize';
-  }, [handlePaneDrag, stopPaneDrag]);
+  const startPaneDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      document.addEventListener("mousemove", handlePaneDrag);
+      document.addEventListener("mouseup", stopPaneDrag);
+      document.body.style.cursor = "ew-resize";
+    },
+    [handlePaneDrag, stopPaneDrag],
+  );
 
   // Sidebar drag resizer
   const [sidebarWidth, setSidebarWidth] = useState(260);
-  
+
   const handleSidebarDrag = useCallback((e: MouseEvent) => {
     const newWidth = e.clientX - 48; // minus ribbon width
     if (newWidth > 150 && newWidth < 600) setSidebarWidth(newWidth);
   }, []);
 
   const stopSidebarDrag = useCallback(() => {
-    document.removeEventListener('mousemove', handleSidebarDrag);
-    document.removeEventListener('mouseup', stopSidebarDrag);
-    document.body.style.cursor = 'default';
+    document.removeEventListener("mousemove", handleSidebarDrag);
+    document.removeEventListener("mouseup", stopSidebarDrag);
+    document.body.style.cursor = "default";
   }, [handleSidebarDrag]);
 
-  const startSidebarDrag = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    document.addEventListener('mousemove', handleSidebarDrag);
-    document.addEventListener('mouseup', stopSidebarDrag);
-    document.body.style.cursor = 'ew-resize';
-  }, [handleSidebarDrag, stopSidebarDrag]);
+  const startSidebarDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      document.addEventListener("mousemove", handleSidebarDrag);
+      document.addEventListener("mouseup", stopSidebarDrag);
+      document.body.style.cursor = "ew-resize";
+    },
+    [handleSidebarDrag, stopSidebarDrag],
+  );
 
   // Thought Model panel drag resizer
   const [thoughtModelWidth, setThoughtModelWidth] = useState(400);
-  
+
   const handleThoughtModelDrag = useCallback((e: MouseEvent) => {
     const appWidth = window.innerWidth - 48; // minus ribbon
     const newWidth = appWidth - e.clientX;
@@ -132,69 +150,75 @@ export default function App() {
   }, []);
 
   const stopThoughtModelDrag = useCallback(() => {
-    document.removeEventListener('mousemove', handleThoughtModelDrag);
-    document.removeEventListener('mouseup', stopThoughtModelDrag);
-    document.body.style.cursor = 'default';
+    document.removeEventListener("mousemove", handleThoughtModelDrag);
+    document.removeEventListener("mouseup", stopThoughtModelDrag);
+    document.body.style.cursor = "default";
   }, [handleThoughtModelDrag]);
 
-  const startThoughtModelDrag = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    document.addEventListener('mousemove', handleThoughtModelDrag);
-    document.addEventListener('mouseup', stopThoughtModelDrag);
-    document.body.style.cursor = 'ew-resize';
-  }, [handleThoughtModelDrag, stopThoughtModelDrag]);
+  const startThoughtModelDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      document.addEventListener("mousemove", handleThoughtModelDrag);
+      document.addEventListener("mouseup", stopThoughtModelDrag);
+      document.body.style.cursor = "ew-resize";
+    },
+    [handleThoughtModelDrag, stopThoughtModelDrag],
+  );
 
   // ── File & Editor State ─────────────────────────────
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [currentContent, setCurrentContent] = useState<string>('');
-  const [viewMode, setViewMode] = useState<ViewMode>('editor');
+  const [currentContent, setCurrentContent] = useState<string>("");
+  const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [backlinks, setBacklinks] = useState<string[]>([]);
 
-  const adjustEditorFontSize = useCallback((delta: number, scope: FontZoomScope = 'both') => {
-    if (delta === 0) return;
+  const adjustEditorFontSize = useCallback(
+    (delta: number, scope: FontZoomScope = "both") => {
+      if (delta === 0) return;
 
-    setSettings(prev => {
-      const clampFontSize = (value: number) =>
-        Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, value));
+      setSettings((prev) => {
+        const clampFontSize = (value: number) =>
+          Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, value));
 
-      const currentEditorSize = prev.editorFontSize ?? prev.fontSize;
-      const currentPreviewSize = prev.previewFontSize ?? prev.fontSize;
+        const currentEditorSize = prev.editorFontSize ?? prev.fontSize;
+        const currentPreviewSize = prev.previewFontSize ?? prev.fontSize;
 
-      const nextEditorSize =
-        scope === 'both' || scope === 'editor'
-          ? clampFontSize(currentEditorSize + delta)
-          : currentEditorSize;
-      const nextPreviewSize =
-        scope === 'both' || scope === 'preview'
-          ? clampFontSize(currentPreviewSize + delta)
-          : currentPreviewSize;
-      const nextFontSize =
-        scope === 'both'
-          ? clampFontSize(prev.fontSize + delta)
-          : prev.fontSize;
+        const nextEditorSize =
+          scope === "both" || scope === "editor"
+            ? clampFontSize(currentEditorSize + delta)
+            : currentEditorSize;
+        const nextPreviewSize =
+          scope === "both" || scope === "preview"
+            ? clampFontSize(currentPreviewSize + delta)
+            : currentPreviewSize;
+        const nextFontSize =
+          scope === "both"
+            ? clampFontSize(prev.fontSize + delta)
+            : prev.fontSize;
 
-      if (
-        nextEditorSize === currentEditorSize &&
-        nextPreviewSize === currentPreviewSize &&
-        nextFontSize === prev.fontSize
-      ) {
-        return prev;
-      }
+        if (
+          nextEditorSize === currentEditorSize &&
+          nextPreviewSize === currentPreviewSize &&
+          nextFontSize === prev.fontSize
+        ) {
+          return prev;
+        }
 
-      return {
-        ...prev,
-        fontSize: nextFontSize,
-        editorFontSize: nextEditorSize,
-        previewFontSize: nextPreviewSize,
-      };
-    });
-  }, []);
+        return {
+          ...prev,
+          fontSize: nextFontSize,
+          editorFontSize: nextEditorSize,
+          previewFontSize: nextPreviewSize,
+        };
+      });
+    },
+    [],
+  );
 
   // ── Modal State ─────────────────────────────────────
   const [modal, setModal] = useState<{
-    type: 'prompt' | 'confirm';
+    type: "prompt" | "confirm";
     title: string;
     message: string;
     defaultValue?: string;
@@ -205,55 +229,64 @@ export default function App() {
 
   // Track system color scheme for 'system' theme option
   const [systemPrefersDark, setSystemPrefersDark] = useState(
-    window.matchMedia('(prefers-color-scheme: dark)').matches
+    window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
 
   // Listen for system theme changes
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
   }, []);
 
   // Derive theme from settings (handles 'system' preference)
-  const theme: Theme = settings.theme === 'system'
-    ? (systemPrefersDark ? 'dark' : 'light')
-    : settings.theme;
+  const theme: Theme =
+    settings.theme === "system"
+      ? systemPrefersDark
+        ? "dark"
+        : "light"
+      : settings.theme;
 
   // Apply settings (theme, colors, fonts, etc.)
   useEffect(() => {
     // Apply theme
-    document.documentElement.setAttribute('data-theme', theme);
-    
+    document.documentElement.setAttribute("data-theme", theme);
+
     // Apply CSS custom properties from settings
     const root = document.documentElement;
-    root.style.setProperty('--accent-color', settings.accentColor);
-    root.style.setProperty('--font-family', settings.fontFamily);
-    root.style.setProperty('--editor-font-size', `${settings.fontSize}px`);
-    root.style.setProperty('--editor-pane-font-size', `${settings.editorFontSize ?? settings.fontSize}px`);
-    root.style.setProperty('--preview-font-size', `${settings.previewFontSize ?? settings.fontSize}px`);
-    root.style.setProperty('--editor-line-height', `${settings.lineHeight}`);
-    
-    if (theme === 'custom') {
-      root.style.setProperty('--bg-primary', settings.customBgPrimary);
-      root.style.setProperty('--text-primary', settings.customTextPrimary);
+    root.style.setProperty("--accent-color", settings.accentColor);
+    root.style.setProperty("--font-family", settings.fontFamily);
+    root.style.setProperty("--editor-font-size", `${settings.fontSize}px`);
+    root.style.setProperty(
+      "--editor-pane-font-size",
+      `${settings.editorFontSize ?? settings.fontSize}px`,
+    );
+    root.style.setProperty(
+      "--preview-font-size",
+      `${settings.previewFontSize ?? settings.fontSize}px`,
+    );
+    root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
+
+    if (theme === "custom") {
+      root.style.setProperty("--bg-primary", settings.customBgPrimary);
+      root.style.setProperty("--text-primary", settings.customTextPrimary);
       // derive some other basic colors for decent UI
-      root.style.setProperty('--bg-secondary', settings.customBgPrimary);
-      root.style.setProperty('--bg-elevated', settings.customBgPrimary);
-      root.style.setProperty('--text-secondary', settings.customTextPrimary);
-      root.style.setProperty('--text-muted', settings.customTextPrimary);
+      root.style.setProperty("--bg-secondary", settings.customBgPrimary);
+      root.style.setProperty("--bg-elevated", settings.customBgPrimary);
+      root.style.setProperty("--text-secondary", settings.customTextPrimary);
+      root.style.setProperty("--text-muted", settings.customTextPrimary);
     } else {
-      root.style.removeProperty('--bg-primary');
-      root.style.removeProperty('--text-primary');
-      root.style.removeProperty('--bg-secondary');
-      root.style.removeProperty('--bg-elevated');
-      root.style.removeProperty('--text-secondary');
-      root.style.removeProperty('--text-muted');
+      root.style.removeProperty("--bg-primary");
+      root.style.removeProperty("--text-primary");
+      root.style.removeProperty("--bg-secondary");
+      root.style.removeProperty("--bg-elevated");
+      root.style.removeProperty("--text-secondary");
+      root.style.removeProperty("--text-muted");
     }
-    
+
     // Save settings to localStorage
-    localStorage.setItem('notework-settings', JSON.stringify(settings));
+    localStorage.setItem("notework-settings", JSON.stringify(settings));
   }, [settings, theme]);
 
   // ── Initialize Vault ────────────────────────────────
@@ -266,7 +299,7 @@ export default function App() {
           await refreshFileTree();
         }
       } catch (e) {
-        console.log('No saved vault path');
+        console.log("No saved vault path");
       }
     };
     init();
@@ -278,34 +311,39 @@ export default function App() {
       setShowThoughtModel(false);
       setShowCanvas(false);
       setShowGraph(false);
-      const existingGraphTab = tabs.find(t => t.path === GRAPH_TAB_PATH);
+      const existingGraphTab = tabs.find((t) => t.path === GRAPH_TAB_PATH);
       if (existingGraphTab) {
         setActiveTabId(existingGraphTab.id);
       } else {
         const graphTab: Tab = {
           id: generateId(),
           path: GRAPH_TAB_PATH,
-          name: 'Graph',
+          name: "Graph",
           isModified: false,
         };
-        setTabs(prev => [...prev, graphTab]);
+        setTabs((prev) => [...prev, graphTab]);
         setActiveTabId(graphTab.id);
       }
-      setCurrentContent('');
+      setCurrentContent("");
       setBacklinks([]);
     };
 
-    api.onMenuEvent('menu:open-vault', handleOpenVault);
-    api.onMenuEvent('menu:new-note', handleNewNote);
-    api.onMenuEvent('menu:save', handleSave);
-    api.onMenuEvent('menu:toggle-graph', openGraphFromMenu);
-    api.onMenuEvent('menu:command-palette', () => setShowCommandPalette(true));
-    api.onMenuEvent('menu:toggle-sidebar', () => setShowSidebar(s => !s));
+    api.onMenuEvent("menu:open-vault", handleOpenVault);
+    api.onMenuEvent("menu:new-note", handleNewNote);
+    api.onMenuEvent("menu:save", handleSave);
+    api.onMenuEvent("menu:toggle-graph", openGraphFromMenu);
+    api.onMenuEvent("menu:command-palette", () => setShowCommandPalette(true));
+    api.onMenuEvent("menu:toggle-sidebar", () => setShowSidebar((s) => !s));
 
     return () => {
-      ['menu:open-vault', 'menu:new-note', 'menu:save',
-       'menu:toggle-graph', 'menu:command-palette', 'menu:toggle-sidebar'
-      ].forEach(ch => api.removeMenuListener(ch));
+      [
+        "menu:open-vault",
+        "menu:new-note",
+        "menu:save",
+        "menu:toggle-graph",
+        "menu:command-palette",
+        "menu:toggle-sidebar",
+      ].forEach((ch) => api.removeMenuListener(ch));
     };
   }, [tabs, activeTabId, currentContent]);
 
@@ -315,41 +353,41 @@ export default function App() {
       const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
 
-      if (ctrl && e.key === 'p') {
+      if (ctrl && e.key === "p") {
         e.preventDefault();
         setShowCommandPalette(true);
-      } else if (ctrl && !shift && e.key.toLowerCase() === 'f') {
+      } else if (ctrl && !shift && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        document.dispatchEvent(new CustomEvent('editor:open-search'));
-      } else if (ctrl && shift && e.key.toLowerCase() === 'f') {
+        document.dispatchEvent(new CustomEvent("editor:open-search"));
+      } else if (ctrl && shift && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setShowSearch(true);
-      } else if (ctrl && e.key === 'n') {
+      } else if (ctrl && e.key === "n") {
         e.preventDefault();
         handleNewNote();
-      } else if (ctrl && e.key === 's') {
+      } else if (ctrl && e.key === "s") {
         e.preventDefault();
         handleSave();
-      } else if (ctrl && e.key === 'g') {
+      } else if (ctrl && e.key === "g") {
         e.preventDefault();
         openGraphAsTab();
-      } else if (ctrl && e.shiftKey && e.key.toLowerCase() === 'c') {
+      } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
         e.preventDefault();
         void handleToggleCanvas();
-      } else if (ctrl && e.key === 'b') {
+      } else if (ctrl && e.key === "b") {
         e.preventDefault();
-        setShowSidebar(s => !s);
-      } else if (ctrl && e.key === 'w') {
+        setShowSidebar((s) => !s);
+      } else if (ctrl && e.key === "w") {
         e.preventDefault();
         if (activeTabId) closeTab(activeTabId);
-      } else if (e.key === 'Escape') {
+      } else if (e.key === "Escape") {
         setShowSearch(false);
         setShowCommandPalette(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeTabId, tabs, currentContent]);
 
   // ── Vault Operations ────────────────────────────────
@@ -361,12 +399,12 @@ export default function App() {
         setVaultPath(path);
         setTabs([]);
         setActiveTabId(null);
-        setCurrentContent('');
+        setCurrentContent("");
         await refreshFileTree();
       }
     } catch (e) {
-      console.error('Failed to open vault:', e);
-      alert('Failed to open vault. It may be too large or inaccessible.');
+      console.error("Failed to open vault:", e);
+      alert("Failed to open vault. It may be too large or inaccessible.");
     }
   };
 
@@ -375,72 +413,92 @@ export default function App() {
       const tree = await api.getFileTree();
       setFileTree(tree);
     } catch (e) {
-      console.error('Failed to refresh file tree:', e);
+      console.error("Failed to refresh file tree:", e);
     }
   };
 
-  const promptForInput = useCallback((title: string, message: string, defaultValue = ''): Promise<string | null> => {
-    return new Promise(resolve => {
-      setModal({
-        type: 'prompt',
-        title,
-        message,
-        defaultValue,
-        onConfirm: (result) => {
-          if (typeof result !== 'string') {
-            resolve(null);
-            return;
-          }
-          const trimmed = result.trim();
-          resolve(trimmed ? trimmed : null);
-        },
+  const promptForInput = useCallback(
+    (
+      title: string,
+      message: string,
+      defaultValue = "",
+    ): Promise<string | null> => {
+      return new Promise((resolve) => {
+        setModal({
+          type: "prompt",
+          title,
+          message,
+          defaultValue,
+          onConfirm: (result) => {
+            if (typeof result !== "string") {
+              resolve(null);
+              return;
+            }
+            const trimmed = result.trim();
+            resolve(trimmed ? trimmed : null);
+          },
+        });
       });
-    });
-  }, []);
+    },
+    [],
+  );
 
-  const getUniqueCanvasPath = useCallback(async (requestedName: string): Promise<string> => {
-    const safeBase = requestedName.replace(/[\\/:*?"<>|]/g, '-').trim() || 'Untitled canvas';
-    const canonical = isCanvasFile(safeBase) ? safeBase : `${safeBase}.canvas`;
-    const stem = canonical.replace(/\.canvas$/i, '');
+  const getUniqueCanvasPath = useCallback(
+    async (requestedName: string): Promise<string> => {
+      const safeBase =
+        requestedName.replace(/[\\/:*?"<>|]/g, "-").trim() || "Untitled canvas";
+      const canonical = isCanvasFile(safeBase)
+        ? safeBase
+        : `${safeBase}.canvas`;
+      const stem = canonical.replace(/\.canvas$/i, "");
 
-    let candidate = canonical;
-    let suffix = 2;
-    while (await api.fileExists(candidate)) {
-      candidate = `${stem} ${suffix}.canvas`;
-      suffix += 1;
-    }
-    return candidate;
-  }, []);
+      let candidate = canonical;
+      let suffix = 2;
+      while (await api.fileExists(candidate)) {
+        candidate = `${stem} ${suffix}.canvas`;
+        suffix += 1;
+      }
+      return candidate;
+    },
+    [],
+  );
 
-  const createCanvasDocumentWithPrompt = useCallback(async (defaultName = 'Untitled canvas'): Promise<string | null> => {
-    if (!vaultPath) return null;
+  const createCanvasDocumentWithPrompt = useCallback(
+    async (defaultName = "Untitled canvas"): Promise<string | null> => {
+      if (!vaultPath) return null;
 
-    const input = await promptForInput('New Canvas', 'Enter canvas name:', defaultName);
-    if (!input) return null;
+      const input = await promptForInput(
+        "New Canvas",
+        "Enter canvas name:",
+        defaultName,
+      );
+      if (!input) return null;
 
-    const filePath = await getUniqueCanvasPath(input);
-    const initialCanvas = JSON.stringify({ nodes: [], edges: [] }, null, 2);
+      const filePath = await getUniqueCanvasPath(input);
+      const initialCanvas = JSON.stringify({ nodes: [], edges: [] }, null, 2);
 
-    try {
-      await api.createFile(filePath, initialCanvas);
-      await refreshFileTree();
-      return filePath;
-    } catch {
-      return null;
-    }
-  }, [vaultPath, refreshFileTree, promptForInput, getUniqueCanvasPath]);
+      try {
+        await api.createFile(filePath, initialCanvas);
+        await refreshFileTree();
+        return filePath;
+      } catch {
+        return null;
+      }
+    },
+    [vaultPath, refreshFileTree, promptForInput, getUniqueCanvasPath],
+  );
 
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
     // Track recent files (keep last 20)
-    setRecentFiles(prev => {
-      const filtered = prev.filter(p => p !== filePath);
+    setRecentFiles((prev) => {
+      const filtered = prev.filter((p) => p !== filePath);
       return [filePath, ...filtered].slice(0, 20);
     });
 
     if (isCanvasFile(filePath)) {
-      setRecentCanvasFiles(prev => {
-        const filtered = prev.filter(p => p !== filePath);
+      setRecentCanvasFiles((prev) => {
+        const filtered = prev.filter((p) => p !== filePath);
         return [filePath, ...filtered].slice(0, 12);
       });
       setShowThoughtModel(false);
@@ -448,7 +506,7 @@ export default function App() {
       setShowCanvas(false);
       setCanvasFullScreen(false);
       setCanvasFilePath(filePath);
-      const existingCanvasTab = tabs.find(t => t.path === filePath);
+      const existingCanvasTab = tabs.find((t) => t.path === filePath);
       if (existingCanvasTab) {
         setActiveTabId(existingCanvasTab.id);
       } else {
@@ -458,21 +516,21 @@ export default function App() {
           name: getNoteName(filePath),
           isModified: false,
         };
-        setTabs(prev => [...prev, canvasTab]);
+        setTabs((prev) => [...prev, canvasTab]);
         setActiveTabId(canvasTab.id);
       }
-      setCurrentContent('');
+      setCurrentContent("");
       setBacklinks([]);
       return;
     }
-    
+
     // Check if tab already exists
-    const existingTab = tabs.find(t => t.path === filePath);
+    const existingTab = tabs.find((t) => t.path === filePath);
     if (existingTab) {
       setActiveTabId(existingTab.id);
       const content = await api.readFile(filePath);
       setCurrentContent(content);
-      setViewMode(mode || 'preview');
+      setViewMode(mode || "preview");
       loadBacklinks(filePath);
       return;
     }
@@ -486,10 +544,10 @@ export default function App() {
       isModified: false,
     };
 
-    setTabs(prev => [...prev, newTab]);
+    setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
     setCurrentContent(content);
-    setViewMode(mode || 'preview');
+    setViewMode(mode || "preview");
     loadBacklinks(filePath);
   };
 
@@ -498,92 +556,130 @@ export default function App() {
     setShowCanvas(false);
     setShowGraph(false);
 
-    const existingGraphTab = tabs.find(t => t.path === GRAPH_TAB_PATH);
+    const existingGraphTab = tabs.find((t) => t.path === GRAPH_TAB_PATH);
     if (existingGraphTab) {
       setActiveTabId(existingGraphTab.id);
     } else {
       const graphTab: Tab = {
         id: generateId(),
         path: GRAPH_TAB_PATH,
-        name: 'Graph',
+        name: "Graph",
         isModified: false,
       };
-      setTabs(prev => [...prev, graphTab]);
+      setTabs((prev) => [...prev, graphTab]);
       setActiveTabId(graphTab.id);
     }
 
-    setCurrentContent('');
+    setCurrentContent("");
     setBacklinks([]);
   };
 
   const handleToggleCanvas = async () => {
-    const path = await createCanvasDocumentWithPrompt('Untitled canvas');
+    const path = await createCanvasDocumentWithPrompt("Untitled canvas");
     if (!path) return;
-    await openFile(path, 'preview');
+    await openFile(path, "preview");
   };
 
   const getActiveCanvasPath = useCallback((): string | null => {
-    const tab = tabs.find(t => t.id === activeTabId);
+    const tab = tabs.find((t) => t.id === activeTabId);
     if (tab && isCanvasFile(tab.path)) return tab.path;
     if (showCanvas && canvasFilePath) return canvasFilePath;
     return null;
   }, [tabs, activeTabId, showCanvas, canvasFilePath]);
 
-  const readCanvasDocument = useCallback(async (): Promise<{ path: string; content: string } | null> => {
+  const readCanvasDocument = useCallback(async (): Promise<{
+    path: string;
+    content: string;
+  } | null> => {
     const path = getActiveCanvasPath();
     if (!path) return null;
     try {
       const content = await api.readFile(path);
       return {
         path,
-        content: content?.trim() ? content : JSON.stringify({ nodes: [], edges: [] }, null, 2),
+        content: content?.trim()
+          ? content
+          : JSON.stringify({ nodes: [], edges: [] }, null, 2),
       };
     } catch {
-      return { path, content: JSON.stringify({ nodes: [], edges: [] }, null, 2) };
+      return {
+        path,
+        content: JSON.stringify({ nodes: [], edges: [] }, null, 2),
+      };
     }
   }, [getActiveCanvasPath]);
 
   const handleDuplicateCanvas = useCallback(async () => {
     const source = await readCanvasDocument();
     if (!source) return;
-    const baseName = source.path.replace(/\.canvas$/i, '').split('/').pop() || 'Canvas copy';
-    const targetName = await promptForInput('Duplicate Canvas', 'Enter duplicate canvas name:', `${baseName} copy`);
+    const baseName =
+      source.path
+        .replace(/\.canvas$/i, "")
+        .split("/")
+        .pop() || "Canvas copy";
+    const targetName = await promptForInput(
+      "Duplicate Canvas",
+      "Enter duplicate canvas name:",
+      `${baseName} copy`,
+    );
     if (!targetName) return;
 
     const targetPath = await getUniqueCanvasPath(targetName);
     await api.createFile(targetPath, source.content);
     await refreshFileTree();
-    await openFile(targetPath, 'preview');
-  }, [readCanvasDocument, promptForInput, getUniqueCanvasPath, refreshFileTree, openFile]);
+    await openFile(targetPath, "preview");
+  }, [
+    readCanvasDocument,
+    promptForInput,
+    getUniqueCanvasPath,
+    refreshFileTree,
+    openFile,
+  ]);
 
   const handleSaveCanvasAs = useCallback(async () => {
     const source = await readCanvasDocument();
     if (!source) return;
-    const baseName = source.path.replace(/\.canvas$/i, '').split('/').pop() || 'Canvas';
-    const targetName = await promptForInput('Save Canvas As', 'Enter new canvas name:', `${baseName} copy`);
+    const baseName =
+      source.path
+        .replace(/\.canvas$/i, "")
+        .split("/")
+        .pop() || "Canvas";
+    const targetName = await promptForInput(
+      "Save Canvas As",
+      "Enter new canvas name:",
+      `${baseName} copy`,
+    );
     if (!targetName) return;
 
     const targetPath = await getUniqueCanvasPath(targetName);
     await api.createFile(targetPath, source.content);
     await refreshFileTree();
-    await openFile(targetPath, 'preview');
-  }, [readCanvasDocument, promptForInput, getUniqueCanvasPath, refreshFileTree, openFile]);
+    await openFile(targetPath, "preview");
+  }, [
+    readCanvasDocument,
+    promptForInput,
+    getUniqueCanvasPath,
+    refreshFileTree,
+    openFile,
+  ]);
 
   const handleNewNote = async () => {
     if (!vaultPath) return;
 
     setModal({
-      type: 'prompt',
-      title: 'New Note',
-      message: 'Enter note name:',
+      type: "prompt",
+      title: "New Note",
+      message: "Enter note name:",
       onConfirm: async (name) => {
-        if (typeof name !== 'string' || !name.trim()) return;
+        if (typeof name !== "string" || !name.trim()) return;
 
         const trimmed = name.trim();
-        const fileName = /\.(md|canvas)$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
+        const fileName = /\.(md|canvas)$/i.test(trimmed)
+          ? trimmed
+          : `${trimmed}.md`;
         const content = isCanvasFile(fileName)
           ? JSON.stringify({ nodes: [], edges: [] }, null, 2)
-          : `# ${trimmed.replace('.md', '')}\n\n`;
+          : `# ${trimmed.replace(".md", "")}\n\n`;
 
         await api.createFile(fileName, content);
         await refreshFileTree();
@@ -594,66 +690,89 @@ export default function App() {
 
   const handleSave = async () => {
     if (!activeTabId) return;
-    const tab = tabs.find(t => t.id === activeTabId);
+    const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab) return;
     if (isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH) return;
 
     await api.writeFile(tab.path, currentContent);
-    if (tab.path.toLowerCase().endsWith('.md')) {
-      window.dispatchEvent(new CustomEvent('notework:note-content-changed', {
-        detail: { path: tab.path, content: currentContent },
-      }));
+    if (tab.path.toLowerCase().endsWith(".md")) {
+      window.dispatchEvent(
+        new CustomEvent("notework:note-content-changed", {
+          detail: { path: tab.path, content: currentContent },
+        }),
+      );
     }
-    setTabs(prev =>
-      prev.map(t => t.id === activeTabId ? { ...t, isModified: false } : t)
+    setTabs((prev) =>
+      prev.map((t) => (t.id === activeTabId ? { ...t, isModified: false } : t)),
     );
     await refreshFileTree();
   };
 
   // Auto-save with debounce
-  const handleContentChange = useCallback((content: string) => {
-    setCurrentContent(content);
+  const handleContentChange = useCallback(
+    (content: string) => {
+      setCurrentContent(content);
 
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab && !isCanvasFile(activeTab.path) && activeTab.path !== GRAPH_TAB_PATH && activeTab.path.toLowerCase().endsWith('.md')) {
-      window.dispatchEvent(new CustomEvent('notework:note-content-changed', {
-        detail: { path: activeTab.path, content },
-      }));
-    }
-    
-    // Mark tab as modified
-    setTabs(prev =>
-      prev.map(t => t.id === activeTabId ? { ...t, isModified: true } : t)
-    );
-
-    // Auto-save after 2 seconds of no typing
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      const tab = tabs.find(t => t.id === activeTabId);
-      if (tab) {
-        await api.writeFile(tab.path, content);
-        if (tab.path.toLowerCase().endsWith('.md')) {
-          window.dispatchEvent(new CustomEvent('notework:note-content-changed', {
-            detail: { path: tab.path, content },
-          }));
-        }
-        setTabs(prev =>
-          prev.map(t => t.id === activeTabId ? { ...t, isModified: false } : t)
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      if (
+        activeTab &&
+        !isCanvasFile(activeTab.path) &&
+        activeTab.path !== GRAPH_TAB_PATH &&
+        activeTab.path.toLowerCase().endsWith(".md")
+      ) {
+        window.dispatchEvent(
+          new CustomEvent("notework:note-content-changed", {
+            detail: { path: activeTab.path, content },
+          }),
         );
       }
-    }, 2000);
-  }, [activeTabId, tabs]);
+
+      // Mark tab as modified
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === activeTabId ? { ...t, isModified: true } : t,
+        ),
+      );
+
+      // Auto-save after 2 seconds of no typing
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(async () => {
+        const tab = tabs.find((t) => t.id === activeTabId);
+        if (tab) {
+          await api.writeFile(tab.path, content);
+          if (tab.path.toLowerCase().endsWith(".md")) {
+            window.dispatchEvent(
+              new CustomEvent("notework:note-content-changed", {
+                detail: { path: tab.path, content },
+              }),
+            );
+          }
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === activeTabId ? { ...t, isModified: false } : t,
+            ),
+          );
+        }
+      }, 2000);
+    },
+    [activeTabId, tabs],
+  );
 
   const closeTab = async (tabId: string) => {
-    const tab = tabs.find(t => t.id === tabId);
+    const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
 
     // Auto-save before closing
-    if (tab.isModified && tab.id === activeTabId && !isCanvasFile(tab.path) && tab.path !== GRAPH_TAB_PATH) {
+    if (
+      tab.isModified &&
+      tab.id === activeTabId &&
+      !isCanvasFile(tab.path) &&
+      tab.path !== GRAPH_TAB_PATH
+    ) {
       await api.writeFile(tab.path, currentContent);
     }
 
-    const newTabs = tabs.filter(t => t.id !== tabId);
+    const newTabs = tabs.filter((t) => t.id !== tabId);
     setTabs(newTabs);
 
     if (activeTabId === tabId) {
@@ -661,7 +780,7 @@ export default function App() {
         const lastTab = newTabs[newTabs.length - 1];
         setActiveTabId(lastTab.id);
         if (isCanvasFile(lastTab.path) || lastTab.path === GRAPH_TAB_PATH) {
-          setCurrentContent('');
+          setCurrentContent("");
           setBacklinks([]);
         } else {
           const content = await api.readFile(lastTab.path);
@@ -670,7 +789,7 @@ export default function App() {
         }
       } else {
         setActiveTabId(null);
-        setCurrentContent('');
+        setCurrentContent("");
         setBacklinks([]);
       }
     }
@@ -697,19 +816,21 @@ export default function App() {
 
     const filePath = findNote(fileTree, linkName);
     if (filePath) {
-      await openFile(filePath, 'preview');
+      await openFile(filePath, "preview");
       // TODO: Scroll to heading if specified
       if (heading) {
         // Dispatch event to scroll to heading in preview
         setTimeout(() => {
           const headingEl = document.querySelector(
-            `.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6`
+            `.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6`,
           );
           // Find the heading that matches
-          const allHeadings = document.querySelectorAll('.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6');
+          const allHeadings = document.querySelectorAll(
+            ".markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6",
+          );
           for (const h of allHeadings) {
             if (h.textContent?.toLowerCase().includes(heading.toLowerCase())) {
-              h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              h.scrollIntoView({ behavior: "smooth", block: "start" });
               break;
             }
           }
@@ -721,7 +842,7 @@ export default function App() {
       const content = `# ${linkName}\n\n`;
       await api.createFile(newPath, content);
       await refreshFileTree();
-      await openFile(newPath, 'preview');
+      await openFile(newPath, "preview");
     }
   };
 
@@ -738,66 +859,75 @@ export default function App() {
   // ── File Management ─────────────────────────────────
   const handleDeleteFile = async (filePath: string, isDir: boolean = false) => {
     setModal({
-      type: 'confirm',
-      title: isDir ? 'Delete Folder' : 'Delete File',
-      message: `Delete "${getNoteName(filePath)}"${isDir ? ' and all its contents' : ''}?`,
+      type: "confirm",
+      title: isDir ? "Delete Folder" : "Delete File",
+      message: `Delete "${getNoteName(filePath)}"${isDir ? " and all its contents" : ""}?`,
       onConfirm: async (confirmed) => {
         if (!confirmed) return;
-        
+
         try {
           if (isDir) {
             await api.deleteDirectory(filePath);
           } else {
             await api.deleteFile(filePath);
           }
-          
+
           // Close tab if open (for files) or close all tabs within the folder
           if (isDir) {
             // Close all tabs that are within this directory
-            tabs.forEach(tab => {
-              if (tab.path.startsWith(filePath + '/') || tab.path === filePath) {
+            tabs.forEach((tab) => {
+              if (
+                tab.path.startsWith(filePath + "/") ||
+                tab.path === filePath
+              ) {
                 closeTab(tab.id);
               }
             });
           } else {
-            const tab = tabs.find(t => t.path === filePath);
+            const tab = tabs.find((t) => t.path === filePath);
             if (tab) closeTab(tab.id);
           }
-          
+
           await refreshFileTree();
         } catch (error) {
-          console.error('Failed to delete:', error);
+          console.error("Failed to delete:", error);
         }
       },
     });
   };
 
   const handleRenameFile = async (oldPath: string, newName: string) => {
-    const dir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/') + 1) : '';
+    const dir = oldPath.includes("/")
+      ? oldPath.substring(0, oldPath.lastIndexOf("/") + 1)
+      : "";
     const raw = newName.trim();
     const hasExt = /\.[a-z0-9]+$/i.test(raw);
-    const inferredExt = isCanvasFile(oldPath) ? '.canvas' : '.md';
+    const inferredExt = isCanvasFile(oldPath) ? ".canvas" : ".md";
     const normalized = hasExt ? raw : `${raw}${inferredExt}`;
     const newPath = dir + normalized;
-    
+
     await api.renameFile(oldPath, newPath);
-    
+
     // Update tab if open
-    setTabs(prev =>
-      prev.map(t => t.path === oldPath ? { ...t, path: newPath, name: getNoteName(newPath) } : t)
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.path === oldPath
+          ? { ...t, path: newPath, name: getNoteName(newPath) }
+          : t,
+      ),
     );
-    
+
     await refreshFileTree();
   };
 
   const handleCreateFolder = async (parentPath: string) => {
     setModal({
-      type: 'prompt',
-      title: 'New Folder',
-      message: 'Enter folder name:',
+      type: "prompt",
+      title: "New Folder",
+      message: "Enter folder name:",
       onConfirm: async (name) => {
-        if (typeof name !== 'string' || !name.trim()) return;
-        
+        if (typeof name !== "string" || !name.trim()) return;
+
         const folderPath = parentPath ? `${parentPath}/${name}` : name;
         await api.createDirectory(folderPath);
         await refreshFileTree();
@@ -815,44 +945,48 @@ export default function App() {
   const handleTemplateInsert = (templateContent: string) => {
     if (activeTabId) {
       // Insert at cursor or append
-      const newContent = currentContent + '\n' + templateContent;
+      const newContent = currentContent + "\n" + templateContent;
       setCurrentContent(newContent);
       // Mark as modified
-      setTabs(prev =>
-        prev.map(t => t.id === activeTabId ? { ...t, isModified: true } : t)
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === activeTabId ? { ...t, isModified: true } : t,
+        ),
       );
     }
   };
 
   // Handle image paste/drop - embed compressed inline data URL (no attachments folder write)
   const handleImagePaste = async (file: File): Promise<string | null> => {
-    const readFileAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        if (typeof result === 'string' && result.startsWith('data:image/')) {
-          resolve(result);
-          return;
-        }
-        reject(new Error('Unsupported image data'));
-      };
-      reader.onerror = () => reject(new Error('Failed to read image'));
-      reader.readAsDataURL(blob);
-    });
+    const readFileAsDataUrl = (blob: Blob) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result === "string" && result.startsWith("data:image/")) {
+            resolve(result);
+            return;
+          }
+          reject(new Error("Unsupported image data"));
+        };
+        reader.onerror = () => reject(new Error("Failed to read image"));
+        reader.readAsDataURL(blob);
+      });
 
-    const loadImage = (imageFile: File) => new Promise<HTMLImageElement>((resolve, reject) => {
-      const blobUrl = URL.createObjectURL(imageFile);
-      const image = new Image();
-      image.onload = () => {
-        URL.revokeObjectURL(blobUrl);
-        resolve(image);
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(blobUrl);
-        reject(new Error('Failed to decode image'));
-      };
-      image.src = blobUrl;
-    });
+    const loadImage = (imageFile: File) =>
+      new Promise<HTMLImageElement>((resolve, reject) => {
+        const blobUrl = URL.createObjectURL(imageFile);
+        const image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(blobUrl);
+          resolve(image);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(blobUrl);
+          reject(new Error("Failed to decode image"));
+        };
+        image.src = blobUrl;
+      });
 
     const compressImageData = async (imageFile: File): Promise<string> => {
       const original = await readFileAsDataUrl(imageFile);
@@ -873,18 +1007,18 @@ export default function App() {
         const width = Math.max(1, Math.round(naturalWidth * ratio));
         const height = Math.max(1, Math.round(naturalHeight * ratio));
 
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext("2d");
         if (!context) break;
         context.drawImage(image, 0, 0, width, height);
 
         for (const quality of qualitySteps) {
-          const webpData = canvas.toDataURL('image/webp', quality);
-          const candidate = webpData.startsWith('data:image/webp')
+          const webpData = canvas.toDataURL("image/webp", quality);
+          const candidate = webpData.startsWith("data:image/webp")
             ? webpData
-            : canvas.toDataURL('image/jpeg', quality);
+            : canvas.toDataURL("image/jpeg", quality);
 
           if (candidate.length < best.length) {
             best = candidate;
@@ -902,19 +1036,22 @@ export default function App() {
     try {
       return await compressImageData(file);
     } catch (err) {
-      console.error('Failed to embed image:', err);
+      console.error("Failed to embed image:", err);
       return null;
     }
   };
 
   // Get list of all note names for autocomplete
   const allNoteNames = useMemo(() => {
-    const getNotes = (entries: FileEntry[]): { name: string; path: string }[] => {
+    const getNotes = (
+      entries: FileEntry[],
+    ): { name: string; path: string }[] => {
       const notes: { name: string; path: string }[] = [];
       for (const entry of entries) {
-        if (!entry.isDirectory && entry.extension === '.md') {
+        if (!entry.isDirectory && entry.extension === ".md") {
           // Extract name without extension
-          const name = entry.path.replace(/\.md$/, '').split('/').pop() || entry.path;
+          const name =
+            entry.path.replace(/\.md$/, "").split("/").pop() || entry.path;
           notes.push({ name, path: entry.path });
         }
         if (entry.children) {
@@ -927,62 +1064,206 @@ export default function App() {
   }, [fileTree]);
 
   // Get note content for embeds - uses cache or fetches
-  const getNoteContent = useCallback((noteName: string): string | null => {
-    // Check cache first
-    const cached = noteContentCache.get(noteName);
-    if (cached !== undefined) return cached;
-    
-    // Find the note path
-    const note = allNoteNames.find(n => 
-      n.name.toLowerCase() === noteName.toLowerCase()
-    );
-    
-    if (!note) return null;
-    
-    // Async fetch and update cache (won't be immediate but will work on re-render)
-    api.readFile(note.path).then(content => {
-      setNoteContentCache(prev => new Map(prev).set(noteName, content));
-    });
-    
-    return null;
-  }, [noteContentCache, allNoteNames]);
+  const getNoteContent = useCallback(
+    (noteName: string): string | null => {
+      // Check cache first
+      const cached = noteContentCache.get(noteName);
+      if (cached !== undefined) return cached;
+
+      // Find the note path
+      const note = allNoteNames.find(
+        (n) => n.name.toLowerCase() === noteName.toLowerCase(),
+      );
+
+      if (!note) return null;
+
+      // Async fetch and update cache (won't be immediate but will work on re-render)
+      api.readFile(note.path).then((content) => {
+        setNoteContentCache((prev) => new Map(prev).set(noteName, content));
+      });
+
+      return null;
+    },
+    [noteContentCache, allNoteNames],
+  );
 
   // ── Commands (for Command Palette) ──────────────────
   const commands: Command[] = [
-    { id: 'new-note', label: 'New Note', shortcut: 'Ctrl+N', action: handleNewNote, category: 'File' },
-    { id: 'open-vault', label: 'Open Vault', shortcut: 'Ctrl+O', action: handleOpenVault, category: 'File' },
-    { id: 'save', label: 'Save Current Note', shortcut: 'Ctrl+S', action: handleSave, category: 'File' },
-    { id: 'search-file', label: 'Find/Replace in Note', shortcut: 'Ctrl+F', action: () => document.dispatchEvent(new CustomEvent('editor:open-search')), category: 'Search' },
-    { id: 'search-vault', label: 'Search Entire Vault', shortcut: 'Ctrl+Shift+F', action: () => setShowSearch(true), category: 'Search' },
-    { id: 'graph', label: 'Open Graph Tab', shortcut: 'Ctrl+G', action: () => openGraphAsTab(), category: 'View' },
-    { id: 'sidebar', label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setShowSidebar(s => !s), category: 'View' },
-    { id: 'backlinks', label: 'Toggle Backlinks Panel', action: () => setShowBacklinks(b => !b), category: 'View' },
-    { id: 'outline', label: 'Toggle Outline', action: () => setShowOutline(o => !o), category: 'View' },
-    { id: 'tags', label: 'Toggle Tag Pane', action: () => setShowTags(t => !t), category: 'View' },
-    { id: 'outgoing-links', label: 'Toggle Outgoing Links', action: () => setShowOutgoingLinks(o => !o), category: 'View' },
-    { id: 'properties', label: 'Toggle Properties Panel', action: () => setShowProperties(p => !p), category: 'View' },
-    { id: 'daily-note', label: 'Create Daily Note', action: handleCreateDailyNote, category: 'Notes' },
-    { id: 'insert-template', label: 'Insert Template', action: () => setShowTemplateModal(true), category: 'Notes' },
-    { id: 'thought-model', label: 'Open Thought Model', action: () => setShowThoughtModel(true), category: 'AI' },
-    { id: 'theme', label: 'Toggle Theme', action: () => setSettings(s => ({ ...s, theme: s.theme === 'dark' ? 'light' : 'dark' })), category: 'Settings' },
-    { id: 'settings', label: 'Open Settings', action: () => setShowSettings(true), category: 'Settings' },
-    { id: 'editor-mode', label: 'Editor View', action: () => setViewMode('editor'), category: 'View' },
-    { id: 'preview-mode', label: 'Preview View', action: () => setViewMode('preview'), category: 'View' },
-    { id: 'split-mode', label: 'Split View', action: () => setViewMode('split'), category: 'View' },
-    { id: 'canvas', label: 'New Canvas', shortcut: 'Ctrl+Shift+C', action: () => { void handleToggleCanvas(); }, category: 'Canvas' },
-    { id: 'canvas-duplicate', label: 'Duplicate Active Canvas', action: () => { void handleDuplicateCanvas(); }, category: 'Canvas' },
-    { id: 'canvas-save-as', label: 'Save Canvas As', action: () => { void handleSaveCanvasAs(); }, category: 'Canvas' },
+    {
+      id: "new-note",
+      label: "New Note",
+      shortcut: "Ctrl+N",
+      action: handleNewNote,
+      category: "File",
+    },
+    {
+      id: "open-vault",
+      label: "Open Vault",
+      shortcut: "Ctrl+O",
+      action: handleOpenVault,
+      category: "File",
+    },
+    {
+      id: "save",
+      label: "Save Current Note",
+      shortcut: "Ctrl+S",
+      action: handleSave,
+      category: "File",
+    },
+    {
+      id: "search-file",
+      label: "Find/Replace in Note",
+      shortcut: "Ctrl+F",
+      action: () =>
+        document.dispatchEvent(new CustomEvent("editor:open-search")),
+      category: "Search",
+    },
+    {
+      id: "search-vault",
+      label: "Search Entire Vault",
+      shortcut: "Ctrl+Shift+F",
+      action: () => setShowSearch(true),
+      category: "Search",
+    },
+    {
+      id: "graph",
+      label: "Open Graph Tab",
+      shortcut: "Ctrl+G",
+      action: () => openGraphAsTab(),
+      category: "View",
+    },
+    {
+      id: "sidebar",
+      label: "Toggle Sidebar",
+      shortcut: "Ctrl+B",
+      action: () => setShowSidebar((s) => !s),
+      category: "View",
+    },
+    {
+      id: "backlinks",
+      label: "Toggle Backlinks Panel",
+      action: () => setShowBacklinks((b) => !b),
+      category: "View",
+    },
+    {
+      id: "outline",
+      label: "Toggle Outline",
+      action: () => setShowOutline((o) => !o),
+      category: "View",
+    },
+    {
+      id: "tags",
+      label: "Toggle Tag Pane",
+      action: () => setShowTags((t) => !t),
+      category: "View",
+    },
+    {
+      id: "outgoing-links",
+      label: "Toggle Outgoing Links",
+      action: () => setShowOutgoingLinks((o) => !o),
+      category: "View",
+    },
+    {
+      id: "properties",
+      label: "Toggle Properties Panel",
+      action: () => setShowProperties((p) => !p),
+      category: "View",
+    },
+    {
+      id: "daily-note",
+      label: "Create Daily Note",
+      action: handleCreateDailyNote,
+      category: "Notes",
+    },
+    {
+      id: "insert-template",
+      label: "Insert Template",
+      action: () => setShowTemplateModal(true),
+      category: "Notes",
+    },
+    {
+      id: "thought-model",
+      label: "Open Thought Model",
+      action: () => setShowThoughtModel(true),
+      category: "AI",
+    },
+    {
+      id: "theme",
+      label: "Toggle Theme",
+      action: () =>
+        setSettings((s) => ({
+          ...s,
+          theme: s.theme === "dark" ? "light" : "dark",
+        })),
+      category: "Settings",
+    },
+    {
+      id: "settings",
+      label: "Open Settings",
+      action: () => setShowSettings(true),
+      category: "Settings",
+    },
+    {
+      id: "editor-mode",
+      label: "Editor View",
+      action: () => setViewMode("editor"),
+      category: "View",
+    },
+    {
+      id: "preview-mode",
+      label: "Preview View",
+      action: () => setViewMode("preview"),
+      category: "View",
+    },
+    {
+      id: "split-mode",
+      label: "Split View",
+      action: () => setViewMode("split"),
+      category: "View",
+    },
+    {
+      id: "canvas",
+      label: "New Canvas",
+      shortcut: "Ctrl+Shift+C",
+      action: () => {
+        void handleToggleCanvas();
+      },
+      category: "Canvas",
+    },
+    {
+      id: "canvas-duplicate",
+      label: "Duplicate Active Canvas",
+      action: () => {
+        void handleDuplicateCanvas();
+      },
+      category: "Canvas",
+    },
+    {
+      id: "canvas-save-as",
+      label: "Save Canvas As",
+      action: () => {
+        void handleSaveCanvasAs();
+      },
+      category: "Canvas",
+    },
     ...recentCanvasFiles.slice(0, 8).map((path, index) => ({
       id: `canvas-recent-${index}`,
       label: `Open Recent Canvas: ${getNoteName(path)}`,
-      action: () => { void openFile(path, 'preview'); },
-      category: 'Canvas',
+      action: () => {
+        void openFile(path, "preview");
+      },
+      category: "Canvas",
     })),
-    { id: 'unlinked-mentions', label: 'Toggle Unlinked Mentions', action: () => setShowUnlinkedMentions(u => !u), category: 'View' },
+    {
+      id: "unlinked-mentions",
+      label: "Toggle Unlinked Mentions",
+      action: () => setShowUnlinkedMentions((u) => !u),
+      category: "View",
+    },
   ];
 
   // Get active tab info
-  const activeTab = tabs.find(t => t.id === activeTabId);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTabIsCanvas = !!activeTab && isCanvasFile(activeTab.path);
   const activeTabIsGraph = !!activeTab && activeTab.path === GRAPH_TAB_PATH;
   const hasAuxPane = showGraph || showCanvas;
@@ -995,31 +1276,34 @@ export default function App() {
 
   return (
     <div className="app">
-      <TitleBar 
+      <TitleBar
         theme={theme}
-        onCommandPalette={() => setShowCommandPalette(true)} 
+        onCommandPalette={() => setShowCommandPalette(true)}
         commands={commands}
       />
-      
-      <div className="app-body" style={{ '--sidebar-width': `${sidebarWidth}px` } as any}>
+
+      <div
+        className="app-body"
+        style={{ "--sidebar-width": `${sidebarWidth}px` } as any}
+      >
         {vaultPath && (
           <Ribbon
             onNewNote={handleNewNote}
             onSearch={() => {
-               document.dispatchEvent(new CustomEvent('editor:open-search'));
+              document.dispatchEvent(new CustomEvent("editor:open-search"));
             }}
             onGraph={() => {
               openGraphAsTab();
             }}
-            onToggleExplorer={() => setShowSidebar(s => !s)}
+            onToggleExplorer={() => setShowSidebar((s) => !s)}
             onSettings={() => setShowSettings(true)}
             onDailyNote={handleCreateDailyNote}
-            onToggleTags={() => setShowTags(t => !t)}
-            onToggleOutline={() => setShowOutline(o => !o)}
+            onToggleTags={() => setShowTags((t) => !t)}
+            onToggleOutline={() => setShowOutline((o) => !o)}
             onThoughtModel={() => {
               setShowGraph(false);
               setShowCanvas(false);
-              setShowThoughtModel(t => !t);
+              setShowThoughtModel((t) => !t);
             }}
             onCanvas={() => {
               void handleToggleCanvas();
@@ -1039,13 +1323,14 @@ export default function App() {
           onRefresh={refreshFileTree}
           onCollapse={() => setShowSidebar(false)}
           onToggleStar={(path) => {
-            setStarredNotes(prev => prev.includes(path)
-                ? prev.filter(p => p !== path)
-                : [...prev, path]
+            setStarredNotes((prev) =>
+              prev.includes(path)
+                ? prev.filter((p) => p !== path)
+                : [...prev, path],
             );
           }}
         />
-        
+
         {showSidebar && vaultPath && (
           <div
             className="resizer"
@@ -1054,72 +1339,101 @@ export default function App() {
           />
         )}
 
-        <div className="main-content" ref={mainContentRef} style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%' }}>
+        <div
+          className="main-content"
+          ref={mainContentRef}
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            width: "100%",
+            height: "100%",
+          }}
+        >
           {!vaultPath ? (
             <WelcomeScreen onOpenVault={handleOpenVault} />
           ) : (
             <>
               {/* Editor pane - hidden when graph/canvas is fullscreen, or when no note is open and an auxiliary pane is visible */}
               {shouldShowEditorPane && (
-                <div style={{ 
-                  flex: hasAuxPane ? `0 0 ${editorPaneWidth}%` : 1,
-                  height: '100%', 
-                  overflow: 'hidden', 
-                  display: 'flex', 
-                  flexDirection: 'column' 
-                }}>
+                <div
+                  style={{
+                    flex: hasAuxPane ? `0 0 ${editorPaneWidth}%` : 1,
+                    height: "100%",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
                   {activeTab ? (
                     <Editor
                       tabs={tabs}
                       activeTabId={activeTabId!}
                       content={currentContent}
                       viewMode={viewMode}
-                      specialContent={activeTabIsCanvas ? (
-                        <CanvasView
-                          onClose={() => closeTab(activeTab.id)}
-                          isFullScreen={false}
-                          onToggleFullScreen={() => setCanvasFullScreen(f => !f)}
-                          theme={theme}
-                          vaultPath={vaultPath}
-                          fileTree={fileTree}
-                          canvasFilePath={activeTab.path}
-                          onOpenFile={(path) => openFile(path)}
-                          onNewCanvas={() => { void handleToggleCanvas(); }}
-                          onDuplicateCanvas={() => { void handleDuplicateCanvas(); }}
-                          onSaveCanvasAs={() => { void handleSaveCanvasAs(); }}
-                          recentCanvasFiles={recentCanvasFiles}
-                          onOpenRecentCanvas={(path) => { void openFile(path, 'preview'); }}
-                        />
-                      ) : activeTabIsGraph ? (
-                        <GraphView
-                          onNodeClick={async (linkName, heading, notePath) => {
-                            setViewMode('preview');
-                            if (notePath) {
-                              await openFile(notePath, 'preview');
-                              return;
+                      specialContent={
+                        activeTabIsCanvas ? (
+                          <CanvasView
+                            onClose={() => closeTab(activeTab.id)}
+                            isFullScreen={false}
+                            onToggleFullScreen={() =>
+                              setCanvasFullScreen((f) => !f)
                             }
-                            await handleLinkClick(linkName, heading);
-                          }}
-                          onClose={() => closeTab(activeTab.id)}
-                          isFullScreen={false}
-                          onToggleFullScreen={() => setGraphFullScreen(f => !f)}
-                          theme={theme}
-                          vaultPath={vaultPath}
-                          localNodePath={undefined}
-                        />
-                      ) : undefined}
+                            theme={theme}
+                            vaultPath={vaultPath}
+                            fileTree={fileTree}
+                            canvasFilePath={activeTab.path}
+                            onOpenFile={(path) => openFile(path)}
+                            onNewCanvas={() => {
+                              void handleToggleCanvas();
+                            }}
+                            onDuplicateCanvas={() => {
+                              void handleDuplicateCanvas();
+                            }}
+                            onSaveCanvasAs={() => {
+                              void handleSaveCanvasAs();
+                            }}
+                            recentCanvasFiles={recentCanvasFiles}
+                            onOpenRecentCanvas={(path) => {
+                              void openFile(path, "preview");
+                            }}
+                          />
+                        ) : activeTabIsGraph ? (
+                          <GraphView
+                            onNodeClick={async (
+                              linkName,
+                              heading,
+                              notePath,
+                            ) => {
+                              setViewMode("preview");
+                              if (notePath) {
+                                await openFile(notePath, "preview");
+                                return;
+                              }
+                              await handleLinkClick(linkName, heading);
+                            }}
+                            onClose={() => closeTab(activeTab.id)}
+                            isFullScreen={false}
+                            onToggleFullScreen={() =>
+                              setGraphFullScreen((f) => !f)
+                            }
+                            theme={theme}
+                            vaultPath={vaultPath}
+                            localNodePath={undefined}
+                          />
+                        ) : undefined
+                      }
                       availableNotes={allNoteNames}
                       onAdjustFontSize={adjustEditorFontSize}
                       onTabSelect={async (id) => {
                         setActiveTabId(id);
-                        const tab = tabs.find(t => t.id === id);
+                        const tab = tabs.find((t) => t.id === id);
                         if (tab) {
                           if (isCanvasFile(tab.path)) {
-                            await openFile(tab.path, 'preview');
+                            await openFile(tab.path, "preview");
                             return;
                           }
                           if (tab.path === GRAPH_TAB_PATH) {
-                            setCurrentContent('');
+                            setCurrentContent("");
                             setBacklinks([]);
                             return;
                           }
@@ -1137,45 +1451,55 @@ export default function App() {
                     />
                   ) : (
                     <div className="empty-state">
-                      <div className="empty-icon"><FileText size={48} strokeWidth={1} color="var(--text-muted)" /></div>
-                      <div className="empty-text">Select a note or create a new one</div>
+                      <div className="empty-icon">
+                        <FileText
+                          size={48}
+                          strokeWidth={1}
+                          color="var(--text-muted)"
+                        />
+                      </div>
+                      <div className="empty-text">
+                        Select a note or create a new one
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-              
+
               {/* Resizer for Graph/Canvas */}
               {shouldShowPaneResizer && (
-                <div
-                  className="resizer"
-                  onMouseDown={startPaneDrag}
-                />
+                <div className="resizer" onMouseDown={startPaneDrag} />
               )}
-              
+
               {/* Graph View pane (legacy side pane mode) */}
               {showGraph && !activeTabIsGraph && (
-                <div style={{ 
-                  flex: (graphFullScreen || !shouldShowEditorPane) ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`,
-                  height: '100%', 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden'
-                }}>
+                <div
+                  style={{
+                    flex:
+                      graphFullScreen || !shouldShowEditorPane
+                        ? 1
+                        : `0 0 calc(${100 - editorPaneWidth}% - 4px)`,
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
                   <GraphView
                     onNodeClick={async (linkName, heading, notePath) => {
-                      setViewMode('preview');
+                      setViewMode("preview");
                       if (graphFullScreen) {
                         setGraphFullScreen(false);
                       }
                       if (notePath) {
-                        await openFile(notePath, 'preview');
+                        await openFile(notePath, "preview");
                         return;
                       }
                       await handleLinkClick(linkName, heading);
                     }}
                     onClose={() => setShowGraph(false)}
                     isFullScreen={graphFullScreen}
-                    onToggleFullScreen={() => setGraphFullScreen(f => !f)}
+                    onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
                     theme={theme}
                     vaultPath={vaultPath}
                     localNodePath={activeTab?.path}
@@ -1184,27 +1508,40 @@ export default function App() {
               )}
               {/* Canvas View pane */}
               {showCanvas && (
-                <div style={{
-                  flex: (canvasFullScreen || !shouldShowEditorPane) ? 1 : `0 0 calc(${100 - editorPaneWidth}% - 4px)`,
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden'
-                }}>
+                <div
+                  style={{
+                    flex:
+                      canvasFullScreen || !shouldShowEditorPane
+                        ? 1
+                        : `0 0 calc(${100 - editorPaneWidth}% - 4px)`,
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
                   <CanvasView
                     onClose={() => setShowCanvas(false)}
                     isFullScreen={canvasFullScreen}
-                    onToggleFullScreen={() => setCanvasFullScreen(f => !f)}
+                    onToggleFullScreen={() => setCanvasFullScreen((f) => !f)}
                     theme={theme}
                     vaultPath={vaultPath}
                     fileTree={fileTree}
                     canvasFilePath={canvasFilePath}
                     onOpenFile={(path) => openFile(path)}
-                    onNewCanvas={() => { void handleToggleCanvas(); }}
-                    onDuplicateCanvas={() => { void handleDuplicateCanvas(); }}
-                    onSaveCanvasAs={() => { void handleSaveCanvasAs(); }}
+                    onNewCanvas={() => {
+                      void handleToggleCanvas();
+                    }}
+                    onDuplicateCanvas={() => {
+                      void handleDuplicateCanvas();
+                    }}
+                    onSaveCanvasAs={() => {
+                      void handleSaveCanvasAs();
+                    }}
                     recentCanvasFiles={recentCanvasFiles}
-                    onOpenRecentCanvas={(path) => { void openFile(path, 'preview'); }}
+                    onOpenRecentCanvas={(path) => {
+                      void openFile(path, "preview");
+                    }}
                   />
                 </div>
               )}
@@ -1220,7 +1557,10 @@ export default function App() {
               onMouseDown={startThoughtModelDrag}
               style={{ zIndex: 100 }}
             />
-            <div className="thought-model-panel" style={{ width: `${thoughtModelWidth}px` }}>
+            <div
+              className="thought-model-panel"
+              style={{ width: `${thoughtModelWidth}px` }}
+            >
               <ThoughtModelPage
                 vaultPath={vaultPath}
                 theme={theme}
@@ -1243,21 +1583,23 @@ export default function App() {
                 content={currentContent}
                 onHeadingClick={(line) => {
                   // Scroll to line in editor
-                  document.dispatchEvent(new CustomEvent('editor:goto-line', { detail: line }));
+                  document.dispatchEvent(
+                    new CustomEvent("editor:goto-line", { detail: line }),
+                  );
                 }}
                 visible={showOutline}
               />
             )}
-            
+
             {showOutgoingLinks && (
               <OutgoingLinksPanel
                 content={currentContent}
-                existingNotes={allNoteNames.map(n => n.path)}
+                existingNotes={allNoteNames.map((n) => n.path)}
                 onLinkClick={handleLinkClick}
                 visible={showOutgoingLinks}
               />
             )}
-            
+
             {showBacklinks && (
               <BacklinksPanel
                 backlinks={backlinks}
@@ -1265,11 +1607,11 @@ export default function App() {
                 onClose={() => setShowBacklinks(false)}
               />
             )}
-            
+
             {showUnlinkedMentions && (
               <UnlinkedMentionsPanel
                 currentNotePath={activeTab?.path || null}
-                currentNoteName={activeTab?.name || ''}
+                currentNoteName={activeTab?.name || ""}
                 visible={showUnlinkedMentions}
                 onNavigate={(path, line) => {
                   openFile(path);
@@ -1279,7 +1621,7 @@ export default function App() {
             )}
           </>
         )}
-        
+
         {showTags && (
           <TagPane
             visible={showTags}

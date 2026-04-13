@@ -1,19 +1,19 @@
 /**
  * Electron API Mock
- * 
+ *
  * Provides a browser-compatible mock of the Electron API for development
  * and testing outside of Electron. Uses localStorage and in-memory storage
  * to simulate vault operations.
  */
 
-import type { ElectronAPI } from '../../electron/preload';
+import type { ElectronAPI } from "../../electron/preload";
 
 // In-memory file system for browser mode
 const mockFiles: Record<string, string> = {};
 let mockVaultPath: string | null = null;
 
 const SAMPLE_NOTES: Record<string, string> = {
-  'Welcome.md': `# Welcome to OpenObsidian
+  "Welcome.md": `# Welcome to OpenObsidian
 
 OpenObsidian is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
 
@@ -34,7 +34,7 @@ OpenObsidian is your **local-first knowledge management tool**. Think of it as a
 
 Check out [[Getting Started]] to learn more, or explore [[Markdown Guide]] for formatting.
 `,
-  'Getting Started.md': `# Getting Started
+  "Getting Started.md": `# Getting Started
 
 Welcome to your OpenObsidian vault! Here's everything you need to know.
 
@@ -73,7 +73,7 @@ This creates a bidirectional link. The linked note will show this note in its **
 
 #getting-started #tutorial
 `,
-  'Markdown Guide.md': `# Markdown Guide
+  "Markdown Guide.md": `# Markdown Guide
 
 OpenObsidian supports full **GitHub Flavored Markdown**. Here's a quick reference.
 
@@ -106,7 +106,7 @@ See also: [[Getting Started]], [[Knowledge Management]]
 
 #markdown #reference #guide
 `,
-  'Knowledge Management.md': `# Knowledge Management
+  "Knowledge Management.md": `# Knowledge Management
 
 Effective knowledge management is about **capturing, connecting, and retrieving** information efficiently.
 
@@ -130,7 +130,7 @@ Effective knowledge management is about **capturing, connecting, and retrieving*
 
 #knowledge-management #zettelkasten #productivity
 `,
-  'Project Ideas.md': `# Project Ideas
+  "Project Ideas.md": `# Project Ideas
 
 A collection of project ideas for your [[Knowledge Management]] system.
 
@@ -175,24 +175,24 @@ function extractTags(content: string): string[] {
 }
 
 function getBasename(path: string): string {
-  return path.split('/').pop() || path;
+  return path.split("/").pop() || path;
 }
 
 /** Build file tree from mock files */
 function buildFileTree(): any[] {
   const tree: any[] = [];
-  const dirs: Record<string, any[]> = { '': tree };
+  const dirs: Record<string, any[]> = { "": tree };
 
   // Sort paths to ensure directories come before their contents
   const paths = Object.keys(mockFiles).sort();
 
   for (const filePath of paths) {
-    const parts = filePath.split('/');
+    const parts = filePath.split("/");
     const fileName = parts.pop()!;
-    const dirPath = parts.join('/');
+    const dirPath = parts.join("/");
 
     // Ensure directory entries exist
-    let currentPath = '';
+    let currentPath = "";
     for (const part of parts) {
       const parentPath = currentPath;
       currentPath = currentPath ? `${currentPath}/${part}` : part;
@@ -202,7 +202,7 @@ function buildFileTree(): any[] {
           path: currentPath,
           absolutePath: `/mock-vault/${currentPath}`,
           isDirectory: true,
-          extension: '',
+          extension: "",
           children: [] as any[],
           modifiedAt: Date.now(),
           size: 0,
@@ -217,7 +217,7 @@ function buildFileTree(): any[] {
       path: filePath,
       absolutePath: `/mock-vault/${filePath}`,
       isDirectory: false,
-      extension: '.md',
+      extension: ".md",
       modifiedAt: Date.now(),
       size: mockFiles[filePath].length,
     };
@@ -234,8 +234,8 @@ export function createMockAPI(): ElectronAPI {
   const mockAPI: ElectronAPI = {
     // Vault
     openVaultDialog: async () => {
-      mockVaultPath = '/mock-vault';
-      return '/mock-vault';
+      mockVaultPath = "/mock-vault";
+      return "/mock-vault";
     },
     setVaultPath: async (path: string) => {
       mockVaultPath = path;
@@ -250,7 +250,8 @@ export function createMockAPI(): ElectronAPI {
       // Find the subdirectory
       const findDir = (entries: any[], path: string): any[] => {
         for (const entry of entries) {
-          if (entry.path === path && entry.isDirectory) return entry.children || [];
+          if (entry.path === path && entry.isDirectory)
+            return entry.children || [];
           if (entry.children) {
             const found = findDir(entry.children, path);
             if (found.length) return found;
@@ -262,7 +263,7 @@ export function createMockAPI(): ElectronAPI {
     },
 
     readFile: async (filePath: string) => {
-      return mockFiles[filePath] || '';
+      return mockFiles[filePath] || "";
     },
 
     writeFile: async (filePath: string, content: string) => {
@@ -271,7 +272,7 @@ export function createMockAPI(): ElectronAPI {
 
     createFile: async (filePath: string, content?: string) => {
       if (!mockFiles[filePath]) {
-        mockFiles[filePath] = content || '';
+        mockFiles[filePath] = content || "";
       }
     },
 
@@ -292,7 +293,7 @@ export function createMockAPI(): ElectronAPI {
 
     deleteDirectory: async (dirPath: string) => {
       for (const key of Object.keys(mockFiles)) {
-        if (key.startsWith(dirPath + '/')) {
+        if (key.startsWith(dirPath + "/")) {
           delete mockFiles[key];
         }
       }
@@ -309,17 +310,20 @@ export function createMockAPI(): ElectronAPI {
       if (!query.trim()) return [];
       const q = query.toLowerCase();
       return Object.entries(mockFiles)
-        .filter(([path, content]) =>
-          path.toLowerCase().includes(q) || content.toLowerCase().includes(q)
+        .filter(
+          ([path, content]) =>
+            path.toLowerCase().includes(q) || content.toLowerCase().includes(q),
         )
         .map(([path, content]) => ({
           path,
-          name: path.replace(/\.md$/, ''),
-          matches: [{
-            key: 'content',
-            indices: [[0, 0]] as readonly [number, number][],
-            value: content.substring(0, 200),
-          }],
+          name: path.replace(/\.md$/, ""),
+          matches: [
+            {
+              key: "content",
+              indices: [[0, 0]] as readonly [number, number][],
+              value: content.substring(0, 200),
+            },
+          ],
           score: path.toLowerCase().includes(q) ? 0.1 : 0.5,
         }))
         .slice(0, 20);
@@ -335,7 +339,7 @@ export function createMockAPI(): ElectronAPI {
       const childrenMap: Map<string, Set<string>> = new Map();
 
       for (const [filePath, content] of Object.entries(mockFiles)) {
-        const name = getBasename(filePath).replace(/\.md$/, '');
+        const name = getBasename(filePath).replace(/\.md$/, "");
         const key = name.toLowerCase();
         if (!nodes.has(key)) {
           nodes.set(key, { id: key, name, path: filePath, connections: 0 });
@@ -346,7 +350,12 @@ export function createMockAPI(): ElectronAPI {
         for (const linkTarget of links) {
           const targetKey = linkTarget.toLowerCase();
           if (!nodes.has(targetKey)) {
-            nodes.set(targetKey, { id: targetKey, name: linkTarget, path: '', connections: 0 });
+            nodes.set(targetKey, {
+              id: targetKey,
+              name: linkTarget,
+              path: "",
+              connections: 0,
+            });
             childrenMap.set(targetKey, new Set());
           }
           edges.push({ source: key, target: targetKey });
@@ -357,22 +366,25 @@ export function createMockAPI(): ElectronAPI {
 
       // Calculate total descendants for each node recursively
       const descendantCache: Map<string, number> = new Map();
-      
-      const countDescendants = (nodeId: string, visited: Set<string>): number => {
+
+      const countDescendants = (
+        nodeId: string,
+        visited: Set<string>,
+      ): number => {
         // Prevent infinite loops from cycles
         if (visited.has(nodeId)) return 0;
-        
+
         // Return cached value if available
         if (descendantCache.has(nodeId)) return descendantCache.get(nodeId)!;
-        
+
         visited.add(nodeId);
         const children = childrenMap.get(nodeId) || new Set();
-        
+
         let total = children.size; // Direct children
         for (const child of children) {
           total += countDescendants(child, new Set(visited));
         }
-        
+
         descendantCache.set(nodeId, total);
         return total;
       };
@@ -386,12 +398,12 @@ export function createMockAPI(): ElectronAPI {
     },
 
     getBacklinks: async (filePath: string) => {
-      const targetName = getBasename(filePath).replace(/\.md$/, '');
+      const targetName = getBasename(filePath).replace(/\.md$/, "");
       const backlinks: string[] = [];
       for (const [path, content] of Object.entries(mockFiles)) {
         if (path === filePath) continue;
         const links = extractLinks(content);
-        if (links.some(l => l.toLowerCase() === targetName.toLowerCase())) {
+        if (links.some((l) => l.toLowerCase() === targetName.toLowerCase())) {
           backlinks.push(path);
         }
       }
@@ -410,10 +422,11 @@ export function createMockAPI(): ElectronAPI {
 
     // Daily note
     createDailyNote: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString().split("T")[0];
       const fileName = `Daily Notes/${today}.md`;
       if (!mockFiles[fileName]) {
-        mockFiles[fileName] = `# ${today}\n\n## Tasks\n\n- [ ] \n\n## Notes\n\n\n`;
+        mockFiles[fileName] =
+          `# ${today}\n\n## Tasks\n\n- [ ] \n\n## Notes\n\n\n`;
       }
       return fileName;
     },
@@ -441,15 +454,15 @@ export function createMockAPI(): ElectronAPI {
     thoughtModel: {
       build: async (_vaultPath: string, _numClusters?: number) => {
         // Simulate a build that completes quickly
-        return { job_id: 'mock-job-123', status: 'indexing' };
+        return { job_id: "mock-job-123", status: "indexing" };
       },
       status: async (_jobId: string) => {
         // Always return done for mock
         return {
-          job_id: 'mock-job-123',
-          status: 'done',
+          job_id: "mock-job-123",
+          status: "done",
           progress: 100,
-          message: 'Complete (mock)',
+          message: "Complete (mock)",
           total_notes: 5,
           total_chunks: 12,
         };
@@ -460,42 +473,57 @@ export function createMockAPI(): ElectronAPI {
           themes: [
             {
               cluster_id: 0,
-              keywords: ['knowledge', 'management', 'zettelkasten', 'notes', 'ideas'],
+              keywords: [
+                "knowledge",
+                "management",
+                "zettelkasten",
+                "notes",
+                "ideas",
+              ],
               representative_chunks: [
                 {
-                  chunk_id: 'km_0',
-                  note_id: 'km',
-                  note_path: 'Knowledge Management.md',
-                  note_title: 'Knowledge Management',
-                  chunk_text: 'Effective knowledge management is about capturing, connecting, and retrieving information efficiently.',
+                  chunk_id: "km_0",
+                  note_id: "km",
+                  note_path: "Knowledge Management.md",
+                  note_title: "Knowledge Management",
+                  chunk_text:
+                    "Effective knowledge management is about capturing, connecting, and retrieving information efficiently.",
                 },
               ],
               note_count: 2,
             },
             {
               cluster_id: 1,
-              keywords: ['markdown', 'formatting', 'code', 'text', 'guide'],
+              keywords: ["markdown", "formatting", "code", "text", "guide"],
               representative_chunks: [
                 {
-                  chunk_id: 'md_0',
-                  note_id: 'md',
-                  note_path: 'Markdown Guide.md',
-                  note_title: 'Markdown Guide',
-                  chunk_text: 'OpenObsidian supports full GitHub Flavored Markdown. Here\'s a quick reference.',
+                  chunk_id: "md_0",
+                  note_id: "md",
+                  note_path: "Markdown Guide.md",
+                  note_title: "Markdown Guide",
+                  chunk_text:
+                    "OpenObsidian supports full GitHub Flavored Markdown. Here's a quick reference.",
                 },
               ],
               note_count: 1,
             },
             {
               cluster_id: 2,
-              keywords: ['getting', 'started', 'tutorial', 'shortcuts', 'linking'],
+              keywords: [
+                "getting",
+                "started",
+                "tutorial",
+                "shortcuts",
+                "linking",
+              ],
               representative_chunks: [
                 {
-                  chunk_id: 'gs_0',
-                  note_id: 'gs',
-                  note_path: 'Getting Started.md',
-                  note_title: 'Getting Started',
-                  chunk_text: 'Welcome to your OpenObsidian vault! Here\'s everything you need to know.',
+                  chunk_id: "gs_0",
+                  note_id: "gs",
+                  note_path: "Getting Started.md",
+                  note_title: "Getting Started",
+                  chunk_text:
+                    "Welcome to your OpenObsidian vault! Here's everything you need to know.",
                 },
               ],
               note_count: 2,
@@ -513,7 +541,7 @@ export function createMockAPI(): ElectronAPI {
           if (content.toLowerCase().includes(q)) {
             results.push({
               score: 0.75,
-              note_title: path.replace('.md', ''),
+              note_title: path.replace(".md", ""),
               note_path: path,
               chunk_text: content.substring(0, 200),
               cluster_id: 0,
@@ -523,7 +551,7 @@ export function createMockAPI(): ElectronAPI {
         return { query, results: results.slice(0, 10) };
       },
       clear: async (_jobId: string) => {
-        return { status: 'cleared', job_id: 'mock-job-123' };
+        return { status: "cleared", job_id: "mock-job-123" };
       },
       health: async () => true,
     },

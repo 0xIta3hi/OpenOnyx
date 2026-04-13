@@ -1,6 +1,6 @@
 /**
  * Settings Page - Application Configuration
- * 
+ *
  * Comprehensive settings interface for customizing:
  * - Appearance (theme, fonts, colors)
  * - Editor (font size, line height, etc.)
@@ -8,19 +8,28 @@
  * - Hotkeys (keyboard shortcuts)
  */
 
-import React, { useState, useEffect } from 'react';
-import { X, Palette, Type, FileText, Keyboard, Info, FolderOpen, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import {
+  X,
+  Palette,
+  Type,
+  FileText,
+  Keyboard,
+  Info,
+  FolderOpen,
+  RotateCcw,
+} from "lucide-react";
 
 export interface AppSettings {
   // Appearance
-  theme: 'dark' | 'light' | 'system' | 'custom';
+  theme: "dark" | "light" | "system" | "custom";
   accentColor: string;
   fontFamily: string;
-  
+
   // Custom Colors (used when theme === 'custom')
   customBgPrimary: string;
   customTextPrimary: string;
-  
+
   // Editor
   fontSize: number;
   editorFontSize: number;
@@ -30,19 +39,19 @@ export interface AppSettings {
   showLineNumbers: boolean;
   wordWrap: boolean;
   spellcheck: boolean;
-  
+
   // Files & Links
   defaultNoteLocation: string;
   attachmentLocation: string;
-  linkFormat: 'shortest' | 'relative' | 'absolute';
+  linkFormat: "shortest" | "relative" | "absolute";
   useWikiLinks: boolean;
   autoCreateNotes: boolean;
-  
+
   // Daily Notes
   dailyNoteFolder: string;
   dailyNoteFormat: string;
   dailyNoteTemplate: string;
-  
+
   // Graph
   nodeSize: number;
   nodeSpacing: number;
@@ -50,13 +59,13 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'dark',
-  accentColor: '#7c3aed',
-  fontFamily: 'Inter, system-ui, sans-serif',
-  
-  customBgPrimary: '#151515',
-  customTextPrimary: '#e6e6e6',
-  
+  theme: "dark",
+  accentColor: "#7c3aed",
+  fontFamily: "Inter, system-ui, sans-serif",
+
+  customBgPrimary: "#151515",
+  customTextPrimary: "#e6e6e6",
+
   fontSize: 15,
   editorFontSize: 15,
   previewFontSize: 15,
@@ -65,17 +74,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showLineNumbers: false,
   wordWrap: true,
   spellcheck: false,
-  
-  defaultNoteLocation: '',
-  attachmentLocation: 'attachments',
-  linkFormat: 'shortest',
+
+  defaultNoteLocation: "",
+  attachmentLocation: "attachments",
+  linkFormat: "shortest",
   useWikiLinks: true,
   autoCreateNotes: true,
-  
-  dailyNoteFolder: 'Daily Notes',
-  dailyNoteFormat: 'YYYY-MM-DD',
-  dailyNoteTemplate: '',
-  
+
+  dailyNoteFolder: "Daily Notes",
+  dailyNoteFormat: "YYYY-MM-DD",
+  dailyNoteTemplate: "",
+
   nodeSize: 5,
   nodeSpacing: 100,
   showOrphans: true,
@@ -87,13 +96,21 @@ interface SettingsPageProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'appearance' | 'editor' | 'files' | 'hotkeys' | 'about';
+type SettingsSection = "appearance" | "editor" | "files" | "hotkeys" | "about";
 
-export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPageProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('appearance');
+export function SettingsPage({
+  settings,
+  onSettingsChange,
+  onClose,
+}: SettingsPageProps) {
+  const [activeSection, setActiveSection] =
+    useState<SettingsSection>("appearance");
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
 
-  const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+  const updateSetting = <K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K],
+  ) => {
     const updated = { ...localSettings, [key]: value };
     setLocalSettings(updated);
     onSettingsChange(updated);
@@ -105,11 +122,11 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
   };
 
   const sections = [
-    { id: 'appearance' as const, label: 'Appearance', icon: Palette },
-    { id: 'editor' as const, label: 'Editor', icon: Type },
-    { id: 'files' as const, label: 'Files & Links', icon: FileText },
-    { id: 'hotkeys' as const, label: 'Hotkeys', icon: Keyboard },
-    { id: 'about' as const, label: 'About', icon: Info },
+    { id: "appearance" as const, label: "Appearance", icon: Palette },
+    { id: "editor" as const, label: "Editor", icon: Type },
+    { id: "files" as const, label: "Files & Links", icon: FileText },
+    { id: "hotkeys" as const, label: "Hotkeys", icon: Keyboard },
+    { id: "about" as const, label: "About", icon: Info },
   ];
 
   return (
@@ -124,10 +141,10 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
 
         <div className="settings-body">
           <nav className="settings-nav">
-            {sections.map(section => (
+            {sections.map((section) => (
               <button
                 key={section.id}
-                className={`settings-nav-item ${activeSection === section.id ? 'active' : ''}`}
+                className={`settings-nav-item ${activeSection === section.id ? "active" : ""}`}
                 onClick={() => setActiveSection(section.id)}
               >
                 <section.icon size={16} />
@@ -137,16 +154,21 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
           </nav>
 
           <div className="settings-content">
-            {activeSection === 'appearance' && (
+            {activeSection === "appearance" && (
               <div className="settings-section">
                 <h3>Appearance</h3>
-                
+
                 <div className="setting-group">
                   <label className="setting-label">
                     <span>Theme</span>
                     <select
                       value={localSettings.theme}
-                      onChange={(e) => updateSetting('theme', e.target.value as AppSettings['theme'])}
+                      onChange={(e) =>
+                        updateSetting(
+                          "theme",
+                          e.target.value as AppSettings["theme"],
+                        )
+                      }
                       className="setting-select"
                     >
                       <option value="dark">Dark</option>
@@ -157,7 +179,7 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                   </label>
                 </div>
 
-                {localSettings.theme === 'custom' && (
+                {localSettings.theme === "custom" && (
                   <>
                     <div className="setting-group">
                       <label className="setting-label">
@@ -165,7 +187,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                         <input
                           type="color"
                           value={localSettings.customBgPrimary}
-                          onChange={(e) => updateSetting('customBgPrimary', e.target.value)}
+                          onChange={(e) =>
+                            updateSetting("customBgPrimary", e.target.value)
+                          }
                           className="setting-color"
                         />
                       </label>
@@ -176,7 +200,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                         <input
                           type="color"
                           value={localSettings.customTextPrimary}
-                          onChange={(e) => updateSetting('customTextPrimary', e.target.value)}
+                          onChange={(e) =>
+                            updateSetting("customTextPrimary", e.target.value)
+                          }
                           className="setting-color"
                         />
                       </label>
@@ -190,7 +216,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="color"
                       value={localSettings.accentColor}
-                      onChange={(e) => updateSetting('accentColor', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting("accentColor", e.target.value)
+                      }
                       className="setting-color"
                     />
                   </label>
@@ -201,24 +229,34 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <span>Font Family</span>
                     <select
                       value={localSettings.fontFamily}
-                      onChange={(e) => updateSetting('fontFamily', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting("fontFamily", e.target.value)
+                      }
                       className="setting-select"
                     >
-                      <option value="Inter, system-ui, sans-serif">Inter (Default)</option>
-                      <option value="'SF Pro Display', system-ui, sans-serif">SF Pro</option>
-                      <option value="'Segoe UI', system-ui, sans-serif">Segoe UI</option>
+                      <option value="Inter, system-ui, sans-serif">
+                        Inter (Default)
+                      </option>
+                      <option value="'SF Pro Display', system-ui, sans-serif">
+                        SF Pro
+                      </option>
+                      <option value="'Segoe UI', system-ui, sans-serif">
+                        Segoe UI
+                      </option>
                       <option value="Georgia, serif">Georgia</option>
-                      <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                      <option value="'JetBrains Mono', monospace">
+                        JetBrains Mono
+                      </option>
                     </select>
                   </label>
                 </div>
               </div>
             )}
 
-            {activeSection === 'editor' && (
+            {activeSection === "editor" && (
               <div className="settings-section">
                 <h3>Editor</h3>
-                
+
                 <div className="setting-group">
                   <label className="setting-label">
                     <span>Font Size</span>
@@ -255,7 +293,12 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                         max="2.0"
                         step="0.1"
                         value={localSettings.lineHeight}
-                        onChange={(e) => updateSetting('lineHeight', parseFloat(e.target.value))}
+                        onChange={(e) =>
+                          updateSetting(
+                            "lineHeight",
+                            parseFloat(e.target.value),
+                          )
+                        }
                       />
                       <span>{localSettings.lineHeight}</span>
                     </div>
@@ -267,7 +310,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <span>Tab Size</span>
                     <select
                       value={localSettings.tabSize}
-                      onChange={(e) => updateSetting('tabSize', parseInt(e.target.value))}
+                      onChange={(e) =>
+                        updateSetting("tabSize", parseInt(e.target.value))
+                      }
                       className="setting-select"
                     >
                       <option value="2">2 spaces</option>
@@ -283,7 +328,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="checkbox"
                       checked={localSettings.wordWrap}
-                      onChange={(e) => updateSetting('wordWrap', e.target.checked)}
+                      onChange={(e) =>
+                        updateSetting("wordWrap", e.target.checked)
+                      }
                     />
                     <span className="toggle-slider"></span>
                   </label>
@@ -295,7 +342,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="checkbox"
                       checked={localSettings.spellcheck}
-                      onChange={(e) => updateSetting('spellcheck', e.target.checked)}
+                      onChange={(e) =>
+                        updateSetting("spellcheck", e.target.checked)
+                      }
                     />
                     <span className="toggle-slider"></span>
                   </label>
@@ -303,10 +352,10 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
               </div>
             )}
 
-            {activeSection === 'files' && (
+            {activeSection === "files" && (
               <div className="settings-section">
                 <h3>Files & Links</h3>
-                
+
                 <div className="setting-group">
                   <label className="setting-label">
                     <span>Default Location for New Notes</span>
@@ -314,7 +363,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                       <input
                         type="text"
                         value={localSettings.defaultNoteLocation}
-                        onChange={(e) => updateSetting('defaultNoteLocation', e.target.value)}
+                        onChange={(e) =>
+                          updateSetting("defaultNoteLocation", e.target.value)
+                        }
                         placeholder="Vault root"
                         className="setting-input"
                       />
@@ -331,7 +382,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="text"
                       value={localSettings.attachmentLocation}
-                      onChange={(e) => updateSetting('attachmentLocation', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting("attachmentLocation", e.target.value)
+                      }
                       placeholder="attachments"
                       className="setting-input"
                     />
@@ -344,7 +397,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="checkbox"
                       checked={localSettings.useWikiLinks}
-                      onChange={(e) => updateSetting('useWikiLinks', e.target.checked)}
+                      onChange={(e) =>
+                        updateSetting("useWikiLinks", e.target.checked)
+                      }
                     />
                     <span className="toggle-slider"></span>
                   </label>
@@ -359,7 +414,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="checkbox"
                       checked={localSettings.autoCreateNotes}
-                      onChange={(e) => updateSetting('autoCreateNotes', e.target.checked)}
+                      onChange={(e) =>
+                        updateSetting("autoCreateNotes", e.target.checked)
+                      }
                     />
                     <span className="toggle-slider"></span>
                   </label>
@@ -369,14 +426,16 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                 </div>
 
                 <h4>Daily Notes</h4>
-                
+
                 <div className="setting-group">
                   <label className="setting-label">
                     <span>Daily Notes Folder</span>
                     <input
                       type="text"
                       value={localSettings.dailyNoteFolder}
-                      onChange={(e) => updateSetting('dailyNoteFolder', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting("dailyNoteFolder", e.target.value)
+                      }
                       placeholder="Daily Notes"
                       className="setting-input"
                     />
@@ -389,7 +448,9 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
                     <input
                       type="text"
                       value={localSettings.dailyNoteFormat}
-                      onChange={(e) => updateSetting('dailyNoteFormat', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting("dailyNoteFormat", e.target.value)
+                      }
                       placeholder="YYYY-MM-DD"
                       className="setting-input"
                     />
@@ -401,13 +462,13 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
               </div>
             )}
 
-            {activeSection === 'hotkeys' && (
+            {activeSection === "hotkeys" && (
               <div className="settings-section">
                 <h3>Hotkeys</h3>
                 <p className="setting-description">
                   Keyboard shortcuts for common actions.
                 </p>
-                
+
                 <div className="hotkey-list">
                   <div className="hotkey-item">
                     <span>New Note</span>
@@ -453,27 +514,34 @@ export function SettingsPage({ settings, onSettingsChange, onClose }: SettingsPa
               </div>
             )}
 
-            {activeSection === 'about' && (
+            {activeSection === "about" && (
               <div className="settings-section">
                 <h3>About OpenObsidian</h3>
-                
+
                 <div className="about-info">
                   <div className="about-logo">📝</div>
                   <h4>OpenObsidian</h4>
                   <p className="about-version">Version 1.0.0</p>
                   <p className="about-description">
-                    A local-first knowledge management tool for creating, editing, 
-                    and linking Markdown notes. Built with Electron, React, and TypeScript.
+                    A local-first knowledge management tool for creating,
+                    editing, and linking Markdown notes. Built with Electron,
+                    React, and TypeScript.
                   </p>
-                  
+
                   <div className="about-links">
-                    <a href="#" className="about-link">Documentation</a>
-                    <a href="#" className="about-link">Release Notes</a>
-                    <a href="#" className="about-link">Report Issue</a>
+                    <a href="#" className="about-link">
+                      Documentation
+                    </a>
+                    <a href="#" className="about-link">
+                      Release Notes
+                    </a>
+                    <a href="#" className="about-link">
+                      Report Issue
+                    </a>
                   </div>
                 </div>
 
-                <div className="setting-group" style={{ marginTop: '2rem' }}>
+                <div className="setting-group" style={{ marginTop: "2rem" }}>
                   <button className="setting-reset-btn" onClick={resetSettings}>
                     <RotateCcw size={14} />
                     Reset to Default Settings

@@ -4,28 +4,28 @@
  */
 
 // ── Color ────────────────────────────────────────────
-export type CanvasColor = '1' | '2' | '3' | '4' | '5' | '6' | string;
+export type CanvasColor = "1" | "2" | "3" | "4" | "5" | "6" | string;
 
 export const CANVAS_PRESET_COLORS: Record<string, string> = {
-  '1': '#fb464c', // red
-  '2': '#e9973f', // orange
-  '3': '#e0de71', // yellow
-  '4': '#44cf6e', // green
-  '5': '#53dfdd', // cyan
-  '6': '#a882ff', // purple
+  "1": "#fb464c", // red
+  "2": "#e9973f", // orange
+  "3": "#e0de71", // yellow
+  "4": "#44cf6e", // green
+  "5": "#53dfdd", // cyan
+  "6": "#a882ff", // purple
 };
 
 export function resolveCanvasColor(color?: CanvasColor): string | undefined {
   if (!color) return undefined;
-  if (color.startsWith('#')) return color;
+  if (color.startsWith("#")) return color;
   return CANVAS_PRESET_COLORS[color] || undefined;
 }
 
 // ── Node Types ───────────────────────────────────────
-export type CanvasNodeType = 'text' | 'file' | 'link' | 'group';
-export type EdgeSide = 'top' | 'right' | 'bottom' | 'left';
-export type EdgeEnd = 'none' | 'arrow';
-export type GroupBackgroundStyle = 'cover' | 'ratio' | 'repeat';
+export type CanvasNodeType = "text" | "file" | "link" | "group";
+export type EdgeSide = "top" | "right" | "bottom" | "left";
+export type EdgeEnd = "none" | "arrow";
+export type GroupBackgroundStyle = "cover" | "ratio" | "repeat";
 
 export interface CanvasNodeBase {
   id: string;
@@ -39,29 +39,33 @@ export interface CanvasNodeBase {
 }
 
 export interface CanvasTextNode extends CanvasNodeBase {
-  type: 'text';
+  type: "text";
   text: string;
 }
 
 export interface CanvasFileNode extends CanvasNodeBase {
-  type: 'file';
+  type: "file";
   file: string;
   subpath?: string;
 }
 
 export interface CanvasLinkNode extends CanvasNodeBase {
-  type: 'link';
+  type: "link";
   url: string;
 }
 
 export interface CanvasGroupNode extends CanvasNodeBase {
-  type: 'group';
+  type: "group";
   label?: string;
   background?: string;
   backgroundStyle?: GroupBackgroundStyle;
 }
 
-export type CanvasNode = CanvasTextNode | CanvasFileNode | CanvasLinkNode | CanvasGroupNode;
+export type CanvasNode =
+  | CanvasTextNode
+  | CanvasFileNode
+  | CanvasLinkNode
+  | CanvasGroupNode;
 
 // ── Edge Types ───────────────────────────────────────
 export interface CanvasEdge {
@@ -91,7 +95,17 @@ export interface CanvasViewport {
 }
 
 export interface DragState {
-  type: 'none' | 'pan' | 'node' | 'edge' | 'select' | 'resize' | 'draw' | 'erase' | 'lasso' | 'scribble-move';
+  type:
+    | "none"
+    | "pan"
+    | "node"
+    | "edge"
+    | "select"
+    | "resize"
+    | "draw"
+    | "erase"
+    | "lasso"
+    | "scribble-move";
   nodeId?: string;
   startX: number;
   startY: number;
@@ -104,7 +118,10 @@ export interface DragState {
   edgeFromSide?: EdgeSide;
   resizeHandle?: string;
   selectionBounds?: { x: number; y: number; width: number; height: number };
-  selectionOriginById?: Record<string, { x: number; y: number; width: number; height: number }>;
+  selectionOriginById?: Record<
+    string,
+    { x: number; y: number; width: number; height: number }
+  >;
 }
 
 export interface SelectionBox {
@@ -114,7 +131,13 @@ export interface SelectionBox {
   height: number;
 }
 
-export type CanvasToolMode = 'select' | 'pan' | 'edge' | 'draw' | 'erase' | 'lasso';
+export type CanvasToolMode =
+  | "select"
+  | "pan"
+  | "edge"
+  | "draw"
+  | "erase"
+  | "lasso";
 
 // Default sizes for new nodes
 export const DEFAULT_NODE_WIDTH = 260;

@@ -81,14 +81,14 @@ function hexToColor(hex: number, alpha = 1): string {
 export class GraphRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D | null = null;
-  
+
   private nodes = new Map<string, RenderNode>();
   private edges: RenderEdge[] = [];
   private adjacencyMap = new Map<string, Set<string>>();
-  
+
   private selectedNodeId: string | null = null;
   private hoveredNodeId: string | null = null;
-  
+
   private width: number;
   private height: number;
   private dpr = 1;
@@ -100,7 +100,7 @@ export class GraphRenderer {
   private targetOffsetY = 0;
   private backgroundColor: number;
   private isDark: boolean;
-  
+
   private initialized = false;
   private isDragging = false;
   private isPanning = false;
@@ -108,7 +108,7 @@ export class GraphRenderer {
   private lastPointerPos = { x: 0, y: 0 };
   private pointerDownPos = { x: 0, y: 0 };
   private animationFrame: number | null = null;
-  
+
   // Obsidian-style colors
   private nodeStyle: NodeStyle = {
     color: 0x7f7f7f, // Gray (Obsidian default)
@@ -118,7 +118,7 @@ export class GraphRenderer {
     connectedColor: 0x7f7f7f,
     dimmedAlpha: 0.15,
   };
-  
+
   private edgeStyle: EdgeStyle = {
     color: 0x7f7f7f,
     width: 1,
@@ -127,91 +127,105 @@ export class GraphRenderer {
     alpha: 0.4,
     dimmedAlpha: 0.08,
   };
-  
+
   private labelStyle: LabelStyle = {
-    color: '#7f7f7f',
+    color: "#7f7f7f",
     size: 11,
     show: true,
     threshold: 0.4,
   };
-  
+
   private onNodeClick?: (nodeId: string) => void;
-  private onNodeDrag?: (nodeId: string, x: number, y: number, active: boolean) => void;
+  private onNodeDrag?: (
+    nodeId: string,
+    x: number,
+    y: number,
+    active: boolean,
+  ) => void;
   private onViewportChange?: (x: number, y: number, scale: number) => void;
-  
+
   private wheelHandler: ((e: WheelEvent) => void) | null = null;
   private pointerDownHandler: ((e: PointerEvent) => void) | null = null;
   private pointerMoveHandler: ((e: PointerEvent) => void) | null = null;
   private pointerUpHandler: ((e: PointerEvent) => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, options: Partial<RendererOptions> = {}) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    options: Partial<RendererOptions> = {},
+  ) {
     this.canvas = canvas;
     this.width = options.width || 800;
     this.height = options.height || 600;
     this.isDark = options.isDark ?? true;
-    this.backgroundColor = options.backgroundColor ?? (this.isDark ? 0x101010 : 0xf0f0f6);
+    this.backgroundColor =
+      options.backgroundColor ?? (this.isDark ? 0x101010 : 0xf0f0f6);
   }
 
   async init(): Promise<void> {
     if (this.initialized) return;
-    
+
     const minDimension = 100;
     const safeWidth = Math.max(this.width, minDimension);
     const safeHeight = Math.max(this.height, minDimension);
-    
+
     this.width = safeWidth;
     this.height = safeHeight;
     this.dpr = window.devicePixelRatio || 1;
-    
+
     // Setup canvas with proper HiDPI scaling
     this.canvas.width = safeWidth * this.dpr;
     this.canvas.height = safeHeight * this.dpr;
     this.canvas.style.width = `${safeWidth}px`;
     this.canvas.style.height = `${safeHeight}px`;
-    
-    this.ctx = this.canvas.getContext('2d');
+
+    this.ctx = this.canvas.getContext("2d");
     if (!this.ctx) {
-      throw new Error('Failed to get 2D context');
+      throw new Error("Failed to get 2D context");
     }
-    
+
     // Center the viewport
     this.offsetX = this.width / 2;
     this.offsetY = this.height / 2;
     this.targetOffsetX = this.offsetX;
     this.targetOffsetY = this.offsetY;
-    
+
     this.setupInteraction();
     this.startAnimationLoop();
-    
+
     this.initialized = true;
   }
 
   private setupInteraction(): void {
     this.wheelHandler = this.handleWheel.bind(this);
-    this.canvas.addEventListener('wheel', this.wheelHandler, { passive: false });
-    
+    this.canvas.addEventListener("wheel", this.wheelHandler, {
+      passive: false,
+    });
+
     this.pointerDownHandler = this.handlePointerDown.bind(this);
     this.pointerMoveHandler = this.handlePointerMove.bind(this);
     this.pointerUpHandler = this.handlePointerUp.bind(this);
-    
-    this.canvas.addEventListener('pointerdown', this.pointerDownHandler);
-    this.canvas.addEventListener('pointermove', this.pointerMoveHandler);
-    this.canvas.addEventListener('pointerup', this.pointerUpHandler);
-    this.canvas.addEventListener('pointerleave', this.handlePointerLeave.bind(this));
+
+    this.canvas.addEventListener("pointerdown", this.pointerDownHandler);
+    this.canvas.addEventListener("pointermove", this.pointerMoveHandler);
+    this.canvas.addEventListener("pointerup", this.pointerUpHandler);
+    this.canvas.addEventListener(
+      "pointerleave",
+      this.handlePointerLeave.bind(this),
+    );
   }
 
   private startAnimationLoop(): void {
     const animate = () => {
       this.animationFrame = requestAnimationFrame(animate);
-      
+
       // Smooth zoom interpolation (Obsidian-style)
       const zoomLerp = 0.15;
       const panLerp = 0.2;
-      
+
       const scaleDiff = Math.abs(this.targetScale - this.scale);
       const offsetXDiff = Math.abs(this.targetOffsetX - this.offsetX);
       const offsetYDiff = Math.abs(this.targetOffsetY - this.offsetY);
-      
+
       if (scaleDiff > 0.001 || offsetXDiff > 0.5 || offsetYDiff > 0.5) {
         this.scale += (this.targetScale - this.scale) * zoomLerp;
         this.offsetX += (this.targetOffsetX - this.offsetX) * panLerp;
@@ -219,41 +233,45 @@ export class GraphRenderer {
         this.render();
       }
     };
-    
+
     animate();
   }
 
   private handleWheel(e: WheelEvent): void {
     e.preventDefault();
-    
+
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    
+
     // Smooth zoom factor
     const zoomIntensity = 0.1;
-    const zoomFactor = e.deltaY > 0 ? (1 - zoomIntensity) : (1 + zoomIntensity);
+    const zoomFactor = e.deltaY > 0 ? 1 - zoomIntensity : 1 + zoomIntensity;
     const newScale = Math.max(0.1, Math.min(5, this.targetScale * zoomFactor));
-    
+
     // Zoom towards mouse position
     const worldX = (mouseX - this.offsetX) / this.scale;
     const worldY = (mouseY - this.offsetY) / this.scale;
-    
+
     this.targetScale = newScale;
     this.targetOffsetX = mouseX - worldX * newScale;
     this.targetOffsetY = mouseY - worldY * newScale;
-    
-    this.onViewportChange?.(this.targetOffsetX, this.targetOffsetY, this.targetScale);
+
+    this.onViewportChange?.(
+      this.targetOffsetX,
+      this.targetOffsetY,
+      this.targetScale,
+    );
   }
 
   private handlePointerDown(e: PointerEvent): void {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     this.lastPointerPos = { x, y };
     this.pointerDownPos = { x, y };
-    
+
     const node = this.getNodeAtPosition(x, y);
     if (node) {
       this.dragNode = node;
@@ -268,7 +286,7 @@ export class GraphRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     const dx = x - this.lastPointerPos.x;
     const dy = y - this.lastPointerPos.y;
     this.lastPointerPos = { x, y };
@@ -277,7 +295,12 @@ export class GraphRenderer {
       this.dragNode.x += dx / this.scale;
       this.dragNode.y += dy / this.scale;
       this.render();
-      this.onNodeDrag?.(this.dragNode.id, this.dragNode.x, this.dragNode.y, true);
+      this.onNodeDrag?.(
+        this.dragNode.id,
+        this.dragNode.x,
+        this.dragNode.y,
+        true,
+      );
     } else if (this.isPanning) {
       this.targetOffsetX += dx;
       this.targetOffsetY += dy;
@@ -300,17 +323,29 @@ export class GraphRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const movedDistance = Math.hypot(x - this.pointerDownPos.x, y - this.pointerDownPos.y);
+    const movedDistance = Math.hypot(
+      x - this.pointerDownPos.x,
+      y - this.pointerDownPos.y,
+    );
     const clickThreshold = 5;
-    
+
     if (this.isDragging && this.dragNode) {
-      this.onNodeDrag?.(this.dragNode.id, this.dragNode.x, this.dragNode.y, false);
+      this.onNodeDrag?.(
+        this.dragNode.id,
+        this.dragNode.x,
+        this.dragNode.y,
+        false,
+      );
       if (movedDistance <= clickThreshold) {
         this.selectedNodeId = this.dragNode.id;
         this.render();
         this.onNodeClick?.(this.dragNode.id);
       }
-    } else if (!this.isPanning || (Math.abs(x - this.lastPointerPos.x) < 5 && Math.abs(y - this.lastPointerPos.y) < 5)) {
+    } else if (
+      !this.isPanning ||
+      (Math.abs(x - this.lastPointerPos.x) < 5 &&
+        Math.abs(y - this.lastPointerPos.y) < 5)
+    ) {
       const node = this.getNodeAtPosition(x, y);
       if (node) {
         this.selectedNodeId = node.id;
@@ -321,7 +356,7 @@ export class GraphRenderer {
         this.render();
       }
     }
-    
+
     this.isDragging = false;
     this.isPanning = false;
     this.dragNode = null;
@@ -337,14 +372,17 @@ export class GraphRenderer {
     }
   }
 
-  private getNodeAtPosition(screenX: number, screenY: number): RenderNode | null {
+  private getNodeAtPosition(
+    screenX: number,
+    screenY: number,
+  ): RenderNode | null {
     const worldX = (screenX - this.offsetX) / this.scale;
     const worldY = (screenY - this.offsetY) / this.scale;
-    
+
     const hitRadius = 15 / this.scale;
     let closest: RenderNode | null = null;
     let closestDist = hitRadius;
-    
+
     for (const node of this.nodes.values()) {
       const dx = node.x - worldX;
       const dy = node.y - worldY;
@@ -354,54 +392,66 @@ export class GraphRenderer {
         closest = node;
       }
     }
-    
+
     return closest;
   }
 
   private render(): void {
     if (!this.ctx) return;
-    
+
     const ctx = this.ctx;
-    
+
     // Clear and fill background
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = hexToColor(this.backgroundColor);
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
+
     // Apply DPR and viewport transform
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.translate(this.offsetX, this.offsetY);
     ctx.scale(this.scale, this.scale);
-    
+
     // Draw edges
     this.drawEdges(ctx);
-    
+
     // Draw nodes
     this.drawNodes(ctx);
-    
+
     // Draw labels (in screen space)
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawLabels(ctx);
   }
 
   private drawEdges(ctx: CanvasRenderingContext2D): void {
-    const connectedToHovered = this.hoveredNodeId ? this.adjacencyMap.get(this.hoveredNodeId) : null;
-    
+    const connectedToHovered = this.hoveredNodeId
+      ? this.adjacencyMap.get(this.hoveredNodeId)
+      : null;
+
     for (const edge of this.edges) {
       const sourceNode = this.nodes.get(edge.source);
       const targetNode = this.nodes.get(edge.target);
       if (!sourceNode || !targetNode) continue;
-      
-      const isHighlighted = 
-        edge.source === this.selectedNodeId || edge.target === this.selectedNodeId ||
-        edge.source === this.hoveredNodeId || edge.target === this.hoveredNodeId;
-      
+
+      const isHighlighted =
+        edge.source === this.selectedNodeId ||
+        edge.target === this.selectedNodeId ||
+        edge.source === this.hoveredNodeId ||
+        edge.target === this.hoveredNodeId;
+
       const isDimmed = this.hoveredNodeId && !isHighlighted;
-      
-      const color = isHighlighted ? this.edgeStyle.highlightColor : this.edgeStyle.color;
-      const width = isHighlighted ? this.edgeStyle.highlightWidth : this.edgeStyle.width;
-      const alpha = isDimmed ? this.edgeStyle.dimmedAlpha : (isHighlighted ? 0.8 : this.edgeStyle.alpha);
-      
+
+      const color = isHighlighted
+        ? this.edgeStyle.highlightColor
+        : this.edgeStyle.color;
+      const width = isHighlighted
+        ? this.edgeStyle.highlightWidth
+        : this.edgeStyle.width;
+      const alpha = isDimmed
+        ? this.edgeStyle.dimmedAlpha
+        : isHighlighted
+          ? 0.8
+          : this.edgeStyle.alpha;
+
       ctx.strokeStyle = hexToColor(color, alpha);
       ctx.lineWidth = width;
       ctx.beginPath();
@@ -412,25 +462,31 @@ export class GraphRenderer {
   }
 
   private drawNodes(ctx: CanvasRenderingContext2D): void {
-    const connectedToSelected = this.selectedNodeId ? this.adjacencyMap.get(this.selectedNodeId) : null;
-    const connectedToHovered = this.hoveredNodeId ? this.adjacencyMap.get(this.hoveredNodeId) : null;
-    
+    const connectedToSelected = this.selectedNodeId
+      ? this.adjacencyMap.get(this.selectedNodeId)
+      : null;
+    const connectedToHovered = this.hoveredNodeId
+      ? this.adjacencyMap.get(this.hoveredNodeId)
+      : null;
+
     for (const node of this.nodes.values()) {
       const isSelected = node.id === this.selectedNodeId;
       const isHovered = node.id === this.hoveredNodeId;
       const isConnectedToHovered = connectedToHovered?.has(node.id);
       const isConnectedToSelected = connectedToSelected?.has(node.id);
-      
-      const isDimmed = this.hoveredNodeId && !isHovered && !isConnectedToHovered;
-      
+
+      const isDimmed =
+        this.hoveredNodeId && !isHovered && !isConnectedToHovered;
+
       let color = this.nodeStyle.color;
       if (isSelected) color = this.nodeStyle.selectedColor;
       else if (isHovered) color = this.nodeStyle.hoveredColor;
-      else if (isConnectedToSelected || isConnectedToHovered) color = this.nodeStyle.connectedColor;
-      
+      else if (isConnectedToSelected || isConnectedToHovered)
+        color = this.nodeStyle.connectedColor;
+
       const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
       const alpha = isDimmed ? this.nodeStyle.dimmedAlpha : 1;
-      
+
       ctx.fillStyle = hexToColor(color, alpha);
       ctx.beginPath();
       ctx.arc(node.x, node.y, size, 0, Math.PI * 2);
@@ -440,46 +496,63 @@ export class GraphRenderer {
 
   private drawLabels(ctx: CanvasRenderingContext2D): void {
     if (!this.labelStyle.show || this.scale < this.labelStyle.threshold) return;
-    
+
     ctx.font = `${this.labelStyle.size}px Inter, system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    
-    const connectedToHovered = this.hoveredNodeId ? this.adjacencyMap.get(this.hoveredNodeId) : null;
-    
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    const connectedToHovered = this.hoveredNodeId
+      ? this.adjacencyMap.get(this.hoveredNodeId)
+      : null;
+
     for (const node of this.nodes.values()) {
       const screenX = this.offsetX + node.x * this.scale;
       const screenY = this.offsetY + node.y * this.scale;
-      
-      if (screenX < -100 || screenX > this.width + 100 ||
-          screenY < -100 || screenY > this.height + 100) {
+
+      if (
+        screenX < -100 ||
+        screenX > this.width + 100 ||
+        screenY < -100 ||
+        screenY > this.height + 100
+      ) {
         continue;
       }
-      
+
       let alpha = 1;
-      if (this.hoveredNodeId && node.id !== this.hoveredNodeId && !connectedToHovered?.has(node.id)) {
+      if (
+        this.hoveredNodeId &&
+        node.id !== this.hoveredNodeId &&
+        !connectedToHovered?.has(node.id)
+      ) {
         alpha = 0.2;
       }
-      
+
       // Parse label color
-      let r = 127, g = 127, b = 127;
-      if (this.labelStyle.color.startsWith('#')) {
+      let r = 127,
+        g = 127,
+        b = 127;
+      if (this.labelStyle.color.startsWith("#")) {
         r = parseInt(this.labelStyle.color.slice(1, 3), 16);
         g = parseInt(this.labelStyle.color.slice(3, 5), 16);
         b = parseInt(this.labelStyle.color.slice(5, 7), 16);
       }
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-      
+
       const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
       const labelY = screenY + size * this.scale + 4;
-      
+
       ctx.fillText(node.name, screenX, labelY);
     }
   }
 
   setCallbacks(callbacks: {
     onNodeClick?: (nodeId: string) => void;
-    onNodeDrag?: (nodeId: string, x: number, y: number, active: boolean) => void;
+    onNodeDrag?: (
+      nodeId: string,
+      x: number,
+      y: number,
+      active: boolean,
+    ) => void;
     onViewportChange?: (x: number, y: number, scale: number) => void;
   }): void {
     this.onNodeClick = callbacks.onNodeClick;
@@ -489,23 +562,25 @@ export class GraphRenderer {
 
   setData(nodes: InputNode[], edges: InputEdge[]): void {
     if (!this.initialized) return;
-    
+
     this.nodes.clear();
     this.edges = [];
     this.adjacencyMap.clear();
-    
+
     // Build adjacency map
     for (const edge of edges) {
-      if (!this.adjacencyMap.has(edge.source)) this.adjacencyMap.set(edge.source, new Set());
-      if (!this.adjacencyMap.has(edge.target)) this.adjacencyMap.set(edge.target, new Set());
+      if (!this.adjacencyMap.has(edge.source))
+        this.adjacencyMap.set(edge.source, new Set());
+      if (!this.adjacencyMap.has(edge.target))
+        this.adjacencyMap.set(edge.target, new Set());
       this.adjacencyMap.get(edge.source)!.add(edge.target);
       this.adjacencyMap.get(edge.target)!.add(edge.source);
     }
-    
+
     // Create nodes
     for (const node of nodes) {
       const connections = this.adjacencyMap.get(node.id)?.size || 0;
-      
+
       this.nodes.set(node.id, {
         id: node.id,
         name: node.name,
@@ -515,8 +590,8 @@ export class GraphRenderer {
         connections,
       });
     }
-    
-    this.edges = edges.map(e => ({ source: e.source, target: e.target }));
+
+    this.edges = edges.map((e) => ({ source: e.source, target: e.target }));
     this.render();
   }
 
@@ -558,46 +633,52 @@ export class GraphRenderer {
 
   centerView(): void {
     if (this.nodes.size === 0) return;
-    
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    
+
+    let minX = Infinity,
+      maxX = -Infinity;
+    let minY = Infinity,
+      maxY = -Infinity;
+
     for (const node of this.nodes.values()) {
       minX = Math.min(minX, node.x);
       maxX = Math.max(maxX, node.x);
       minY = Math.min(minY, node.y);
       maxY = Math.max(maxY, node.y);
     }
-    
+
     const graphWidth = maxX - minX;
     const graphHeight = maxY - minY;
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
-    
+
     const padding = 100;
     const scaleX = (this.width - padding) / Math.max(graphWidth, 1);
     const scaleY = (this.height - padding) / Math.max(graphHeight, 1);
     this.targetScale = Math.min(scaleX, scaleY, 1.5);
-    
+
     this.targetOffsetX = this.width / 2 - centerX * this.targetScale;
     this.targetOffsetY = this.height / 2 - centerY * this.targetScale;
-    
-    this.onViewportChange?.(this.targetOffsetX, this.targetOffsetY, this.targetScale);
+
+    this.onViewportChange?.(
+      this.targetOffsetX,
+      this.targetOffsetY,
+      this.targetScale,
+    );
   }
 
   resize(width: number, height: number): void {
     const minDimension = 100;
     const safeWidth = Math.max(width, minDimension);
     const safeHeight = Math.max(height, minDimension);
-    
+
     this.width = safeWidth;
     this.height = safeHeight;
-    
+
     this.canvas.width = safeWidth * this.dpr;
     this.canvas.height = safeHeight * this.dpr;
     this.canvas.style.width = `${safeWidth}px`;
     this.canvas.style.height = `${safeHeight}px`;
-    
+
     this.render();
   }
 
@@ -617,20 +698,20 @@ export class GraphRenderer {
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
     }
-    
+
     if (this.wheelHandler) {
-      this.canvas.removeEventListener('wheel', this.wheelHandler);
+      this.canvas.removeEventListener("wheel", this.wheelHandler);
     }
     if (this.pointerDownHandler) {
-      this.canvas.removeEventListener('pointerdown', this.pointerDownHandler);
+      this.canvas.removeEventListener("pointerdown", this.pointerDownHandler);
     }
     if (this.pointerMoveHandler) {
-      this.canvas.removeEventListener('pointermove', this.pointerMoveHandler);
+      this.canvas.removeEventListener("pointermove", this.pointerMoveHandler);
     }
     if (this.pointerUpHandler) {
-      this.canvas.removeEventListener('pointerup', this.pointerUpHandler);
+      this.canvas.removeEventListener("pointerup", this.pointerUpHandler);
     }
-    
+
     this.nodes.clear();
     this.edges = [];
     this.adjacencyMap.clear();

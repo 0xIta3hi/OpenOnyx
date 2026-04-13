@@ -1,13 +1,22 @@
 /**
  * Status Bar
- * 
+ *
  * Bottom bar showing document stats, view mode, vault stats, and theme info.
  */
 
-import React, { useMemo } from 'react';
-import { Moon, Sun, Check, Circle, FileText, FolderOpen, Link2, Hash } from 'lucide-react';
-import { Tab, Theme, ViewMode, FileEntry } from '../types';
-import { countWords, countCharacters } from '../utils/helpers';
+import React, { useMemo } from "react";
+import {
+  Moon,
+  Sun,
+  Check,
+  Circle,
+  FileText,
+  FolderOpen,
+  Link2,
+  Hash,
+} from "lucide-react";
+import { Tab, Theme, ViewMode, FileEntry } from "../types";
+import { countWords, countCharacters } from "../utils/helpers";
 
 interface StatusBarProps {
   activeTab: Tab | null;
@@ -18,10 +27,13 @@ interface StatusBarProps {
 }
 
 // Count notes and folders recursively
-function countEntries(entries: FileEntry[]): { notes: number; folders: number } {
+function countEntries(entries: FileEntry[]): {
+  notes: number;
+  folders: number;
+} {
   let notes = 0;
   let folders = 0;
-  
+
   for (const entry of entries) {
     if (entry.isDirectory) {
       folders++;
@@ -30,11 +42,11 @@ function countEntries(entries: FileEntry[]): { notes: number; folders: number } 
         notes += sub.notes;
         folders += sub.folders;
       }
-    } else if (entry.extension === '.md') {
+    } else if (entry.extension === ".md") {
       notes++;
     }
   }
-  
+
   return { notes, folders };
 }
 
@@ -50,13 +62,19 @@ function countTags(text: string): number {
   return matches ? matches.length : 0;
 }
 
-export function StatusBar({ activeTab, content, theme, viewMode, fileTree = [] }: StatusBarProps) {
+export function StatusBar({
+  activeTab,
+  content,
+  theme,
+  viewMode,
+  fileTree = [],
+}: StatusBarProps) {
   const wordCount = content ? countWords(content) : 0;
   const charCount = content ? countCharacters(content) : 0;
-  const lineCount = content ? content.split('\n').length : 0;
+  const lineCount = content ? content.split("\n").length : 0;
   const linkCount = content ? countLinks(content) : 0;
   const tagCount = content ? countTags(content) : 0;
-  
+
   const vaultStats = useMemo(() => countEntries(fileTree), [fileTree]);
 
   return (
@@ -64,8 +82,19 @@ export function StatusBar({ activeTab, content, theme, viewMode, fileTree = [] }
       <div className="status-bar-left">
         {activeTab ? (
           <>
-            <span className="status-item" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {activeTab.isModified ? <><Circle size={10} fill="currentColor" /> Modified</> : <><Check size={14} /> Saved</>}
+            <span
+              className="status-item"
+              style={{ display: "flex", alignItems: "center", gap: "4px" }}
+            >
+              {activeTab.isModified ? (
+                <>
+                  <Circle size={10} fill="currentColor" /> Modified
+                </>
+              ) : (
+                <>
+                  <Check size={14} /> Saved
+                </>
+              )}
             </span>
             <span className="status-item">{wordCount} words</span>
             <span className="status-item">{charCount} chars</span>
@@ -93,16 +122,19 @@ export function StatusBar({ activeTab, content, theme, viewMode, fileTree = [] }
         )}
         {vaultStats.folders > 0 && (
           <span className="status-item" title="Folders in vault">
-            <FolderOpen size={12} style={{ opacity: 0.7 }} /> {vaultStats.folders}
+            <FolderOpen size={12} style={{ opacity: 0.7 }} />{" "}
+            {vaultStats.folders}
           </span>
         )}
         <span className="status-item">{viewMode}</span>
-        <span className="status-item" style={{ display: 'flex', alignItems: 'center' }}>
-          {theme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
+        <span
+          className="status-item"
+          style={{ display: "flex", alignItems: "center" }}
+        >
+          {theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
         </span>
         <span className="status-item">Markdown</span>
       </div>
     </div>
   );
 }
-

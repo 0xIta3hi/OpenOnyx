@@ -1,12 +1,12 @@
 /**
  * Outgoing Links Panel
- * 
+ *
  * Shows all links from the current note (what this note links to),
  * both resolved and unresolved (phantom) links.
  */
 
-import React, { useMemo } from 'react';
-import { ArrowUpRight, FileText, FilePlus } from 'lucide-react';
+import React, { useMemo } from "react";
+import { ArrowUpRight, FileText, FilePlus } from "lucide-react";
 
 interface OutgoingLink {
   name: string;
@@ -20,36 +20,45 @@ interface OutgoingLinksPanelProps {
   visible: boolean;
 }
 
-export function OutgoingLinksPanel({ content, existingNotes, onLinkClick, visible }: OutgoingLinksPanelProps) {
+export function OutgoingLinksPanel({
+  content,
+  existingNotes,
+  onLinkClick,
+  visible,
+}: OutgoingLinksPanelProps) {
   // Extract wiki-links from content
   const links = useMemo(() => {
     if (!content) return [];
-    
+
     const linkRegex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
     const found = new Set<string>();
     let match;
-    
+
     while ((match = linkRegex.exec(content)) !== null) {
       found.add(match[1].trim());
     }
-    
+
     // Convert to array with existence check
-    const existingSet = new Set(existingNotes.map(n => n.toLowerCase().replace('.md', '')));
-    
-    return Array.from(found).map(name => ({
-      name,
-      exists: existingSet.has(name.toLowerCase()),
-    })).sort((a, b) => {
-      // Sort existing first, then alphabetically
-      if (a.exists !== b.exists) return a.exists ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+    const existingSet = new Set(
+      existingNotes.map((n) => n.toLowerCase().replace(".md", "")),
+    );
+
+    return Array.from(found)
+      .map((name) => ({
+        name,
+        exists: existingSet.has(name.toLowerCase()),
+      }))
+      .sort((a, b) => {
+        // Sort existing first, then alphabetically
+        if (a.exists !== b.exists) return a.exists ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
   }, [content, existingNotes]);
 
   if (!visible) return null;
 
-  const existingLinks = links.filter(l => l.exists);
-  const phantomLinks = links.filter(l => !l.exists);
+  const existingLinks = links.filter((l) => l.exists);
+  const phantomLinks = links.filter((l) => !l.exists);
 
   return (
     <div className="outgoing-links-panel">
@@ -61,9 +70,7 @@ export function OutgoingLinksPanel({ content, existingNotes, onLinkClick, visibl
 
       <div className="outgoing-links-list">
         {links.length === 0 ? (
-          <div className="outgoing-links-empty">
-            No outgoing links
-          </div>
+          <div className="outgoing-links-empty">No outgoing links</div>
         ) : (
           <>
             {existingLinks.length > 0 && (
@@ -71,7 +78,7 @@ export function OutgoingLinksPanel({ content, existingNotes, onLinkClick, visibl
                 <div className="outgoing-links-section-title">
                   <FileText size={12} /> Linked Notes ({existingLinks.length})
                 </div>
-                {existingLinks.map(link => (
+                {existingLinks.map((link) => (
                   <button
                     key={link.name}
                     className="outgoing-link-item"
@@ -83,13 +90,13 @@ export function OutgoingLinksPanel({ content, existingNotes, onLinkClick, visibl
                 ))}
               </div>
             )}
-            
+
             {phantomLinks.length > 0 && (
               <div className="outgoing-links-section">
                 <div className="outgoing-links-section-title phantom">
                   <FilePlus size={12} /> Unresolved ({phantomLinks.length})
                 </div>
-                {phantomLinks.map(link => (
+                {phantomLinks.map((link) => (
                   <button
                     key={link.name}
                     className="outgoing-link-item phantom"

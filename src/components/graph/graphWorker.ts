@@ -4,7 +4,7 @@
  * Uses Obsidian-like force parameters
  */
 
-import * as d3 from 'd3-force';
+import * as d3 from "d3-force";
 
 interface WorkerNode {
   id: string;
@@ -50,63 +50,82 @@ function initSimulation() {
 
   // Build node map
   nodeMap.clear();
-  nodes.forEach(n => nodeMap.set(n.id, n));
+  nodes.forEach((n) => nodeMap.set(n.id, n));
 
   // Create simulation with Obsidian-like parameters
-  simulation = d3.forceSimulation<WorkerNode>(nodes)
-    .force('center', d3.forceCenter(0, 0).strength(forceParams.centerStrength))
-    .force('charge', d3.forceManyBody<WorkerNode>()
-      .strength(-forceParams.repelStrength)
-      .distanceMax(500)
+  simulation = d3
+    .forceSimulation<WorkerNode>(nodes)
+    .force("center", d3.forceCenter(0, 0).strength(forceParams.centerStrength))
+    .force(
+      "charge",
+      d3
+        .forceManyBody<WorkerNode>()
+        .strength(-forceParams.repelStrength)
+        .distanceMax(500),
     )
-    .force('link', d3.forceLink<WorkerNode, WorkerEdge>(edges)
-      .id(d => d.id)
-      .distance(forceParams.linkDistance)
-      .strength(d => {
-        // Obsidian-style: weaker links between highly connected nodes
-        const source = d.source as WorkerNode;
-        const target = d.target as WorkerNode;
-        return forceParams.linkStrength / Math.min(source.connections || 1, target.connections || 1);
-      })
+    .force(
+      "link",
+      d3
+        .forceLink<WorkerNode, WorkerEdge>(edges)
+        .id((d) => d.id)
+        .distance(forceParams.linkDistance)
+        .strength((d) => {
+          // Obsidian-style: weaker links between highly connected nodes
+          const source = d.source as WorkerNode;
+          const target = d.target as WorkerNode;
+          return (
+            forceParams.linkStrength /
+            Math.min(source.connections || 1, target.connections || 1)
+          );
+        }),
     )
-    .force('collision', d3.forceCollide<WorkerNode>()
-      .radius(d => forceParams.collisionRadius + Math.sqrt(d.connections || 0) * 2)
+    .force(
+      "collision",
+      d3
+        .forceCollide<WorkerNode>()
+        .radius(
+          (d) =>
+            forceParams.collisionRadius + Math.sqrt(d.connections || 0) * 2,
+        ),
     )
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // Obsidian's alpha decay
     .velocityDecay(0.4)
-    .on('tick', onTick)
-    .on('end', onEnd);
+    .on("tick", onTick)
+    .on("end", onEnd);
 }
 
 function onTick() {
   if (!simulation) return;
-  
-  const ids = nodes.map(n => n.id);
+
+  const ids = nodes.map((n) => n.id);
   const positions = new Float32Array(nodes.length * 2);
-  
+
   for (let i = 0; i < nodes.length; i++) {
     positions[i * 2] = nodes[i].x;
     positions[i * 2 + 1] = nodes[i].y;
   }
-  
-  self.postMessage({
-    type: 'tick',
-    ids,
-    positions: positions.buffer,
-    alpha: simulation.alpha(),
-  }, { transfer: [positions.buffer] });
+
+  self.postMessage(
+    {
+      type: "tick",
+      ids,
+      positions: positions.buffer,
+      alpha: simulation.alpha(),
+    },
+    { transfer: [positions.buffer] },
+  );
 }
 
 function onEnd() {
   isRunning = false;
-  self.postMessage({ type: 'end' });
+  self.postMessage({ type: "end" });
 }
 
 self.onmessage = (e: MessageEvent) => {
   const { type, data } = e.data;
 
   switch (type) {
-    case 'init': {
+    case "init": {
       nodes = data.nodes.map((n: any) => ({
         ...n,
         x: n.x ?? (Math.random() - 0.5) * 500,
@@ -122,7 +141,7 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'start': {
+    case "start": {
       if (simulation && !isRunning) {
         isRunning = true;
         simulation.alpha(1).restart();
@@ -130,7 +149,7 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'stop': {
+    case "stop": {
       if (simulation) {
         simulation.stop();
         isRunning = false;
@@ -138,32 +157,51 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'forces': {
+    case "forces": {
       forceParams = { ...forceParams, ...data };
       if (simulation) {
         simulation
-          .force('center', d3.forceCenter(0, 0).strength(forceParams.centerStrength))
-          .force('charge', d3.forceManyBody<WorkerNode>()
-            .strength(-forceParams.repelStrength)
-            .distanceMax(500)
+          .force(
+            "center",
+            d3.forceCenter(0, 0).strength(forceParams.centerStrength),
           )
-          .force('link', d3.forceLink<WorkerNode, WorkerEdge>(edges)
-            .id(d => d.id)
-            .distance(forceParams.linkDistance)
-            .strength(d => {
-              const source = d.source as WorkerNode;
-              const target = d.target as WorkerNode;
-              return forceParams.linkStrength / Math.min(source.connections || 1, target.connections || 1);
-            })
+          .force(
+            "charge",
+            d3
+              .forceManyBody<WorkerNode>()
+              .strength(-forceParams.repelStrength)
+              .distanceMax(500),
           )
-          .force('collision', d3.forceCollide<WorkerNode>()
-            .radius(d => forceParams.collisionRadius + Math.sqrt(d.connections || 0) * 2)
+          .force(
+            "link",
+            d3
+              .forceLink<WorkerNode, WorkerEdge>(edges)
+              .id((d) => d.id)
+              .distance(forceParams.linkDistance)
+              .strength((d) => {
+                const source = d.source as WorkerNode;
+                const target = d.target as WorkerNode;
+                return (
+                  forceParams.linkStrength /
+                  Math.min(source.connections || 1, target.connections || 1)
+                );
+              }),
+          )
+          .force(
+            "collision",
+            d3
+              .forceCollide<WorkerNode>()
+              .radius(
+                (d) =>
+                  forceParams.collisionRadius +
+                  Math.sqrt(d.connections || 0) * 2,
+              ),
           );
       }
       break;
     }
 
-    case 'reheat': {
+    case "reheat": {
       if (simulation) {
         isRunning = true;
         simulation.alpha(1).restart();
@@ -171,7 +209,7 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'drag': {
+    case "drag": {
       const { id, x, y, active } = data;
       const node = nodeMap.get(id);
       if (node) {
@@ -193,7 +231,7 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'pin': {
+    case "pin": {
       const { id, pinned, x, y } = data;
       const node = nodeMap.get(id);
       if (node) {
@@ -208,7 +246,7 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'setPositions': {
+    case "setPositions": {
       const { positions } = data;
       for (const [id, pos] of Object.entries(positions)) {
         const node = nodeMap.get(id);
@@ -222,12 +260,12 @@ self.onmessage = (e: MessageEvent) => {
       break;
     }
 
-    case 'getPositions': {
+    case "getPositions": {
       const positions: Record<string, { x: number; y: number }> = {};
-      nodes.forEach(n => {
+      nodes.forEach((n) => {
         positions[n.id] = { x: n.x, y: n.y };
       });
-      self.postMessage({ type: 'positions', positions });
+      self.postMessage({ type: "positions", positions });
       break;
     }
   }

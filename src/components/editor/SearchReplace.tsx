@@ -1,12 +1,20 @@
 /**
  * SearchReplace - VS Code-style Find/Replace Component
- * 
+ *
  * A floating search/replace panel that mimics VS Code's search UI exactly.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { EditorView } from '@codemirror/view';
-import { SearchQuery, setSearchQuery, findNext, findPrevious, replaceNext, replaceAll, selectMatches } from '@codemirror/search';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { EditorView } from "@codemirror/view";
+import {
+  SearchQuery,
+  setSearchQuery,
+  findNext,
+  findPrevious,
+  replaceNext,
+  replaceAll,
+  selectMatches,
+} from "@codemirror/search";
 
 interface SearchReplaceProps {
   getView: () => EditorView | null;
@@ -19,15 +27,22 @@ interface MatchInfo {
   total: number;
 }
 
-export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) {
-  const [searchValue, setSearchValue] = useState('');
-  const [replaceValue, setReplaceValue] = useState('');
+export function SearchReplace({
+  getView,
+  isOpen,
+  onClose,
+}: SearchReplaceProps) {
+  const [searchValue, setSearchValue] = useState("");
+  const [replaceValue, setReplaceValue] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [showReplace, setShowReplace] = useState(true);
-  const [matchInfo, setMatchInfo] = useState<MatchInfo>({ current: 0, total: 0 });
-  
+  const [matchInfo, setMatchInfo] = useState<MatchInfo>({
+    current: 0,
+    total: 0,
+  });
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -54,11 +69,11 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
     try {
       let pattern: RegExp;
       if (useRegex) {
-        pattern = new RegExp(searchValue, caseSensitive ? 'g' : 'gi');
+        pattern = new RegExp(searchValue, caseSensitive ? "g" : "gi");
       } else {
-        const escaped = searchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escaped = searchValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const wordPattern = wholeWord ? `\\b${escaped}\\b` : escaped;
-        pattern = new RegExp(wordPattern, caseSensitive ? 'g' : 'gi');
+        pattern = new RegExp(wordPattern, caseSensitive ? "g" : "gi");
       }
 
       const matches = [...doc.matchAll(pattern)];
@@ -97,7 +112,15 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
 
     view.dispatch({ effects: setSearchQuery.of(query) });
     countMatches();
-  }, [getView, searchValue, caseSensitive, useRegex, wholeWord, replaceValue, countMatches]);
+  }, [
+    getView,
+    searchValue,
+    caseSensitive,
+    useRegex,
+    wholeWord,
+    replaceValue,
+    countMatches,
+  ]);
 
   // Update search when parameters change
   useEffect(() => {
@@ -111,20 +134,20 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
 
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
         getView()?.focus();
-      } else if (e.key === 'F3' && !e.shiftKey) {
+      } else if (e.key === "F3" && !e.shiftKey) {
         e.preventDefault();
         handleFindNext();
-      } else if (e.key === 'F3' && e.shiftKey) {
+      } else if (e.key === "F3" && e.shiftKey) {
         e.preventDefault();
         handleFindPrev();
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, getView, onClose]);
 
   const handleFindNext = () => {
@@ -171,13 +194,13 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
   return (
     <div className="search-replace-panel" ref={panelRef}>
       {/* Chevron toggle for replace section */}
-      <button 
-        className={`search-toggle-btn ${showReplace ? 'expanded' : ''}`}
+      <button
+        className={`search-toggle-btn ${showReplace ? "expanded" : ""}`}
         onClick={() => setShowReplace(!showReplace)}
-        title={showReplace ? 'Hide Replace' : 'Show Replace'}
+        title={showReplace ? "Hide Replace" : "Show Replace"}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M5.7 13.7L5 13l4.6-4.6L5 3.7l.7-.7 5 5.3-5 5.4z"/>
+          <path d="M5.7 13.7L5 13l4.6-4.6L5 3.7l.7-.7 5 5.3-5 5.4z" />
         </svg>
       </button>
 
@@ -193,10 +216,10 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleFindNext();
-                } else if (e.key === 'Enter' && e.shiftKey) {
+                } else if (e.key === "Enter" && e.shiftKey) {
                   e.preventDefault();
                   handleFindPrev();
                 }
@@ -204,21 +227,21 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
             />
             <div className="search-options">
               <button
-                className={`search-option-btn ${caseSensitive ? 'active' : ''}`}
+                className={`search-option-btn ${caseSensitive ? "active" : ""}`}
                 onClick={() => setCaseSensitive(!caseSensitive)}
                 title="Match Case (Alt+C)"
               >
                 Aa
               </button>
               <button
-                className={`search-option-btn ${wholeWord ? 'active' : ''}`}
+                className={`search-option-btn ${wholeWord ? "active" : ""}`}
                 onClick={() => setWholeWord(!wholeWord)}
                 title="Match Whole Word (Alt+W)"
               >
                 <span className="underline-text">ab</span>
               </button>
               <button
-                className={`search-option-btn ${useRegex ? 'active' : ''}`}
+                className={`search-option-btn ${useRegex ? "active" : ""}`}
                 onClick={() => setUseRegex(!useRegex)}
                 title="Use Regular Expression (Alt+R)"
               >
@@ -226,49 +249,87 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
               </button>
             </div>
           </div>
-          
+
           <span className="search-match-count">
-            {searchValue ? (matchInfo.total === 0 ? 'No results' : `${matchInfo.current} of ${matchInfo.total}`) : 'No results'}
+            {searchValue
+              ? matchInfo.total === 0
+                ? "No results"
+                : `${matchInfo.current} of ${matchInfo.total}`
+              : "No results"}
           </span>
 
           <div className="search-actions">
-            <button 
-              className="search-action-btn" 
+            <button
+              className="search-action-btn"
               onClick={handleFindPrev}
               title="Previous Match (Shift+Enter)"
               disabled={!searchValue || matchInfo.total === 0}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path fillRule="evenodd" clipRule="evenodd" d="M4 8l4-4v2.5h4v3H8V12L4 8z" transform="rotate(-90 8 8)"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M4 8l4-4v2.5h4v3H8V12L4 8z"
+                  transform="rotate(-90 8 8)"
+                />
               </svg>
             </button>
-            <button 
-              className="search-action-btn" 
+            <button
+              className="search-action-btn"
               onClick={handleFindNext}
               title="Next Match (Enter)"
               disabled={!searchValue || matchInfo.total === 0}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path fillRule="evenodd" clipRule="evenodd" d="M4 8l4-4v2.5h4v3H8V12L4 8z" transform="rotate(90 8 8)"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M4 8l4-4v2.5h4v3H8V12L4 8z"
+                  transform="rotate(90 8 8)"
+                />
               </svg>
             </button>
-            <button 
-              className="search-action-btn" 
+            <button
+              className="search-action-btn"
               onClick={handleSelectAll}
               title="Select All Matches"
               disabled={!searchValue || matchInfo.total === 0}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M2 3.5h12v1H2v-1zm0 4h12v1H2v-1zm0 4h12v1H2v-1z"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path d="M2 3.5h12v1H2v-1zm0 4h12v1H2v-1zm0 4h12v1H2v-1z" />
               </svg>
             </button>
-            <button 
-              className="search-action-btn close-btn" 
+            <button
+              className="search-action-btn close-btn"
               onClick={onClose}
               title="Close (Escape)"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path fillRule="evenodd" clipRule="evenodd" d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"
+                />
               </svg>
             </button>
           </div>
@@ -285,10 +346,10 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
                 value={replaceValue}
                 onChange={(e) => setReplaceValue(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleReplace();
-                  } else if (e.key === 'Enter' && e.shiftKey) {
+                  } else if (e.key === "Enter" && e.shiftKey) {
                     e.preventDefault();
                     handleReplaceAll();
                   }
@@ -300,25 +361,35 @@ export function SearchReplace({ getView, isOpen, onClose }: SearchReplaceProps) 
             </div>
 
             <div className="replace-actions">
-              <button 
-                className="search-action-btn" 
+              <button
+                className="search-action-btn"
                 onClick={handleReplace}
                 title="Replace (Enter)"
                 disabled={!searchValue || matchInfo.total === 0}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M3.221 3.739l2.261 2.269L7.7 3.784l-.7-.7-1.012 1.007-.008-1.6a.523.523 0 0 1 .149-.38l1.378-1.381-.7-.7L5.419 1.4a1.533 1.533 0 0 0-.441 1.082l.006 1.717-.996-.996-.767.536zm6.67 4.389l-2.262-2.268-2.218 2.224.7.7 1.012-1.007.008 1.6a.523.523 0 0 1-.149.38l-1.377 1.38.7.7 1.388-1.37a1.533 1.533 0 0 0 .44-1.082l-.005-1.717.996.996.767-.536z"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <path d="M3.221 3.739l2.261 2.269L7.7 3.784l-.7-.7-1.012 1.007-.008-1.6a.523.523 0 0 1 .149-.38l1.378-1.381-.7-.7L5.419 1.4a1.533 1.533 0 0 0-.441 1.082l.006 1.717-.996-.996-.767.536zm6.67 4.389l-2.262-2.268-2.218 2.224.7.7 1.012-1.007.008 1.6a.523.523 0 0 1-.149.38l-1.377 1.38.7.7 1.388-1.37a1.533 1.533 0 0 0 .44-1.082l-.005-1.717.996.996.767-.536z" />
                 </svg>
               </button>
-              <button 
-                className="search-action-btn" 
+              <button
+                className="search-action-btn"
                 onClick={handleReplaceAll}
                 title="Replace All (Shift+Enter)"
                 disabled={!searchValue || matchInfo.total === 0}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M3.221 3.739l2.261 2.269L7.7 3.784l-.7-.7-1.012 1.007-.008-1.6a.523.523 0 0 1 .149-.38l1.378-1.381-.7-.7L5.419 1.4a1.533 1.533 0 0 0-.441 1.082l.006 1.717-.996-.996-.767.536zm6.67 4.389l-2.262-2.268-2.218 2.224.7.7 1.012-1.007.008 1.6a.523.523 0 0 1-.149.38l-1.377 1.38.7.7 1.388-1.37a1.533 1.533 0 0 0 .44-1.082l-.005-1.717.996.996.767-.536z"/>
-                  <path d="M12.5 3h-3v1h3v3h1V3.5a.5.5 0 0 0-.5-.5h-.5zM3.5 12H6v1H3a.5.5 0 0 1-.5-.5V10h1v2.5z"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <path d="M3.221 3.739l2.261 2.269L7.7 3.784l-.7-.7-1.012 1.007-.008-1.6a.523.523 0 0 1 .149-.38l1.378-1.381-.7-.7L5.419 1.4a1.533 1.533 0 0 0-.441 1.082l.006 1.717-.996-.996-.767.536zm6.67 4.389l-2.262-2.268-2.218 2.224.7.7 1.012-1.007.008 1.6a.523.523 0 0 1-.149.38l-1.377 1.38.7.7 1.388-1.37a1.533 1.533 0 0 0 .44-1.082l-.005-1.717.996.996.767-.536z" />
+                  <path d="M12.5 3h-3v1h3v3h1V3.5a.5.5 0 0 0-.5-.5h-.5zM3.5 12H6v1H3a.5.5 0 0 1-.5-.5V10h1v2.5z" />
                 </svg>
               </button>
             </div>

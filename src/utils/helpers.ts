@@ -4,8 +4,8 @@
 
 /** Extract the display name from a file path (without extension) */
 export function getNoteName(filePath: string): string {
-  const name = filePath.split('/').pop() || filePath;
-  return name.replace(/\.md$/, '');
+  const name = filePath.split("/").pop() || filePath;
+  return name.replace(/\.md$/, "");
 }
 
 /** Format file size for display */
@@ -21,7 +21,7 @@ export function formatDate(timestamp: number): string {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
-  if (diff < 60000) return 'just now';
+  if (diff < 60000) return "just now";
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
   if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
@@ -41,7 +41,7 @@ export function countCharacters(text: string): number {
 /** Debounce a function */
 export function debounce<T extends (...args: any[]) => any>(
   fn: T,
-  delay: number
+  delay: number,
 ): (...args: Parameters<T>) => void {
   let timeoutId: ReturnType<typeof setTimeout>;
   return (...args: Parameters<T>) => {
@@ -59,7 +59,7 @@ export function generateId(): string {
 export function processWikiLinks(content: string): string {
   return content.replace(
     /\[\[([^\]]+)\]\]/g,
-    '<span class="wiki-link" data-link="$1">$1</span>'
+    '<span class="wiki-link" data-link="$1">$1</span>',
   );
 }
 
@@ -67,6 +67,6 @@ export function processWikiLinks(content: string): string {
 export function processTags(content: string): string {
   return content.replace(
     /(?:^|\s)(#[a-zA-Z][a-zA-Z0-9_-]*)/g,
-    ' <span class="tag" data-tag="$1">$1</span>'
+    ' <span class="tag" data-tag="$1">$1</span>',
   );
 }

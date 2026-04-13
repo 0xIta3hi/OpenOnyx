@@ -60,12 +60,12 @@ export interface Command {
   category?: string;
 }
 
-export type ViewMode = 'editor' | 'preview' | 'split';
-export type Theme = 'dark' | 'light' | 'custom';
+export type ViewMode = "editor" | "preview" | "split";
+export type Theme = "dark" | "light" | "custom";
 
 // ── Thought Model Types ──────────────────────────────
 
-export type ThoughtModelStatus = 'idle' | 'indexing' | 'done' | 'failed';
+export type ThoughtModelStatus = "idle" | "indexing" | "done" | "failed";
 
 export interface ThoughtModelBuildRequest {
   vaultPath: string;
