@@ -5223,6 +5223,15 @@ blockquote:has(.callout) {
   z-index: 1;
 }
 
+.cv-lasso-overlay {
+  position: absolute;
+  overflow: visible;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .cv-edge .cv-edge-display {
   pointer-events: none;
   stroke-linecap: round;
@@ -5705,6 +5714,43 @@ blockquote:has(.callout) {
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.cv-draw-panel {
+  padding: 8px;
+  gap: 8px;
+  width: 178px;
+}
+
+.cv-draw-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cv-draw-swatch {
+  width: 16px;
+  height: 16px;
+}
+
+.cv-draw-size {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cv-draw-size input[type="range"] {
+  width: 100%;
+  accent-color: var(--cv-sel);
+}
+
+.cv-draw-delete {
+  margin-top: 2px;
+  justify-content: center;
+  color: #f87171;
 }
 .cv-ctrl {
   width: 36px;

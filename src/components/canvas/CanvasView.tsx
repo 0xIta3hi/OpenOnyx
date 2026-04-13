@@ -13,7 +13,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   Plus, Minus, Maximize, Grid3X3, ArrowUpRight,
   RotateCcw, RotateCw, Type, FileText, Globe,
-  SquareDashed, Trash2, Palette, Copy, X, PenLine,
+  SquareDashed, Trash2, Palette, Copy, X, PenLine, Eraser, Lasso,
   Lock, Unlock,
 } from 'lucide-react';
 import {
@@ -59,6 +59,8 @@ const MD_PREVIEW_REFRESH_INTERVAL_MS = 1200;
 const CANVAS_SCRIBBLES_KEY = 'noteworkScribblesV1';
 const DEFAULT_SCRIBBLE_WIDTH = 2.4;
 const MIN_SCRIBBLE_POINT_DIST = 0.8;
+const MIN_LASSO_POINT_DIST = 1.2;
+const ERASER_RADIUS_PX = 14;
 
 const embeddedMarkdownCache = new Map<string, string>();
 
@@ -186,11 +188,82 @@ function sanitizeCanvasScribbles(value: unknown): CanvasScribbleStroke[] {
 
 function pointsToStrokePath(points: CanvasScribblePoint[]): string {
   if (!points.length) return '';
-  if (points.length === 1) {
-    const p = points[0];
-    return `M${p.x},${p.y} l0.01,0`;
+  if (points.length < 3) {
+    if (points.length === 1) {
+      const p = points[0];
+      return `M${p.x},${p.y} l0.01,0`;
+    }
+    const [a, b] = points;
+    return `M${a.x},${a.y} L${b.x},${b.y}`;
   }
-  return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+
+  const first = points[0];
+  let d = `M${first.x},${first.y}`;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const p = points[i];
+    const n = points[i + 1];
+    const mx = (p.x + n.x) / 2;
+    const my = (p.y + n.y) / 2;
+    d += ` Q${p.x},${p.y} ${mx},${my}`;
+  }
+  const last = points[points.length - 1];
+  d += ` L${last.x},${last.y}`;
+  return d;
+}
+
+function pointInPolygon(point: CanvasScribblePoint, polygon: CanvasScribblePoint[]): boolean {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    const intersect = ((yi > point.y) !== (yj > point.y))
+      && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || Number.EPSILON) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointToSegmentDistance(p: CanvasScribblePoint, a: CanvasScribblePoint, b: CanvasScribblePoint): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx === 0 && dy === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+  const px = a.x + t * dx;
+  const py = a.y + t * dy;
+  return Math.hypot(p.x - px, p.y - py);
+}
+
+function isPointNearStroke(point: CanvasScribblePoint, stroke: CanvasScribbleStroke, radius: number): boolean {
+  const allowance = radius + stroke.width * 0.7;
+  const pts = stroke.points;
+  if (!pts.length) return false;
+  if (pts.length === 1) return Math.hypot(point.x - pts[0].x, point.y - pts[0].y) <= allowance;
+  for (let i = 1; i < pts.length; i += 1) {
+    if (pointToSegmentDistance(point, pts[i - 1], pts[i]) <= allowance) return true;
+  }
+  return false;
+}
+
+function strokeIntersectsLasso(stroke: CanvasScribbleStroke, polygon: CanvasScribblePoint[]): boolean {
+  if (polygon.length < 3) return false;
+  return stroke.points.some(point => pointInPolygon(point, polygon));
+}
+
+function firstStrokeIdNearPoint(
+  strokes: CanvasScribbleStroke[],
+  point: CanvasScribblePoint,
+  radius: number,
+  onlyIds?: Set<string>,
+): string | null {
+  for (let i = strokes.length - 1; i >= 0; i -= 1) {
+    const stroke = strokes[i];
+    if (onlyIds && !onlyIds.has(stroke.id)) continue;
+    if (isPointNearStroke(point, stroke, radius)) return stroke.id;
+  }
+  return null;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -240,6 +313,10 @@ export function CanvasView({
   const [areaSize, setAreaSize] = useState({ width: 1, height: 1 });
   const [scribbles, setScribbles] = useState<CanvasScribbleStroke[]>([]);
   const [activeScribble, setActiveScribble] = useState<CanvasScribbleStroke | null>(null);
+  const [selectedScribbleIds, setSelectedScribbleIds] = useState<Set<string>>(new Set());
+  const [lassoPoints, setLassoPoints] = useState<CanvasScribblePoint[]>([]);
+  const [scribbleColor, setScribbleColor] = useState<string>('');
+  const [scribbleWidth, setScribbleWidth] = useState<number>(DEFAULT_SCRIBBLE_WIDTH);
 
   /* refs */
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -250,6 +327,11 @@ export function CanvasView({
   const nodesRef = useRef(nodes);      // always-latest snapshot for move handler
   const scribblesRef = useRef(scribbles);
   const activeScribbleRef = useRef<CanvasScribbleStroke | null>(null);
+  const selectedScribbleIdsRef = useRef<Set<string>>(new Set());
+  const lassoPointsRef = useRef<CanvasScribblePoint[]>([]);
+  const scribbleMoveOriginRef = useRef<Record<string, CanvasScribblePoint[]>>({});
+  const scribbleMoveChangedRef = useRef(false);
+  const eraseChangedRef = useRef(false);
   const vpRef = useRef<CanvasViewport>(vp);
   const targetVpRef = useRef<CanvasViewport>(vp);
   const zoomAnimFrameRef = useRef<number | null>(null);
@@ -263,6 +345,8 @@ export function CanvasView({
   nodesRef.current = nodes;
   scribblesRef.current = scribbles;
   activeScribbleRef.current = activeScribble;
+  selectedScribbleIdsRef.current = selectedScribbleIds;
+  lassoPointsRef.current = lassoPoints;
   vpRef.current = vp;
 
   /* ── history ── */
@@ -459,6 +543,8 @@ export function CanvasView({
         setEdges([]);
         setScribbles([]);
         setActiveScribble(null);
+        setSelectedScribbleIds(new Set());
+        setLassoPoints([]);
         setDocMeta({});
         setDiagnostics(null);
         setShowDiagnostics(false);
@@ -508,6 +594,8 @@ export function CanvasView({
         setEdges(nextEdges);
         setScribbles(nextScribbles);
         setActiveScribble(null);
+        setSelectedScribbleIds(new Set());
+        setLassoPoints([]);
         setDocMeta(metadata);
         setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
         setShowDiagnostics(parsed.diagnostics.repaired);
@@ -526,6 +614,8 @@ export function CanvasView({
         setEdges([]);
         setScribbles([]);
         setActiveScribble(null);
+        setSelectedScribbleIds(new Set());
+        setLassoPoints([]);
         setDocMeta({});
         setDiagnostics({
           warnings: [],
@@ -619,7 +709,7 @@ export function CanvasView({
     }
     // groups at back, rest at front
     const sorted = type === 'group' ? [n, ...nodes] : [...nodes, n];
-    setNodes(sorted); setSelNodes(new Set([n.id])); setSelEdges(new Set()); push(sorted, edges);
+    setNodes(sorted); setSelNodes(new Set([n.id])); setSelEdges(new Set()); setSelectedScribbleIds(new Set()); setLassoPoints([]); push(sorted, edges);
     return n;
   }, [nodes, edges, viewCenter, snap, push]);
 
@@ -634,15 +724,24 @@ export function CanvasView({
   const deleteSelected = useCallback(() => {
     const nn = nodes.filter(n => !selNodes.has(n.id));
     const ee = edges.filter(e => !selEdges.has(e.id) && !selNodes.has(e.fromNode) && !selNodes.has(e.toNode));
-    setNodes(nn); setEdges(ee); setSelNodes(new Set()); setSelEdges(new Set()); push(nn, ee);
-  }, [nodes, edges, selNodes, selEdges, push]);
+    const ss = scribbles.filter(s => !selectedScribbleIds.has(s.id));
+    setNodes(nn);
+    setEdges(ee);
+    setScribbles(ss);
+    scribblesRef.current = ss;
+    setSelNodes(new Set());
+    setSelEdges(new Set());
+    setSelectedScribbleIds(new Set());
+    setLassoPoints([]);
+    push(nn, ee, ss);
+  }, [nodes, edges, scribbles, selNodes, selEdges, selectedScribbleIds, push]);
 
   const duplicateNode = useCallback((id: string) => {
     const n = nodes.find(x => x.id === id);
     if (!n) return;
     const dup = clone({ ...n, id: generateId(), x: n.x + 30, y: n.y + 30 }) as CanvasNode;
     const nn = [...nodes, dup];
-    setNodes(nn); setSelNodes(new Set([dup.id])); push(nn, edges);
+    setNodes(nn); setSelNodes(new Set([dup.id])); setSelEdges(new Set()); setSelectedScribbleIds(new Set()); setLassoPoints([]); push(nn, edges);
   }, [nodes, edges, push]);
 
   const toggleLockSelected = useCallback(() => {
@@ -766,6 +865,9 @@ export function CanvasView({
       setNodes(nextNodes);
       setEdges(nextEdges);
       setScribbles(nextScribbles);
+      setActiveScribble(null);
+      setSelectedScribbleIds(new Set());
+      setLassoPoints([]);
       setDocMeta(metadata);
       setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
       setShowDiagnostics(parsed.diagnostics.repaired);
@@ -784,16 +886,80 @@ export function CanvasView({
       const stroke: CanvasScribbleStroke = {
         id: generateId(),
         points: [p],
-        width: DEFAULT_SCRIBBLE_WIDTH,
+        width: scribbleWidth,
+        color: scribbleColor || undefined,
       };
       setActiveScribble(stroke);
       setSelNodes(new Set());
       setSelEdges(new Set());
+      setSelectedScribbleIds(new Set());
+      setLassoPoints([]);
+      lassoPointsRef.current = [];
       setColorPickerFor(null);
       setDrag({ type: 'draw', startX: e.clientX, startY: e.clientY });
       e.preventDefault();
       return;
     }
+
+    if (e.button === 0 && tool === 'erase') {
+      const p = s2c(e.clientX, e.clientY);
+      eraseChangedRef.current = false;
+      setSelNodes(new Set());
+      setSelEdges(new Set());
+      setSelectedScribbleIds(new Set());
+      setLassoPoints([]);
+      lassoPointsRef.current = [];
+      setColorPickerFor(null);
+
+      const radius = ERASER_RADIUS_PX / Math.max(vpRef.current.zoom, 0.25);
+      setScribbles(prev => {
+        const next = prev.filter(stroke => !isPointNearStroke(p, stroke, radius));
+        if (next.length !== prev.length) eraseChangedRef.current = true;
+        scribblesRef.current = next;
+        return next;
+      });
+
+      setDrag({ type: 'erase', startX: e.clientX, startY: e.clientY });
+      e.preventDefault();
+      return;
+    }
+
+    if (e.button === 0 && tool === 'lasso') {
+      const p = s2c(e.clientX, e.clientY);
+      const selected = selectedScribbleIdsRef.current;
+      const moveHitId = selected.size
+        ? firstStrokeIdNearPoint(
+          scribblesRef.current,
+          p,
+          10 / Math.max(vpRef.current.zoom, 0.25),
+          selected,
+        )
+        : null;
+
+      if (moveHitId) {
+        const origin: Record<string, CanvasScribblePoint[]> = {};
+        scribblesRef.current.forEach(stroke => {
+          if (!selected.has(stroke.id)) return;
+          origin[stroke.id] = stroke.points.map(pt => ({ x: pt.x, y: pt.y }));
+        });
+        scribbleMoveOriginRef.current = origin;
+        scribbleMoveChangedRef.current = false;
+        setDrag({ type: 'scribble-move', startX: e.clientX, startY: e.clientY });
+        e.preventDefault();
+        return;
+      }
+
+      setLassoPoints([p]);
+      lassoPointsRef.current = [p];
+      setSelNodes(new Set());
+      setSelEdges(new Set());
+      setSelectedScribbleIds(new Set());
+      setColorPickerFor(null);
+      setDrag({ type: 'lasso', startX: e.clientX, startY: e.clientY });
+      e.preventDefault();
+      return;
+    }
+
     if (e.button === 1 || (e.button === 0 && (tool === 'pan' || e.shiftKey))) {
       stopSmoothZoom();
       stopPanInertia();
@@ -805,16 +971,19 @@ export function CanvasView({
     if (e.button === 0 && tool === 'select') {
       const p = s2c(e.clientX, e.clientY);
       setDrag({ type: 'select', startX: p.x, startY: p.y });
-      setSelNodes(new Set()); setSelEdges(new Set()); setColorPickerFor(null);
+      setSelNodes(new Set()); setSelEdges(new Set()); setSelectedScribbleIds(new Set()); setLassoPoints([]); setColorPickerFor(null);
     }
-  }, [tool, s2c, stopPanInertia, stopSmoothZoom]);
+  }, [tool, s2c, stopPanInertia, stopSmoothZoom, scribbleWidth, scribbleColor]);
 
   const onNodeDown = useCallback((e: React.MouseEvent, id: string) => {
-    if (tool === 'draw') {
+    if (tool === 'draw' || tool === 'erase' || tool === 'lasso') {
       return;
     }
     stopPanInertia();
     e.stopPropagation();
+    setSelectedScribbleIds(new Set());
+    setLassoPoints([]);
+    lassoPointsRef.current = [];
     const target = e.target as HTMLElement | null;
     const inNoDragArea = !!target?.closest('[data-cv-no-drag="true"]');
     const isInteractiveTarget = !!target?.closest(
@@ -897,12 +1066,18 @@ export function CanvasView({
   const onPortDown = useCallback((e: React.MouseEvent, id: string, side: EdgeSide) => {
     stopPanInertia();
     e.stopPropagation();
+    setSelectedScribbleIds(new Set());
+    setLassoPoints([]);
+    lassoPointsRef.current = [];
     setDrag({ type: 'edge', startX: e.clientX, startY: e.clientY, edgeFromNode: id, edgeFromSide: side });
   }, [stopPanInertia]);
 
   const onResizeDown = useCallback((e: React.MouseEvent, id: string, handle: string) => {
     stopPanInertia();
     e.stopPropagation();
+    setSelectedScribbleIds(new Set());
+    setLassoPoints([]);
+    lassoPointsRef.current = [];
     const n = nodes.find(x => x.id === id);
     if (!n || n.locked) return;
     setDrag({
@@ -1139,6 +1314,53 @@ export function CanvasView({
           setActiveScribble(nextStroke);
           break;
         }
+        case 'erase': {
+          const point = s2c(e.clientX, e.clientY);
+          const radius = ERASER_RADIUS_PX / Math.max(vpRef.current.zoom, 0.25);
+          setScribbles(prev => {
+            const next = prev.filter(stroke => !isPointNearStroke(point, stroke, radius));
+            if (next.length !== prev.length) eraseChangedRef.current = true;
+            scribblesRef.current = next;
+            return next;
+          });
+          break;
+        }
+        case 'lasso': {
+          const point = s2c(e.clientX, e.clientY);
+          setLassoPoints(prev => {
+            const last = prev[prev.length - 1];
+            if (last && Math.hypot(point.x - last.x, point.y - last.y) < MIN_LASSO_POINT_DIST / Math.max(vp.zoom, 0.25)) {
+              return prev;
+            }
+            const next = [...prev, point];
+            lassoPointsRef.current = next;
+            return next;
+          });
+          break;
+        }
+        case 'scribble-move': {
+          const origin = scribbleMoveOriginRef.current;
+          const ids = selectedScribbleIdsRef.current;
+          if (!Object.keys(origin).length || !ids.size) break;
+          const dx = (e.clientX - drag.startX) / Math.max(vp.zoom, 0.25);
+          const dy = (e.clientY - drag.startY) / Math.max(vp.zoom, 0.25);
+          if (!scribbleMoveChangedRef.current && (Math.abs(dx) > 0.02 || Math.abs(dy) > 0.02)) {
+            scribbleMoveChangedRef.current = true;
+          }
+          setScribbles(prev => {
+            const next = prev.map(stroke => {
+              if (!ids.has(stroke.id)) return stroke;
+              const base = origin[stroke.id] || stroke.points;
+              return {
+                ...stroke,
+                points: base.map(p => ({ x: p.x + dx, y: p.y + dy })),
+              };
+            });
+            scribblesRef.current = next;
+            return next;
+          });
+          break;
+        }
       }
     };
     const onUp = (e: MouseEvent) => {
@@ -1194,10 +1416,41 @@ export function CanvasView({
         if (finalized && finalized.points.length > 1) {
           const nextScribbles = [...scribblesRef.current, finalized];
           setScribbles(nextScribbles);
+          scribblesRef.current = nextScribbles;
           push(nodesRef.current, edges, nextScribbles);
         }
         setActiveScribble(null);
         activeScribbleRef.current = null;
+      }
+
+      if (drag.type === 'erase') {
+        if (eraseChangedRef.current) {
+          push(nodesRef.current, edges, scribblesRef.current);
+        }
+        eraseChangedRef.current = false;
+      }
+
+      if (drag.type === 'lasso') {
+        const polygon = lassoPointsRef.current;
+        if (polygon.length >= 3) {
+          const selected = new Set(
+            scribblesRef.current
+              .filter(stroke => strokeIntersectsLasso(stroke, polygon))
+              .map(stroke => stroke.id),
+          );
+          setSelectedScribbleIds(selected);
+          setSelNodes(new Set());
+          setSelEdges(new Set());
+        }
+        setLassoPoints([]);
+        lassoPointsRef.current = [];
+      }
+
+      if (drag.type === 'scribble-move') {
+        if (scribbleMoveChangedRef.current) {
+          push(nodesRef.current, edges, scribblesRef.current);
+        }
+        scribbleMoveChangedRef.current = false;
       }
 
       if (drag.type === 'node' || drag.type === 'resize') push(nodesRef.current, edges);
@@ -1292,7 +1545,7 @@ export function CanvasView({
       const t = e.target as HTMLElement;
       if (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') return;
       const ctrl = e.ctrlKey || e.metaKey;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && (selNodes.size || selEdges.size)) { deleteSelected(); return; }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selNodes.size || selEdges.size || selectedScribbleIds.size)) { deleteSelected(); return; }
       if (ctrl && e.key === 'a') { e.preventDefault(); setSelNodes(new Set(nodes.map(n => n.id))); }
       if (ctrl && e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); redo(); }
       else if (ctrl && e.key === 'z') { e.preventDefault(); undo(); }
@@ -1300,9 +1553,14 @@ export function CanvasView({
       if (e.key === 'h' && !ctrl) setTool('pan');
       if (e.key === 'c' && !ctrl) setTool('edge');
       if (e.key === 'd' && !ctrl) setTool('draw');
+      if (e.key === 'e' && !ctrl) setTool('erase');
+      if (e.key === 'l' && !ctrl) setTool('lasso');
       if (e.key === 'Escape') {
         setSelNodes(new Set());
         setSelEdges(new Set());
+        setSelectedScribbleIds(new Set());
+        setLassoPoints([]);
+        lassoPointsRef.current = [];
         setTool('select');
         setEditingId(null);
         setColorPickerFor(null);
@@ -1313,7 +1571,7 @@ export function CanvasView({
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [selNodes, selEdges, nodes, deleteSelected, undo, redo]);
+  }, [selNodes, selEdges, selectedScribbleIds, nodes, deleteSelected, undo, redo]);
 
   /* ═══ EDITING ═══ */
   const startEdit = useCallback((id: string) => {
@@ -1348,9 +1606,9 @@ export function CanvasView({
   /* ═══ CURSOR ═══ */
   const cursor = drag.type === 'pan'
     ? 'grabbing'
-    : drag.type === 'node'
+    : drag.type === 'node' || drag.type === 'scribble-move'
       ? 'grabbing'
-      : drag.type === 'draw' || tool === 'draw' || tool === 'edge'
+      : drag.type === 'draw' || drag.type === 'erase' || drag.type === 'lasso' || tool === 'draw' || tool === 'erase' || tool === 'lasso' || tool === 'edge'
         ? 'crosshair'
         : tool === 'pan'
           ? 'grab'
@@ -1507,7 +1765,7 @@ export function CanvasView({
           {/* SVG edges */}
           <svg className="cv-edges">
             {visibleEdges.map(ed => <EdgePath key={ed.id} edge={ed} nodeMap={nodeMap} selected={selEdges.has(ed.id)}
-              onClick={(ev) => { ev.stopPropagation(); setSelNodes(new Set()); setSelEdges(new Set([ed.id])); }} />)}
+              onClick={(ev) => { ev.stopPropagation(); setSelNodes(new Set()); setSelEdges(new Set([ed.id])); setSelectedScribbleIds(new Set()); setLassoPoints([]); lassoPointsRef.current = []; }} />)}
             {tempEdge && <TempEdgePath from={tempEdge} />}
             {drag.type === 'node' && alignLines.x.map((x, i) => (
               <line key={`ax-${i}`} x1={x} y1={-100000} x2={x} y2={100000} stroke="var(--accent-color)" strokeWidth={1/vp.zoom} strokeDasharray="4 4" opacity={0.6} />
@@ -1521,16 +1779,17 @@ export function CanvasView({
             {scribbles.map((stroke) => {
               const d = pointsToStrokePath(stroke.points);
               if (!d) return null;
+              const selected = selectedScribbleIds.has(stroke.id);
               return (
                 <path
                   key={stroke.id}
                   d={d}
                   fill="none"
-                  stroke={stroke.color || 'var(--cv-scribble)'}
-                  strokeWidth={stroke.width}
+                  stroke={selected ? 'var(--cv-sel)' : (stroke.color || 'var(--cv-scribble)')}
+                  strokeWidth={stroke.width + (selected ? 1.15 : 0)}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={0.92}
+                  opacity={selected ? 1 : 0.92}
                 />
               );
             })}
@@ -1546,6 +1805,29 @@ export function CanvasView({
               />
             ) : null}
           </svg>
+
+          {lassoPoints.length > 1 ? (
+            <svg className="cv-lasso-overlay">
+              {lassoPoints.length > 2 ? (
+                <polygon
+                  points={lassoPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="color-mix(in srgb, var(--cv-sel) 10%, transparent)"
+                  stroke="var(--cv-sel)"
+                  strokeWidth={1.2}
+                  strokeDasharray="6 4"
+                  opacity={0.95}
+                />
+              ) : null}
+              <polyline
+                points={lassoPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="var(--cv-sel)"
+                strokeWidth={1.2}
+                strokeDasharray="6 4"
+                opacity={0.95}
+              />
+            </svg>
+          ) : null}
 
           {/* Selection rect */}
           {selBox && <div className="cv-sel-box" style={{ left: selBox.x, top: selBox.y, width: selBox.w, height: selBox.h }} />}
@@ -1704,7 +1986,52 @@ export function CanvasView({
           >
             <PenLine size={15} />
           </button>
+          <button
+            className={`cv-ctrl${tool === 'erase' ? ' on' : ''}`}
+            title="Eraser (E)"
+            onClick={() => setTool(prev => prev === 'erase' ? 'select' : 'erase')}
+          >
+            <Eraser size={15} />
+          </button>
+          <button
+            className={`cv-ctrl${tool === 'lasso' ? ' on' : ''}`}
+            title="Lasso select + move scribbles (L)"
+            onClick={() => setTool(prev => prev === 'lasso' ? 'select' : 'lasso')}
+          >
+            <Lasso size={15} />
+          </button>
         </div>
+        {(tool === 'draw' || tool === 'erase' || tool === 'lasso' || selectedScribbleIds.size > 0) && (
+          <div className="cv-ctrl-group cv-draw-panel">
+            <div className="cv-draw-swatches">
+              {['', '#f9fafb', '#f97316', '#38bdf8', '#22c55e', '#f43f5e', '#a78bfa'].map((color) => (
+                <button
+                  key={color || 'default'}
+                  className={`cv-swatch cv-draw-swatch${(scribbleColor || '') === color ? ' on' : ''}${!color ? ' cv-swatch-none' : ''}`}
+                  style={color ? { background: color } : undefined}
+                  title={color ? `Stroke ${color}` : 'Default stroke color'}
+                  onClick={() => setScribbleColor(color)}
+                />
+              ))}
+            </div>
+            <label className="cv-draw-size">
+              <span>{scribbleWidth.toFixed(1)}px</span>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={0.2}
+                value={scribbleWidth}
+                onChange={(e) => setScribbleWidth(Number(e.target.value))}
+              />
+            </label>
+            {selectedScribbleIds.size > 0 ? (
+              <button className="cv-file-row cv-draw-delete" onClick={deleteSelected}>
+                Delete selected strokes
+              </button>
+            ) : null}
+          </div>
+        )}
         <div className="cv-ctrl-group">
           <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(1)}><Plus size={16} /></button>
           <button className="cv-ctrl cv-ctrl-label" title="Reset zoom" onClick={() => setViewportImmediate(p => ({ ...p, zoom: 1 }))}>{Math.round(vp.zoom * 100)}%</button>
