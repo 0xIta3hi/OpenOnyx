@@ -5762,6 +5762,7 @@ blockquote:has(.callout) {
   right: 12px;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
   z-index: 60;
 }
@@ -5849,10 +5850,22 @@ blockquote:has(.callout) {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+.cv-draw-tools {
+  position: relative;
+}
+
 .cv-draw-panel {
   padding: 8px;
   gap: 8px;
   width: 178px;
+}
+
+.cv-draw-popout {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  z-index: 70;
+  animation: cv-pop 0.12s ease-out;
 }
 
 .cv-draw-swatches {

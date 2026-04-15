@@ -2827,80 +2827,79 @@ export function CanvasView({
             <Type size={16} />
           </button>
         </div>
-        <div className="cv-ctrl-group">
-          <button
-            className={`cv-ctrl${tool === "draw" ? " on" : ""}`}
-            title="Draw scribble (D)"
-            onClick={() =>
-              setTool((prev) => (prev === "draw" ? "select" : "draw"))
-            }
-          >
-            <PenLine size={15} />
-          </button>
-          <button
-            className={`cv-ctrl${tool === "erase" ? " on" : ""}`}
-            title="Eraser (E)"
-            onClick={() =>
-              setTool((prev) => (prev === "erase" ? "select" : "erase"))
-            }
-          >
-            <Eraser size={15} />
-          </button>
-          <button
-            className={`cv-ctrl${tool === "lasso" ? " on" : ""}`}
-            title="Lasso select + move scribbles (L)"
-            onClick={() =>
-              setTool((prev) => (prev === "lasso" ? "select" : "lasso"))
-            }
-          >
-            <Lasso size={15} />
-          </button>
-        </div>
-        {(tool === "draw" ||
-          tool === "erase" ||
-          tool === "lasso" ||
-          selectedScribbleIds.size > 0) && (
-          <div className="cv-ctrl-group cv-draw-panel">
-            <div className="cv-draw-swatches">
-              {[
-                "",
-                "#f9fafb",
-                "#f97316",
-                "#38bdf8",
-                "#22c55e",
-                "#f43f5e",
-                "#a78bfa",
-              ].map((color) => (
-                <button
-                  key={color || "default"}
-                  className={`cv-swatch cv-draw-swatch${(scribbleColor || "") === color ? " on" : ""}${!color ? " cv-swatch-none" : ""}`}
-                  style={color ? { background: color } : undefined}
-                  title={color ? `Stroke ${color}` : "Default stroke color"}
-                  onClick={() => setScribbleColor(color)}
-                />
-              ))}
-            </div>
-            <label className="cv-draw-size">
-              <span>{scribbleWidth.toFixed(1)}px</span>
-              <input
-                type="range"
-                min={1}
-                max={10}
-                step={0.2}
-                value={scribbleWidth}
-                onChange={(e) => setScribbleWidth(Number(e.target.value))}
-              />
-            </label>
-            {selectedScribbleIds.size > 0 ? (
-              <button
-                className="cv-file-row cv-draw-delete"
-                onClick={deleteSelected}
-              >
-                Delete selected strokes
-              </button>
-            ) : null}
+        <div className="cv-draw-tools">
+          <div className="cv-ctrl-group">
+            <button
+              className={`cv-ctrl${tool === "draw" ? " on" : ""}`}
+              title="Draw scribble (D)"
+              onClick={() =>
+                setTool((prev) => (prev === "draw" ? "select" : "draw"))
+              }
+            >
+              <PenLine size={15} />
+            </button>
+            <button
+              className={`cv-ctrl${tool === "erase" ? " on" : ""}`}
+              title="Eraser (E)"
+              onClick={() =>
+                setTool((prev) => (prev === "erase" ? "select" : "erase"))
+              }
+            >
+              <Eraser size={15} />
+            </button>
+            <button
+              className={`cv-ctrl${tool === "lasso" ? " on" : ""}`}
+              title="Lasso select + move scribbles (L)"
+              onClick={() =>
+                setTool((prev) => (prev === "lasso" ? "select" : "lasso"))
+              }
+            >
+              <Lasso size={15} />
+            </button>
           </div>
-        )}
+          {(tool === "draw" || selectedScribbleIds.size > 0) && (
+            <div className="cv-ctrl-group cv-draw-panel cv-draw-popout">
+              <div className="cv-draw-swatches">
+                {[
+                  "",
+                  "#f9fafb",
+                  "#f97316",
+                  "#38bdf8",
+                  "#22c55e",
+                  "#f43f5e",
+                  "#a78bfa",
+                ].map((color) => (
+                  <button
+                    key={color || "default"}
+                    className={`cv-swatch cv-draw-swatch${(scribbleColor || "") === color ? " on" : ""}${!color ? " cv-swatch-none" : ""}`}
+                    style={color ? { background: color } : undefined}
+                    title={color ? `Stroke ${color}` : "Default stroke color"}
+                    onClick={() => setScribbleColor(color)}
+                  />
+                ))}
+              </div>
+              <label className="cv-draw-size">
+                <span>{scribbleWidth.toFixed(1)}px</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={0.2}
+                  value={scribbleWidth}
+                  onChange={(e) => setScribbleWidth(Number(e.target.value))}
+                />
+              </label>
+              {selectedScribbleIds.size > 0 ? (
+                <button
+                  className="cv-file-row cv-draw-delete"
+                  onClick={deleteSelected}
+                >
+                  Delete selected strokes
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
         <div className="cv-ctrl-group">
           <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(1)}>
             <Plus size={16} />
