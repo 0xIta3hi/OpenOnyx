@@ -211,6 +211,17 @@ function sanitizeEdge(
     toEnd: toEdgeEnd(record.toEnd),
     label: toOptionalString(record.label),
     color: toOptionalString(record.color),
+    width: Math.max(1, Math.min(14, toFiniteNumber(record.width, 2))),
+    stretch: Math.max(0.1, Math.min(5, toFiniteNumber(record.stretch, 1))),
+    fromStretch: Math.max(
+      0.1,
+      Math.min(5, toFiniteNumber(record.fromStretch, toFiniteNumber(record.stretch, 1))),
+    ),
+    toStretch: Math.max(
+      0.1,
+      Math.min(5, toFiniteNumber(record.toStretch, toFiniteNumber(record.stretch, 1))),
+    ),
+    locked: toOptionalBoolean(record.locked),
   } as CanvasEdge;
 }
 

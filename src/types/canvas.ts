@@ -78,6 +78,11 @@ export interface CanvasEdge {
   toEnd?: EdgeEnd;
   color?: CanvasColor;
   label?: string;
+  width?: number;
+  stretch?: number;
+  fromStretch?: number;
+  toStretch?: number;
+  locked?: boolean;
 }
 
 // ── Canvas Document ──────────────────────────────────
@@ -105,7 +110,8 @@ export interface DragState {
     | "draw"
     | "erase"
     | "lasso"
-    | "scribble-move";
+    | "scribble-move"
+    | "edge-stretch";
   nodeId?: string;
   startX: number;
   startY: number;
@@ -116,6 +122,11 @@ export interface DragState {
   offsetY?: number;
   edgeFromNode?: string;
   edgeFromSide?: EdgeSide;
+  edgeId?: string;
+  edgeStretchHandle?: "from" | "to";
+  edgeStretchStart?: number;
+  edgeStretchOrigin?: { x: number; y: number };
+  edgeStretchBaseDistance?: number;
   resizeHandle?: string;
   selectionBounds?: { x: number; y: number; width: number; height: number };
   selectionOriginById?: Record<

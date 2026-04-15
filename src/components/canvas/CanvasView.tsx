@@ -35,6 +35,7 @@ import {
   PenLine,
   Eraser,
   Lasso,
+  SlidersHorizontal,
   Lock,
   Unlock,
 } from "lucide-react";
@@ -96,6 +97,12 @@ const DEFAULT_SCRIBBLE_WIDTH = 2.4;
 const MIN_SCRIBBLE_POINT_DIST = 0.8;
 const MIN_LASSO_POINT_DIST = 1.2;
 const ERASER_RADIUS_PX = 14;
+const EDGE_MIN_WIDTH = 1;
+const EDGE_MAX_WIDTH = 14;
+const EDGE_DEFAULT_WIDTH = 2;
+const EDGE_MIN_STRETCH = 0.1;
+const EDGE_MAX_STRETCH = 5;
+const EDGE_DEFAULT_STRETCH = 1;
 
 const embeddedMarkdownCache = new Map<string, string>();
 
@@ -182,6 +189,110 @@ function cpOffset(s: EdgeSide, dist: number) {
     case "right":
       return { dx: dist, dy: 0 };
   }
+}
+
+function clampEdgeWidth(value?: number) {
+  const width =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : EDGE_DEFAULT_WIDTH;
+  return Math.max(EDGE_MIN_WIDTH, Math.min(EDGE_MAX_WIDTH, width));
+}
+
+function clampEdgeStretch(value?: number) {
+  const stretch =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : EDGE_DEFAULT_STRETCH;
+  return Math.max(EDGE_MIN_STRETCH, Math.min(EDGE_MAX_STRETCH, stretch));
+}
+
+type EdgeStretchHandle = "from" | "to";
+
+interface EdgeGeometry {
+  p1: CanvasScribblePoint;
+  p2: CanvasScribblePoint;
+  cp1: CanvasScribblePoint;
+  cp2: CanvasScribblePoint;
+  fromStretch: number;
+  toStretch: number;
+}
+
+function edgeSideStretch(edge: CanvasEdge, side: EdgeStretchHandle) {
+  if (side === "from") {
+    return clampEdgeStretch(edge.fromStretch ?? edge.stretch);
+  }
+  return clampEdgeStretch(edge.toStretch ?? edge.stretch);
+}
+
+function edgeGeometry(
+  edge: CanvasEdge,
+  nodeMap: Map<string, CanvasNode>,
+): EdgeGeometry | null {
+  const a = nodeMap.get(edge.fromNode);
+  const b = nodeMap.get(edge.toNode);
+  if (!a || !b) return null;
+
+  const [fs0, ts0] = bestSides(a, b);
+  const fs = edge.fromSide || fs0;
+  const ts = edge.toSide || ts0;
+  const p1 = portXY(a, fs);
+  const p2 = portXY(b, ts);
+  const baseDist = Math.max(80, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.45);
+  const fromStretch = edgeSideStretch(edge, "from");
+  const toStretch = edgeSideStretch(edge, "to");
+  const c1 = cpOffset(fs, baseDist * fromStretch);
+  const c2 = cpOffset(ts, baseDist * toStretch);
+
+  return {
+    p1,
+    p2,
+    cp1: { x: p1.x + c1.dx, y: p1.y + c1.dy },
+    cp2: { x: p2.x + c2.dx, y: p2.y + c2.dy },
+    fromStretch,
+    toStretch,
+  };
+}
+
+function pickStretchHandle(
+  point: CanvasScribblePoint,
+  geometry: EdgeGeometry,
+): EdgeStretchHandle {
+  const fromDist = Math.hypot(point.x - geometry.cp1.x, point.y - geometry.cp1.y);
+  const toDist = Math.hypot(point.x - geometry.cp2.x, point.y - geometry.cp2.y);
+  return fromDist <= toDist ? "from" : "to";
+}
+
+function cubicBezierPoint(
+  p0: CanvasScribblePoint,
+  p1: CanvasScribblePoint,
+  p2: CanvasScribblePoint,
+  p3: CanvasScribblePoint,
+  t: number,
+) {
+  const it = 1 - t;
+  const it2 = it * it;
+  const t2 = t * t;
+  return {
+    x: it2 * it * p0.x + 3 * it2 * t * p1.x + 3 * it * t2 * p2.x + t2 * t * p3.x,
+    y: it2 * it * p0.y + 3 * it2 * t * p1.y + 3 * it * t2 * p2.y + t2 * t * p3.y,
+  };
+}
+
+function edgeMidpoint(
+  edge: CanvasEdge,
+  nodeMap: Map<string, CanvasNode>,
+): { x: number; y: number } | null {
+  const geometry = edgeGeometry(edge, nodeMap);
+  if (!geometry) return null;
+
+  return cubicBezierPoint(
+    geometry.p1,
+    geometry.cp1,
+    geometry.cp2,
+    geometry.p2,
+    0.5,
+  );
 }
 
 function colorWithAlpha(color: string, alpha: number): string {
@@ -399,6 +510,19 @@ export function CanvasView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [colorPickerFor, setColorPickerFor] = useState<string | null>(null);
+  const [edgeColorPickerFor, setEdgeColorPickerFor] = useState<string | null>(
+    null,
+  );
+  const [edgeWidthPickerFor, setEdgeWidthPickerFor] = useState<string | null>(
+    null,
+  );
+  const [edgeLabelDraft, setEdgeLabelDraft] = useState("");
+  const [edgeMenuClickAnchor, setEdgeMenuClickAnchor] = useState<{
+    edgeId: string;
+    x: number;
+    y: number;
+    handle: EdgeStretchHandle;
+  } | null>(null);
   const [fileModal, setFileModal] = useState(false);
   const [linkModal, setLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -435,6 +559,7 @@ export function CanvasView({
   const linkRef = useRef<HTMLInputElement>(null);
   const recentMenuRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes); // always-latest snapshot for move handler
+  const edgesRef = useRef(edges);
   const scribblesRef = useRef(scribbles);
   const activeScribbleRef = useRef<CanvasScribbleStroke | null>(null);
   const selectedScribbleIdsRef = useRef<Set<string>>(new Set());
@@ -443,6 +568,7 @@ export function CanvasView({
     {},
   );
   const scribbleMoveChangedRef = useRef(false);
+  const edgeStretchChangedRef = useRef(false);
   const eraseChangedRef = useRef(false);
   const vpRef = useRef<CanvasViewport>(vp);
   const targetVpRef = useRef<CanvasViewport>(vp);
@@ -459,6 +585,7 @@ export function CanvasView({
   const lastSavedPayloadRef = useRef("");
   const [suspendMarkdownPreviews, setSuspendMarkdownPreviews] = useState(false);
   nodesRef.current = nodes;
+  edgesRef.current = edges;
   scribblesRef.current = scribbles;
   activeScribbleRef.current = activeScribble;
   selectedScribbleIdsRef.current = selectedScribbleIds;
@@ -958,11 +1085,47 @@ export function CanvasView({
     [edges, push],
   );
 
+  const updateEdge = useCallback(
+    (id: string, u: Partial<CanvasEdge>) => {
+      setEdges((prev) => {
+        const current = prev.find((ed) => ed.id === id);
+        if (!current) return prev;
+
+        const hasLockedUpdate = Object.prototype.hasOwnProperty.call(u, "locked");
+        if (current.locked && !(hasLockedUpdate && u.locked === false)) {
+          return prev;
+        }
+
+        const changed = (Object.keys(u) as Array<keyof CanvasEdge>).some(
+          (key) => current[key] !== u[key],
+        );
+        if (!changed) return prev;
+
+        const next = prev.map((ed) =>
+          ed.id === id ? (clone({ ...ed, ...u }) as CanvasEdge) : ed,
+        );
+        push(nodes, next);
+        return next;
+      });
+    },
+    [nodes, push],
+  );
+
+  const commitPendingEdgeLabel = useCallback(() => {
+    if (selEdges.size !== 1) return;
+    const edge = edges.find((ed) => selEdges.has(ed.id));
+    if (!edge || edge.locked) return;
+    const trimmed = edgeLabelDraft.trim();
+    const current = edge.label || "";
+    if (trimmed === current) return;
+    updateEdge(edge.id, { label: trimmed || undefined });
+  }, [selEdges, edges, edgeLabelDraft, updateEdge]);
+
   const deleteSelected = useCallback(() => {
     const nn = nodes.filter((n) => !selNodes.has(n.id));
     const ee = edges.filter(
       (e) =>
-        !selEdges.has(e.id) &&
+        (e.locked || !selEdges.has(e.id)) &&
         !selNodes.has(e.fromNode) &&
         !selNodes.has(e.toNode),
     );
@@ -1162,6 +1325,8 @@ export function CanvasView({
   /* ═══ MOUSE: DOWN ═══ */
   const onAreaDown = useCallback(
     (e: React.MouseEvent) => {
+      commitPendingEdgeLabel();
+
       if (e.button === 0 && tool === "draw") {
         const p = s2c(e.clientX, e.clientY);
         const stroke: CanvasScribbleStroke = {
@@ -1173,6 +1338,7 @@ export function CanvasView({
         setActiveScribble(stroke);
         setSelNodes(new Set());
         setSelEdges(new Set());
+        setEdgeMenuClickAnchor(null);
         setSelectedScribbleIds(new Set());
         setLassoPoints([]);
         lassoPointsRef.current = [];
@@ -1187,6 +1353,7 @@ export function CanvasView({
         eraseChangedRef.current = false;
         setSelNodes(new Set());
         setSelEdges(new Set());
+        setEdgeMenuClickAnchor(null);
         setSelectedScribbleIds(new Set());
         setLassoPoints([]);
         lassoPointsRef.current = [];
@@ -1243,6 +1410,7 @@ export function CanvasView({
         lassoPointsRef.current = [p];
         setSelNodes(new Set());
         setSelEdges(new Set());
+        setEdgeMenuClickAnchor(null);
         setSelectedScribbleIds(new Set());
         setColorPickerFor(null);
         setDrag({ type: "lasso", startX: e.clientX, startY: e.clientY });
@@ -1275,16 +1443,26 @@ export function CanvasView({
         setDrag({ type: "select", startX: p.x, startY: p.y });
         setSelNodes(new Set());
         setSelEdges(new Set());
+        setEdgeMenuClickAnchor(null);
         setSelectedScribbleIds(new Set());
         setLassoPoints([]);
         setColorPickerFor(null);
       }
     },
-    [tool, s2c, stopPanInertia, stopSmoothZoom, scribbleWidth, scribbleColor],
+    [
+      tool,
+      s2c,
+      stopPanInertia,
+      stopSmoothZoom,
+      scribbleWidth,
+      scribbleColor,
+      commitPendingEdgeLabel,
+    ],
   );
 
   const onNodeDown = useCallback(
     (e: React.MouseEvent, id: string) => {
+      commitPendingEdgeLabel();
       if (tool === "draw" || tool === "erase" || tool === "lasso") {
         return;
       }
@@ -1309,6 +1487,7 @@ export function CanvasView({
         } else if (!selNodes.has(id)) {
           setSelNodes(new Set([id]));
           setSelEdges(new Set());
+          setEdgeMenuClickAnchor(null);
         }
         setColorPickerFor(null);
         return;
@@ -1348,6 +1527,7 @@ export function CanvasView({
       } else if (!selNodes.has(id)) {
         setSelNodes(new Set([id]));
         setSelEdges(new Set());
+        setEdgeMenuClickAnchor(null);
       }
       setColorPickerFor(null);
       const n = nodes.find((x) => x.id === id)!;
@@ -1398,7 +1578,7 @@ export function CanvasView({
         originById,
       });
     },
-    [editingId, tool, nodes, selNodes, s2c, stopPanInertia],
+    [editingId, tool, nodes, selNodes, s2c, stopPanInertia, commitPendingEdgeLabel],
   );
 
   const onPortDown = useCallback(
@@ -1634,6 +1814,34 @@ export function CanvasView({
           const fp = portXY(from, side);
           const cp = s2c(e.clientX, e.clientY);
           setTempEdge({ fx: fp.x, fy: fp.y, tx: cp.x, ty: cp.y });
+          break;
+        }
+        case "edge-stretch": {
+          const edgeId = drag.edgeId;
+          const handle = drag.edgeStretchHandle || "from";
+          const origin = drag.edgeStretchOrigin;
+          const baseDist = drag.edgeStretchBaseDistance;
+          const startStretch = drag.edgeStretchStart;
+          if (!edgeId || !origin || !baseDist || !startStretch) break;
+
+          const cp = s2c(e.clientX, e.clientY);
+          const dist = Math.hypot(cp.x - origin.x, cp.y - origin.y);
+          const nextStretch = clampEdgeStretch(startStretch * (dist / baseDist));
+
+          setEdges((prev) => {
+            const idx = prev.findIndex((ed) => ed.id === edgeId);
+            if (idx < 0) return prev;
+            const current = prev[idx];
+            if (current.locked) return prev;
+            const currentValue = edgeSideStretch(current, handle);
+            if (currentValue === nextStretch) return prev;
+            const key: "fromStretch" | "toStretch" =
+              handle === "from" ? "fromStretch" : "toStretch";
+            const next = [...prev];
+            next[idx] = { ...current, [key]: nextStretch };
+            edgeStretchChangedRef.current = true;
+            return next;
+          });
           break;
         }
         case "select": {
@@ -1931,6 +2139,13 @@ export function CanvasView({
         scribbleMoveChangedRef.current = false;
       }
 
+      if (drag.type === "edge-stretch") {
+        if (edgeStretchChangedRef.current) {
+          push(nodesRef.current, edgesRef.current, scribblesRef.current);
+        }
+        edgeStretchChangedRef.current = false;
+      }
+
       if (drag.type === "node" || drag.type === "resize")
         push(nodesRef.current, edges);
       setDrag({ type: "none", startX: 0, startY: 0 });
@@ -2051,7 +2266,12 @@ export function CanvasView({
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") return;
+      const isEdgeLabelInput = t.classList.contains("cv-edge-label-input");
+      if (
+        (t.tagName === "TEXTAREA" || t.tagName === "INPUT") &&
+        !isEdgeLabelInput
+      )
+        return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
@@ -2066,9 +2286,11 @@ export function CanvasView({
       }
       if (ctrl && e.shiftKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
+        commitPendingEdgeLabel();
         redo();
       } else if (ctrl && e.key === "z") {
         e.preventDefault();
+        commitPendingEdgeLabel();
         undo();
       }
       if (e.key === "v" && !ctrl) setTool("select");
@@ -2097,10 +2319,11 @@ export function CanvasView({
     selNodes,
     selEdges,
     selectedScribbleIds,
-    nodes,
     deleteSelected,
+    nodes,
     undo,
     redo,
+    commitPendingEdgeLabel,
   ]);
 
   /* ═══ EDITING ═══ */
@@ -2157,7 +2380,10 @@ export function CanvasView({
   const cursor =
     drag.type === "pan"
       ? "grabbing"
-      : drag.type === "node" || drag.type === "scribble-move"
+      :
+          drag.type === "node" ||
+          drag.type === "scribble-move" ||
+          drag.type === "edge-stretch"
         ? "grabbing"
         : drag.type === "draw" ||
             drag.type === "erase" ||
@@ -2344,6 +2570,51 @@ export function CanvasView({
         }
       : null;
 
+  const firstSelEdge =
+    selEdges.size === 1 ? edges.find((ed) => selEdges.has(ed.id)) || null : null;
+  const edgeLocked = !!firstSelEdge?.locked;
+  const edgeWidthValue = clampEdgeWidth(firstSelEdge?.width);
+  const edgeStretchHandle: EdgeStretchHandle =
+    edgeMenuClickAnchor &&
+    firstSelEdge &&
+    edgeMenuClickAnchor.edgeId === firstSelEdge.id
+      ? edgeMenuClickAnchor.handle
+      : "from";
+  const edgeStretchValue = firstSelEdge
+    ? edgeSideStretch(firstSelEdge, edgeStretchHandle)
+    : EDGE_DEFAULT_STRETCH;
+  const edgeMenuAnchor =
+    firstSelEdge && !firstSel
+      ? edgeMenuClickAnchor?.edgeId === firstSelEdge.id
+        ? { x: edgeMenuClickAnchor.x, y: edgeMenuClickAnchor.y }
+        : edgeMidpoint(firstSelEdge, nodeMap)
+      : null;
+
+  const commitEdgeLabel = useCallback(() => {
+    if (!firstSelEdge || firstSelEdge.locked) return;
+    const trimmed = edgeLabelDraft.trim();
+    const current = firstSelEdge.label || "";
+    if (trimmed === current) return;
+    updateEdge(firstSelEdge.id, { label: trimmed || undefined });
+  }, [firstSelEdge, edgeLabelDraft, updateEdge]);
+
+  useEffect(() => {
+    if (!firstSelEdge) {
+      setEdgeLabelDraft("");
+      setEdgeColorPickerFor(null);
+      setEdgeWidthPickerFor(null);
+      setEdgeMenuClickAnchor(null);
+      return;
+    }
+    setEdgeLabelDraft(firstSelEdge.label || "");
+    setEdgeColorPickerFor((current) =>
+      current === firstSelEdge.id ? current : null,
+    );
+    setEdgeWidthPickerFor((current) =>
+      current === firstSelEdge.id ? current : null,
+    );
+  }, [firstSelEdge]);
+
   /* ═══ RENDER ═══ */
   return (
     <div
@@ -2381,6 +2652,21 @@ export function CanvasView({
                 selected={selEdges.has(ed.id)}
                 onClick={(ev) => {
                   ev.stopPropagation();
+                  commitPendingEdgeLabel();
+                  const clickPoint = s2c(ev.clientX, ev.clientY);
+                  const geometry = edgeGeometry(ed, nodeMap);
+                  const handle = geometry
+                    ? pickStretchHandle(clickPoint, geometry)
+                    : "from";
+                  setColorPickerFor(null);
+                  setEdgeColorPickerFor(null);
+                  setEdgeWidthPickerFor(null);
+                  setEdgeMenuClickAnchor({
+                    edgeId: ed.id,
+                    x: clickPoint.x,
+                    y: clickPoint.y,
+                    handle,
+                  });
                   setSelNodes(new Set());
                   setSelEdges(new Set([ed.id]));
                   setSelectedScribbleIds(new Set());
@@ -2389,6 +2675,47 @@ export function CanvasView({
                 }}
               />
             ))}
+            {edgeMenuAnchor && firstSelEdge && !edgeLocked && (
+              <g
+                className="cv-edge-stretch-handle"
+                transform={`translate(${edgeMenuAnchor.x},${edgeMenuAnchor.y})`}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  commitPendingEdgeLabel();
+                  const geometry = edgeGeometry(firstSelEdge, nodeMap);
+                  if (!geometry) return;
+                  const handle: EdgeStretchHandle =
+                    edgeMenuClickAnchor?.edgeId === firstSelEdge.id
+                      ? edgeMenuClickAnchor.handle
+                      : "from";
+                  const origin = handle === "from" ? geometry.p1 : geometry.p2;
+                  const startStretch = edgeSideStretch(firstSelEdge, handle);
+                  const baseDistance = Math.max(
+                    8,
+                    Math.hypot(
+                      edgeMenuAnchor.x - origin.x,
+                      edgeMenuAnchor.y - origin.y,
+                    ),
+                  );
+                  edgeStretchChangedRef.current = false;
+                  setDrag({
+                    type: "edge-stretch",
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    edgeId: firstSelEdge.id,
+                    edgeStretchHandle: handle,
+                    edgeStretchStart: startStretch,
+                    edgeStretchOrigin: origin,
+                    edgeStretchBaseDistance: baseDistance,
+                  });
+                }}
+              >
+                <title>Drag to stretch edge</title>
+                <circle className="cv-edge-stretch-ring" r={8} />
+                <circle className="cv-edge-stretch-dot" r={3.2} />
+              </g>
+            )}
             {tempEdge && <TempEdgePath from={tempEdge} />}
             {drag.type === "node" &&
               alignLines.x.map((x, i) => (
@@ -2752,6 +3079,143 @@ export function CanvasView({
         </div>
       )}
 
+      {edgeMenuAnchor && firstSelEdge && !editingId && (
+        <div
+          className="cv-card-menu cv-edge-menu"
+          style={{
+            left: renderVp.x + edgeMenuAnchor.x * renderVp.zoom,
+            top: renderVp.y + edgeMenuAnchor.y * renderVp.zoom - 10,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            className="cv-edge-label-input"
+            value={edgeLabelDraft}
+            placeholder="Edge label"
+            disabled={edgeLocked}
+            onChange={(e) => setEdgeLabelDraft(e.target.value)}
+            onBlur={commitEdgeLabel}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commitEdgeLabel();
+                (e.target as HTMLInputElement).blur();
+              }
+              if (e.key === "Escape") {
+                setEdgeLabelDraft(firstSelEdge.label || "");
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          <button
+            className="cv-card-btn"
+            title="Edge color"
+            disabled={edgeLocked}
+            onClick={() =>
+              setEdgeColorPickerFor(
+                edgeColorPickerFor === firstSelEdge.id ? null : firstSelEdge.id,
+              )
+            }
+          >
+            <Palette size={14} />
+          </button>
+          <button
+            className={`cv-card-btn${edgeWidthPickerFor === firstSelEdge.id ? " on" : ""}`}
+            title="Edge width"
+            disabled={edgeLocked}
+            onClick={() =>
+              setEdgeWidthPickerFor(
+                edgeWidthPickerFor === firstSelEdge.id ? null : firstSelEdge.id,
+              )
+            }
+          >
+            <SlidersHorizontal size={14} />
+          </button>
+          <button
+            className={`cv-card-btn${firstSelEdge.toEnd !== "none" ? " on" : ""}`}
+            title="Toggle arrowhead"
+            disabled={edgeLocked}
+            onClick={() =>
+              updateEdge(firstSelEdge.id, {
+                toEnd: firstSelEdge.toEnd === "none" ? "arrow" : "none",
+              })
+            }
+          >
+            <span className="cv-card-short">-&gt;</span>
+          </button>
+          <button
+            className={`cv-card-btn${edgeLocked ? " on" : ""}`}
+            title={edgeLocked ? "Unlock edge" : "Lock edge"}
+            onClick={() =>
+              updateEdge(firstSelEdge.id, {
+                locked: !edgeLocked,
+              })
+            }
+          >
+            {edgeLocked ? <Unlock size={14} /> : <Lock size={14} />}
+          </button>
+          <button
+            className="cv-card-btn cv-card-btn-del"
+            title="Delete edge"
+            disabled={edgeLocked}
+            onClick={deleteSelected}
+          >
+            <Trash2 size={14} />
+          </button>
+          {!edgeLocked && edgeColorPickerFor === firstSelEdge.id && (
+            <div className="cv-color-row cv-edge-color-row">
+              <button
+                className="cv-swatch cv-swatch-none"
+                onClick={() => {
+                  updateEdge(firstSelEdge.id, { color: undefined });
+                  setEdgeColorPickerFor(null);
+                }}
+              />
+              {Object.entries(CANVAS_PRESET_COLORS).map(([k, hex]) => (
+                <button
+                  key={k}
+                  className={`cv-swatch${firstSelEdge.color === k ? " on" : ""}`}
+                  style={{ background: hex }}
+                  onClick={() => {
+                    updateEdge(firstSelEdge.id, { color: k });
+                    setEdgeColorPickerFor(null);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {!edgeLocked && edgeWidthPickerFor === firstSelEdge.id && (
+            <div className="cv-color-row cv-edge-width-pop">
+              <label className="cv-edge-width-slider">
+                <span>Width {edgeWidthValue.toFixed(1)}px</span>
+                <input
+                  type="range"
+                  min={EDGE_MIN_WIDTH}
+                  max={EDGE_MAX_WIDTH}
+                  step={0.2}
+                  value={edgeWidthValue}
+                  onChange={(e) =>
+                    updateEdge(firstSelEdge.id, {
+                      width: clampEdgeWidth(Number(e.target.value)),
+                    })
+                  }
+                />
+              </label>
+            </div>
+          )}
+          <div className="cv-edge-controls" onPointerDown={commitPendingEdgeLabel}>
+            <div className="cv-edge-width-head">
+              <span>Stretch Handle</span>
+              <span>{edgeStretchHandle === "from" ? "Source" : "Target"}</span>
+            </div>
+            <div className="cv-edge-stretch-note">
+              {edgeLocked
+                ? "Unlock edge to stretch"
+                : `Drag the ring to stretch the ${edgeStretchHandle === "from" ? "source" : "target"} side (${edgeStretchValue.toFixed(2)}x)`}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ Right-side controls (Obsidian-style) ══ */}
       <div className="cv-controls">
         {(onNewCanvas ||
@@ -2935,7 +3399,10 @@ export function CanvasView({
           <button
             className="cv-ctrl"
             title="Undo"
-            onClick={undo}
+            onClick={() => {
+              commitPendingEdgeLabel();
+              undo();
+            }}
             disabled={histIdx <= 0}
           >
             <RotateCcw size={15} />
@@ -2943,7 +3410,10 @@ export function CanvasView({
           <button
             className="cv-ctrl"
             title="Redo"
-            onClick={redo}
+            onClick={() => {
+              commitPendingEdgeLabel();
+              redo();
+            }}
             disabled={histIdx >= hist.length - 1}
           >
             <RotateCw size={15} />
@@ -3143,28 +3613,23 @@ function EdgePath({
   selected: boolean;
   onClick: (e: React.MouseEvent) => void;
 }) {
-  const a = nodeMap.get(edge.fromNode);
-  const b = nodeMap.get(edge.toNode);
-  if (!a || !b) return null;
-  const [fs0, ts0] = bestSides(a, b);
-  const fs = edge.fromSide || fs0,
-    ts = edge.toSide || ts0;
-  const p1 = portXY(a, fs),
-    p2 = portXY(b, ts);
-  const dist = Math.max(80, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.45);
-  const c1 = cpOffset(fs, dist),
-    c2 = cpOffset(ts, dist);
-  const d = `M${p1.x},${p1.y} C${p1.x + c1.dx},${p1.y + c1.dy} ${p2.x + c2.dx},${p2.y + c2.dy} ${p2.x},${p2.y}`;
+  const geometry = edgeGeometry(edge, nodeMap);
+  if (!geometry) return null;
+  const { p1, p2, cp1, cp2 } = geometry;
+  const edgeWidth = clampEdgeWidth(edge.width);
+  const d = `M${p1.x},${p1.y} C${cp1.x},${cp1.y} ${cp2.x},${cp2.y} ${p2.x},${p2.y}`;
   const color = resolveCanvasColor(edge.color) || "var(--cv-edge)";
+  const labelPoint = cubicBezierPoint(p1, cp1, cp2, p2, 0.5);
+  const arrowScale = Math.max(0.75, Math.min(2.25, edgeWidth / EDGE_DEFAULT_WIDTH));
   const endAngle =
-    (Math.atan2(p2.y - (p2.y + c2.dy), p2.x - (p2.x + c2.dx)) * 180) / Math.PI;
+    (Math.atan2(p2.y - cp2.y, p2.x - cp2.x) * 180) / Math.PI;
   return (
-    <g className={`cv-edge${selected ? " sel" : ""}`}>
+    <g className={`cv-edge${selected ? " sel" : ""}${edge.locked ? " locked" : ""}`}>
       <path
         d={d}
         fill="none"
         stroke="transparent"
-        strokeWidth={20}
+        strokeWidth={Math.max(20, edgeWidth * 6)}
         style={{ cursor: "pointer" }}
         onClick={onClick}
       />
@@ -3172,20 +3637,20 @@ function EdgePath({
         d={d}
         className="cv-edge-display"
         stroke={color}
-        strokeWidth={selected ? 2.5 : 2}
+        strokeWidth={selected ? edgeWidth + 1 : edgeWidth}
         fill="none"
       />
       {edge.toEnd !== "none" && (
         <polygon
           points="-7,-4.5 0,0 -7,4.5"
           fill={color}
-          transform={`translate(${p2.x},${p2.y}) rotate(${endAngle})`}
+          transform={`translate(${p2.x},${p2.y}) rotate(${endAngle}) scale(${arrowScale})`}
         />
       )}
       {edge.label && (
         <text
-          x={(p1.x + p2.x) / 2}
-          y={(p1.y + p2.y) / 2 - 8}
+          x={labelPoint.x}
+          y={labelPoint.y - (8 + edgeWidth * 0.2)}
           textAnchor="middle"
           className="cv-edge-label"
         >
