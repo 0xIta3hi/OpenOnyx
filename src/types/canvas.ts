@@ -82,6 +82,10 @@ export interface CanvasEdge {
   stretch?: number;
   fromStretch?: number;
   toStretch?: number;
+  fromControlDx?: number;
+  fromControlDy?: number;
+  toControlDx?: number;
+  toControlDy?: number;
   locked?: boolean;
 }
 
@@ -126,6 +130,7 @@ export interface DragState {
   edgeStretchHandle?: "from" | "to";
   edgeStretchStart?: number;
   edgeStretchOrigin?: { x: number; y: number };
+  edgeStretchControlStart?: { x: number; y: number };
   edgeStretchBaseDistance?: number;
   resizeHandle?: string;
   selectionBounds?: { x: number; y: number; width: number; height: number };

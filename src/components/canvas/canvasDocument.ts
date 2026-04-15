@@ -221,6 +221,22 @@ function sanitizeEdge(
       0.1,
       Math.min(5, toFiniteNumber(record.toStretch, toFiniteNumber(record.stretch, 1))),
     ),
+    fromControlDx:
+      typeof record.fromControlDx === "number" && Number.isFinite(record.fromControlDx)
+        ? record.fromControlDx
+        : undefined,
+    fromControlDy:
+      typeof record.fromControlDy === "number" && Number.isFinite(record.fromControlDy)
+        ? record.fromControlDy
+        : undefined,
+    toControlDx:
+      typeof record.toControlDx === "number" && Number.isFinite(record.toControlDx)
+        ? record.toControlDx
+        : undefined,
+    toControlDy:
+      typeof record.toControlDy === "number" && Number.isFinite(record.toControlDy)
+        ? record.toControlDy
+        : undefined,
     locked: toOptionalBoolean(record.locked),
   } as CanvasEdge;
 }

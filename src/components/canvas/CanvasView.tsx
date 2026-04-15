@@ -214,6 +214,7 @@ interface EdgeGeometry {
   p2: CanvasScribblePoint;
   cp1: CanvasScribblePoint;
   cp2: CanvasScribblePoint;
+  baseDist: number;
   fromStretch: number;
   toStretch: number;
 }
@@ -239,18 +240,37 @@ function edgeGeometry(
   const p1 = portXY(a, fs);
   const p2 = portXY(b, ts);
   const baseDist = Math.max(80, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.45);
-  const fromStretch = edgeSideStretch(edge, "from");
-  const toStretch = edgeSideStretch(edge, "to");
-  const c1 = cpOffset(fs, baseDist * fromStretch);
-  const c2 = cpOffset(ts, baseDist * toStretch);
+  const defaultFromStretch = edgeSideStretch(edge, "from");
+  const defaultToStretch = edgeSideStretch(edge, "to");
+  const c1 = cpOffset(fs, baseDist * defaultFromStretch);
+  const c2 = cpOffset(ts, baseDist * defaultToStretch);
+  const fromDx =
+    typeof edge.fromControlDx === "number" && Number.isFinite(edge.fromControlDx)
+      ? edge.fromControlDx
+      : c1.dx;
+  const fromDy =
+    typeof edge.fromControlDy === "number" && Number.isFinite(edge.fromControlDy)
+      ? edge.fromControlDy
+      : c1.dy;
+  const toDx =
+    typeof edge.toControlDx === "number" && Number.isFinite(edge.toControlDx)
+      ? edge.toControlDx
+      : c2.dx;
+  const toDy =
+    typeof edge.toControlDy === "number" && Number.isFinite(edge.toControlDy)
+      ? edge.toControlDy
+      : c2.dy;
+  const cp1 = { x: p1.x + fromDx, y: p1.y + fromDy };
+  const cp2 = { x: p2.x + toDx, y: p2.y + toDy };
 
   return {
     p1,
     p2,
-    cp1: { x: p1.x + c1.dx, y: p1.y + c1.dy },
-    cp2: { x: p2.x + c2.dx, y: p2.y + c2.dy },
-    fromStretch,
-    toStretch,
+    cp1,
+    cp2,
+    baseDist,
+    fromStretch: Math.hypot(fromDx, fromDy) / baseDist,
+    toStretch: Math.hypot(toDx, toDy) / baseDist,
   };
 }
 
@@ -1820,25 +1840,49 @@ export function CanvasView({
           const edgeId = drag.edgeId;
           const handle = drag.edgeStretchHandle || "from";
           const origin = drag.edgeStretchOrigin;
-          const baseDist = drag.edgeStretchBaseDistance;
-          const startStretch = drag.edgeStretchStart;
-          if (!edgeId || !origin || !baseDist || !startStretch) break;
+          const controlStart = drag.edgeStretchControlStart;
+          if (!edgeId || !origin || !controlStart) break;
 
           const cp = s2c(e.clientX, e.clientY);
-          const dist = Math.hypot(cp.x - origin.x, cp.y - origin.y);
-          const nextStretch = clampEdgeStretch(startStretch * (dist / baseDist));
+          const startCp = s2c(drag.startX, drag.startY);
+          const dx = cp.x - startCp.x;
+          const dy = cp.y - startCp.y;
+          let nextCx = controlStart.x + dx;
+          let nextCy = controlStart.y + dy;
+          const maxRadius = 4200;
+          const vecX = nextCx - origin.x;
+          const vecY = nextCy - origin.y;
+          const vecLen = Math.hypot(vecX, vecY);
+          if (vecLen > maxRadius) {
+            const scale = maxRadius / vecLen;
+            nextCx = origin.x + vecX * scale;
+            nextCy = origin.y + vecY * scale;
+          }
+          const nextDx = nextCx - origin.x;
+          const nextDy = nextCy - origin.y;
 
           setEdges((prev) => {
             const idx = prev.findIndex((ed) => ed.id === edgeId);
             if (idx < 0) return prev;
             const current = prev[idx];
             if (current.locked) return prev;
-            const currentValue = edgeSideStretch(current, handle);
-            if (currentValue === nextStretch) return prev;
-            const key: "fromStretch" | "toStretch" =
-              handle === "from" ? "fromStretch" : "toStretch";
+            const keyDx: "fromControlDx" | "toControlDx" =
+              handle === "from" ? "fromControlDx" : "toControlDx";
+            const keyDy: "fromControlDy" | "toControlDy" =
+              handle === "from" ? "fromControlDy" : "toControlDy";
+            if (current[keyDx] === nextDx && current[keyDy] === nextDy) {
+              return prev;
+            }
             const next = [...prev];
-            next[idx] = { ...current, [key]: nextStretch };
+            next[idx] = {
+              ...current,
+              [keyDx]: nextDx,
+              [keyDy]: nextDy,
+            };
+            setEdgeMenuClickAnchor((anchor) => {
+              if (!anchor || anchor.edgeId !== edgeId) return anchor;
+              return { ...anchor, x: nextCx, y: nextCy };
+            });
             edgeStretchChangedRef.current = true;
             return next;
           });
@@ -2580,8 +2624,12 @@ export function CanvasView({
     edgeMenuClickAnchor.edgeId === firstSelEdge.id
       ? edgeMenuClickAnchor.handle
       : "from";
-  const edgeStretchValue = firstSelEdge
-    ? edgeSideStretch(firstSelEdge, edgeStretchHandle)
+  const selectedEdgeGeometry =
+    firstSelEdge ? edgeGeometry(firstSelEdge, nodeMap) : null;
+  const edgeStretchValue = selectedEdgeGeometry
+    ? edgeStretchHandle === "from"
+      ? selectedEdgeGeometry.fromStretch
+      : selectedEdgeGeometry.toStretch
     : EDGE_DEFAULT_STRETCH;
   const edgeMenuAnchor =
     firstSelEdge && !firstSel
@@ -2690,14 +2738,10 @@ export function CanvasView({
                       ? edgeMenuClickAnchor.handle
                       : "from";
                   const origin = handle === "from" ? geometry.p1 : geometry.p2;
-                  const startStretch = edgeSideStretch(firstSelEdge, handle);
-                  const baseDistance = Math.max(
-                    8,
-                    Math.hypot(
-                      edgeMenuAnchor.x - origin.x,
-                      edgeMenuAnchor.y - origin.y,
-                    ),
-                  );
+                  const controlStart = {
+                    x: edgeMenuAnchor.x,
+                    y: edgeMenuAnchor.y,
+                  };
                   edgeStretchChangedRef.current = false;
                   setDrag({
                     type: "edge-stretch",
@@ -2705,9 +2749,8 @@ export function CanvasView({
                     startY: e.clientY,
                     edgeId: firstSelEdge.id,
                     edgeStretchHandle: handle,
-                    edgeStretchStart: startStretch,
                     edgeStretchOrigin: origin,
-                    edgeStretchBaseDistance: baseDistance,
+                    edgeStretchControlStart: controlStart,
                   });
                 }}
               >
