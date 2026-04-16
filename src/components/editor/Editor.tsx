@@ -841,6 +841,7 @@ export function Editor({
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
   const wheelRemainderRef = useRef(0);
@@ -1237,14 +1238,40 @@ export function Editor({
     };
   }, [isSpecialTab]);
 
+  // Keep the active tab visible when tabs overflow horizontally.
+  useEffect(() => {
+    const scroller = tabScrollRef.current;
+    if (!scroller || !activeTabId) return;
+
+    const activeEl = Array.from(
+      scroller.querySelectorAll<HTMLElement>(".editor-tab"),
+    ).find((el) => el.dataset.tabId === activeTabId);
+
+    if (!activeEl) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const tabRect = activeEl.getBoundingClientRect();
+    const isOutOfView =
+      tabRect.left < scrollerRect.left || tabRect.right > scrollerRect.right;
+
+    if (isOutOfView) {
+      activeEl.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }
+  }, [activeTabId, tabs]);
+
   return (
     <>
       {/* Tab Bar */}
       <div className={`editor-tab-bar ${!isSpecialTab ? "with-controls" : ""}`}>
-        <div className="editor-tab-scroll">
+        <div className="editor-tab-scroll" ref={tabScrollRef}>
           {tabs.map((tab) => (
             <div
               key={tab.id}
+              data-tab-id={tab.id}
               className={`editor-tab ${tab.id === activeTabId ? "active" : ""}`}
               onClick={() => onTabSelect(tab.id)}
             >
