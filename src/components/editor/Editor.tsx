@@ -1240,44 +1240,43 @@ export function Editor({
   return (
     <>
       {/* Tab Bar */}
-      <div className="editor-tab-bar">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`editor-tab ${tab.id === activeTabId ? "active" : ""}`}
-            onClick={() => onTabSelect(tab.id)}
-          >
-            <div className="tab-inner">
-              {tab.isModified && (
-                <span style={{ color: "var(--text-muted)", fontSize: "8px", flexShrink: 0 }}>●</span>
-              )}
-              <span className="tab-title">{tab.name}</span>
-              <button
-                className="close-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTabClose(tab.id);
-                }}
-              >
-                ✕
-              </button>
+      <div className={`editor-tab-bar ${!isSpecialTab ? "with-controls" : ""}`}>
+        <div className="editor-tab-scroll">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`editor-tab ${tab.id === activeTabId ? "active" : ""}`}
+              onClick={() => onTabSelect(tab.id)}
+            >
+              <div className="tab-inner">
+                {tab.isModified && (
+                  <span
+                    style={{
+                      color: "var(--text-muted)",
+                      fontSize: "8px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    ●
+                  </span>
+                )}
+                <span className="tab-title">{tab.name}</span>
+                <button
+                  className="close-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTabClose(tab.id);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Editor Header with View Mode Toggle */}
-      <div className="editor-header">
-        <div className="editor-breadcrumb">
-          <span>vault</span>
-          <span className="separator">/</span>
-          <span className="current">
-            {tabs.find((t) => t.id === activeTabId)?.name || ""}
-          </span>
+          ))}
         </div>
 
         {!isSpecialTab && (
-          <div className="editor-actions">
+          <div className="editor-tab-controls">
             <div className="view-mode-toggle">
               <button
                 className={`view-mode-btn ${viewMode === "editor" ? "active" : ""}`}

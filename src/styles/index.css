@@ -338,12 +338,15 @@ body {
   padding: 0 8px;
   flex-shrink: 0;
   font-size: var(--font-ui-small);
+  position: relative;
 }
 
 .titlebar-left {
   display: flex;
   align-items: center;
   gap: 2px;
+  position: relative;
+  z-index: 2;
 }
 
 .titlebar-menu {
@@ -371,9 +374,13 @@ body {
 .titlebar-center {
   display: flex;
   align-items: center;
-  flex: 1;
   justify-content: center;
-  padding: 0 16px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 40px));
+  z-index: 1;
+  pointer-events: none;
 }
 
 .titlebar-command {
@@ -389,10 +396,12 @@ body {
   gap: 8px;
   cursor: pointer;
   transition: var(--transition-fast);
-  min-width: 360px;
-  max-width: 500px;
+  width: 100%;
+  min-width: 320px;
+  max-width: 560px;
   justify-content: space-between;
   height: 26px;
+  pointer-events: auto;
 }
 
 .titlebar-command:hover {
@@ -425,6 +434,9 @@ body {
   display: flex;
   gap: 0;
   -webkit-app-region: no-drag;
+  margin-left: auto;
+  position: relative;
+  z-index: 2;
 }
 
 .titlebar-btn {
@@ -726,20 +738,67 @@ body {
 /* ── Tab Bar (Obsidian workspace-tab-header) ──────── */
 .editor-tab-bar {
   display: flex;
-  padding: 0 8px;
+  padding: 0;
   background: var(--tab-container-background);
   border-bottom: var(--tab-outline-width) solid var(--tab-outline-color);
   flex-shrink: 0;
-  overflow-x: auto;
+  overflow: hidden;
   height: var(--header-height);
   align-items: flex-end;
   gap: 0;
+  position: relative;
+}
+
+.editor-tab-scroll {
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 64px 0 8px;
+  height: 100%;
+  scroll-padding-inline-end: 64px;
+}
+
+.editor-tab-bar.with-controls .editor-tab-scroll {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0%,
+    #000 calc(100% - 110px),
+    rgba(0, 0, 0, 0.9) calc(100% - 84px),
+    rgba(0, 0, 0, 0.62) calc(100% - 58px),
+    rgba(0, 0, 0, 0.24) calc(100% - 30px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0%,
+    #000 calc(100% - 110px),
+    rgba(0, 0, 0, 0.9) calc(100% - 84px),
+    rgba(0, 0, 0, 0.62) calc(100% - 58px),
+    rgba(0, 0, 0, 0.24) calc(100% - 30px),
+    transparent 100%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
 /* Hide scrollbar on tab bar */
-.editor-tab-bar::-webkit-scrollbar,
-.editor-tab-bar::-webkit-scrollbar-thumb {
+.editor-tab-scroll::-webkit-scrollbar,
+.editor-tab-scroll::-webkit-scrollbar-thumb {
   display: none;
+}
+
+.editor-tab-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding: 0 8px 4px 16px;
+  z-index: 2;
+  background: var(--tab-container-background);
 }
 
 .editor-tab {
