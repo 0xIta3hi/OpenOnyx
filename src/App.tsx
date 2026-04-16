@@ -296,6 +296,7 @@ export default function App() {
         const savedPath = await api.getVaultPath();
         if (savedPath) {
           setVaultPath(savedPath);
+          setShowSidebar(true);
           await refreshFileTree();
         }
       } catch (e) {
@@ -397,6 +398,7 @@ export default function App() {
       if (path) {
         await api.setVaultPath(path);
         setVaultPath(path);
+        setShowSidebar(true);
         setTabs([]);
         setActiveTabId(null);
         setCurrentContent("");
@@ -1310,26 +1312,28 @@ export default function App() {
             }}
           />
         )}
-        <Sidebar
-          visible={showSidebar}
-          fileTree={fileTree}
-          activeFilePath={activeTab?.path || null}
-          starredNotes={starredNotes}
-          onFileSelect={openFile}
-          onNewNote={handleNewNote}
-          onNewFolder={handleCreateFolder}
-          onDeleteFile={handleDeleteFile}
-          onRenameFile={handleRenameFile}
-          onRefresh={refreshFileTree}
-          onCollapse={() => setShowSidebar(false)}
-          onToggleStar={(path) => {
-            setStarredNotes((prev) =>
-              prev.includes(path)
-                ? prev.filter((p) => p !== path)
-                : [...prev, path],
-            );
-          }}
-        />
+        {vaultPath && (
+          <Sidebar
+            visible={showSidebar}
+            fileTree={fileTree}
+            activeFilePath={activeTab?.path || null}
+            starredNotes={starredNotes}
+            onFileSelect={openFile}
+            onNewNote={handleNewNote}
+            onNewFolder={handleCreateFolder}
+            onDeleteFile={handleDeleteFile}
+            onRenameFile={handleRenameFile}
+            onRefresh={refreshFileTree}
+            onCollapse={() => setShowSidebar(false)}
+            onToggleStar={(path) => {
+              setStarredNotes((prev) =>
+                prev.includes(path)
+                  ? prev.filter((p) => p !== path)
+                  : [...prev, path],
+              );
+            }}
+          />
+        )}
 
         {showSidebar && vaultPath && (
           <div
