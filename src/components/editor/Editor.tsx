@@ -736,6 +736,92 @@ const markdownHighlightStyle = HighlightStyle.define([
   },
 ]);
 
+/**
+ * Live Preview plugin — hides heading `#` markers on non-active lines
+ * and applies heading font sizes for a rich editing experience.
+ */
+function headingLivePreviewPlugin() {
+  const headingRegex = /^(#{1,6})\s/;
+
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = this.buildDecorations(view);
+      }
+
+      update(update: ViewUpdate) {
+        if (
+          update.docChanged ||
+          update.selectionSet ||
+          update.viewportChanged
+        ) {
+          this.decorations = this.buildDecorations(update.view);
+        }
+      }
+
+      buildDecorations(view: EditorView): DecorationSet {
+        const decorations: any[] = [];
+        const doc = view.state.doc;
+        const selection = view.state.selection;
+
+        // Get the set of lines that have a cursor
+        const activeLinesSet = new Set<number>();
+        for (const range of selection.ranges) {
+          const startLine = doc.lineAt(range.from).number;
+          const endLine = doc.lineAt(range.to).number;
+          for (let l = startLine; l <= endLine; l++) {
+            activeLinesSet.add(l);
+          }
+        }
+
+        for (let i = 1; i <= doc.lines; i++) {
+          const line = doc.line(i);
+          const match = headingRegex.exec(line.text);
+          if (!match) continue;
+
+          const level = match[1].length;
+          const isActive = activeLinesSet.has(i);
+
+          if (!isActive) {
+            // Hide the `# ` prefix on non-active heading lines
+            const markerEnd = line.from + match[0].length;
+            decorations.push(
+              Decoration.replace({
+                widget: new (class extends WidgetType {
+                  toDOM() {
+                    const span = document.createElement("span");
+                    span.className = "cm-heading-hidden-mark";
+                    return span;
+                  }
+                })(),
+              }).range(line.from, markerEnd),
+            );
+          }
+
+          // Apply heading font size as a line decoration
+          const sizes = ["1.6em", "1.4em", "1.2em", "1.1em", "1.05em", "1em"];
+          const fontSize = sizes[level - 1] || "1em";
+          decorations.push(
+            Decoration.line({
+              attributes: {
+                style: `font-size: ${fontSize}; line-height: 1.4`,
+                class: `cm-heading-${level}`,
+              },
+            }).range(line.from),
+          );
+        }
+
+        return Decoration.set(decorations, true);
+      }
+    },
+    {
+      decorations: (v) => v.decorations,
+    },
+  );
+}
+
 export function Editor({
   tabs,
   activeTabId,
@@ -1002,6 +1088,7 @@ export function Editor({
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
         imageWidgetPlugin(handleOpenImageLightbox),
+        headingLivePreviewPlugin(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onContentChange(update.state.doc.toString());
@@ -1160,19 +1247,21 @@ export function Editor({
             className={`editor-tab ${tab.id === activeTabId ? "active" : ""}`}
             onClick={() => onTabSelect(tab.id)}
           >
-            <span style={{ opacity: 0.5, marginRight: "4px" }}>
-              {tab.isModified ? "●" : ""}
-            </span>
-            {tab.name}
-            <button
-              className="close-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTabClose(tab.id);
-              }}
-            >
-              ✕
-            </button>
+            <div className="tab-inner">
+              {tab.isModified && (
+                <span style={{ color: "var(--text-muted)", fontSize: "8px", flexShrink: 0 }}>●</span>
+              )}
+              <span className="tab-title">{tab.name}</span>
+              <button
+                className="close-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTabClose(tab.id);
+                }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         ))}
       </div>

@@ -147,7 +147,6 @@ export function Sidebar({
         <React.Fragment key={entry.path}>
           <button
             className={`file-tree-item ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""}`}
-            style={{ "--depth": depth } as React.CSSProperties}
             onClick={() => {
               if (entry.isDirectory) {
                 toggleDir(entry.path);
@@ -173,25 +172,20 @@ export function Sidebar({
               entry.isDirectory ? (e) => handleDrop(e, entry.path) : undefined
             }
           >
-            {entry.isDirectory ? (
+            {entry.isDirectory && (
               <span className={`chevron ${isExpanded ? "open" : ""}`}>
-                <ChevronRight size={14} strokeWidth={2} />
+                <ChevronRight size={12} strokeWidth={2} />
               </span>
-            ) : (
-              <span
-                className="chevron-placeholder"
-                style={{ width: 14 }}
-              ></span>
             )}
             <span className={`icon ${entry.isDirectory ? "folder-icon" : ""}`}>
               {entry.isDirectory ? (
                 isExpanded ? (
-                  <FolderOpen size={16} strokeWidth={1.5} />
+                  <FolderOpen size={15} strokeWidth={1.5} />
                 ) : (
-                  <Folder size={16} strokeWidth={1.5} />
+                  <Folder size={15} strokeWidth={1.5} />
                 )
               ) : (
-                <FileText size={16} strokeWidth={1.5} />
+                <FileText size={15} strokeWidth={1.5} />
               )}
             </span>
             {isRenaming ? (
@@ -214,8 +208,11 @@ export function Sidebar({
 
           {entry.isDirectory &&
             isExpanded &&
-            entry.children &&
-            renderFileTree(entry.children, depth + 1)}
+            entry.children && (
+              <div className="file-tree-children">
+                {renderFileTree(entry.children, depth + 1)}
+              </div>
+            )}
         </React.Fragment>
       );
     });

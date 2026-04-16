@@ -1,67 +1,99 @@
 /**
- * Notework Design System
+ * OpenObsidian Design System
  * 
- * A premium dark-first design system inspired by Obsidian,
- * featuring glassmorphism, smooth animations, and a 
- * carefully curated color palette.
+ * Minimalist, monochrome dark-first design system.
+ * Uses structural patterns inspired by professional editors
+ * with a unique black-on-dark aesthetic and clean typography.
  */
 
 /* ── CSS Custom Properties (Design Tokens) ─────────── */
 :root {
-  /* Color Palette - Custom Theme */
-  --bg-primary: #0a0a0a; /* Main editor background */
-  --bg-secondary: #0a0a0a; /* Sidebar & graph background */
-  --bg-tertiary: #0a0a0a;
-  --bg-elevated: #0a0a0a;
-  --bg-hover: #1c1c1c;
-  --bg-active: #262626;
-  --bg-glass: rgba(10, 10, 10, 0.75);
+  /* Core neutrals — monochrome palette */
+  --color-base-00: #0a0a0a;
+  --color-base-05: #0d0d0d;
+  --color-base-10: #111111;
+  --color-base-20: #141414;
+  --color-base-25: #1a1a1a;
+  --color-base-30: #222222;
+  --color-base-35: #2a2a2a;
+  --color-base-40: #3a3a3a;
+  --color-base-50: #555555;
+  --color-base-60: #777777;
+  --color-base-70: #a0a0a0;
+  --color-base-100: #d2d2d2;
 
-  --text-primary: #d2d2d2; /* Clean, very bright gray */
-  --text-secondary: rgb(167, 167, 167); /* Muted text */
-  --text-tertiary: #606060;
-  --text-muted: #404040;
-  --text-link: var(--text-primary); /* Monochromatic */
+  /* Accent — monochrome (no color) */
+  --accent-h: 0;
+  --accent-s: 0%;
+  --accent-l: 78%;
+  --color-accent: #c6c6c6;
+  --color-accent-1: #d0d0d0;
+  --color-accent-2: #e0e0e0;
 
-  --bg-input: #0a0a0a;
+  /* Mapped colors */
+  --bg-primary: var(--color-base-00);
+  --bg-secondary: var(--color-base-00);
+  --bg-tertiary: var(--color-base-20);
+  --bg-elevated: var(--color-base-10);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+  --bg-glass: rgba(10, 10, 10, 0.85);
 
-  --accent-primary: #c6c6c6;
-  --accent-secondary: #bcbcbc;
-  --accent-glow: rgba(255, 255, 255, 0.15);
+  --text-primary: var(--color-base-100);
+  --text-secondary: var(--color-base-70);
+  --text-tertiary: var(--color-base-60);
+  --text-muted: var(--color-base-50);
+  --text-faint: var(--color-base-40);
+  --text-link: var(--text-primary);
+
+  --bg-input: var(--color-base-20);
+
+  --accent-primary: var(--color-accent);
+  --accent-secondary: var(--color-accent-1);
+  --accent-glow: rgba(255, 255, 255, 0.08);
   --accent-gradient: linear-gradient(135deg, #c6c6c6, #bcbcbc);
+
+  --interactive-accent: var(--color-accent);
+  --interactive-accent-hover: var(--color-accent-1);
 
   --success: #525252;
   --warning: #525252;
-  --danger: #525252;
+  --danger: #e05050;
   --info: #ffffff;
 
+  /* Borders — subtle rgba for depth */
   --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-medium: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-medium: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --divider-color: rgba(255, 255, 255, 0.05);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
   --shadow-glow: 0 0 20px var(--accent-glow);
 
   /* Typography */
-  --font-sans:
-    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+  --font-ui-smaller: 12px;
+  --font-ui-small: 13px;
+  --font-ui-medium: 15px;
 
-  /* User-configurable settings (overridden via JS) */
-  --font-family: "'SF Pro Display', system-ui, sans-serif";
+  /* User-configurable settings */
+  --font-family: var(--font-sans);
   --accent-color: #c6c6c6;
   --editor-font-size: 15px;
   --editor-pane-font-size: 15px;
   --preview-font-size: 15px;
   --editor-line-height: 1.6;
+
+  /* Editor colors — dark */
   --editor-caret: #eef3ff;
   --editor-selection: rgba(117, 141, 255, 0.26);
   --editor-selection-focused: rgba(117, 141, 255, 0.34);
-  --editor-active-line: rgba(255, 255, 255, 0.03);
-  --editor-active-line-border: rgba(117, 141, 255, 0.2);
+  --editor-active-line: rgba(255, 255, 255, 0.025);
+  --editor-active-line-border: transparent;
   --editor-heading: #e6ebff;
   --editor-heading-marker: #97a2d3;
   --editor-link: #88acff;
@@ -77,7 +109,7 @@
   --editor-search-active-border: rgba(255, 184, 69, 0.86);
 
   --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
+  --text-sm: var(--font-ui-small);
   --text-base: 0.875rem;
   --text-lg: 1rem;
   --text-xl: 1.25rem;
@@ -85,15 +117,15 @@
   --text-3xl: 2rem;
 
   /* Spacing */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
 
   /* Border Radius */
   --radius-sm: 4px;
@@ -103,55 +135,111 @@
   --radius-full: 9999px;
 
   /* Transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 140ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Tab system */
+  --tab-background-active: var(--bg-primary);
+  --tab-text-color: var(--text-muted);
+  --tab-text-color-active: var(--text-secondary);
+  --tab-text-color-focused: var(--text-secondary);
+  --tab-text-color-focused-active: var(--text-secondary);
+  --tab-text-color-focused-active-current: var(--text-primary);
+  --tab-font-size: var(--font-ui-small);
+  --tab-container-background: var(--bg-secondary);
+  --tab-outline-color: var(--divider-color);
+  --tab-outline-width: 1px;
+  --tab-curve: 6px;
+  --tab-radius: var(--radius-sm);
+  --tab-radius-active: 6px 6px 0 0;
+  --tab-width: 200px;
+  --tab-max-width: 320px;
+
+  /* File navigator */
+  --nav-item-size: var(--font-ui-small);
+  --nav-item-radius: var(--radius-sm);
+  --nav-item-color: var(--text-secondary);
+  --nav-item-color-hover: var(--text-primary);
+  --nav-item-color-active: var(--text-primary);
+  --nav-item-color-selected: var(--text-primary);
+  --nav-item-background-hover: var(--bg-hover);
+  --nav-item-background-active: var(--bg-hover);
+  --nav-item-background-selected: rgba(255, 255, 255, 0.08);
+
   /* Layout */
   --sidebar-width: 260px;
-  --titlebar-height: 38px;
+  --titlebar-height: 36px;
+  --header-height: 36px;
+  --ribbon-width: 44px;
   --backlinks-width: 280px;
 
-  /* Graph colors (dark theme) */
+  /* Titlebar */
+  --titlebar-background: var(--bg-secondary);
+  --titlebar-background-focused: var(--color-base-20);
+  --titlebar-text-color: var(--text-secondary);
+  --titlebar-text-color-focused: var(--text-primary);
+
+  /* Status bar */
+  --status-bar-background: var(--bg-secondary);
+  --status-bar-border-color: var(--divider-color);
+  --status-bar-font-size: var(--font-ui-smaller);
+  --status-bar-text-color: var(--text-muted);
+
+  /* Vault profile */
+  --vault-profile-font-size: var(--font-ui-small);
+  --vault-profile-font-weight: 500;
+  --vault-profile-color: var(--text-primary);
+
+  /* Graph colors */
   --graph-edge-color: rgba(100, 200, 200, 0.5);
   --graph-node-color: #6ee7b7;
 }
 
-/* Light Theme Override */
+/* Light Theme Override — warm paper palette */
 [data-theme="light"] {
-  --bg-primary: #f4f4f0; /* Soft, warm paper color to reduce glare */
-  --bg-secondary: #ebebe6; /* Slightly darker for sidebar */
-  --bg-tertiary: #e0e0da;
-  --bg-elevated: #fdfdfc; /* Very light off-white, not pure white */
-  --bg-hover: #e4e4df;
-  --bg-active: #d6d6d0;
+  --color-base-00: #f4f4f0;
+  --color-base-05: #efefe9;
+  --color-base-10: #eaeae4;
+  --color-base-20: #e2e2dc;
+  --color-base-25: #d8d8d2;
+  --color-base-30: #cdcdc7;
+  --color-base-35: #bdbdb7;
+  --color-base-40: #a0a09a;
+  --color-base-50: #8c8c86;
+  --color-base-60: #6c6c68;
+  --color-base-70: #4e4e4a;
+  --color-base-100: #2c2c2a;
+
+  --color-accent: #333344;
+  --color-accent-1: #444458;
+  --color-accent-2: #555570;
+
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(0, 0, 0, 0.08);
   --bg-glass: rgba(244, 244, 240, 0.9);
 
-  --text-primary: #2c2c2a; /* Softened black/very dark gray */
-  --text-secondary: #4e4e4a;
-  --text-tertiary: #6c6c68;
-  --text-muted: #8c8c86;
   --text-link: var(--text-primary);
 
-  --bg-input: #fdfdfc;
+  --bg-input: var(--color-base-00);
 
-  --accent-primary: #333344;
-  --accent-secondary: #555570;
-  --accent-glow: rgba(0, 0, 0, 0.05);
-  --accent-gradient: linear-gradient(135deg, #333344, #555570);
+  --accent-glow: rgba(0, 0, 0, 0.04);
 
   --border-subtle: rgba(0, 0, 0, 0.06);
   --border-medium: rgba(0, 0, 0, 0.1);
   --border-strong: rgba(0, 0, 0, 0.15);
+  --divider-color: rgba(0, 0, 0, 0.06);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
+
+  --nav-item-background-selected: rgba(0, 0, 0, 0.06);
+
   --editor-caret: #2f59d1;
   --editor-selection: rgba(47, 89, 209, 0.2);
   --editor-selection-focused: rgba(47, 89, 209, 0.3);
   --editor-active-line: rgba(59, 84, 156, 0.07);
-  --editor-active-line-border: rgba(47, 89, 209, 0.28);
   --editor-heading: #1d2a4a;
   --editor-heading-marker: #65739a;
   --editor-link: #2556c7;
@@ -166,7 +254,8 @@
   --editor-search-active: rgba(250, 170, 43, 0.35);
   --editor-search-active-border: rgba(214, 137, 20, 0.82);
 
-  /* Light theme graph-specific overrides */
+  --titlebar-background-focused: var(--color-base-05);
+
   --graph-edge-color: rgba(30, 80, 100, 0.5);
   --graph-node-color: #059669;
 }
@@ -203,8 +292,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -212,12 +301,15 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
-  border-radius: var(--radius-full);
+  background: rgba(var(--mono-rgb-100, 255, 255, 255), 0.1);
+  border: 3px solid transparent;
+  border-radius: var(--radius-lg);
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
+  background: rgba(var(--mono-rgb-100, 255, 255, 255), 0.2);
+  background-clip: padding-box;
 }
 
 /* ── App Layout ────────────────────────────────────── */
@@ -234,36 +326,42 @@ body {
   overflow: hidden;
 }
 
-/* ── Custom Title Bar ──────────────────────────────── */
+/* ── Custom Title Bar (Obsidian-style) ─────────────── */
 .titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: var(--titlebar-height);
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--titlebar-background);
   -webkit-app-region: drag;
   user-select: none;
-  padding: 0 var(--space-3);
+  padding: 0 8px;
   flex-shrink: 0;
+  font-size: var(--font-ui-small);
 }
 
 .titlebar-left {
   display: flex;
   align-items: center;
+  gap: 2px;
 }
 
 .titlebar-menu {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
 }
 
 .menu-btn {
   -webkit-app-region: no-drag;
+  padding: 4px 8px;
+  font-size: var(--font-ui-small);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
 }
 .menu-btn:hover {
   background: var(--bg-hover) !important;
+  color: var(--text-primary);
 }
 
 .menu-item {
@@ -275,82 +373,73 @@ body {
   align-items: center;
   flex: 1;
   justify-content: center;
-  padding: 0 var(--space-4);
+  padding: 0 16px;
 }
 
 .titlebar-command {
   -webkit-app-region: no-drag;
-  background: var(--bg-hover);
+  background: var(--color-base-25);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 4px 12px;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  padding: 3px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   transition: var(--transition-fast);
-  min-width: 400px;
+  min-width: 360px;
+  max-width: 500px;
   justify-content: space-between;
+  height: 26px;
 }
 
 .titlebar-command:hover {
-  background: var(--bg-active);
-  color: var(--text-primary);
+  background: var(--color-base-30);
+  color: var(--text-secondary);
 }
 
 .titlebar-command kbd {
   font-family: var(--font-mono);
-  background: var(--bg-tertiary);
-  padding: 2px 4px;
-  border-radius: 4px;
+  background: var(--color-base-30);
+  padding: 1px 4px;
+  border-radius: 3px;
   border: 1px solid var(--border-subtle);
   font-size: 10px;
+  color: var(--text-muted);
 }
 
 .titlebar-title {
-  font-size: var(--text-sm);
+  font-size: var(--font-ui-small);
   font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.5px;
+  color: var(--titlebar-text-color);
+  letter-spacing: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-}
-
-.titlebar-title .logo {
-  padding: 0 4px;
-  height: 18px;
-  background: var(--accent-primary);
-  border-radius: var(--radius-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: white;
+  gap: 4px;
+  margin-right: 8px;
 }
 
 .titlebar-controls {
   display: flex;
-  gap: var(--space-1);
+  gap: 0;
   -webkit-app-region: no-drag;
 }
 
 .titlebar-btn {
-  width: 28px;
-  height: 28px;
+  width: 46px;
+  height: var(--titlebar-height);
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: var(--transition-fast);
-  font-size: var(--text-sm);
+  transition: background 100ms;
+  font-size: var(--font-ui-small);
+  border-radius: 0;
 }
 
 .titlebar-btn:hover {
@@ -359,20 +448,20 @@ body {
 }
 
 .titlebar-btn.close:hover {
-  background: var(--danger);
+  background: #e81123;
   color: white;
 }
 
-/* ── App Ribbon (Left Action Menu) ─────────────────── */
+/* ── App Ribbon (Obsidian workspace-ribbon) ────────── */
 .app-ribbon {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  width: 48px;
+  width: var(--ribbon-width);
   background: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
-  padding: var(--space-3) 0;
+  border-right: 1px solid var(--divider-color);
+  padding: 8px 4px 12px;
   flex-shrink: 0;
 }
 
@@ -381,67 +470,67 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-4);
+  gap: 4px;
 }
 
 .ribbon-btn {
   background: transparent;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   cursor: pointer;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: var(--transition-fast);
+  opacity: 0.85;
 }
 
 .ribbon-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  opacity: 1;
 }
 
-/* ── Sidebar ───────────────────────────────────────── */
+/* ── Sidebar (Obsidian mod-left-split) ─────────────── */
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
+  background: var(--tab-container-background);
+  border-right: 1px solid var(--divider-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition:
-    width var(--transition-base),
-    opacity var(--transition-base);
+  transition: width 100ms ease-in;
   overflow: hidden;
+  position: relative;
 }
 
 .sidebar.collapsed {
   width: 0;
-  opacity: 0;
   border-right: none;
 }
 
 .sidebar-header {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .sidebar-header h3 {
-  font-size: var(--text-sm);
+  font-size: var(--font-ui-small);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.5px;
 }
 
 .sidebar-actions {
   display: flex;
-  gap: var(--space-1);
+  gap: 2px;
+  flex-wrap: wrap;
 }
 
 .sidebar-btn {
@@ -449,64 +538,115 @@ body {
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: var(--transition-fast);
-  font-size: var(--text-base);
+  opacity: 0.85;
 }
 
 .sidebar-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  opacity: 1;
 }
 
-/* ── File Explorer ─────────────────────────────────── */
+/* ── Vault Profile (Obsidian workspace-sidedock-vault-profile) ── */
+.vault-profile {
+  background-color: var(--bg-secondary);
+  border-top: var(--tab-outline-width) solid var(--tab-outline-color);
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  justify-content: space-between;
+  padding: 8px;
+  order: 1;
+}
+
+.vault-switcher {
+  color: var(--vault-profile-color);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-grow: 1;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+}
+
+.vault-switcher:hover {
+  background-color: var(--bg-hover);
+}
+
+.vault-name {
+  font-size: var(--vault-profile-font-size);
+  font-weight: var(--vault-profile-font-weight);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--vault-profile-color);
+}
+
+.vault-switcher-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+/* ── File Explorer (Obsidian nav-files / tree-items) ── */
 .file-explorer {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2) 0;
+  overflow-x: hidden;
+  padding: 4px 12px 24px 12px;
 }
 
 .file-tree-item {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-4);
-  padding-left: calc(var(--space-4) + var(--depth, 0) * 16px);
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 8px 4px 24px;
   cursor: pointer;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  transition: var(--transition-fast);
+  color: var(--nav-item-color);
+  font-size: var(--nav-item-size);
+  line-height: 1.3;
+  transition: background-color 0.05s, color 0.05s;
   border: none;
   background: none;
   width: 100%;
   text-align: left;
-  min-height: 30px;
+  border-radius: var(--nav-item-radius);
+  position: relative;
+  margin-bottom: 2px;
 }
 
 .file-tree-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--nav-item-background-hover);
+  color: var(--nav-item-color-hover);
 }
 
 .file-tree-item.active {
-  background: var(--bg-active);
-  color: var(--text-primary);
+  background: var(--nav-item-background-selected);
+  color: var(--nav-item-color-active);
 }
 
 .file-tree-item .icon {
-  font-size: var(--text-sm);
   width: 16px;
   height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  opacity: 0.7;
+  color: var(--text-muted);
+  opacity: 0.85;
 }
 
 .file-tree-item .name {
@@ -517,20 +657,29 @@ body {
 }
 
 .file-tree-item .folder-icon {
-  color: var(--text-secondary); /* neutral muted folder color */
+  color: var(--text-muted);
 }
 
 .file-tree-item .chevron {
   transition: transform var(--transition-fast);
-  opacity: 0.5;
+  color: var(--text-muted);
   display: flex;
+  position: absolute;
+  left: 4px;
 }
 
 .file-tree-item .chevron.open {
   transform: rotate(90deg);
 }
 
-/* ── Main Editor Area ──────────────────────────────── */
+/* Tree item children (Obsidian tree-item-children) */
+.file-tree-children {
+  padding-left: 4px;
+  margin-left: 12px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* ── Main Editor Area (Obsidian workspace-split.mod-root) ── */
 .main-content {
   flex: 1;
   display: flex;
@@ -540,21 +689,23 @@ body {
 }
 
 .editor-header {
-  padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--divider-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   flex-shrink: 0;
+  height: var(--header-height);
+  font-size: var(--font-ui-small);
 }
 
 .editor-breadcrumb {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 4px;
 }
 
 .editor-breadcrumb .separator {
@@ -562,52 +713,112 @@ body {
 }
 
 .editor-breadcrumb .current {
-  color: var(--text-primary);
-  font-weight: 500;
+  color: var(--text-secondary);
+  font-weight: 400;
 }
 
 .editor-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 4px;
 }
 
+/* ── Tab Bar (Obsidian workspace-tab-header) ──────── */
 .editor-tab-bar {
   display: flex;
-  gap: 1px;
-  padding: 0 var(--space-4);
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 8px;
+  background: var(--tab-container-background);
+  border-bottom: var(--tab-outline-width) solid var(--tab-outline-color);
   flex-shrink: 0;
   overflow-x: auto;
+  height: var(--header-height);
+  align-items: flex-end;
+  gap: 0;
+}
+
+/* Hide scrollbar on tab bar */
+.editor-tab-bar::-webkit-scrollbar,
+.editor-tab-bar::-webkit-scrollbar-thumb {
+  display: none;
 }
 
 .editor-tab {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  gap: 4px;
+  padding: 1px 4px 3.5px;
   background: transparent;
   border: none;
-  border-radius: 10px 10px 0 0;
-  color: var(--text-tertiary);
+  color: var(--tab-text-color);
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: var(--tab-font-size);
   font-family: var(--font-sans);
-  border-bottom: 2px solid transparent;
   transition: var(--transition-fast);
   white-space: nowrap;
+  position: relative;
+  border-radius: var(--tab-radius-active);
+  scroll-margin-inline-start: 6px;
 }
 
-.editor-tab:hover {
-  color: var(--text-secondary);
-  background: var(--bg-hover);
+.editor-tab .tab-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  height: 100%;
+  border-radius: var(--tab-radius);
+  overflow: hidden;
+  width: 100%;
+}
+
+.editor-tab:hover .tab-inner {
+  background-color: var(--bg-hover);
+}
+
+.editor-tab .tab-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: inherit;
 }
 
 .editor-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent-primary);
-  background: var(--bg-primary);
+  color: var(--tab-text-color-focused-active-current);
+  background-color: var(--tab-background-active);
+  box-shadow: 0 0 0 var(--tab-outline-width) var(--tab-outline-color);
+}
+
+.editor-tab.active .tab-inner {
+  background-color: transparent;
+}
+
+/* Obsidian curved tab connectors */
+.editor-tab::before,
+.editor-tab::after {
+  position: absolute;
+  bottom: 0;
+  content: '';
+  width: calc(var(--tab-curve) * 2);
+  height: calc(var(--tab-curve) * 2);
+  border-radius: 100%;
+  box-shadow: 0 0 0 calc(var(--tab-curve) * 3) transparent;
+}
+
+.editor-tab::before {
+  left: calc(var(--tab-curve) * -2);
+  clip-path: inset(50% calc(var(--tab-curve) * -1) 0 50%);
+}
+
+.editor-tab::after {
+  right: calc(var(--tab-curve) * -2);
+  clip-path: inset(50% 50% 0 calc(var(--tab-curve) * -1));
+}
+
+.editor-tab.active::before,
+.editor-tab.active::after {
+  box-shadow: inset 0 0 0 var(--tab-outline-width) var(--tab-outline-color), 0 0 0 calc(var(--tab-curve) * 4) var(--tab-background-active);
 }
 
 .editor-tab .close-btn {
@@ -624,16 +835,18 @@ body {
   justify-content: center;
   opacity: 0;
   transition: var(--transition-fast);
+  padding: 2px;
 }
 
 .editor-tab:hover .close-btn,
 .editor-tab.active .close-btn {
   opacity: 1;
+  color: var(--tab-text-color-focused);
 }
 
 .editor-tab .close-btn:hover {
-  background: var(--danger);
-  color: white;
+  background: var(--bg-hover);
+  color: var(--tab-text-color-focused-active-current);
 }
 
 .editor-container {
@@ -842,6 +1055,22 @@ body {
   border-radius: var(--radius-full);
   padding: 0 5px;
 }
+
+/* Live Preview heading markers - hidden when not active */
+.cm-heading-hidden-mark {
+  display: inline;
+  font-size: 0;
+  width: 0;
+  overflow: hidden;
+}
+
+/* Heading level styling for live preview */
+.cm-heading-1 { padding: 6px 0 2px; }
+.cm-heading-2 { padding: 4px 0 2px; }
+.cm-heading-3 { padding: 2px 0 1px; }
+.cm-heading-4,
+.cm-heading-5,
+.cm-heading-6 { padding: 1px 0; }
 
 /* ── Markdown Preview ──────────────────────────────── */
 .markdown-preview {
@@ -1703,36 +1932,35 @@ blockquote:has(.callout) {
 /* ── Context Menu ──────────────────────────────────── */
 .context-menu {
   position: fixed;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  padding: var(--space-1);
+  background: var(--color-base-20);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+  padding: 4px;
   min-width: 180px;
   z-index: 200;
-  animation: fadeIn var(--transition-fast) ease-out;
+  animation: fadeIn 70ms ease-out;
 }
 
 .context-menu-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: 8px;
+  padding: 4px 12px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  color: var(--text-primary);
+  font-size: var(--font-ui-small);
   font-family: var(--font-sans);
   border-radius: var(--radius-sm);
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: var(--transition-fast);
+  transition: background 50ms;
 }
 
 .context-menu-item:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 .context-menu-item.danger {
@@ -1740,13 +1968,13 @@ blockquote:has(.callout) {
 }
 
 .context-menu-item.danger:hover {
-  background: rgba(248, 113, 113, 0.1);
+  background: rgba(251, 70, 76, 0.1);
 }
 
 .context-menu-separator {
   height: 1px;
   background: var(--border-subtle);
-  margin: var(--space-1) var(--space-2);
+  margin: 4px 8px;
 }
 
 /* ── Tags ──────────────────────────────────────────── */
@@ -1774,26 +2002,26 @@ blockquote:has(.callout) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-1) var(--space-4);
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-subtle);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  padding: 0 12px;
+  background: var(--status-bar-background);
+  border-top: 1px solid var(--status-bar-border-color);
+  font-size: var(--status-bar-font-size);
+  color: var(--status-bar-text-color);
   flex-shrink: 0;
-  height: 26px;
+  height: 22px;
 }
 
 .status-bar-left,
 .status-bar-right {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: 12px;
 }
 
 .status-item {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 /* ── Empty State ───────────────────────────────────── */
@@ -1848,20 +2076,20 @@ blockquote:has(.callout) {
 /* ── View Mode Toggle ──────────────────────────────── */
 .view-mode-toggle {
   display: flex;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
+  background: var(--color-base-25);
+  border-radius: var(--radius-sm);
   padding: 2px;
   border: 1px solid var(--border-subtle);
 }
 
 .view-mode-btn {
-  padding: var(--space-1) var(--space-3);
+  padding: 2px 8px;
   border: none;
   background: transparent;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
   font-family: var(--font-sans);
-  border-radius: var(--radius-sm);
+  border-radius: 3px;
   cursor: pointer;
   transition: var(--transition-fast);
   font-weight: 500;
@@ -3065,39 +3293,39 @@ blockquote:has(.callout) {
 /* ── Split Pane Resizer ───────────────────────────── */
 .resizer {
   position: relative;
-  width: 6px;
+  width: 4px;
   background-color: transparent;
   cursor: ew-resize;
-  transition:
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: background-color 100ms;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .resizer::after {
   content: "";
   position: absolute;
   top: 0;
-  left: 2px;
+  left: 1px;
   bottom: 0;
   width: 2px;
-  border-radius: var(--radius-full);
-  background-color: var(--border-medium);
-  opacity: 0.7;
+  border-radius: 0;
+  background-color: var(--divider-color);
+  opacity: 1;
 }
 
 .resizer:hover,
 .resizer:active,
 .resizer.dragging {
-  background-color: var(--accent-glow);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  background-color: transparent;
 }
 
 .resizer:hover::after,
 .resizer:active::after,
 .resizer.dragging::after {
-  background-color: var(--editor-caret);
-  opacity: 0.95;
+  background-color: var(--interactive-accent);
+  opacity: 1;
+  width: 3px;
+  left: 0.5px;
 }
 
 /* ── Editor Syntax (No one-dark mismatch) ───────── */
