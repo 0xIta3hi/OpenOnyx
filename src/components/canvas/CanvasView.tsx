@@ -602,8 +602,10 @@ export function CanvasView({
     null,
   );
   const loadingCanvasRef = useRef(false);
+  const pendingInitialZoomFitRef = useRef(false);
   const lastSavedPayloadRef = useRef("");
   const [suspendMarkdownPreviews, setSuspendMarkdownPreviews] = useState(false);
+  const [canvasLoadTick, setCanvasLoadTick] = useState(0);
   nodesRef.current = nodes;
   edgesRef.current = edges;
   scribblesRef.current = scribbles;
@@ -838,6 +840,7 @@ export function CanvasView({
 
     const loadCanvas = async () => {
       if (!canvasFilePath) {
+        pendingInitialZoomFitRef.current = false;
         setNodes([]);
         setEdges([]);
         setScribbles([]);
@@ -859,6 +862,7 @@ export function CanvasView({
       }
 
       loadingCanvasRef.current = true;
+      pendingInitialZoomFitRef.current = false;
       try {
         const raw = await getAPI().readFile(canvasFilePath);
         let parsed = parseCanvasDocument(raw || "");
@@ -926,6 +930,7 @@ export function CanvasView({
           },
         ]);
         setHistIdx(0);
+        pendingInitialZoomFitRef.current = nextNodes.length > 0;
       } catch (error) {
         console.error("Failed to load canvas file:", canvasFilePath, error);
         if (cancelled) return;
@@ -954,8 +959,12 @@ export function CanvasView({
         setSelEdges(new Set());
         setHist([{ nodes: [], edges: [], scribbles: [] }]);
         setHistIdx(0);
+        pendingInitialZoomFitRef.current = false;
       } finally {
-        if (!cancelled) loadingCanvasRef.current = false;
+        if (!cancelled) {
+          loadingCanvasRef.current = false;
+          setCanvasLoadTick((tick) => tick + 1);
+        }
       }
     };
 
@@ -2306,6 +2315,22 @@ export function CanvasView({
     });
   }, [nodes, setViewportImmediate]);
 
+  useEffect(() => {
+    if (!canvasFilePath) return;
+    if (loadingCanvasRef.current) return;
+    if (!pendingInitialZoomFitRef.current) return;
+    if (areaSize.width <= 1 || areaSize.height <= 1) return;
+    if (!nodes.length) return;
+
+    pendingInitialZoomFitRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        zoomFit();
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [canvasFilePath, areaSize.width, areaSize.height, canvasLoadTick, nodes.length, zoomFit]);
+
   /* ═══ KEYBOARD ═══ */
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
@@ -2441,6 +2466,9 @@ export function CanvasView({
             ? "grab"
             : "default";
   const uiZoomMult = Math.min(1.35, Math.max(0.85, 1 / vp.zoom));
+  const groupLabelZoomMult = Math.min(14, Math.max(1, 1 / vp.zoom));
+  const invZoom = 1 / vp.zoom;
+  const canvasTextZoomMult = Math.min(3, Math.max(1, 1 + (invZoom - 1) * 0.28));
   const renderVp = useMemo(() => {
     const dpr =
       typeof window !== "undefined"
@@ -2686,9 +2714,12 @@ export function CanvasView({
         {/* Transform group */}
         <div
           className="cv-transform"
-          style={{
-            transform: `translate(${renderVp.x}px,${renderVp.y}px) scale(${renderVp.zoom})`,
-          }}
+          style={
+            {
+              transform: `translate(${renderVp.x}px,${renderVp.y}px) scale(${renderVp.zoom})`,
+              "--ctz": canvasTextZoomMult,
+            } as any
+          }
         >
           {/* SVG edges */}
           <svg className="cv-edges">
@@ -2892,6 +2923,7 @@ export function CanvasView({
               editing={editingId === n.id}
               editText={editText}
               zoomMult={uiZoomMult}
+              groupLabelZoomMult={groupLabelZoomMult}
               enableMarkdownPreview={markdownPreviewNodeIds.has(n.id)}
               vaultPath={vaultPath}
               onMouseDown={(e) => onNodeDown(e, n.id)}
@@ -3117,6 +3149,17 @@ export function CanvasView({
                   }}
                 />
               ))}
+              <label className="cv-color-custom" title="Custom color">
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={resolveCanvasColor(firstSel.color) || "#64748b"}
+                  onChange={(e) =>
+                    updateNode(firstSel.id, { color: e.target.value })
+                  }
+                />
+                <span className="cv-color-custom-label">Custom</span>
+              </label>
             </div>
           )}
         </div>
@@ -3224,6 +3267,17 @@ export function CanvasView({
                   }}
                 />
               ))}
+              <label className="cv-color-custom" title="Custom color">
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={resolveCanvasColor(firstSelEdge.color) || "#64748b"}
+                  onChange={(e) =>
+                    updateEdge(firstSelEdge.id, { color: e.target.value })
+                  }
+                />
+                <span className="cv-color-custom-label">Custom</span>
+              </label>
             </div>
           )}
           {!edgeLocked && edgeWidthPickerFor === firstSelEdge.id && (
@@ -3928,6 +3982,7 @@ interface NodeCardProps {
   editing: boolean;
   editText: string;
   zoomMult: number;
+  groupLabelZoomMult: number;
   vaultPath: string;
   enableMarkdownPreview: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
@@ -3945,6 +4000,7 @@ function NodeCard({
   editing,
   editText,
   zoomMult,
+  groupLabelZoomMult,
   vaultPath,
   enableMarkdownPreview,
   onMouseDown,
@@ -3974,10 +4030,10 @@ function NodeCard({
     ...(borderColor && isGroup
       ? ({
           "--node-color": borderColor,
-          "--node-color-subtle": colorWithAlpha(borderColor, 0.1),
-          borderColor: colorWithAlpha(borderColor, 0.4),
-          background: colorWithAlpha(borderColor, 0.05),
-          boxShadow: `0 4px 12px rgba(0,0,0,0.05)`,
+          "--node-color-border": colorWithAlpha(borderColor, 0.72),
+          "--node-color-subtle": colorWithAlpha(borderColor, 0.12),
+          "--node-color-label-bg": colorWithAlpha(borderColor, 0.34),
+          "--node-color-label-border": colorWithAlpha(borderColor, 0.92),
         } as any)
       : {}),
   };
@@ -4030,10 +4086,13 @@ function NodeCard({
               onEditKeyDown(e);
               if (e.key === "Enter") onEditBlur();
             }}
-            style={{ "--zm": zoomMult } as any}
+            style={{ "--zm": zoomMult, "--glm": groupLabelZoomMult } as any}
           />
         ) : (
-          <div className="cv-group-label" style={{ "--zm": zoomMult } as any}>
+          <div
+            className="cv-group-label"
+            style={{ "--zm": zoomMult, "--glm": groupLabelZoomMult } as any}
+          >
             {(() => {
               const label = (node as CanvasGroupNode).label || "";
               const parts = label.split("\n").filter((p) => p.trim());
@@ -4054,7 +4113,7 @@ function NodeCard({
                     <span
                       style={{
                         fontSize: "0.85em",
-                        opacity: 0.8,
+                        opacity: 0.92,
                         fontWeight: 400,
                       }}
                     >

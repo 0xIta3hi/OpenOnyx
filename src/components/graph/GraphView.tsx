@@ -12,7 +12,6 @@ import React, {
 } from "react";
 import { HexColorPicker } from "react-colorful";
 import {
-  Network,
   Maximize,
   Minimize,
   Settings,
@@ -446,6 +445,27 @@ export function GraphView({
         workerRef.current.terminate();
         workerRef.current = null;
       }
+
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.floor(rect.width * dpr));
+      const height = Math.max(1, Math.floor(rect.height * dpr));
+
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = `${Math.max(1, rect.width)}px`;
+      canvas.style.height = `${Math.max(1, rect.height)}px`;
+
+      const context = canvas.getContext("2d");
+      if (context) {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.fillStyle =
+          settings.backgroundColor || (isDark ? "#101010" : "#f0f0f6");
+        context.fillRect(0, 0, width, height);
+      }
+
       return;
     }
 
@@ -634,6 +654,7 @@ export function GraphView({
     loading,
     isDark,
     reinitCounter,
+    settings.backgroundColor,
   ]);
 
   // Update styles when visual settings change
@@ -715,17 +736,6 @@ export function GraphView({
   if (loading) {
     return (
       <div className="graph-view-container">
-        <div className="graph-header">
-          <div className="graph-header-left">
-            <Network size={16} />
-            <span className="graph-title">Graph View</span>
-          </div>
-          <div className="graph-header-right">
-            <button className="graph-btn" onClick={onClose}>
-              <X size={14} />
-            </button>
-          </div>
-        </div>
         <div className="graph-loading">
           <div className="loading-spinner" />
           <span>Loading graph...</span>
@@ -736,58 +746,6 @@ export function GraphView({
 
   return (
     <div className={`graph-view-container ${isFullScreen ? "fullscreen" : ""}`}>
-      {/* Header */}
-      <div className="graph-header">
-        <div className="graph-header-left">
-          <Network size={16} />
-          <span className="graph-title">Graph View</span>
-          <span className="graph-node-count">
-            {filteredData.nodes.length} nodes
-          </span>
-        </div>
-        <div className="graph-header-right">
-          {simulating && (
-            <div className="graph-sim-indicator">
-              <div className="graph-sim-spinner" />
-              <span>{Math.round(alpha * 100)}%</span>
-            </div>
-          )}
-          <button
-            className="graph-btn"
-            onClick={centerView}
-            title="Center view"
-          >
-            <Target size={14} />
-          </button>
-          <button
-            className="graph-btn"
-            onClick={recalculateLayout}
-            title="Recalculate layout"
-          >
-            <RotateCcw size={14} />
-          </button>
-          <button
-            className={`graph-btn ${showSettingsPanel ? "active" : ""}`}
-            onClick={() => setShowSettingsPanel(!showSettingsPanel)}
-            title="Settings"
-          >
-            <Settings size={14} />
-          </button>
-          {onToggleFullScreen && (
-            <button
-              className="graph-btn"
-              onClick={onToggleFullScreen}
-              title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
-            >
-              {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
-            </button>
-          )}
-          <button className="graph-btn" onClick={onClose} title="Close">
-            <X size={14} />
-          </button>
-        </div>
-      </div>
-
       {/* Main content */}
       <div className="graph-main">
         {/* Canvas area */}
@@ -798,6 +756,8 @@ export function GraphView({
               <span>No nodes to display</span>
             </div>
           )}
+
+          <div className="graph-node-counter">{filteredData.nodes.length} nodes</div>
         </div>
 
         {/* Settings panel */}
@@ -990,6 +950,47 @@ export function GraphView({
             </div>
           </div>
         )}
+
+        <div className="graph-tools-rail">
+          {simulating && (
+            <div className="graph-tools-sim-indicator">
+              <div className="graph-sim-spinner" />
+              <span>{Math.round(alpha * 100)}%</span>
+            </div>
+          )}
+
+          <div className="graph-tools-group">
+            <button className="graph-btn" onClick={centerView} title="Center view">
+              <Target size={14} />
+            </button>
+            <button
+              className="graph-btn"
+              onClick={recalculateLayout}
+              title="Recalculate layout"
+            >
+              <RotateCcw size={14} />
+            </button>
+            <button
+              className={`graph-btn ${showSettingsPanel ? "active" : ""}`}
+              onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+              title="Settings"
+            >
+              <Settings size={14} />
+            </button>
+            {onToggleFullScreen && (
+              <button
+                className="graph-btn"
+                onClick={onToggleFullScreen}
+                title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
+              >
+                {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              </button>
+            )}
+            <button className="graph-btn" onClick={onClose} title="Close">
+              <X size={14} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
