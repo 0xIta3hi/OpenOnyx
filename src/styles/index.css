@@ -755,6 +755,7 @@ body {
   overflow: hidden;
   height: var(--header-height);
   align-items: flex-end;
+  flex-wrap: nowrap;
   gap: 0;
   position: relative;
 }
@@ -778,31 +779,72 @@ body {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0 64px 0 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 0 28px 0 8px;
   height: 100%;
-  scroll-padding-inline-end: 64px;
+  scroll-padding-inline-end: 28px;
 }
 
 .editor-tab-bar.with-controls .editor-tab-scroll {
-  -webkit-mask-image: none;
-  mask-image: none;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 12px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 12px),
+    transparent 100%
+  );
 }
 
 /* Hide scrollbar on tab bar */
-.editor-tab-scroll::-webkit-scrollbar,
+.editor-tab-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.editor-tab-scroll::-webkit-scrollbar-track,
 .editor-tab-scroll::-webkit-scrollbar-thumb {
-  display: none;
+  background: transparent;
 }
 
 .editor-tab-controls {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
   flex-shrink: 0;
-  padding: 0 8px 4px 16px;
+  height: 100%;
+  padding: 0 8px 0 16px;
   z-index: 2;
   background: var(--tab-container-background);
+}
+
+.editor-tab-controls::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  width: 16px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--tab-container-background) 0%, transparent) 0%,
+    color-mix(in srgb, var(--tab-container-background) 58%, transparent) 55%,
+    var(--tab-container-background) 100%
+  );
+  filter: blur(4px);
+  opacity: 0.92;
+}
+
+.editor-tab-controls .view-mode-toggle {
+  position: relative;
+  z-index: 1;
 }
 
 .editor-tab {
