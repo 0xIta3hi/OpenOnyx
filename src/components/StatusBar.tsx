@@ -143,7 +143,11 @@ export function StatusBar({
           className="status-item"
           style={{ display: "flex", alignItems: "center" }}
         >
-          {theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
+          {theme === "dark" || theme === "oceanic" ? (
+            <Moon size={14} />
+          ) : (
+            <Sun size={14} />
+          )}
         </span>
         <span className="status-item">Markdown</span>
       </div>

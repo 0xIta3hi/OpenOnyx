@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { getAPI } from "../utils/api";
-import { FileEntry } from "../types";
+import { FileEntry, Theme } from "../types";
 import {
   Sparkles,
   Settings,
@@ -92,7 +92,7 @@ function getNoteName(path: string): string {
 
 interface AIPageProps {
   vaultPath: string | null;
-  theme: "dark" | "light" | "custom";
+  theme: Theme;
   fileTree: FileEntry[];
   activeNotePath?: string | null;
   onOpenNote: (path: string) => void;

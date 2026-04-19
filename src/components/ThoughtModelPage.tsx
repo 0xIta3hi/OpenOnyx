@@ -27,7 +27,7 @@ import {
   Minimize,
 } from "lucide-react";
 import { getAPI } from "../utils/api";
-import type { ThoughtModelStatus } from "../types";
+import type { ThoughtModelStatus, Theme } from "../types";
 
 const api = getAPI();
 
@@ -66,7 +66,7 @@ function cleanChunkText(text: string): string {
 
 interface ThoughtModelPageProps {
   vaultPath: string | null;
-  theme: "dark" | "light" | "custom";
+  theme: Theme;
   onOpenNote: (path: string) => void;
   onClose: () => void;
   isFullScreen?: boolean;

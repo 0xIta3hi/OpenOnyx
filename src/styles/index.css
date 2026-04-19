@@ -265,6 +265,71 @@
   --graph-node-color: #4d7a6c;
 }
 
+/* Oceanic Theme Override */
+[data-theme="oceanic"] {
+  --color-base-00: #17191d;
+  --color-base-05: #1a1c20;
+  --color-base-10: #1d2024;
+  --color-base-20: #23272d;
+  --color-base-25: #2a2f36;
+  --color-base-30: #323842;
+  --color-base-35: #3e4551;
+  --color-base-40: #4b5462;
+  --color-base-50: #626d7d;
+  --color-base-60: #7f8b9c;
+  --color-base-70: #a2acba;
+  --color-base-100: #c3cad5;
+
+  --color-accent: #b8c0cc;
+  --color-accent-1: #c3cad5;
+  --color-accent-2: #d3dae4;
+  --text-on-accent: #13161b;
+
+  --bg-hover: rgba(195, 202, 213, 0.08);
+  --bg-active: rgba(195, 202, 213, 0.13);
+  --bg-glass: rgba(23, 25, 29, 0.86);
+
+  --scrollbar-thumb: rgba(195, 202, 213, 0.26);
+  --scrollbar-thumb-hover: rgba(195, 202, 213, 0.42);
+
+  --border-subtle: rgba(195, 202, 213, 0.06);
+  --border-medium: rgba(195, 202, 213, 0.1);
+  --border-strong: rgba(195, 202, 213, 0.16);
+  --divider-color: rgba(195, 202, 213, 0.06);
+
+  --nav-item-background-selected: rgba(195, 202, 213, 0.11);
+}
+
+/* Dark Theme Override */
+[data-theme="dark"] {
+  --color-base-00: #212121;
+  --color-base-05: #242424;
+  --color-base-10: #282828;
+  --color-base-20: #303030;
+  --color-base-25: #353535;
+  --color-base-30: #3b3b3b;
+  --color-base-35: #474747;
+  --color-base-40: #565656;
+  --color-base-50: #767676;
+  --color-base-60: #9a9a9a;
+  --color-base-70: #b5b5b5;
+  --color-base-100: #d4d4d4;
+
+  --bg-hover: rgba(212, 212, 212, 0.07);
+  --bg-active: rgba(212, 212, 212, 0.12);
+  --bg-glass: rgba(33, 33, 33, 0.88);
+
+  --scrollbar-thumb: rgba(212, 212, 212, 0.24);
+  --scrollbar-thumb-hover: rgba(212, 212, 212, 0.4);
+
+  --border-subtle: rgba(212, 212, 212, 0.06);
+  --border-medium: rgba(212, 212, 212, 0.11);
+  --border-strong: rgba(212, 212, 212, 0.18);
+  --divider-color: rgba(212, 212, 212, 0.07);
+
+  --nav-item-background-selected: rgba(212, 212, 212, 0.12);
+}
+
 /* ── Reset & Base Styles ───────────────────────────── */
 *,
 *::before,
@@ -2653,11 +2718,65 @@ blockquote:has(.callout) {
   animation: ftux-inline-expand-hint-fade-in 180ms ease-out;
 }
 
+[data-theme="oceanic"] .ftux-orientation-line {
+  opacity: 0.44;
+}
+
+[data-theme="oceanic"] .ftux-first-thought-shell {
+  border: 1px solid color-mix(in srgb, var(--border-medium) 52%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, var(--bg-primary) 8%);
+}
+
+[data-theme="oceanic"] .ftux-first-thought-shell.is-typed {
+  background: color-mix(in srgb, var(--bg-elevated) 90%, var(--bg-primary) 10%);
+}
+
+[data-theme="dark"] .ftux-zero-state::before {
+  background:
+    radial-gradient(64% 66% at 50% 36%, color-mix(in srgb, var(--bg-elevated) 7%, transparent), transparent 78%),
+    radial-gradient(120% 90% at 50% 60%, color-mix(in srgb, var(--bg-base) 6%, transparent), transparent 88%);
+  opacity: 0.13;
+}
+
+[data-theme="dark"] .ftux-orientation-line {
+  opacity: 0.42;
+}
+
+[data-theme="dark"] .ftux-first-thought-shell {
+  border: 1px solid color-mix(in srgb, var(--border-medium) 56%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 86%, var(--bg-primary) 14%);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--bg-base) 16%, transparent);
+}
+
+[data-theme="dark"] .ftux-first-thought-shell.is-typed {
+  background: color-mix(in srgb, var(--bg-elevated) 84%, var(--bg-primary) 16%);
+}
+
+[data-theme="dark"] .ftux-dynamic-prompt {
+  color: color-mix(in srgb, var(--text-primary) 76%, var(--text-secondary));
+}
+
+[data-theme="dark"] .ftux-ghost-example {
+  color: color-mix(in srgb, var(--text-secondary) 88%, var(--text-muted));
+}
+
+[data-theme="dark"] .ftux-intelligence-hint {
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+}
+
+[data-theme="dark"] .ftux-inline-expand-title {
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+}
+
+[data-theme="dark"] .ftux-inline-expand-list li {
+  color: color-mix(in srgb, var(--text-secondary) 84%, var(--text-muted));
+}
+
 [data-theme="light"] .ftux-zero-state::before {
   background:
     radial-gradient(64% 66% at 50% 36%, color-mix(in srgb, var(--bg-tertiary) 26%, transparent), transparent 80%),
     radial-gradient(120% 90% at 50% 62%, color-mix(in srgb, #e6e1d5 14%, transparent), transparent 90%);
-  opacity: 0.18;
+  opacity: 0.2;
 }
 
 [data-theme="light"] .ftux-zero-state::after {
@@ -2678,9 +2797,9 @@ blockquote:has(.callout) {
 }
 
 [data-theme="light"] .ftux-first-thought-shell {
-  border-color: color-mix(in srgb, var(--border-medium) 62%, transparent);
-  background: color-mix(in srgb, var(--bg-tertiary) 84%, var(--bg-primary) 16%);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+  border-color: color-mix(in srgb, var(--border-medium) 76%, transparent);
+  background: color-mix(in srgb, var(--bg-tertiary) 72%, var(--bg-primary) 28%);
+  box-shadow: 0 14px 32px rgba(36, 30, 24, 0.1);
 }
 
 [data-theme="light"] .ftux-first-thought-shell.is-focused {
@@ -2688,11 +2807,16 @@ blockquote:has(.callout) {
 }
 
 [data-theme="light"] .ftux-first-thought-shell.is-typed {
-  background: color-mix(in srgb, var(--bg-tertiary) 82%, var(--bg-primary) 18%);
+  background: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary) 30%);
 }
 
 [data-theme="light"] .ftux-dynamic-prompt {
-  color: color-mix(in srgb, var(--text-secondary) 86%, #9a8f7c 14%);
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--text-secondary) 28%);
+}
+
+[data-theme="light"] .ftux-orientation-line {
+  opacity: 0.46;
+  color: color-mix(in srgb, var(--text-secondary) 84%, var(--text-primary));
 }
 
 [data-theme="light"] .ftux-ghost-examples {
@@ -2700,15 +2824,27 @@ blockquote:has(.callout) {
 }
 
 [data-theme="light"] .ftux-ghost-examples.is-visible {
-  opacity: 0.3;
+  opacity: 0.38;
 }
 
 [data-theme="light"] .ftux-ghost-example {
-  color: color-mix(in srgb, var(--text-secondary) 78%, var(--text-muted));
+  color: color-mix(in srgb, var(--text-secondary) 88%, var(--text-muted));
+}
+
+[data-theme="light"] .ftux-intelligence-hint {
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+}
+
+[data-theme="light"] .ftux-intelligence-hint.is-visible {
+  opacity: 0.2;
 }
 
 [data-theme="light"] .ftux-inline-expand-list li {
-  color: color-mix(in srgb, var(--text-secondary) 80%, var(--text-muted));
+  color: color-mix(in srgb, var(--text-secondary) 90%, var(--text-muted));
+}
+
+[data-theme="light"] .ftux-inline-expand-title {
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
 }
 
 [data-theme="light"] .ftux-inline-expand-btn {
@@ -2723,6 +2859,23 @@ blockquote:has(.callout) {
 [data-theme="light"] .ftux-inline-expand-btn-primary {
   background: color-mix(in srgb, var(--accent-primary) 15%, var(--bg-tertiary));
   border-color: color-mix(in srgb, var(--accent-primary) 28%, var(--border-medium));
+}
+
+[data-theme="light"] .titlebar-command {
+  background: color-mix(in srgb, var(--bg-tertiary) 74%, var(--bg-primary) 26%);
+  border-color: color-mix(in srgb, var(--border-medium) 82%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary) 8%);
+}
+
+[data-theme="light"] .titlebar-command:hover {
+  background: color-mix(in srgb, var(--bg-tertiary) 68%, var(--bg-primary) 32%);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .titlebar-command kbd {
+  background: color-mix(in srgb, var(--bg-primary) 60%, var(--bg-tertiary) 40%);
+  border-color: color-mix(in srgb, var(--border-medium) 70%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary) 8%);
 }
 
 @media (max-width: 720px) {

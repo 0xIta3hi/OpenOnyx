@@ -289,7 +289,7 @@ export function GraphView({
   const [loading, setLoading] = useState(true);
   const [reinitCounter, setReinitCounter] = useState(0); // Force re-init on filter/theme change
 
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "oceanic";
   const vaultHash = useMemo(
     () => getVaultHash(vaultPath || "default"),
     [vaultPath],

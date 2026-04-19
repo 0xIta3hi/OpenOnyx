@@ -440,7 +440,7 @@ export function AIKnowledgeGraph({
   const similarityCacheRef = useRef<Map<string, SimilarityPair[]>>(new Map());
   const hasRenderedGraphRef = useRef(false);
 
-  const isDark = theme === "dark";
+  const isDark = theme === "dark" || theme === "oceanic";
   const vaultHash = useMemo(() => getVaultHash(vaultPath || "default"), [vaultPath]);
   const settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-${isDark ? "dark" : "light"}`;
   const positionsKey = `openobsidian-ai-graph-positions-v2-${vaultHash}`;

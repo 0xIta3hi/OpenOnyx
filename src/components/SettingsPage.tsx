@@ -22,7 +22,7 @@ import {
 
 export interface AppSettings {
   // Appearance
-  theme: "dark" | "light" | "system" | "custom";
+  theme: "dark" | "light" | "oceanic" | "system" | "custom";
   accentColor: string;
   fontFamily: string;
 
@@ -172,6 +172,7 @@ export function SettingsPage({
                       className="setting-select"
                     >
                       <option value="dark">Dark</option>
+                      <option value="oceanic">Oceanic</option>
                       <option value="light">Light</option>
                       <option value="system">System</option>
                       <option value="custom">Custom</option>
