@@ -131,6 +131,27 @@ export function registerIpcHandlers(
     return fsManager.saveImage(fileName, base64Data);
   });
 
+  ipcMain.handle('attachments:saveImageDedup', async (_event, fileName: string, base64Data: string) => {
+    return fsManager.saveAttachmentDedup(fileName, base64Data);
+  });
+
+  // ── .openobsidian Data Storage ────────────────────
+  ipcMain.handle('data:read', async (_event, relativePath: string) => {
+    return fsManager.readDataFile(relativePath);
+  });
+
+  ipcMain.handle('data:write', async (_event, relativePath: string, content: string) => {
+    await fsManager.writeDataFile(relativePath, content);
+  });
+
+  ipcMain.handle('data:delete', async (_event, relativePath: string) => {
+    await fsManager.deleteDataFile(relativePath);
+  });
+
+  ipcMain.handle('data:list', async (_event, subDir: string) => {
+    return fsManager.listDataDir(subDir);
+  });
+
   // ── Thought Model ─────────────────────────────────
   const THOUGHT_MODEL_URL = 'http://127.0.0.1:8765';
 

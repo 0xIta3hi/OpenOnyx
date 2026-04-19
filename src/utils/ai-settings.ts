@@ -1,0 +1,210 @@
+/**
+ * AI Settings - Configuration for AI providers and models
+ * 
+ * Adapted from nodepad's ai-settings to work within the notework
+ * Electron + Vite architecture. Uses localStorage for persistence.
+ */
+
+export interface AIModel {
+  id: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+  supportsGrounding: boolean;
+  groundingModelId?: string;
+}
+
+export type AIProvider = "openrouter" | "openai";
+
+export interface AIProviderPreset {
+  id: AIProvider;
+  label: string;
+  baseUrl: string;
+  keyUrl: string;
+  keyPlaceholder: string;
+}
+
+export const AI_PROVIDER_PRESETS: AIProviderPreset[] = [
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    keyUrl: "https://openrouter.ai/settings/keys",
+    keyPlaceholder: "sk-or-v1-...",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    baseUrl: "https://api.openai.com/v1",
+    keyUrl: "https://platform.openai.com/api-keys",
+    keyPlaceholder: "sk-...",
+  },
+];
+
+export function getPreset(provider: AIProvider): AIProviderPreset {
+  return AI_PROVIDER_PRESETS.find((p) => p.id === provider) || AI_PROVIDER_PRESETS[0];
+}
+
+export const OPENROUTER_MODELS: AIModel[] = [
+  {
+    id: "anthropic/claude-sonnet-4-5",
+    label: "Claude Sonnet 4.5",
+    shortLabel: "Claude",
+    description: "Best reasoning & annotation quality",
+    supportsGrounding: false,
+  },
+  {
+    id: "openai/gpt-4o",
+    label: "GPT-4o",
+    shortLabel: "GPT-4o",
+    description: "Strong structured output, broad knowledge",
+    supportsGrounding: true,
+  },
+  {
+    id: "google/gemini-2.5-pro-preview-03-25",
+    label: "Gemini 2.5 Pro",
+    shortLabel: "Gemini",
+    description: "Long-context, web grounding available",
+    supportsGrounding: true,
+  },
+  {
+    id: "deepseek/deepseek-chat",
+    label: "DeepSeek V3",
+    shortLabel: "DeepSeek",
+    description: "Cost-efficient frontier model",
+    supportsGrounding: false,
+  },
+  {
+    id: "mistralai/mistral-small-3.2-24b-instruct",
+    label: "Mistral Small 3.2",
+    shortLabel: "Mistral",
+    description: "Fast, excellent structured outputs",
+    supportsGrounding: false,
+  },
+  // Free tier
+  {
+    id: "nvidia/nemotron-3-nano-30b-a3b:free",
+    label: "Nemotron 30B · Free",
+    shortLabel: "Nemotron",
+    description: "Free · no credits · ~200 req/day",
+    supportsGrounding: false,
+  },
+  {
+    id: "nvidia/nemotron-3-super-120b-a12b:free",
+    label: "Nemotron 120B · Free",
+    shortLabel: "Nemotron",
+    description: "Free · no credits · ~200 req/day · MoE",
+    supportsGrounding: false,
+  },
+];
+
+export const OPENAI_MODELS: AIModel[] = [
+  {
+    id: "gpt-4o",
+    label: "GPT-4o",
+    shortLabel: "GPT-4o",
+    description: "Strong structured output, broad knowledge",
+    supportsGrounding: true,
+    groundingModelId: "gpt-4o-search-preview",
+  },
+  {
+    id: "gpt-4o-mini",
+    label: "GPT-4o Mini",
+    shortLabel: "GPT-4o Mini",
+    description: "Fast and capable, web grounding available",
+    supportsGrounding: true,
+    groundingModelId: "gpt-4o-mini-search-preview",
+  },
+  {
+    id: "gpt-4.1",
+    label: "GPT-4.1",
+    shortLabel: "GPT-4.1",
+    description: "Latest GPT-4, improved instruction following",
+    supportsGrounding: false,
+  },
+  {
+    id: "gpt-4.1-mini",
+    label: "GPT-4.1 Mini",
+    shortLabel: "GPT-4.1 Mini",
+    description: "Fast and capable, good balance",
+    supportsGrounding: false,
+  },
+  {
+    id: "o4-mini",
+    label: "o4-mini",
+    shortLabel: "o4-mini",
+    description: "Fast reasoning model",
+    supportsGrounding: false,
+  },
+];
+
+export function getModelsForProvider(provider: AIProvider): AIModel[] {
+  if (provider === "openai") return OPENAI_MODELS;
+  return OPENROUTER_MODELS;
+}
+
+export const DEFAULT_MODEL_ID = "openai/gpt-4o";
+export const DEFAULT_PROVIDER: AIProvider = "openrouter";
+
+export interface AISettings {
+  apiKey: string;
+  modelId: string;
+  webGrounding: boolean;
+  provider: AIProvider;
+  customBaseUrl: string;
+  providerKeys?: Partial<Record<AIProvider, string>>;
+}
+
+const STORAGE_KEY = "notework-ai-settings";
+
+export function loadSettings(): AISettings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "" };
+    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", ...JSON.parse(raw) };
+  } catch {
+    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "" };
+  }
+}
+
+export function saveSettings(settings: AISettings): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+export interface AIConfig {
+  apiKey: string;
+  modelId: string;
+  supportsGrounding: boolean;
+  provider: AIProvider;
+  customBaseUrl: string;
+}
+
+export function loadAIConfig(): AIConfig | null {
+  const s = loadSettings();
+  if (!s.apiKey) return null;
+  const models = getModelsForProvider(s.provider);
+  const model = models.find((m) => m.id === s.modelId);
+  const modelId = model?.id ?? models[0]?.id ?? s.modelId ?? DEFAULT_MODEL_ID;
+  const supportsGrounding =
+    (s.provider === "openrouter" || s.provider === "openai") &&
+    s.webGrounding &&
+    (model?.supportsGrounding ?? false);
+  return { apiKey: s.apiKey, modelId, supportsGrounding, provider: s.provider, customBaseUrl: s.customBaseUrl };
+}
+
+export function getBaseUrl(config: AIConfig): string {
+  const custom = config.customBaseUrl?.trim();
+  return custom || getPreset(config.provider).baseUrl;
+}
+
+export function getProviderHeaders(config: AIConfig): Record<string, string> {
+  const base: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${config.apiKey}`,
+  };
+  if (config.provider === "openrouter") {
+    base["HTTP-Referer"] = "https://openobsidian.app";
+    base["X-Title"] = "OpenObsidian";
+  }
+  return base;
+}

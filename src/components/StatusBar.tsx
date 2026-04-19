@@ -5,6 +5,7 @@
  */
 
 import React, { useMemo } from "react";
+import type { QueueStatus } from "../utils/background-queue";
 import {
   Moon,
   Sun,
@@ -24,6 +25,7 @@ interface StatusBarProps {
   theme: Theme;
   viewMode: ViewMode;
   fileTree?: FileEntry[];
+  queueStatus?: QueueStatus | null;
 }
 
 // Count notes and folders recursively
@@ -68,6 +70,7 @@ export function StatusBar({
   theme,
   viewMode,
   fileTree = [],
+  queueStatus,
 }: StatusBarProps) {
   const wordCount = content ? countWords(content) : 0;
   const charCount = content ? countCharacters(content) : 0;
@@ -114,6 +117,15 @@ export function StatusBar({
           <span className="status-item">OpenObsidian</span>
         )}
       </div>
+      {queueStatus && queueStatus.isRunning && (
+        <div className="status-bar-queue">
+          <span className="status-bar-queue-dot" />
+          <span>{queueStatus.message}</span>
+          {queueStatus.progress > 0 && queueStatus.progress < 100 && (
+            <span className="status-bar-queue-progress">{queueStatus.progress}%</span>
+          )}
+        </div>
+      )}
       <div className="status-bar-right">
         {vaultStats.notes > 0 && (
           <span className="status-item" title="Notes in vault">

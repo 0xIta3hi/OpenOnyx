@@ -1,0 +1,310 @@
+/**
+ * Background Queue — Persistent, non-blocking job processor
+ *
+ * Storage: .openobsidian/queue.json (resumes across restarts)
+ *
+ * Features:
+ *  - Vault initialization (batch embedding of existing notes)
+ *  - Priority queue: active note (P0) > recent notes (P1) > remaining (P2)
+ *  - Background annotation generation
+ *  - Progress reporting without exposing technical details
+ *  - Queue persists across app restarts
+ *  - Temporal weighting (recently edited notes processed first)
+ */
+
+import { loadStore, embedNote, type EmbeddingStore } from "./embeddings";
+import { getAnnotation } from "./ai-core";
+import { readData, writeData } from "./disk-store";
+
+// ── Job types ────────────────────────────────────────────────────────────────
+
+export interface BackgroundJob {
+  id: string;
+  type: "embed" | "annotate";
+  path: string;
+  content: string;
+  priority: number; // lower = higher priority
+  enqueuedAt: number;
+}
+
+// Persisted queue state (content is NOT persisted — loaded on demand)
+interface PersistedQueue {
+  jobs: Array<{ id: string; type: string; path: string; priority: number; enqueuedAt: number }>;
+  processedCount: number;
+  totalCount: number;
+  lastUpdated: number;
+}
+
+// ── Queue state ──────────────────────────────────────────────────────────────
+
+let _queue: BackgroundJob[] = [];
+let _isProcessing = false;
+let _processedCount = 0;
+let _totalCount = 0;
+let _onStatusChange: ((status: QueueStatus) => void) | null = null;
+let _queueLoaded = false;
+
+export interface QueueStatus {
+  isRunning: boolean;
+  processed: number;
+  total: number;
+  message: string;
+  progress: number; // 0-100
+}
+
+export function setQueueStatusCallback(cb: ((status: QueueStatus) => void) | null): void {
+  _onStatusChange = cb;
+}
+
+function reportStatus(message?: string): void {
+  const progress = _totalCount > 0 ? Math.round((_processedCount / _totalCount) * 100) : 0;
+  _onStatusChange?.({
+    isRunning: _isProcessing,
+    processed: _processedCount,
+    total: _totalCount,
+    message: message || getDefaultMessage(),
+    progress,
+  });
+}
+
+function getDefaultMessage(): string {
+  if (!_isProcessing) return "";
+  const remaining = _totalCount - _processedCount;
+  if (remaining <= 0) return "Analysis complete";
+  if (remaining === 1) return "Analyzing 1 more note...";
+  return `Analyzing ${remaining} more notes...`;
+}
+
+// ── Queue persistence ────────────────────────────────────────────────────────
+
+async function persistQueue(): Promise<void> {
+  const state: PersistedQueue = {
+    jobs: _queue.map((j) => ({
+      id: j.id,
+      type: j.type,
+      path: j.path,
+      priority: j.priority,
+      enqueuedAt: j.enqueuedAt,
+    })),
+    processedCount: _processedCount,
+    totalCount: _totalCount,
+    lastUpdated: Date.now(),
+  };
+  await writeData("queue.json", state);
+}
+
+/**
+ * Load persisted queue state from disk.
+ * Content is NOT stored — will be loaded on demand during processing.
+ */
+async function loadPersistedQueue(): Promise<void> {
+  if (_queueLoaded) return;
+  _queueLoaded = true;
+
+  const state = await readData<PersistedQueue>("queue.json");
+  if (!state || !state.jobs || state.jobs.length === 0) return;
+
+  // Only restore if the queue was saved recently (< 24h)
+  const MAX_AGE = 24 * 60 * 60 * 1000;
+  if (Date.now() - state.lastUpdated > MAX_AGE) {
+    await writeData("queue.json", { jobs: [], processedCount: 0, totalCount: 0, lastUpdated: Date.now() });
+    return;
+  }
+
+  _processedCount = state.processedCount;
+  _totalCount = state.totalCount;
+
+  // Jobs need content to be loaded — defer to processing
+  for (const job of state.jobs) {
+    _queue.push({
+      id: job.id,
+      type: job.type as "embed" | "annotate",
+      path: job.path,
+      content: "", // Will be loaded on demand
+      priority: job.priority,
+      enqueuedAt: job.enqueuedAt,
+    });
+  }
+  sortQueue();
+}
+
+// ── Queue operations ─────────────────────────────────────────────────────────
+
+export function enqueueJob(job: BackgroundJob): void {
+  const existing = _queue.findIndex((j) => j.path === job.path && j.type === job.type);
+  if (existing >= 0) {
+    if (job.priority < _queue[existing].priority) {
+      _queue[existing].priority = job.priority;
+      _queue[existing].content = job.content;
+    }
+    return;
+  }
+  _queue.push(job);
+  _totalCount = _processedCount + _queue.length;
+  sortQueue();
+}
+
+export function enqueueJobs(jobs: BackgroundJob[]): void {
+  for (const job of jobs) enqueueJob(job);
+}
+
+function sortQueue(): void {
+  _queue.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    // Within same priority, process recently edited notes first (temporal weighting)
+    return b.enqueuedAt - a.enqueuedAt;
+  });
+}
+
+// ── Batch processor ──────────────────────────────────────────────────────────
+
+const BATCH_SIZE = 3;
+const BATCH_DELAY_MS = 100;
+
+async function processBatch(api: any): Promise<void> {
+  const batch = _queue.splice(0, BATCH_SIZE);
+  if (batch.length === 0) return;
+
+  const store = loadStore();
+
+  for (const job of batch) {
+    try {
+      // Load content on demand if empty (from persisted queue)
+      let content = job.content;
+      if (!content && api?.readFile) {
+        try {
+          content = await api.readFile(job.path);
+        } catch {
+          console.warn(`[Queue] Could not read ${job.path}, skipping`);
+          _processedCount++;
+          reportStatus();
+          continue;
+        }
+      }
+
+      if (job.type === "embed") {
+        await embedNote(store, job.path, content);
+      } else if (job.type === "annotate") {
+        await getAnnotation(job.path, content);
+      }
+    } catch (err) {
+      console.warn(`[Queue] Failed ${job.type} for ${job.path}:`, err);
+    }
+    _processedCount++;
+    reportStatus();
+  }
+
+  // Persist queue state periodically
+  if (_processedCount % 10 === 0) {
+    persistQueue();
+  }
+}
+
+export async function startProcessing(api?: any): Promise<void> {
+  if (_isProcessing) return;
+  if (_queue.length === 0) return;
+
+  _isProcessing = true;
+  reportStatus("Analyzing your notes...");
+
+  while (_queue.length > 0) {
+    await processBatch(api);
+    await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+  }
+
+  _isProcessing = false;
+  _processedCount = 0;
+  _totalCount = 0;
+  reportStatus("Analysis complete");
+
+  // Clear persisted queue
+  await writeData("queue.json", { jobs: [], processedCount: 0, totalCount: 0, lastUpdated: Date.now() });
+
+  setTimeout(() => {
+    if (!_isProcessing) {
+      reportStatus("");
+    }
+  }, 3000);
+}
+
+export function cancelProcessing(): void {
+  _queue = [];
+  _isProcessing = false;
+  _processedCount = 0;
+  _totalCount = 0;
+  reportStatus("");
+  writeData("queue.json", { jobs: [], processedCount: 0, totalCount: 0, lastUpdated: Date.now() });
+}
+
+export function getQueueLength(): number {
+  return _queue.length;
+}
+
+export function isQueueRunning(): boolean {
+  return _isProcessing;
+}
+
+// ── Vault initialization ─────────────────────────────────────────────────────
+
+function simpleHash(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * Scan all notes in the vault and enqueue embedding jobs for any that
+ * are missing from the embedding store. Supports queue resumption from disk.
+ */
+export async function initializeVault(
+  allNotes: { path: string; content: string }[],
+  activeNotePath?: string | null,
+  recentPaths: string[] = [],
+  api?: any,
+): Promise<{ enqueued: number; alreadyIndexed: number }> {
+  // Load any persisted queue state first
+  await loadPersistedQueue();
+
+  const store = loadStore();
+  let enqueued = 0;
+  let alreadyIndexed = 0;
+  const recentSet = new Set(recentPaths);
+  const now = Date.now();
+
+  _processedCount = 0;
+
+  for (const note of allNotes) {
+    const existing = store.entries.get(note.path);
+    const hash = simpleHash(note.content);
+    if (existing && existing.hash === hash) {
+      alreadyIndexed++;
+      continue;
+    }
+
+    let priority = 2;
+    if (note.path === activeNotePath) priority = 0;
+    else if (recentSet.has(note.path)) priority = 1;
+
+    enqueueJob({
+      id: `embed-${note.path}`,
+      type: "embed",
+      path: note.path,
+      content: note.content,
+      priority,
+      enqueuedAt: now,
+    });
+    enqueued++;
+  }
+
+  _totalCount = enqueued;
+
+  if (enqueued > 0) {
+    // Persist queue before starting
+    await persistQueue();
+    startProcessing(api);
+  }
+
+  return { enqueued, alreadyIndexed };
+}

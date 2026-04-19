@@ -16,7 +16,7 @@ import React, {
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/editor/Editor";
-import { GraphView } from "./components/graph/GraphView";
+import { AIKnowledgeGraphFTUX } from "./components/graph/AIKnowledgeGraphFTUX";
 import { CanvasView } from "./components/canvas/CanvasView";
 import { SearchModal } from "./components/SearchModal";
 import { CommandPalette } from "./components/CommandPalette";
@@ -36,25 +36,123 @@ import {
 } from "./components/SettingsPage";
 import { TemplateModal } from "./components/TemplateModal";
 import { UnlinkedMentionsPanel } from "./components/UnlinkedMentionsPanel";
-import { ThoughtModelPage } from "./components/ThoughtModelPage";
+import { AIPage } from "./components/AIPage";
+import {
+  embedNote,
+  loadStore,
+  findSimilar,
+  applyHistoryWeighting,
+  loadSuggestionHistory,
+  loadTransitionMap,
+  recordSuggestion,
+  recordIgnoredSuggestions,
+  getTransitionBoost,
+  recordTransition,
+  type EmbeddingStore,
+} from "./utils/embeddings";
+import { getAnnotation, getCachedAnnotation } from "./utils/ai-core";
+import { initializeVault, setQueueStatusCallback, type QueueStatus } from "./utils/background-queue";
+import { type LinkType } from "./components/SuggestionBanner";
+import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-enrichment";
+import { generateSynthesis } from "./utils/synthesis";
 import { FileText, Layout } from "lucide-react";
 import { Tab, ViewMode, Theme, Command, FileEntry } from "./types";
 import { getNoteName, generateId, debounce } from "./utils/helpers";
 import { getAPI } from "./utils/api";
+import {
+  FTUXState,
+  FTUXStage,
+  getFTUXStage,
+  loadFTUXNotNowSuppression,
+  loadFTUXState,
+  saveFTUXNotNowSuppression,
+  saveFTUXState,
+} from "./utils/ftux";
 
 const api = getAPI();
 const MIN_EDITOR_FONT_SIZE = 12;
 const MAX_EDITOR_FONT_SIZE = 24;
 type FontZoomScope = "both" | "editor" | "preview";
+type GraphMode = "manual" | "ai";
 
 const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
 const GRAPH_TAB_PATH = "__graph__.view";
+
+const TRANSITION_STOP_WORDS = new Set([
+  "the", "and", "for", "with", "from", "that", "this", "into", "while", "where",
+  "when", "then", "have", "has", "was", "were", "your", "about", "note", "notes",
+  "list", "task", "item", "section", "idea", "project", "daily",
+]);
+
+const FIRST_THOUGHT_PROMPTS = [
+  "A random thought...",
+  "Something you're trying to figure out...",
+  "An idea you had today...",
+  "A problem you're stuck on...",
+  "Something you've been thinking about...",
+];
+
+const FIRST_THOUGHT_GHOST_EXAMPLES = [
+  "I want to build something but don't know where to start",
+  "Why do I procrastinate even when I care?",
+  "Learning feels scattered lately",
+];
+
+const randomInt = (min: number, max: number): number =>
+  Math.floor(Math.random() * (max - min + 1)) + min;
+
+function extractConceptTokens(value: string, maxTokens = 8): string[] {
+  return value
+    .toLowerCase()
+    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2 && !TRANSITION_STOP_WORDS.has(token))
+    .slice(0, maxTokens);
+}
+
+function deriveCurrentConcept(content: string): string | null {
+  const lines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const recent = lines.slice(-6).reverse();
+  for (const line of recent) {
+    const tokens = extractConceptTokens(line, 1);
+    if (tokens.length > 0) return tokens[0];
+  }
+
+  const fallback = extractConceptTokens(content, 1);
+  return fallback[0] || null;
+}
+
+function getTransitionLikelihood(
+  transitionMap: Record<string, Record<string, number>>,
+  fromConcept: string,
+  candidateTokens: string[],
+): number {
+  const transitions = transitionMap[fromConcept];
+  if (!transitions || candidateTokens.length === 0) return 0;
+
+  const total = Object.values(transitions).reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return 0;
+
+  let best = 0;
+  for (const token of candidateTokens) {
+    const probability = (transitions[token] || 0) / total;
+    if (probability > best) best = probability;
+  }
+  return best;
+}
 
 export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showGraph, setShowGraph] = useState(false);
+  const [graphMode, setGraphMode] = useState<GraphMode>("manual");
   const [graphFullScreen, setGraphFullScreen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -88,6 +186,34 @@ export default function App() {
   const [noteContentCache, setNoteContentCache] = useState<Map<string, string>>(
     new Map(),
   );
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+  const [ftuxState, setFtuxState] = useState<FTUXState>(() => loadFTUXState());
+  const [firstThoughtDraft, setFirstThoughtDraft] = useState("");
+  const [firstThoughtPromptIndex, setFirstThoughtPromptIndex] = useState(0);
+  const [firstThoughtPromptNextIndex, setFirstThoughtPromptNextIndex] = useState<number | null>(null);
+  const [firstThoughtPromptCrossfading, setFirstThoughtPromptCrossfading] = useState(false);
+  const [firstThoughtPromptFadeMs, setFirstThoughtPromptFadeMs] = useState(220);
+  const [firstThoughtPromptOverlapDelayMs, setFirstThoughtPromptOverlapDelayMs] = useState(70);
+  const [showFirstThoughtPromptEntry, setShowFirstThoughtPromptEntry] = useState(false);
+  const [showFirstThoughtGhostEntry, setShowFirstThoughtGhostEntry] = useState(false);
+  const [showFirstThoughtHintEntry, setShowFirstThoughtHintEntry] = useState(false);
+  const [isFirstThoughtFocused, setIsFirstThoughtFocused] = useState(false);
+  const [hasFirstThoughtKeystroke, setHasFirstThoughtKeystroke] = useState(false);
+  const [ftuxInsightText, setFtuxInsightText] = useState<string | null>(null);
+  const [ftuxSuggestionIdle, setFtuxSuggestionIdle] = useState(false);
+  const [ftuxConnectionPulse, setFtuxConnectionPulse] = useState(false);
+  const [notNowSuppressedUntilNotes, setNotNowSuppressedUntilNotes] = useState<number>(() =>
+    loadFTUXNotNowSuppression(),
+  );
+  const firstThoughtInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const firstThoughtPromptIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstThoughtPromptFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstThoughtEntryPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstThoughtEntryGhostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstThoughtEntryHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstThoughtAutoFocusSkipRef = useRef(false);
+  const ftuxIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ftuxPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Split pane references and dragging
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -289,6 +415,190 @@ export default function App() {
     localStorage.setItem("notework-settings", JSON.stringify(settings));
   }, [settings, theme]);
 
+  // ── Queue status listener ───────────────────────────
+  useEffect(() => {
+    setQueueStatusCallback((status) => setQueueStatus(status));
+    return () => setQueueStatusCallback(null);
+  }, []);
+
+  useEffect(() => {
+    saveFTUXState(ftuxState);
+  }, [ftuxState]);
+
+  useEffect(() => {
+    saveFTUXNotNowSuppression(notNowSuppressedUntilNotes);
+  }, [notNowSuppressedUntilNotes]);
+
+  useEffect(() => {
+    return () => {
+      if (firstThoughtPromptIntervalRef.current) {
+        clearTimeout(firstThoughtPromptIntervalRef.current);
+      }
+      if (firstThoughtPromptFadeTimerRef.current) {
+        clearTimeout(firstThoughtPromptFadeTimerRef.current);
+      }
+      if (firstThoughtEntryPromptTimerRef.current) {
+        clearTimeout(firstThoughtEntryPromptTimerRef.current);
+      }
+      if (firstThoughtEntryGhostTimerRef.current) {
+        clearTimeout(firstThoughtEntryGhostTimerRef.current);
+      }
+      if (firstThoughtEntryHintTimerRef.current) {
+        clearTimeout(firstThoughtEntryHintTimerRef.current);
+      }
+      if (ftuxIdleTimerRef.current) {
+        clearTimeout(ftuxIdleTimerRef.current);
+      }
+      if (ftuxPulseTimerRef.current) {
+        clearTimeout(ftuxPulseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
+    const shouldPausePromptRotation =
+      isFirstThoughtFocused || hasFirstThoughtKeystroke;
+
+    const clearPromptTimers = () => {
+      if (firstThoughtPromptIntervalRef.current) {
+        clearTimeout(firstThoughtPromptIntervalRef.current);
+        firstThoughtPromptIntervalRef.current = null;
+      }
+      if (firstThoughtPromptFadeTimerRef.current) {
+        clearTimeout(firstThoughtPromptFadeTimerRef.current);
+        firstThoughtPromptFadeTimerRef.current = null;
+      }
+    };
+
+    if (!isZeroState || shouldPausePromptRotation) {
+      clearPromptTimers();
+      setFirstThoughtPromptCrossfading(false);
+      setFirstThoughtPromptNextIndex(null);
+      return;
+    }
+
+    const cycleDelayMs = randomInt(2200, 2800);
+    firstThoughtPromptIntervalRef.current = setTimeout(() => {
+      const fadeMs = randomInt(180, 260);
+      const overlapRatio = randomInt(62, 72) / 100;
+      const overlapDelayMs = Math.max(40, Math.round(fadeMs * overlapRatio));
+      const nextIndex =
+        (firstThoughtPromptIndex + 1) % FIRST_THOUGHT_PROMPTS.length;
+
+      setFirstThoughtPromptFadeMs(fadeMs);
+      setFirstThoughtPromptOverlapDelayMs(overlapDelayMs);
+      setFirstThoughtPromptNextIndex(nextIndex);
+      setFirstThoughtPromptCrossfading(true);
+
+      if (firstThoughtPromptFadeTimerRef.current) {
+        clearTimeout(firstThoughtPromptFadeTimerRef.current);
+      }
+      firstThoughtPromptFadeTimerRef.current = setTimeout(() => {
+        setFirstThoughtPromptIndex(nextIndex);
+        setFirstThoughtPromptNextIndex(null);
+        setFirstThoughtPromptCrossfading(false);
+        firstThoughtPromptFadeTimerRef.current = null;
+      }, fadeMs + overlapDelayMs);
+    }, cycleDelayMs);
+
+    return () => {
+      clearPromptTimers();
+    };
+  }, [
+    firstThoughtPromptIndex,
+    ftuxState.notesCount,
+    hasFirstThoughtKeystroke,
+    isFirstThoughtFocused,
+    vaultPath,
+  ]);
+
+  useEffect(() => {
+    const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
+
+    if (!isZeroState) {
+      setShowFirstThoughtPromptEntry(false);
+      setShowFirstThoughtGhostEntry(false);
+      setShowFirstThoughtHintEntry(false);
+      return;
+    }
+
+    setShowFirstThoughtPromptEntry(false);
+    setShowFirstThoughtGhostEntry(false);
+    setShowFirstThoughtHintEntry(false);
+
+    firstThoughtEntryPromptTimerRef.current = setTimeout(() => {
+      setShowFirstThoughtPromptEntry(true);
+    }, 120);
+    firstThoughtEntryGhostTimerRef.current = setTimeout(() => {
+      setShowFirstThoughtGhostEntry(true);
+    }, 250);
+    firstThoughtEntryHintTimerRef.current = setTimeout(() => {
+      setShowFirstThoughtHintEntry(true);
+    }, 350);
+
+    return () => {
+      if (firstThoughtEntryPromptTimerRef.current) {
+        clearTimeout(firstThoughtEntryPromptTimerRef.current);
+        firstThoughtEntryPromptTimerRef.current = null;
+      }
+      if (firstThoughtEntryGhostTimerRef.current) {
+        clearTimeout(firstThoughtEntryGhostTimerRef.current);
+        firstThoughtEntryGhostTimerRef.current = null;
+      }
+      if (firstThoughtEntryHintTimerRef.current) {
+        clearTimeout(firstThoughtEntryHintTimerRef.current);
+        firstThoughtEntryHintTimerRef.current = null;
+      }
+    };
+  }, [ftuxState.notesCount, vaultPath]);
+
+  useEffect(() => {
+    const element = firstThoughtInputRef.current;
+    if (!element) return;
+
+    element.style.height = "auto";
+    element.style.height = `${Math.max(96, element.scrollHeight)}px`;
+  }, [firstThoughtDraft]);
+
+  // Helper: collect all .md paths from file tree
+  const collectAllMdPaths = useCallback((entries: FileEntry[]): string[] => {
+    const result: string[] = [];
+    for (const entry of entries) {
+      if (entry.isDirectory && entry.children) {
+        result.push(...collectAllMdPaths(entry.children));
+      } else if (!entry.isDirectory && entry.name.endsWith(".md")) {
+        result.push(entry.path);
+      }
+    }
+    return result;
+  }, []);
+
+  // Helper: run vault initialization (scan + enqueue missing embeddings)
+  const runVaultInit = useCallback(async (tree: FileEntry[]) => {
+    const mdPaths = collectAllMdPaths(tree);
+    if (mdPaths.length === 0) return;
+
+    // Read all note contents in parallel (batched)
+    const allNotes: { path: string; content: string }[] = [];
+    const BATCH = 10;
+    for (let i = 0; i < mdPaths.length; i += BATCH) {
+      const batch = mdPaths.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map(async (p) => ({ path: p, content: await api.readFile(p) })),
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") allNotes.push(r.value);
+      }
+    }
+
+    // Get current active note and recent files for priority
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const activePath = activeTab?.path || null;
+
+    initializeVault(allNotes, activePath, recentFiles, api);
+  }, [collectAllMdPaths, tabs, activeTabId, recentFiles]);
+
   // ── Initialize Vault ────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -297,7 +607,10 @@ export default function App() {
         if (savedPath) {
           setVaultPath(savedPath);
           setShowSidebar(true);
-          await refreshFileTree();
+          const tree = await api.getFileTree();
+          setFileTree(tree);
+          // Trigger background vault initialization
+          runVaultInit(tree);
         }
       } catch (e) {
         console.log("No saved vault path");
@@ -309,6 +622,7 @@ export default function App() {
   // ── Menu Event Handlers ─────────────────────────────
   useEffect(() => {
     const openGraphFromMenu = () => {
+      setGraphMode("manual");
       setShowThoughtModel(false);
       setShowCanvas(false);
       setShowGraph(false);
@@ -402,7 +716,10 @@ export default function App() {
         setTabs([]);
         setActiveTabId(null);
         setCurrentContent("");
-        await refreshFileTree();
+        const tree = await api.getFileTree();
+        setFileTree(tree);
+        // Trigger background vault initialization for new vault
+        runVaultInit(tree);
       }
     } catch (e) {
       console.error("Failed to open vault:", e);
@@ -492,6 +809,21 @@ export default function App() {
 
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
+    const readOrCreateMissingMarkdown = async (path: string): Promise<string> => {
+      try {
+        return await api.readFile(path);
+      } catch (err: any) {
+        if (err?.code === "ENOENT" && path.toLowerCase().endsWith(".md")) {
+          const noteTitle = getNoteName(path);
+          const fallback = `# ${noteTitle}\n\n`;
+          await api.createFile(path, fallback);
+          await refreshFileTree();
+          return fallback;
+        }
+        throw err;
+      }
+    };
+
     // Track recent files (keep last 20)
     setRecentFiles((prev) => {
       const filtered = prev.filter((p) => p !== filePath);
@@ -530,7 +862,7 @@ export default function App() {
     const existingTab = tabs.find((t) => t.path === filePath);
     if (existingTab) {
       setActiveTabId(existingTab.id);
-      const content = await api.readFile(filePath);
+      const content = await readOrCreateMissingMarkdown(filePath);
       setCurrentContent(content);
       setViewMode(mode || "preview");
       loadBacklinks(filePath);
@@ -538,7 +870,7 @@ export default function App() {
     }
 
     // Open new tab
-    const content = await api.readFile(filePath);
+    const content = await readOrCreateMissingMarkdown(filePath);
     const newTab: Tab = {
       id: generateId(),
       path: filePath,
@@ -553,7 +885,8 @@ export default function App() {
     loadBacklinks(filePath);
   };
 
-  const openGraphAsTab = () => {
+  const openGraphAsTab = (mode: GraphMode = "manual") => {
+    setGraphMode(mode);
     setShowThoughtModel(false);
     setShowCanvas(false);
     setShowGraph(false);
@@ -574,7 +907,56 @@ export default function App() {
 
     setCurrentContent("");
     setBacklinks([]);
+    setFtuxState((prev: FTUXState) =>
+      prev.graphPromptShown ? prev : { ...prev, graphPromptShown: true },
+    );
   };
+
+  const handleCreateFirstThought = useCallback(async () => {
+    if (!vaultPath) return;
+
+    const thought = firstThoughtDraft.trim();
+    if (!thought) return;
+
+    const slugBase = thought
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 6)
+      .join("-") || `first-thought-${Date.now()}`;
+
+    let candidatePath = `${slugBase}.md`;
+    let suffix = 2;
+    while (await api.fileExists(candidatePath)) {
+      candidatePath = `${slugBase}-${suffix}.md`;
+      suffix += 1;
+    }
+
+    const heading = thought
+      .split(/\n+/)
+      .find((line) => line.trim().length > 0)
+      ?.trim()
+      .slice(0, 80) || "First thought";
+
+    const content = `# ${heading}\n\n${thought}\n`;
+    await api.createFile(candidatePath, content);
+    await refreshFileTree();
+    await openFile(candidatePath, "editor");
+    setFirstThoughtDraft("");
+
+    const store = loadStore();
+    void embedNote(store, candidatePath, content);
+    void getAnnotation(candidatePath, content)
+      .then((annotation) => {
+        if (annotation) {
+          setInlineAnnotation(annotation);
+        }
+      })
+      .catch(() => {
+        // ignore annotation failures in FTUX entry
+      });
+  }, [firstThoughtDraft, refreshFileTree, vaultPath, openFile]);
 
   const handleToggleCanvas = async () => {
     const path = await createCanvasDocumentWithPrompt("Untitled canvas");
@@ -690,6 +1072,375 @@ export default function App() {
     });
   };
 
+  // ── Inline suggestions (appear inside editor) ──────────────────────────
+  const [inlineSuggestions, setInlineSuggestions] = useState<EnrichedSuggestion[]>([]);
+  const [nextStepSuggestions, setNextStepSuggestions] = useState<EnrichedSuggestion[]>([]);
+  const [inlineAnnotation, setInlineAnnotation] = useState<string | null>(null);
+  const ftuxConnectionSuggestion = useMemo(
+    () =>
+      inlineSuggestions
+        .filter((suggestion) => suggestion.similarity >= 0.7)
+        .sort((a, b) => b.similarity - a.similarity)[0] || null,
+    [inlineSuggestions],
+  );
+
+  const refreshInlineSuggestions = useCallback(async (notePath: string) => {
+    try {
+      const store = loadStore();
+      if (store.entries.size === 0) {
+        setInlineSuggestions([]);
+        setNextStepSuggestions([]);
+        return;
+      }
+      // Generation stage: keep this pool broad so display layers can rank/fallback.
+      const raw = findSimilar(store, notePath, 0.15, 30);
+      const weighted = applyHistoryWeighting(notePath, raw);
+      const basic = weighted.map((s) => ({
+        ...s,
+        title: s.path.split("/").pop()?.replace(/\.md$/, "") || s.path,
+      }));
+
+      // Load target note contents for enrichment
+      let sourceContent = "";
+      try { sourceContent = await api.readFile(notePath); } catch { /* empty */ }
+
+      const noteContents = new Map<string, string>();
+      for (const s of basic) {
+        try {
+          const content = await api.readFile(s.path);
+          noteContents.set(s.path, content);
+        } catch { /* skip */ }
+      }
+
+      const history = loadSuggestionHistory();
+      const accepted = history
+        .filter(
+          (record) =>
+            record.sourcePath === notePath &&
+            record.action === "accepted",
+        )
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 16);
+
+      const acceptedConceptWeights = new Map<string, number>();
+      if (accepted.length > 0) {
+        const now = Date.now();
+        for (const record of accepted) {
+          const ageDays = Math.max(0, (now - record.timestamp) / (24 * 60 * 60 * 1000));
+          const recencyWeight = Math.max(0.35, 1 - ageDays / 21);
+          const targetName = record.targetPath
+            .split("/")
+            .pop()
+            ?.replace(/\.md$/, "")
+            .toLowerCase() || "";
+          const tokens = targetName
+            .replace(/[^a-z0-9\s]/g, " ")
+            .split(/\s+/)
+            .filter((token) => token.length > 2);
+          for (const token of tokens) {
+            acceptedConceptWeights.set(
+              token,
+              (acceptedConceptWeights.get(token) || 0) + recencyWeight,
+            );
+          }
+        }
+      }
+
+      const sourceConcept = deriveCurrentConcept(sourceContent);
+      const transitionMap = loadTransitionMap();
+
+      // Candidate generation only. Display layers handle strict ranking and fallback.
+      const enriched = enrichSuggestions(sourceContent, basic, noteContents)
+        .map((suggestion) => {
+          const candidateTokens = `${suggestion.title} ${suggestion.sharedConcepts.join(" ")}`
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .split(/\s+/)
+            .filter((token) => token.length > 2);
+
+          let trajectoryBoost = 0;
+          if (acceptedConceptWeights.size > 0) {
+            const tokenSet = new Set(candidateTokens);
+            let overlapScore = 0;
+            tokenSet.forEach((token) => {
+              overlapScore += acceptedConceptWeights.get(token) || 0;
+            });
+            trajectoryBoost = Math.min(0.12, overlapScore * 0.028);
+          }
+
+          const transitionBoost = sourceConcept
+            ? getTransitionBoost(sourceConcept, candidateTokens)
+            : 0;
+          const totalBoost = trajectoryBoost + transitionBoost;
+          if (totalBoost <= 0) return suggestion;
+
+          return {
+            ...suggestion,
+            similarity: Math.max(0, Math.min(1, suggestion.similarity + totalBoost)),
+          };
+        })
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 24);
+
+      const sessionIntentTokens = [...acceptedConceptWeights.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([token]) => token);
+
+      const clusterContextTokens = new Set<string>();
+      enriched
+        .filter((item) => item.group === "strong")
+        .slice(0, 6)
+        .forEach((item) => {
+          item.sharedConcepts.forEach((concept) => {
+            extractConceptTokens(concept, 4).forEach((token) => {
+              clusterContextTokens.add(token);
+            });
+          });
+        });
+
+      const nextSteps = enriched
+        .map((suggestion) => {
+          const candidateTokens = extractConceptTokens(
+            `${suggestion.title} ${suggestion.sharedConcepts.join(" ")}`,
+            10,
+          );
+          if (candidateTokens.length === 0) return null;
+
+          const intentOverlap = candidateTokens.reduce(
+            (sum, token) => sum + (acceptedConceptWeights.get(token) || 0),
+            0,
+          );
+
+          const transitionLikelihood = sourceConcept
+            ? getTransitionLikelihood(transitionMap, sourceConcept, candidateTokens)
+            : 0;
+
+          const clusterOverlap =
+            candidateTokens.filter((token) => clusterContextTokens.has(token)).length /
+            Math.max(1, candidateTokens.length);
+
+          const sessionIntentOverlap =
+            sessionIntentTokens.length > 0
+              ? candidateTokens.filter((token) => sessionIntentTokens.includes(token)).length /
+                sessionIntentTokens.length
+              : 0;
+
+          const guidanceScore =
+            suggestion.similarity * 0.34 +
+            Math.min(0.28, intentOverlap * 0.06) +
+            Math.min(0.24, transitionLikelihood * 0.8) +
+            clusterOverlap * 0.12 +
+            sessionIntentOverlap * 0.1;
+
+          const passesSignalGate =
+            transitionLikelihood >= 0.02 ||
+            intentOverlap >= 0.45 ||
+            clusterOverlap >= 0.28 ||
+            sessionIntentOverlap >= 0.2;
+          if (!passesSignalGate) return null;
+
+          const primaryHint = suggestion.sharedConcepts[0] || suggestion.title;
+          const guidanceReason =
+            transitionLikelihood > 0.02
+              ? `Likely next direction based on recent flow toward ${primaryHint}`
+              : `Builds your current trajectory around ${primaryHint}`;
+
+          return {
+            ...suggestion,
+            similarity: Math.min(1, Math.max(suggestion.similarity, guidanceScore)),
+            reason: guidanceReason,
+          };
+        })
+        .filter((item): item is EnrichedSuggestion => Boolean(item))
+        .sort((a, b) => b.similarity - a.similarity)
+        .filter((candidate, index, list) =>
+          list.findIndex((item) => item.path === candidate.path) === index,
+        )
+        .slice(0, 4);
+
+      setInlineSuggestions(enriched);
+      setNextStepSuggestions(nextSteps);
+    } catch { /* silent */ }
+  }, []);
+
+  const refreshInlineAnnotation = useCallback((notePath: string) => {
+    const cached = getCachedAnnotation(notePath);
+    setInlineAnnotation(cached);
+  }, []);
+
+  // Track previous note for decay recording
+  const prevActiveTabRef = React.useRef<string | null>(null);
+
+  // Refresh suggestions when active tab changes
+  useEffect(() => {
+    const tab = tabs.find((t) => t.id === activeTabId);
+    const currentPath = tab?.path.endsWith(".md") ? tab.path : null;
+
+    // Record ignored suggestions for the note we're leaving
+    if (prevActiveTabRef.current && prevActiveTabRef.current !== currentPath) {
+      const prevPath = prevActiveTabRef.current;
+      if (inlineSuggestions.length > 0) {
+        recordIgnoredSuggestions(prevPath, inlineSuggestions.map((s) => s.path));
+      }
+    }
+    prevActiveTabRef.current = currentPath;
+
+    if (currentPath) {
+      refreshInlineSuggestions(currentPath);
+      refreshInlineAnnotation(currentPath);
+    } else {
+      setInlineSuggestions([]);
+      setNextStepSuggestions([]);
+      setInlineAnnotation(null);
+    }
+  }, [activeTabId, tabs, refreshInlineSuggestions, refreshInlineAnnotation]);
+
+  const handleInlineAccept = useCallback(
+    async (targetPath: string, linkType: LinkType) => {
+      const tab = tabs.find((t) => t.id === activeTabId);
+      if (!tab) return;
+      try {
+        const content = await api.readFile(tab.path);
+        const targetName = targetPath.split("/").pop()?.replace(/\.md$/, "") || targetPath;
+        const sourceConcept = deriveCurrentConcept(content);
+        const acceptedSuggestion = inlineSuggestions.find((item) => item.path === targetPath);
+        const targetConcept =
+          extractConceptTokens(
+            acceptedSuggestion
+              ? `${acceptedSuggestion.title} ${acceptedSuggestion.sharedConcepts.join(" ")}`
+              : targetName,
+            1,
+          )[0] || null;
+
+        if (sourceConcept && targetConcept) {
+          recordTransition(sourceConcept, targetConcept);
+        }
+
+        const linkText =
+          linkType === "related"
+            ? `[[${targetName}]]`
+            : `[[${targetName}]] %%${linkType}%%`;
+        const separator = content.endsWith("\n") ? "\n" : "\n\n";
+        await api.writeFile(tab.path, content + separator + linkText + "\n");
+        recordSuggestion({
+          sourcePath: tab.path,
+          targetPath,
+          action: "accepted",
+          timestamp: Date.now(),
+        });
+
+        let acceptedConnection = false;
+        setFtuxState((prev: FTUXState) => {
+          const next: FTUXState = {
+            ...prev,
+            acceptedSuggestions: prev.acceptedSuggestions + 1,
+          };
+
+          const withinConnectionWindow = prev.notesCount >= 2 && prev.notesCount <= 3;
+          const isConnectionTarget = targetPath === (ftuxConnectionSuggestion?.path || "");
+          if (withinConnectionWindow && isConnectionTarget) {
+            next.acceptedConnections = prev.acceptedConnections + 1;
+            acceptedConnection = true;
+          }
+
+          if (next.acceptedSuggestions >= 2) {
+            next.trajectoryActivated = true;
+          }
+
+          return next;
+        });
+
+        if (acceptedConnection) {
+          setFtuxConnectionPulse(true);
+          if (ftuxPulseTimerRef.current) {
+            clearTimeout(ftuxPulseTimerRef.current);
+          }
+          ftuxPulseTimerRef.current = setTimeout(() => {
+            setFtuxConnectionPulse(false);
+            ftuxPulseTimerRef.current = null;
+          }, 1000);
+        }
+
+        setInlineSuggestions((prev) => prev.filter((s) => s.path !== targetPath));
+        // Reload editor content
+        const updated = await api.readFile(tab.path);
+        setCurrentContent(updated);
+      } catch (err) {
+        console.error("Failed to create link:", err);
+      }
+    },
+    [activeTabId, ftuxConnectionSuggestion?.path, inlineSuggestions, tabs],
+  );
+
+  const handleInlineReject = useCallback(
+    (targetPath: string) => {
+      const tab = tabs.find((t) => t.id === activeTabId);
+      if (!tab) return;
+      recordSuggestion({
+        sourcePath: tab.path,
+        targetPath,
+        action: "rejected",
+        timestamp: Date.now(),
+      });
+
+      const isConnectionWindow = ftuxState.notesCount >= 2 && ftuxState.notesCount <= 3;
+      const isConnectionSuggestion = targetPath === (ftuxConnectionSuggestion?.path || "");
+      if (isConnectionWindow && isConnectionSuggestion) {
+        setNotNowSuppressedUntilNotes(ftuxState.notesCount + 2);
+      }
+
+      setInlineSuggestions((prev) => prev.filter((s) => s.path !== targetPath));
+    },
+    [activeTabId, ftuxConnectionSuggestion?.path, ftuxState.notesCount, tabs],
+  );
+
+  const handleSaveInsight = useCallback(async () => {
+    if (!ftuxInsightText) return;
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    let filePath = `insight-${stamp}.md`;
+    let suffix = 2;
+    while (await api.fileExists(filePath)) {
+      filePath = `insight-${stamp}-${suffix}.md`;
+      suffix += 1;
+    }
+
+    const content = `# Insight\n\n${ftuxInsightText}\n`;
+    await api.createFile(filePath, content);
+    await refreshFileTree();
+    await openFile(filePath, "preview");
+    setFtuxState((prev: FTUXState) => ({ ...prev, insightShown: true }));
+  }, [ftuxInsightText, refreshFileTree, openFile]);
+
+  const handleIgnoreInsight = useCallback(() => {
+    setFtuxState((prev: FTUXState) => ({ ...prev, insightShown: true }));
+  }, []);
+
+  const handleOpenGraphFromPrompt = () => {
+    setFtuxState((prev: FTUXState) => ({ ...prev, graphPromptShown: true }));
+    openGraphAsTab("manual");
+  };
+
+  // Auto-embed a note after save (background, non-blocking)
+  const autoEmbedNote = useCallback(async (path: string, content: string) => {
+    if (!path.toLowerCase().endsWith(".md")) return;
+    try {
+      const store = loadStore();
+      const changed = await embedNote(store, path, content);
+      if (changed) {
+        // Refresh inline suggestions after embedding updates
+        refreshInlineSuggestions(path);
+      }
+      // Auto-annotate (background, non-blocking)
+      getAnnotation(path, content).then((ann) => {
+        if (ann) setInlineAnnotation(ann);
+      }).catch(() => { /* silent */ });
+    } catch (err) {
+      console.warn("[Auto-embed] Failed:", err);
+    }
+  }, [refreshInlineSuggestions]);
+
   const handleSave = async () => {
     if (!activeTabId) return;
     const tab = tabs.find((t) => t.id === activeTabId);
@@ -704,6 +1455,9 @@ export default function App() {
         }),
       );
     }
+    // Auto-embed in background
+    autoEmbedNote(tab.path, currentContent);
+
     setTabs((prev) =>
       prev.map((t) => (t.id === activeTabId ? { ...t, isModified: false } : t)),
     );
@@ -749,6 +1503,9 @@ export default function App() {
               }),
             );
           }
+          // Auto-embed on auto-save (background)
+          autoEmbedNote(tab.path, content);
+
           setTabs((prev) =>
             prev.map((t) =>
               t.id === activeTabId ? { ...t, isModified: false } : t,
@@ -759,6 +1516,27 @@ export default function App() {
     },
     [activeTabId, tabs],
   );
+
+  useEffect(() => {
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab || isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH) {
+      setFtuxSuggestionIdle(false);
+      if (ftuxIdleTimerRef.current) {
+        clearTimeout(ftuxIdleTimerRef.current);
+        ftuxIdleTimerRef.current = null;
+      }
+      return;
+    }
+
+    setFtuxSuggestionIdle(false);
+    if (ftuxIdleTimerRef.current) {
+      clearTimeout(ftuxIdleTimerRef.current);
+    }
+    ftuxIdleTimerRef.current = setTimeout(() => {
+      setFtuxSuggestionIdle(true);
+      ftuxIdleTimerRef.current = null;
+    }, 600);
+  }, [activeTabId, currentContent, tabs]);
 
   const closeTab = async (tabId: string) => {
     const tab = tabs.find((t) => t.id === tabId);
@@ -1065,6 +1843,105 @@ export default function App() {
     return getNotes(fileTree);
   }, [fileTree]);
 
+  useEffect(() => {
+    const nextCount = allNoteNames.length;
+    setFtuxState((prev: FTUXState) =>
+      prev.notesCount === nextCount ? prev : { ...prev, notesCount: nextCount },
+    );
+  }, [allNoteNames.length]);
+
+  useEffect(() => {
+    if (ftuxState.acceptedSuggestions < 2 || ftuxState.trajectoryActivated) {
+      return;
+    }
+    setFtuxState((prev: FTUXState) => ({
+      ...prev,
+      trajectoryActivated: true,
+    }));
+  }, [ftuxState.acceptedSuggestions, ftuxState.trajectoryActivated]);
+
+  useEffect(() => {
+    const isZeroStage = vaultPath !== null && ftuxState.notesCount === 0;
+    if (!isZeroStage) return;
+
+    setShowGraph(false);
+    setShowCanvas(false);
+    setShowThoughtModel(false);
+    setShowSidebar(false);
+  }, [ftuxState.notesCount, vaultPath]);
+
+  useEffect(() => {
+    if (ftuxState.notesCount < 4 || ftuxState.insightShown) {
+      setFtuxInsightText(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildInsight = async () => {
+      try {
+        const candidatePaths = [...new Set([
+          ...recentFiles.filter((path) => path.toLowerCase().endsWith(".md")),
+          ...allNoteNames.map((note) => note.path),
+        ])].slice(0, 6);
+
+        if (candidatePaths.length < 2) {
+          if (!cancelled) setFtuxInsightText(null);
+          return;
+        }
+
+        const notes: { title: string; content: string }[] = [];
+        for (const path of candidatePaths) {
+          try {
+            const content = await api.readFile(path);
+            if (content.trim().length === 0) continue;
+            notes.push({ title: getNoteName(path), content });
+          } catch {
+            // ignore unreadable notes
+          }
+        }
+
+        if (notes.length < 2) {
+          if (!cancelled) setFtuxInsightText(null);
+          return;
+        }
+
+        const synthesis = await generateSynthesis(notes);
+        const fallbackConcept = inlineSuggestions[0]?.sharedConcepts[0] || "your recent notes";
+        const fallback = `You keep circling around ${fallbackConcept} from different angles.`;
+        const insightLine =
+          synthesis?.insight
+            ?.replace(/^INSIGHT:\s*/i, "")
+            .split("\n")
+            .find((line) => line.trim().length > 0)
+            ?.trim() || fallback;
+
+        if (!cancelled) {
+          setFtuxInsightText(insightLine);
+        }
+      } catch {
+        if (!cancelled) {
+          const fallbackConcept = inlineSuggestions[0]?.sharedConcepts[0] || "your ideas";
+          setFtuxInsightText(
+            `A recurring thread is forming around ${fallbackConcept}.`,
+          );
+        }
+      }
+    };
+
+    void buildInsight();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    allNoteNames,
+    ftuxState.insightShown,
+    ftuxState.notesCount,
+    inlineSuggestions,
+    recentFiles,
+  ]);
+
   // Get note content for embeds - uses cache or fetches
   const getNoteContent = useCallback(
     (noteName: string): string | null => {
@@ -1135,6 +2012,14 @@ export default function App() {
       category: "View",
     },
     {
+      id: "graph-ai",
+      label: "Open AI Graph Tab",
+      action: () => {
+        openGraphAsTab("ai");
+      },
+      category: "View",
+    },
+    {
       id: "sidebar",
       label: "Toggle Sidebar",
       shortcut: "Ctrl+B",
@@ -1185,7 +2070,7 @@ export default function App() {
     },
     {
       id: "thought-model",
-      label: "Open Thought Model",
+      label: "Open AI Assistant",
       action: () => setShowThoughtModel(true),
       category: "AI",
     },
@@ -1268,6 +2153,68 @@ export default function App() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTabIsCanvas = !!activeTab && isCanvasFile(activeTab.path);
   const activeTabIsGraph = !!activeTab && activeTab.path === GRAPH_TAB_PATH;
+  const ftuxStage: FTUXStage = getFTUXStage(ftuxState);
+  const isFTUXZeroState = Boolean(vaultPath) && ftuxStage === "zero";
+  const isFTUXFirstNote = ftuxStage === "first_note";
+  const isFTUXConnectionStage =
+    ftuxStage === "connection" && ftuxState.notesCount >= 2 && ftuxState.notesCount <= 3;
+  const notNowSuppressed = ftuxState.notesCount <= notNowSuppressedUntilNotes;
+
+  const canShowFTUXPrompts =
+    !!activeTab &&
+    !activeTabIsCanvas &&
+    !activeTabIsGraph &&
+    ftuxSuggestionIdle &&
+    !showGraph &&
+    !showCanvas;
+
+  const showFTUXConnectionPrompt =
+    canShowFTUXPrompts &&
+    isFTUXConnectionStage &&
+    !notNowSuppressed &&
+    !!ftuxConnectionSuggestion;
+
+  const showFTUXInsightPrompt =
+    canShowFTUXPrompts &&
+    !showFTUXConnectionPrompt &&
+    ftuxStage === "insight" &&
+    !!ftuxInsightText;
+
+  const showFTUXGraphPrompt =
+    canShowFTUXPrompts &&
+    !showFTUXConnectionPrompt &&
+    !showFTUXInsightPrompt &&
+    ftuxStage === "graph" &&
+    ftuxState.notesCount >= 5 &&
+    ftuxState.acceptedConnections >= 1 &&
+    !ftuxState.graphPromptShown;
+
+  const showTrajectorySuggestions =
+    ftuxState.trajectoryActivated &&
+    ftuxState.acceptedSuggestions >= 2 &&
+    !showFTUXConnectionPrompt &&
+    !showFTUXInsightPrompt &&
+    !showFTUXGraphPrompt;
+
+  const editorSuggestions =
+    !ftuxSuggestionIdle ||
+    isFTUXFirstNote ||
+    isFTUXConnectionStage ||
+    showFTUXInsightPrompt ||
+    showFTUXGraphPrompt
+      ? []
+      : inlineSuggestions;
+
+  const editorNextStepSuggestions =
+    !showTrajectorySuggestions ||
+    !ftuxSuggestionIdle ||
+    isFTUXFirstNote ||
+    isFTUXConnectionStage ||
+    showFTUXInsightPrompt ||
+    showFTUXGraphPrompt
+      ? []
+      : nextStepSuggestions;
+
   const hasAuxPane = showGraph || showCanvas;
   const shouldShowEditorPane =
     (!showGraph || !graphFullScreen) &&
@@ -1288,7 +2235,7 @@ export default function App() {
         className="app-body"
         style={{ "--sidebar-width": `${sidebarWidth}px` } as any}
       >
-        {vaultPath && (
+        {vaultPath && !isFTUXZeroState && (
           <Ribbon
             onNewNote={handleNewNote}
             onSearch={() => {
@@ -1312,7 +2259,7 @@ export default function App() {
             }}
           />
         )}
-        {vaultPath && (
+        {vaultPath && !isFTUXZeroState && (
           <Sidebar
             visible={showSidebar}
             fileTree={fileTree}
@@ -1335,7 +2282,7 @@ export default function App() {
           />
         )}
 
-        {showSidebar && vaultPath && (
+        {showSidebar && vaultPath && !isFTUXZeroState && (
           <div
             className="resizer"
             onMouseDown={startSidebarDrag}
@@ -1355,6 +2302,107 @@ export default function App() {
         >
           {!vaultPath ? (
             <WelcomeScreen onOpenVault={handleOpenVault} />
+          ) : isFTUXZeroState ? (
+            <div className={`ftux-zero-state ${hasFirstThoughtKeystroke ? "is-activated" : ""}`}>
+              <form
+                className={`ftux-first-thought-form ${hasFirstThoughtKeystroke ? "has-content" : ""}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleCreateFirstThought();
+                }}
+              >
+                <div
+                  className={`ftux-first-thought-shell ${isFirstThoughtFocused ? "is-focused" : ""} ${hasFirstThoughtKeystroke ? "is-typed" : ""}`}
+                >
+                  <div
+                    className={`ftux-dynamic-prompt ${showFirstThoughtPromptEntry ? "is-visible" : ""} ${firstThoughtPromptCrossfading ? "is-crossfading" : ""} ${hasFirstThoughtKeystroke ? "is-hidden is-instant-hidden" : ""}`}
+                    style={{
+                      "--ftux-prompt-fade-ms": `${firstThoughtPromptFadeMs}ms`,
+                      "--ftux-prompt-overlap-delay-ms": `${firstThoughtPromptOverlapDelayMs}ms`,
+                    } as React.CSSProperties}
+                  >
+                    <span className="ftux-dynamic-prompt-text is-current">
+                      {FIRST_THOUGHT_PROMPTS[firstThoughtPromptIndex]}
+                    </span>
+                    {firstThoughtPromptNextIndex !== null && (
+                      <span className="ftux-dynamic-prompt-text is-next">
+                        {FIRST_THOUGHT_PROMPTS[firstThoughtPromptNextIndex]}
+                      </span>
+                    )}
+                  </div>
+
+                  <textarea
+                    ref={firstThoughtInputRef}
+                    className="ftux-first-thought-input"
+                    value={firstThoughtDraft}
+                    rows={3}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setFirstThoughtDraft(next);
+                      if (!hasFirstThoughtKeystroke && next.length > 0) {
+                        if (firstThoughtPromptIntervalRef.current) {
+                          clearTimeout(firstThoughtPromptIntervalRef.current);
+                          firstThoughtPromptIntervalRef.current = null;
+                        }
+                        if (firstThoughtPromptFadeTimerRef.current) {
+                          clearTimeout(firstThoughtPromptFadeTimerRef.current);
+                          firstThoughtPromptFadeTimerRef.current = null;
+                        }
+                        if (firstThoughtEntryPromptTimerRef.current) {
+                          clearTimeout(firstThoughtEntryPromptTimerRef.current);
+                          firstThoughtEntryPromptTimerRef.current = null;
+                        }
+                        if (firstThoughtEntryGhostTimerRef.current) {
+                          clearTimeout(firstThoughtEntryGhostTimerRef.current);
+                          firstThoughtEntryGhostTimerRef.current = null;
+                        }
+                        if (firstThoughtEntryHintTimerRef.current) {
+                          clearTimeout(firstThoughtEntryHintTimerRef.current);
+                          firstThoughtEntryHintTimerRef.current = null;
+                        }
+                        setFirstThoughtPromptCrossfading(false);
+                        setFirstThoughtPromptNextIndex(null);
+                        setHasFirstThoughtKeystroke(true);
+                      }
+                    }}
+                    onFocus={() => {
+                      if (!firstThoughtAutoFocusSkipRef.current) {
+                        firstThoughtAutoFocusSkipRef.current = true;
+                        return;
+                      }
+                      setIsFirstThoughtFocused(true);
+                    }}
+                    onBlur={() => setIsFirstThoughtFocused(false)}
+                    onKeyDown={(event) => {
+                      if (!isFirstThoughtFocused) {
+                        setIsFirstThoughtFocused(true);
+                      }
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        if (firstThoughtDraft.trim().length > 0) {
+                          void handleCreateFirstThought();
+                        }
+                      }
+                    }}
+                    placeholder=""
+                    aria-label="Write your first thought"
+                    autoFocus
+                  />
+                </div>
+
+                <div className={`ftux-ghost-examples ${showFirstThoughtGhostEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
+                  {FIRST_THOUGHT_GHOST_EXAMPLES.map((example) => (
+                    <div key={example} className="ftux-ghost-example">
+                      {example}
+                    </div>
+                  ))}
+                </div>
+
+                <div className={`ftux-intelligence-hint ${showFirstThoughtHintEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
+                  Your thoughts will start connecting
+                </div>
+              </form>
+            </div>
           ) : (
             <>
               {/* Editor pane - hidden when graph/canvas is fullscreen, or when no note is open and an auxiliary pane is visible */}
@@ -1369,90 +2417,170 @@ export default function App() {
                   }}
                 >
                   {activeTab ? (
-                    <Editor
-                      tabs={tabs}
-                      activeTabId={activeTabId!}
-                      content={currentContent}
-                      viewMode={viewMode}
-                      specialContent={
-                        activeTabIsCanvas ? (
-                          <CanvasView
-                            onClose={() => closeTab(activeTab.id)}
-                            isFullScreen={false}
-                            onToggleFullScreen={() =>
-                              setCanvasFullScreen((f) => !f)
-                            }
-                            theme={theme}
-                            vaultPath={vaultPath}
-                            fileTree={fileTree}
-                            canvasFilePath={activeTab.path}
-                            onOpenFile={(path) => openFile(path)}
-                            onNewCanvas={() => {
-                              void handleToggleCanvas();
-                            }}
-                            onDuplicateCanvas={() => {
-                              void handleDuplicateCanvas();
-                            }}
-                            onSaveCanvasAs={() => {
-                              void handleSaveCanvasAs();
-                            }}
-                            recentCanvasFiles={recentCanvasFiles}
-                            onOpenRecentCanvas={(path) => {
-                              void openFile(path, "preview");
-                            }}
-                          />
-                        ) : activeTabIsGraph ? (
-                          <GraphView
-                            onNodeClick={async (
-                              linkName,
-                              heading,
-                              notePath,
-                            ) => {
-                              setViewMode("preview");
-                              if (notePath) {
-                                await openFile(notePath, "preview");
-                                return;
+                    <div
+                      className={`ftux-editor-host ${ftuxConnectionPulse ? "ftux-connection-highlight-pulse" : ""}`}
+                    >
+                      <Editor
+                        tabs={tabs}
+                        activeTabId={activeTabId!}
+                        content={currentContent}
+                        viewMode={viewMode}
+                        specialContent={
+                          activeTabIsCanvas ? (
+                            <CanvasView
+                              onClose={() => closeTab(activeTab.id)}
+                              isFullScreen={false}
+                              onToggleFullScreen={() =>
+                                setCanvasFullScreen((f) => !f)
                               }
-                              await handleLinkClick(linkName, heading);
-                            }}
-                            onClose={() => closeTab(activeTab.id)}
-                            isFullScreen={false}
-                            onToggleFullScreen={() =>
-                              setGraphFullScreen((f) => !f)
-                            }
-                            theme={theme}
-                            vaultPath={vaultPath}
-                            localNodePath={undefined}
-                          />
-                        ) : undefined
-                      }
-                      availableNotes={allNoteNames}
-                      onAdjustFontSize={adjustEditorFontSize}
-                      onTabSelect={async (id) => {
-                        setActiveTabId(id);
-                        const tab = tabs.find((t) => t.id === id);
-                        if (tab) {
-                          if (isCanvasFile(tab.path)) {
-                            await openFile(tab.path, "preview");
-                            return;
-                          }
-                          if (tab.path === GRAPH_TAB_PATH) {
-                            setCurrentContent("");
-                            setBacklinks([]);
-                            return;
-                          }
-                          const content = await api.readFile(tab.path);
-                          setCurrentContent(content);
-                          loadBacklinks(tab.path);
+                              theme={theme}
+                              vaultPath={vaultPath}
+                              fileTree={fileTree}
+                              canvasFilePath={activeTab.path}
+                              onOpenFile={(path) => openFile(path)}
+                              onNewCanvas={() => {
+                                void handleToggleCanvas();
+                              }}
+                              onDuplicateCanvas={() => {
+                                void handleDuplicateCanvas();
+                              }}
+                              onSaveCanvasAs={() => {
+                                void handleSaveCanvasAs();
+                              }}
+                              recentCanvasFiles={recentCanvasFiles}
+                              onOpenRecentCanvas={(path) => {
+                                void openFile(path, "preview");
+                              }}
+                            />
+                          ) : activeTabIsGraph ? (
+                            <AIKnowledgeGraphFTUX
+                              onNodeClick={async (
+                                linkName: string,
+                                heading?: string,
+                                notePath?: string,
+                              ) => {
+                                setViewMode("preview");
+                                if (notePath) {
+                                  await openFile(notePath, "preview");
+                                  return;
+                                }
+                                await handleLinkClick(linkName, heading);
+                              }}
+                              onClose={() => closeTab(activeTab.id)}
+                              isFullScreen={false}
+                              onToggleFullScreen={() =>
+                                setGraphFullScreen((f) => !f)
+                              }
+                              theme={theme}
+                              vaultPath={vaultPath}
+                              localNodePath={undefined}
+                              initialAIView={graphMode === "ai"}
+                              onAIViewChange={(enabled: boolean) =>
+                                setGraphMode(enabled ? "ai" : "manual")
+                              }
+                            />
+                          ) : undefined
                         }
-                      }}
-                      onTabClose={closeTab}
-                      onContentChange={handleContentChange}
-                      onViewModeChange={setViewMode}
-                      onLinkClick={handleLinkClick}
-                      onImagePaste={handleImagePaste}
-                      onGetNoteContent={getNoteContent}
-                    />
+                        availableNotes={allNoteNames}
+                        onAdjustFontSize={adjustEditorFontSize}
+                        onTabSelect={async (id) => {
+                          setActiveTabId(id);
+                          const tab = tabs.find((t) => t.id === id);
+                          if (tab) {
+                            if (isCanvasFile(tab.path)) {
+                              await openFile(tab.path, "preview");
+                              return;
+                            }
+                            if (tab.path === GRAPH_TAB_PATH) {
+                              setCurrentContent("");
+                              setBacklinks([]);
+                              return;
+                            }
+                            const content = await api.readFile(tab.path);
+                            setCurrentContent(content);
+                            loadBacklinks(tab.path);
+                          }
+                        }}
+                        onTabClose={closeTab}
+                        onContentChange={handleContentChange}
+                        onViewModeChange={setViewMode}
+                        onLinkClick={handleLinkClick}
+                        onImagePaste={handleImagePaste}
+                        onGetNoteContent={getNoteContent}
+                        suggestions={editorSuggestions}
+                        nextStepSuggestions={editorNextStepSuggestions}
+                        onAcceptSuggestion={handleInlineAccept}
+                        onRejectSuggestion={handleInlineReject}
+                        onOpenNote={(path) => openFile(path)}
+                        annotation={inlineAnnotation}
+                      />
+
+                      {showFTUXConnectionPrompt && ftuxConnectionSuggestion && (
+                        <div className="ftux-inline-card ftux-suggestion-fade-in">
+                          <div className="ftux-inline-card-text">
+                            This might connect to your previous idea
+                          </div>
+                          <div className="ftux-inline-card-actions">
+                            <button
+                              type="button"
+                              className="ftux-action-btn ftux-action-btn-primary"
+                              onClick={() =>
+                                void handleInlineAccept(ftuxConnectionSuggestion.path, "related")
+                              }
+                            >
+                              Link
+                            </button>
+                            <button
+                              type="button"
+                              className="ftux-action-btn"
+                              onClick={() => handleInlineReject(ftuxConnectionSuggestion.path)}
+                            >
+                              Not now
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {showFTUXInsightPrompt && ftuxInsightText && (
+                        <div className="ftux-insight-card ftux-insight-fade-in">
+                          <div className="ftux-insight-title">
+                            Something interesting is emerging...
+                          </div>
+                          <div className="ftux-insight-text">{ftuxInsightText}</div>
+                          <div className="ftux-inline-card-actions">
+                            <button
+                              type="button"
+                              className="ftux-action-btn ftux-action-btn-primary"
+                              onClick={() => {
+                                void handleSaveInsight();
+                              }}
+                            >
+                              Save insight
+                            </button>
+                            <button
+                              type="button"
+                              className="ftux-action-btn"
+                              onClick={handleIgnoreInsight}
+                            >
+                              Ignore
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {showFTUXGraphPrompt && (
+                        <div className="ftux-graph-prompt ftux-suggestion-fade-in">
+                          <span>See how your ideas connect</span>
+                          <button
+                            type="button"
+                            className="ftux-action-btn ftux-action-btn-primary"
+                            onClick={handleOpenGraphFromPrompt}
+                          >
+                            Open graph
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="empty-state">
                       <div className="empty-icon">
@@ -1489,8 +2617,12 @@ export default function App() {
                     overflow: "hidden",
                   }}
                 >
-                  <GraphView
-                    onNodeClick={async (linkName, heading, notePath) => {
+                  <AIKnowledgeGraphFTUX
+                    onNodeClick={async (
+                      linkName: string,
+                      heading?: string,
+                      notePath?: string,
+                    ) => {
                       setViewMode("preview");
                       if (graphFullScreen) {
                         setGraphFullScreen(false);
@@ -1507,6 +2639,10 @@ export default function App() {
                     theme={theme}
                     vaultPath={vaultPath}
                     localNodePath={activeTab?.path}
+                    initialAIView={graphMode === "ai"}
+                    onAIViewChange={(enabled: boolean) =>
+                      setGraphMode(enabled ? "ai" : "manual")
+                    }
                   />
                 </div>
               )}
@@ -1554,7 +2690,7 @@ export default function App() {
         </div>
 
         {/* Thought Model Panel - independent of graph */}
-        {showThoughtModel && vaultPath && (
+        {showThoughtModel && vaultPath && !isFTUXZeroState && (
           <>
             <div
               className="resizer"
@@ -1565,9 +2701,11 @@ export default function App() {
               className="thought-model-panel"
               style={{ width: `${thoughtModelWidth}px` }}
             >
-              <ThoughtModelPage
+              <AIPage
                 vaultPath={vaultPath}
                 theme={theme}
+                fileTree={fileTree}
+                activeNotePath={activeTab?.path.endsWith('.md') ? activeTab.path : null}
                 onOpenNote={(path) => {
                   openFile(path);
                 }}
@@ -1580,7 +2718,7 @@ export default function App() {
         )}
 
         {/* Right Panels */}
-        {activeTab && !showGraph && !activeTabIsCanvas && !activeTabIsGraph && (
+        {activeTab && !showGraph && !activeTabIsCanvas && !activeTabIsGraph && !isFTUXZeroState && (
           <>
             {showOutline && (
               <OutlinePane
@@ -1626,7 +2764,7 @@ export default function App() {
           </>
         )}
 
-        {showTags && (
+        {showTags && !isFTUXZeroState && (
           <TagPane
             visible={showTags}
             onTagClick={(filePath) => openFile(filePath)}
@@ -1634,13 +2772,16 @@ export default function App() {
         )}
       </div>
 
-      <StatusBar
-        activeTab={activeTab || null}
-        content={currentContent}
-        theme={theme}
-        viewMode={viewMode}
-        fileTree={fileTree}
-      />
+      {!isFTUXZeroState && (
+        <StatusBar
+          activeTab={activeTab || null}
+          content={currentContent}
+          theme={theme}
+          viewMode={viewMode}
+          fileTree={fileTree}
+          queueStatus={queueStatus}
+        />
+      )}
 
       {showSearch && (
         <SearchModal

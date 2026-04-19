@@ -8,7 +8,7 @@ import {
   Calendar,
   Hash,
   List,
-  Brain,
+  Sparkles,
   Layout,
 } from "lucide-react";
 import { getAPI } from "../utils/api";
@@ -104,9 +104,9 @@ export function Ribbon({
           <button
             className="ribbon-btn"
             onClick={onThoughtModel}
-            title="Thought Model"
+            title="AI Assistant"
           >
-            <Brain size={20} strokeWidth={1.5} />
+            <Sparkles size={20} strokeWidth={1.5} />
           </button>
         )}
         {onCanvas && (

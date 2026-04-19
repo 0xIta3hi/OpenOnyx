@@ -450,6 +450,35 @@ export function createMockAPI(): ElectronAPI {
       return `attachments/${fileName}`;
     },
 
+    saveImageDedup: async (fileName: string, _base64Data: string) => {
+      return { relativePath: `attachments/${fileName}`, isDuplicate: false };
+    },
+
+    // .openobsidian Data Storage (localStorage fallback in browser mode)
+    dataRead: async (relativePath: string): Promise<string | null> => {
+      return localStorage.getItem(`openobsidian-data:${relativePath}`);
+    },
+
+    dataWrite: async (relativePath: string, content: string) => {
+      localStorage.setItem(`openobsidian-data:${relativePath}`, content);
+    },
+
+    dataDelete: async (relativePath: string) => {
+      localStorage.removeItem(`openobsidian-data:${relativePath}`);
+    },
+
+    dataList: async (subDir: string): Promise<string[]> => {
+      const prefix = `openobsidian-data:${subDir}/`;
+      const files: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(prefix)) {
+          files.push(key.substring(prefix.length));
+        }
+      }
+      return files;
+    },
+
     // Thought Model (mock implementation for browser)
     thoughtModel: {
       build: async (_vaultPath: string, _numClusters?: number) => {

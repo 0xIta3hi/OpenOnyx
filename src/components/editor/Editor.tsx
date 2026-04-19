@@ -10,8 +10,8 @@
  * - Link autocomplete when typing [[
  */
 
-import React, { useEffect, useRef, useCallback, useState } from "react";
-import { EditorState } from "@codemirror/state";
+import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { Compartment, EditorState } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -41,6 +41,8 @@ import {
   setAvailableNotes,
 } from "../../utils/linkAutocomplete";
 import { headingFold, foldTheme } from "../../utils/headingFold";
+import { type LinkType } from "../SuggestionBanner";
+import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 
 interface EditorProps {
   tabs: Tab[];
@@ -59,7 +61,15 @@ interface EditorProps {
   onViewModeChange: (mode: ViewMode) => void;
   onLinkClick: (linkName: string, heading?: string) => void;
   onGetNoteContent?: (noteName: string) => string | null;
-  onImagePaste?: (file: File) => Promise<string | null>; // Returns image src/path to insert
+  onImagePaste?: (file: File) => Promise<string | null>;
+  // Inline suggestions (from embedding similarity)
+  suggestions?: EnrichedSuggestion[];
+  nextStepSuggestions?: EnrichedSuggestion[];
+  onAcceptSuggestion?: (path: string, linkType: LinkType) => void;
+  onRejectSuggestion?: (path: string) => void;
+  onOpenNote?: (path: string) => void;
+  // Inline annotation
+  annotation?: string | null;
 }
 
 /**
@@ -822,6 +832,1335 @@ function headingLivePreviewPlugin() {
   );
 }
 
+interface SentenceAnchor {
+  anchorPos: number;
+  anchorLine: number;
+  sentence: string;
+}
+
+const INLINE_PHRASE_STOP_WORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+  "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
+  "being", "this", "that", "these", "those", "it", "its", "they", "them",
+  "their", "you", "your", "we", "our", "i", "me", "my", "as", "if", "then",
+  "also", "very", "just", "really", "about", "into", "over", "after", "before",
+]);
+
+function findLastCompletedSentenceAnchor(
+  doc: EditorState["doc"],
+  cursorPos: number,
+): SentenceAnchor | null {
+  const beforeCursor = doc.sliceString(0, cursorPos);
+  const endMatch = beforeCursor.match(/[.!?](?=[^.!?]*$)/);
+  if (!endMatch || typeof endMatch.index !== "number") return null;
+
+  const sentenceEnd = endMatch.index + 1;
+  const beforeEnd = beforeCursor.slice(0, Math.max(0, endMatch.index));
+  const previousEndMatch = beforeEnd.match(/[.!?](?=[^.!?]*$)/);
+  const sentenceStart =
+    previousEndMatch && typeof previousEndMatch.index === "number"
+      ? previousEndMatch.index + 1
+      : 0;
+
+  const sentence = beforeCursor.slice(sentenceStart, sentenceEnd).trim();
+  if (!sentence) return null;
+
+  const anchorPos = Math.max(0, Math.min(doc.length, sentenceEnd));
+  return {
+    anchorPos,
+    anchorLine: doc.lineAt(anchorPos).number,
+    sentence,
+  };
+}
+
+function isCursorAtSentenceOrLineEnd(
+  doc: EditorState["doc"],
+  cursorPos: number,
+): boolean {
+  const line = doc.lineAt(cursorPos);
+  if (cursorPos === line.to) return true;
+
+  const beforeCursor = doc.sliceString(0, cursorPos).trimEnd();
+  return /[.!?]$/.test(beforeCursor);
+}
+
+function extractInlineTriggerPhrase(
+  sentence: string,
+  suggestion: EnrichedSuggestion,
+): string {
+  const words = sentence
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !INLINE_PHRASE_STOP_WORDS.has(word));
+
+  if (words.length === 0) return "this idea";
+
+  const preferred = new Set(
+    [...suggestion.sharedConcepts, suggestion.title]
+      .flatMap((value) =>
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ")
+          .split(/\s+/),
+      )
+      .filter((word) => word.length > 2 && !INLINE_PHRASE_STOP_WORDS.has(word)),
+  );
+
+  const startIndex = Math.max(
+    0,
+    words.findIndex((word) => preferred.has(word)),
+  );
+
+  const phraseWords = words.slice(startIndex, startIndex + 3);
+  const phrase = phraseWords.join(" ").trim();
+  return phrase || words[0] || "this idea";
+}
+
+interface ParsedListLine {
+  lineNumber: number;
+  from: number;
+  to: number;
+  indent: string;
+  marker: string;
+  hasChecklist: boolean;
+  content: string;
+}
+
+interface SectionHeading {
+  lineNumber: number;
+  level: number;
+  title: string;
+}
+
+interface ActiveListSectionContext {
+  heading: SectionHeading;
+  sectionStartLine: number;
+  sectionEndLine: number;
+  sectionContent: string;
+  listItems: ParsedListLine[];
+  activeList: ParsedListLine;
+  listPrefix: string;
+  anchorPos: number;
+  anchorLine: number;
+  replaceFrom: number;
+  replaceTo: number;
+  isPlaceholderLine: boolean;
+}
+
+const SECTION_HEADING_REGEX = /^(#{2,6})\s+(.+?)\s*$/;
+const SECTION_LIST_ITEM_REGEX = /^(\s*)([-*+]\s+)(\[[ xX]\]\s+)?(.+?)\s*$/;
+const SECTION_LIST_PLACEHOLDER_REGEX = /^(\s*)([-*+]\s+)(\[[ xX]\]\s*)?$/;
+const SECTION_STOP_WORDS = new Set([
+  ...INLINE_PHRASE_STOP_WORDS,
+  "todo",
+  "tasks",
+  "notes",
+  "items",
+  "list",
+  "section",
+]);
+
+const SECTION_GENERATION_SIMILARITY_FLOOR = 0.18;
+const SECTION_PRIMARY_RELEVANCE_THRESHOLD = 0.5;
+const SECTION_DISPLAY_CAP = 2;
+const SECTION_FORCED_MINIMUM_RELEVANCE_FLOOR = 0.34;
+const SECTION_SEMANTIC_DUPLICATE_OVERLAP = 0.72;
+const SUGGESTION_STABILITY_WINDOW_MS = 2600;
+const SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA = 0.12;
+const INTENT_SHIFT_COSINE_THRESHOLD = 0.5;
+const INTENT_SHIFT_RESET_WINDOW_MS = 1800;
+const SECTION_EXPLORATION_BOOST_WEIGHT = 0.15;
+const CONFIDENCE_HIGH_SIMILARITY = 0.72;
+const CONFIDENCE_MEDIUM_SIMILARITY = 0.56;
+const SECTION_SUGGESTION_DEBUG =
+  typeof import.meta !== "undefined" && Boolean(import.meta.env?.DEV);
+
+const SECTION_INTENT_FALLBACK_RULES: Array<{ pattern: RegExp; keywords: string[] }> = [
+  {
+    pattern: /\b(learn|study|reading|research|explore|practice|skills?)\b/i,
+    keywords: [
+      "learn",
+      "learning",
+      "guide",
+      "basics",
+      "fundamentals",
+      "concept",
+      "course",
+      "practice",
+      "tutorial",
+      "skill",
+      "skills",
+    ],
+  },
+  {
+    pattern: /\b(project|build|roadmap|planning|milestone|deliver)\b/i,
+    keywords: ["project", "planning", "roadmap", "implementation", "architecture", "workflow"],
+  },
+  {
+    pattern: /\b(career|work|job|interview)\b/i,
+    keywords: ["career", "interview", "resume", "networking", "skills", "development"],
+  },
+  {
+    pattern: /\b(finance|money|invest|budget)\b/i,
+    keywords: ["finance", "budget", "investment", "savings", "tax", "planning"],
+  },
+  {
+    pattern: /\b(health|fitness|wellness)\b/i,
+    keywords: ["health", "fitness", "exercise", "sleep", "nutrition", "wellness"],
+  },
+];
+
+interface SectionSuggestionPlan {
+  suggestions: EnrichedSuggestion[];
+  lowConfidencePaths: Set<string>;
+  deferredMinimum: boolean;
+  topSignalScore: number;
+}
+
+function normalizeSuggestionText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSectionText(value: string): string[] {
+  return normalizeSuggestionText(value)
+    .split(" ")
+    .filter((token) => token.length > 2 && !SECTION_STOP_WORDS.has(token));
+}
+
+function tokenOverlapScore(source: string[], target: string[]): number {
+  if (source.length === 0 || target.length === 0) return 0;
+  const targetSet = new Set(target);
+  const overlap = source.filter((token) => targetSet.has(token)).length;
+  return overlap / Math.max(1, Math.min(source.length, target.length));
+}
+
+function buildRecencyWeightedTokenMap(items: ParsedListLine[]): Map<string, number> {
+  const weights = new Map<string, number>();
+  items.forEach((item, index) => {
+    const decay = Math.max(0.5, 1 - index * 0.22);
+    const tokens = tokenizeSectionText(item.content);
+    for (const token of tokens) {
+      const current = weights.get(token) || 0;
+      if (decay > current) {
+        weights.set(token, decay);
+      }
+    }
+  });
+  return weights;
+}
+
+function weightedTokenOverlapScore(
+  weightedSourceTokens: Map<string, number>,
+  targetTokens: string[],
+): number {
+  if (weightedSourceTokens.size === 0 || targetTokens.length === 0) return 0;
+  const uniqueTarget = new Set(targetTokens);
+  let overlap = 0;
+  uniqueTarget.forEach((token) => {
+    overlap += weightedSourceTokens.get(token) || 0;
+  });
+  return overlap / Math.max(1, Math.min(weightedSourceTokens.size, uniqueTarget.size));
+}
+
+function buildTokenFrequencyMap(value: string): Map<string, number> {
+  const map = new Map<string, number>();
+  const tokens = tokenizeSectionText(value);
+  for (const token of tokens) {
+    map.set(token, (map.get(token) || 0) + 1);
+  }
+  return map;
+}
+
+function cosineSimilarityFromTokenMaps(
+  a: Map<string, number>,
+  b: Map<string, number>,
+): number {
+  if (a.size === 0 || b.size === 0) return 0;
+
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const [, value] of a) {
+    normA += value * value;
+  }
+  for (const [, value] of b) {
+    normB += value * value;
+  }
+  if (normA === 0 || normB === 0) return 0;
+
+  for (const [token, value] of a) {
+    const other = b.get(token);
+    if (!other) continue;
+    dot += value * other;
+  }
+
+  return dot / Math.sqrt(normA * normB);
+}
+
+function buildIntentContextSnapshot(
+  doc: EditorState["doc"],
+  cursorPos: number,
+  sectionContext: ActiveListSectionContext | null,
+): string {
+  if (sectionContext) {
+    const recentItems = sectionContext.listItems
+      .filter((item) => item.lineNumber <= sectionContext.anchorLine)
+      .sort((a, b) => b.lineNumber - a.lineNumber)
+      .slice(0, 4)
+      .map((item) => item.content)
+      .join(" ");
+
+    return [
+      sectionContext.heading.title,
+      recentItems,
+      sectionContext.activeList.content,
+      sectionContext.sectionContent,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const cursorLine = doc.lineAt(cursorPos).number;
+  const startLine = Math.max(1, cursorLine - 2);
+  const endLine = Math.min(doc.lines, cursorLine + 2);
+  const lines: string[] = [];
+  for (let lineNumber = startLine; lineNumber <= endLine; lineNumber++) {
+    lines.push(doc.line(lineNumber).text);
+  }
+  return lines.join("\n");
+}
+
+function resolveSuggestionConfidence(
+  similarity: number,
+  forceLowConfidence = false,
+): "high" | "medium" | "low" {
+  if (forceLowConfidence) return "low";
+  if (similarity >= CONFIDENCE_HIGH_SIMILARITY) return "high";
+  if (similarity >= CONFIDENCE_MEDIUM_SIMILARITY) return "medium";
+  return "low";
+}
+
+function extractSectionIntentFallbackKeywords(headingTitle: string): string[] {
+  const matched = SECTION_INTENT_FALLBACK_RULES.filter((rule) =>
+    rule.pattern.test(headingTitle),
+  );
+  if (matched.length === 0) return [];
+  return [...new Set(matched.flatMap((rule) => rule.keywords))];
+}
+
+function keywordOverlapScore(candidateTokens: string[], keywords: string[]): number {
+  if (candidateTokens.length === 0 || keywords.length === 0) return 0;
+  const keywordSet = new Set(keywords);
+  const overlap = candidateTokens.filter((token) => keywordSet.has(token)).length;
+  return overlap / Math.max(1, Math.min(candidateTokens.length, keywords.length));
+}
+
+function normalizedTextOverlap(a: string, b: string): number {
+  const tokensA = tokenizeSectionText(a);
+  const tokensB = tokenizeSectionText(b);
+  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+
+  const setA = new Set(tokensA);
+  const setB = new Set(tokensB);
+  let intersection = 0;
+  setA.forEach((token) => {
+    if (setB.has(token)) intersection += 1;
+  });
+  return intersection / Math.max(1, Math.min(setA.size, setB.size));
+}
+
+function looksLikeMinorVariation(a: string, b: string): boolean {
+  const normalizedA = normalizeSuggestionText(a);
+  const normalizedB = normalizeSuggestionText(b);
+  if (!normalizedA || !normalizedB) return false;
+  if (normalizedA === normalizedB) return true;
+
+  if (
+    Math.min(normalizedA.length, normalizedB.length) >= 6 &&
+    (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA))
+  ) {
+    return true;
+  }
+
+  return normalizedTextOverlap(normalizedA, normalizedB) >= SECTION_SEMANTIC_DUPLICATE_OVERLAP;
+}
+
+function parseListLine(
+  lineText: string,
+  lineNumber: number,
+  from: number,
+  to: number,
+): ParsedListLine | null {
+  const match = lineText.match(SECTION_LIST_ITEM_REGEX);
+  if (!match) return null;
+
+  return {
+    lineNumber,
+    from,
+    to,
+    indent: match[1] || "",
+    marker: match[2] || "- ",
+    hasChecklist: Boolean(match[3]),
+    content: (match[4] || "").trim(),
+  };
+}
+
+function findNearestHeading(
+  doc: EditorState["doc"],
+  cursorLineNumber: number,
+): SectionHeading | null {
+  for (let lineNumber = cursorLineNumber; lineNumber >= 1; lineNumber--) {
+    const line = doc.line(lineNumber);
+    const match = line.text.match(SECTION_HEADING_REGEX);
+    if (!match) continue;
+
+    return {
+      lineNumber,
+      level: match[1].length,
+      title: (match[2] || "").trim(),
+    };
+  }
+
+  return null;
+}
+
+function findSectionEndLine(
+  doc: EditorState["doc"],
+  headingLineNumber: number,
+  headingLevel: number,
+): number {
+  for (let lineNumber = headingLineNumber + 1; lineNumber <= doc.lines; lineNumber++) {
+    const line = doc.line(lineNumber);
+    const match = line.text.match(SECTION_HEADING_REGEX);
+    if (!match) continue;
+
+    const level = match[1].length;
+    if (level <= headingLevel) {
+      return lineNumber - 1;
+    }
+  }
+
+  return doc.lines;
+}
+
+function detectActiveListSectionContext(
+  doc: EditorState["doc"],
+  cursorPos: number,
+): ActiveListSectionContext | null {
+  const cursorLine = doc.lineAt(cursorPos);
+  const cursorLineNumber = cursorLine.number;
+
+  const heading = findNearestHeading(doc, cursorLineNumber);
+  if (!heading) return null;
+
+  const sectionStartLine = heading.lineNumber + 1;
+  const sectionEndLine = findSectionEndLine(doc, heading.lineNumber, heading.level);
+  if (sectionStartLine > sectionEndLine) return null;
+  if (cursorLineNumber < sectionStartLine || cursorLineNumber > sectionEndLine) return null;
+
+  const sectionLines: string[] = [];
+  const listItems: ParsedListLine[] = [];
+
+  for (let lineNumber = sectionStartLine; lineNumber <= sectionEndLine; lineNumber++) {
+    const line = doc.line(lineNumber);
+    sectionLines.push(line.text);
+    const parsed = parseListLine(line.text, lineNumber, line.from, line.to);
+    if (parsed) listItems.push(parsed);
+  }
+
+  if (listItems.length === 0) return null;
+
+  let activeList = parseListLine(
+    cursorLine.text,
+    cursorLineNumber,
+    cursorLine.from,
+    cursorLine.to,
+  );
+  let listPrefix = "";
+  let isPlaceholderLine = false;
+  let replaceFrom = cursorLine.to;
+  let replaceTo = cursorLine.to;
+
+  if (activeList) {
+    listPrefix = `${activeList.indent}${activeList.marker}${activeList.hasChecklist ? "[ ] " : ""}`;
+  } else {
+    const placeholder = cursorLine.text.match(SECTION_LIST_PLACEHOLDER_REGEX);
+
+    if (placeholder) {
+      const hasNearbyList = listItems.some(
+        (item) => Math.abs(item.lineNumber - cursorLineNumber) <= 2,
+      );
+      if (!hasNearbyList) return null;
+
+      activeList = {
+        lineNumber: cursorLineNumber,
+        from: cursorLine.from,
+        to: cursorLine.to,
+        indent: placeholder[1] || "",
+        marker: placeholder[2] || "- ",
+        hasChecklist: Boolean(placeholder[3]),
+        content: "",
+      };
+      listPrefix = `${activeList.indent}${activeList.marker}${activeList.hasChecklist ? "[ ] " : ""}`;
+      isPlaceholderLine = true;
+      replaceFrom = cursorLine.from;
+      replaceTo = cursorLine.to;
+    } else if (cursorLine.text.trim() === "") {
+      const previousLineNumber = cursorLineNumber - 1;
+      if (previousLineNumber < sectionStartLine) return null;
+
+      const previousLine = doc.line(previousLineNumber);
+      const previousList = parseListLine(
+        previousLine.text,
+        previousLineNumber,
+        previousLine.from,
+        previousLine.to,
+      );
+      if (!previousList || cursorLineNumber - previousList.lineNumber > 1) return null;
+
+      activeList = previousList;
+      listPrefix = `${previousList.indent}${previousList.marker}${previousList.hasChecklist ? "[ ] " : ""}`;
+      isPlaceholderLine = true;
+      replaceFrom = cursorLine.from;
+      replaceTo = cursorLine.to;
+    } else {
+      return null;
+    }
+  }
+
+  if (!activeList) return null;
+
+  return {
+    heading,
+    sectionStartLine,
+    sectionEndLine,
+    sectionContent: sectionLines.join("\n"),
+    listItems,
+    activeList,
+    listPrefix,
+    anchorPos: isPlaceholderLine ? replaceTo : activeList.to,
+    anchorLine: isPlaceholderLine ? cursorLineNumber : activeList.lineNumber,
+    replaceFrom,
+    replaceTo,
+    isPlaceholderLine,
+  };
+}
+
+function buildSectionScopedSuggestions(
+  context: ActiveListSectionContext,
+  candidates: EnrichedSuggestion[],
+  debugSource = "section-primary",
+  allowForcedMinimum = false,
+  resetBias = false,
+): SectionSuggestionPlan {
+  if (candidates.length === 0) {
+    return {
+      suggestions: [],
+      lowConfidencePaths: new Set(),
+      deferredMinimum: false,
+      topSignalScore: 0,
+    };
+  }
+
+  const recentListItems = [...context.listItems]
+    .filter((item) => item.lineNumber <= context.anchorLine)
+    .sort((a, b) => b.lineNumber - a.lineNumber)
+    .slice(0, 3);
+  const recentTokenWeights = buildRecencyWeightedTokenMap(recentListItems);
+
+  const sectionIntentTokens = tokenizeSectionText(context.heading.title);
+  const sectionContextTokens = tokenizeSectionText(context.sectionContent);
+  const fallbackIntentKeywords = extractSectionIntentFallbackKeywords(
+    context.heading.title,
+  );
+
+  const existingItems = new Set(
+    context.listItems
+      .map((item) => normalizeSuggestionText(item.content))
+      .filter(Boolean),
+  );
+
+  const generationCandidates = candidates
+    .filter((candidate, index, source) =>
+      source.findIndex((item) => item.path === candidate.path) === index,
+    )
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 30);
+
+  const afterSimilarityFilter = generationCandidates.filter(
+    (candidate) => candidate.similarity >= SECTION_GENERATION_SIMILARITY_FLOOR,
+  );
+
+  const withSectionSignals = afterSimilarityFilter
+    .map((candidate) => {
+      const candidateTokens = tokenizeSectionText(
+        `${candidate.title} ${candidate.sharedConcepts.join(" ")}`,
+      );
+      const recentListOverlap = weightedTokenOverlapScore(
+        recentTokenWeights,
+        candidateTokens,
+      );
+      const intentOverlap = tokenOverlapScore(sectionIntentTokens, candidateTokens);
+      const contextOverlap = tokenOverlapScore(sectionContextTokens, candidateTokens);
+      const keywordOverlap = keywordOverlapScore(
+        candidateTokens,
+        fallbackIntentKeywords,
+      );
+      const hasSectionSignal =
+        recentListOverlap > 0 || intentOverlap > 0 || contextOverlap > 0 || keywordOverlap > 0;
+
+      const recencyRelevanceWeight = resetBias ? 0.06 : 0.2;
+      const contextRelevanceWeight = resetBias ? 0.15 : 0.11;
+      const intentRelevanceWeight = resetBias ? 0.11 : 0.08;
+      const keywordRelevanceWeight = resetBias ? 0.07 : 0.05;
+
+      const relevance =
+        candidate.similarity +
+        recentListOverlap * recencyRelevanceWeight +
+        contextOverlap * contextRelevanceWeight +
+        intentOverlap * intentRelevanceWeight +
+        keywordOverlap * keywordRelevanceWeight;
+
+      const fallbackRelevance = resetBias
+        ? contextOverlap * 0.38 +
+          intentOverlap * 0.28 +
+          keywordOverlap * 0.2 +
+          candidate.similarity * 0.14
+        : recentListOverlap * 0.52 +
+          contextOverlap * 0.24 +
+          intentOverlap * 0.12 +
+          keywordOverlap * 0.08 +
+          candidate.similarity * 0.04;
+
+      // Fallback exploration should only nudge rank order, never dominate strong matches.
+      const explorationBoost = Math.max(0, 1 - recentListOverlap) * SECTION_EXPLORATION_BOOST_WEIGHT;
+
+      return {
+        candidate,
+        relevance,
+        fallbackRelevance,
+        explorationBoost,
+        recentListOverlap,
+        intentOverlap,
+        contextOverlap,
+        keywordOverlap,
+        hasSectionSignal,
+      };
+    })
+    .filter((entry) => entry.hasSectionSignal);
+
+  const existingItemTexts = context.listItems
+    .map((item) => item.content)
+    .filter(Boolean);
+
+  const seenTitles: string[] = [];
+  const afterDedup = withSectionSignals.filter((entry) => {
+    const normalizedTitle = normalizeSuggestionText(entry.candidate.title);
+    if (!normalizedTitle) return false;
+    if (existingItems.has(normalizedTitle)) return false;
+    if (existingItemTexts.some((itemText) => looksLikeMinorVariation(entry.candidate.title, itemText))) {
+      return false;
+    }
+    if (seenTitles.some((seen) => looksLikeMinorVariation(seen, entry.candidate.title))) {
+      return false;
+    }
+    seenTitles.push(entry.candidate.title);
+    return true;
+  });
+
+  const primary = afterDedup
+    .filter((entry) => entry.relevance >= SECTION_PRIMARY_RELEVANCE_THRESHOLD)
+    .sort((a, b) => b.relevance - a.relevance);
+
+  const lowConfidencePaths = new Set<string>();
+  let finalEntries = primary.slice(0, SECTION_DISPLAY_CAP);
+
+  // Fallback mode: keep intent/category relevance but allow lower confidence.
+  if (finalEntries.length === 0) {
+    const fallbackRanked = afterDedup
+      .sort((a, b) => {
+        if (!resetBias) {
+          if (b.recentListOverlap !== a.recentListOverlap) {
+            return b.recentListOverlap - a.recentListOverlap;
+          }
+          if (b.contextOverlap !== a.contextOverlap) {
+            return b.contextOverlap - a.contextOverlap;
+          }
+          if (b.intentOverlap !== a.intentOverlap) {
+            return b.intentOverlap - a.intentOverlap;
+          }
+          if (b.keywordOverlap !== a.keywordOverlap) {
+            return b.keywordOverlap - a.keywordOverlap;
+          }
+        }
+        const boostA = a.fallbackRelevance + a.explorationBoost * 0.35;
+        const boostB = b.fallbackRelevance + b.explorationBoost * 0.35;
+        if (boostB !== boostA) return boostB - boostA;
+        if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+        return b.candidate.similarity - a.candidate.similarity;
+      })
+      .slice(0, SECTION_DISPLAY_CAP);
+
+    if (fallbackRanked.length > 0) {
+      finalEntries = fallbackRanked;
+      fallbackRanked.forEach((entry) => lowConfidencePaths.add(entry.candidate.path));
+    }
+  }
+
+  let deferredMinimum = false;
+
+  // Minimum guarantee: only force after a retry interaction and quality floor pass.
+  if (finalEntries.length === 0) {
+    const forcedCandidate = afterDedup
+      .sort(
+        (a, b) =>
+          b.fallbackRelevance + b.explorationBoost * 0.35 -
+          (a.fallbackRelevance + a.explorationBoost * 0.35),
+      )[0];
+
+    if (
+      forcedCandidate &&
+      forcedCandidate.fallbackRelevance >= SECTION_FORCED_MINIMUM_RELEVANCE_FLOOR
+    ) {
+      if (allowForcedMinimum) {
+        const forced = forcedCandidate.candidate;
+        finalEntries = [
+          {
+            candidate: forced,
+            relevance: forced.similarity,
+            fallbackRelevance: forcedCandidate.fallbackRelevance,
+            explorationBoost: forcedCandidate.explorationBoost,
+            recentListOverlap: forcedCandidate.recentListOverlap,
+            intentOverlap: forcedCandidate.intentOverlap,
+            contextOverlap: forcedCandidate.contextOverlap,
+            keywordOverlap: forcedCandidate.keywordOverlap,
+            hasSectionSignal: forcedCandidate.hasSectionSignal,
+          },
+        ];
+        lowConfidencePaths.add(forced.path);
+      } else {
+        deferredMinimum = true;
+      }
+    } else if (afterDedup.length > 0) {
+      deferredMinimum = true;
+    }
+  }
+
+  const suggestions = finalEntries
+    .slice(0, SECTION_DISPLAY_CAP)
+    .map((entry) => entry.candidate);
+  const topSignalScore = finalEntries[0]
+    ? Math.max(
+      finalEntries[0].relevance,
+      finalEntries[0].fallbackRelevance + finalEntries[0].explorationBoost * 0.35,
+    )
+    : 0;
+
+  if (SECTION_SUGGESTION_DEBUG) {
+    console.debug("[section-suggestions]", {
+      source: debugSource,
+      heading: context.heading.title,
+      totalCandidates: generationCandidates.length,
+      afterSimilarityFilter: afterSimilarityFilter.length,
+      afterSectionFilter: withSectionSignals.length,
+      afterDeduplication: afterDedup.length,
+      finalDisplayed: suggestions.length,
+      usedFallback: primary.length === 0 && suggestions.length > 0,
+      forcedMinimum:
+        allowForcedMinimum &&
+        primary.length === 0 &&
+        suggestions.length > 0 &&
+        lowConfidencePaths.size > 0,
+      deferredMinimum,
+      allowForcedMinimum,
+      resetBias,
+    });
+  }
+
+  return { suggestions, lowConfidencePaths, deferredMinimum, topSignalScore };
+}
+
+function insertSectionSuggestionIntoDoc(
+  view: EditorView,
+  suggestion: EnrichedSuggestion,
+  context: ActiveListSectionContext,
+): void {
+  const suggestionLine = `${context.listPrefix}[[${suggestion.title}]]`;
+
+  const from = context.isPlaceholderLine
+    ? context.replaceFrom
+    : context.activeList.to;
+  const to = context.isPlaceholderLine
+    ? context.replaceTo
+    : context.activeList.to;
+  const insert = context.isPlaceholderLine
+    ? suggestionLine
+    : `\n${suggestionLine}`;
+
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: { anchor: from + insert.length },
+    scrollIntoView: true,
+  });
+}
+
+function wireSuggestionAction(
+  button: HTMLButtonElement,
+  callback: () => void,
+): void {
+  button.tabIndex = -1;
+  button.setAttribute("contenteditable", "false");
+  button.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    callback();
+  });
+}
+
+class InlineContextSuggestionWidget extends WidgetType {
+  constructor(
+    private readonly suggestion: EnrichedSuggestion,
+    private readonly triggerPhrase: string,
+    private readonly confidence: "high" | "medium" | "low",
+    private readonly onAccept: (path: string) => void,
+  ) {
+    super();
+  }
+
+  eq(other: InlineContextSuggestionWidget): boolean {
+    return (
+      this.suggestion.path === other.suggestion.path &&
+      this.suggestion.similarity === other.suggestion.similarity &&
+      this.triggerPhrase === other.triggerPhrase
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement("div");
+    root.className = "editor-virtual-inline-suggestion";
+    root.setAttribute("contenteditable", "false");
+
+    const ghostLink = document.createElement("button");
+    ghostLink.type = "button";
+    ghostLink.className =
+      this.confidence === "low"
+        ? "editor-virtual-inline-ghost-link editor-virtual-inline-ghost-link--low-confidence"
+        : this.confidence === "medium"
+          ? "editor-virtual-inline-ghost-link editor-virtual-inline-ghost-link--medium-confidence"
+          : "editor-virtual-inline-ghost-link";
+    ghostLink.textContent = `\u2192 expands on "${this.triggerPhrase}" \u2192 [[${this.suggestion.title}]]`;
+    wireSuggestionAction(ghostLink, () => this.onAccept(this.suggestion.path));
+    root.appendChild(ghostLink);
+
+    return root;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+class EndOfNoteSuggestionsWidget extends WidgetType {
+  private readonly key: string;
+
+  constructor(
+    private readonly suggestions: EnrichedSuggestion[],
+    private readonly nextStepSuggestions: EnrichedSuggestion[],
+    private readonly onAccept: (path: string) => void,
+  ) {
+    super();
+    this.key = [
+      ...suggestions.map((suggestion) => `${suggestion.path}:${Math.round(suggestion.similarity * 100)}`),
+      "::next::",
+      ...nextStepSuggestions.map(
+        (suggestion) => `${suggestion.path}:${Math.round(suggestion.similarity * 100)}`,
+      ),
+    ].join("|");
+  }
+
+  eq(other: EndOfNoteSuggestionsWidget): boolean {
+    return this.key === other.key;
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement("div");
+    root.className = "editor-virtual-end-suggestions";
+    root.setAttribute("contenteditable", "false");
+    root.style.userSelect = "none";
+    root.style.caretColor = "transparent";
+    root.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+
+    if (this.suggestions.length > 0) {
+      const heading = document.createElement("div");
+      heading.className = "editor-virtual-end-heading";
+      heading.textContent = "You might also connect this to:";
+      root.appendChild(heading);
+
+      for (const suggestion of this.suggestions) {
+        const line = document.createElement("div");
+        line.className = "editor-virtual-end-line";
+
+        const confidence = resolveSuggestionConfidence(suggestion.similarity);
+
+        const noteButton = document.createElement("button");
+        noteButton.type = "button";
+        noteButton.className =
+          confidence === "low"
+            ? "editor-virtual-end-note editor-virtual-end-note--low-confidence"
+            : confidence === "medium"
+              ? "editor-virtual-end-note editor-virtual-end-note--medium-confidence"
+              : "editor-virtual-end-note";
+        noteButton.textContent = `[[${suggestion.title}]]`;
+        wireSuggestionAction(noteButton, () => this.onAccept(suggestion.path));
+        line.appendChild(noteButton);
+        root.appendChild(line);
+      }
+    }
+
+    if (this.nextStepSuggestions.length > 0) {
+      const heading = document.createElement("div");
+      heading.className = "editor-virtual-end-heading editor-virtual-end-heading--next-step";
+      heading.textContent = "You may be moving toward...";
+      root.appendChild(heading);
+
+      for (const suggestion of this.nextStepSuggestions) {
+        const line = document.createElement("div");
+        line.className = "editor-virtual-end-line";
+
+        const noteButton = document.createElement("button");
+        noteButton.type = "button";
+        noteButton.className = "editor-virtual-end-note editor-virtual-end-note--next-step";
+        noteButton.textContent = `-> [[${suggestion.title}]]`;
+        wireSuggestionAction(noteButton, () => this.onAccept(suggestion.path));
+        line.appendChild(noteButton);
+        root.appendChild(line);
+      }
+    }
+
+    return root;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+class SectionListSuggestionsWidget extends WidgetType {
+  private readonly key: string;
+
+  constructor(
+    private readonly suggestions: EnrichedSuggestion[],
+    private readonly listPrefix: string,
+    private readonly lowConfidencePaths: Set<string>,
+    private readonly onAccept: (suggestion: EnrichedSuggestion) => void,
+  ) {
+    super();
+    this.key = suggestions
+      .map(
+        (suggestion) =>
+          `${suggestion.path}:${Math.round(suggestion.similarity * 100)}:${this.lowConfidencePaths.has(suggestion.path) ? "low" : "high"}`,
+      )
+      .join("|");
+  }
+
+  eq(other: SectionListSuggestionsWidget): boolean {
+    return this.key === other.key && this.listPrefix === other.listPrefix;
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement("div");
+    root.className = "editor-virtual-section-suggestions";
+    root.setAttribute("contenteditable", "false");
+    root.style.caretColor = "transparent";
+    root.style.userSelect = "none";
+    root.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+
+    for (const suggestion of this.suggestions) {
+      const confidence = resolveSuggestionConfidence(
+        suggestion.similarity,
+        this.lowConfidencePaths.has(suggestion.path),
+      );
+      const itemButton = document.createElement("button");
+      itemButton.type = "button";
+      itemButton.className =
+        confidence === "low"
+          ? "editor-virtual-section-item editor-virtual-section-item--low-confidence"
+          : confidence === "medium"
+            ? "editor-virtual-section-item editor-virtual-section-item--medium-confidence"
+            : "editor-virtual-section-item";
+      itemButton.style.caretColor = "transparent";
+      itemButton.style.userSelect = "none";
+      itemButton.textContent = `${this.listPrefix}[[${suggestion.title}]]`;
+      wireSuggestionAction(itemButton, () => this.onAccept(suggestion));
+      root.appendChild(itemButton);
+    }
+
+    return root;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+interface SuggestionContentPluginOptions {
+  inlineSuggestion: EnrichedSuggestion | null;
+  endSuggestions: EnrichedSuggestion[];
+  nextStepSuggestions: EnrichedSuggestion[];
+  sectionCandidates: EnrichedSuggestion[];
+  showEndSuggestions: boolean;
+  showSectionSuggestions: boolean;
+  allowForcedSectionMinimum: boolean;
+  isActivelyTyping: boolean;
+  onInlineAccept: (path: string) => void;
+  onEndAccept: (path: string) => void;
+  onSectionAccept: (
+    suggestion: EnrichedSuggestion,
+    context: ActiveListSectionContext,
+  ) => void;
+  onSectionMinimumDeferred: () => void;
+}
+
+function suggestionContentPlugin(options: SuggestionContentPluginOptions) {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      stableInline:
+        | { path: string; anchorLine: number; similarity: number; until: number }
+        | null = null;
+      stableSection:
+        | {
+            contextKey: string;
+            paths: string[];
+            lowConfidencePaths: string[];
+            topSignalScore: number;
+            until: number;
+          }
+        | null = null;
+      stableEnd: { paths: string[]; topSimilarity: number; until: number } | null = null;
+      previousContextVector: Map<string, number> | null = null;
+      intentShiftUntil = 0;
+
+      constructor(view: EditorView) {
+        this.decorations = this.buildDecorations(view);
+      }
+
+      update(update: ViewUpdate) {
+        if (
+          update.docChanged ||
+          update.selectionSet ||
+          update.viewportChanged
+        ) {
+          this.decorations = this.buildDecorations(update.view);
+        }
+      }
+
+      buildDecorations(view: EditorView): DecorationSet {
+        const decorations: any[] = [];
+        const doc = view.state.doc;
+        const cursorPos = view.state.selection.main.head;
+        const cursorLine = doc.lineAt(cursorPos).number;
+        const now = Date.now();
+        const sectionContext = detectActiveListSectionContext(doc, cursorPos);
+        const contextSnapshot = buildIntentContextSnapshot(
+          doc,
+          cursorPos,
+          sectionContext,
+        );
+        const currentContextVector = buildTokenFrequencyMap(contextSnapshot);
+        let resetBiasForThisPass = now < this.intentShiftUntil;
+
+        if (
+          this.previousContextVector &&
+          currentContextVector.size > 0
+        ) {
+          const contextSimilarity = cosineSimilarityFromTokenMaps(
+            this.previousContextVector,
+            currentContextVector,
+          );
+          if (contextSimilarity < INTENT_SHIFT_COSINE_THRESHOLD) {
+            this.intentShiftUntil = now + INTENT_SHIFT_RESET_WINDOW_MS;
+            resetBiasForThisPass = true;
+            this.stableInline = null;
+            this.stableSection = null;
+            this.stableEnd = null;
+          }
+        }
+
+        if (currentContextVector.size > 0) {
+          this.previousContextVector = currentContextVector;
+        }
+
+        let inlineLayerActive = false;
+
+        if (options.inlineSuggestion) {
+          const sentenceAnchor = findLastCompletedSentenceAnchor(doc, cursorPos);
+          const cursorAtSentenceOrLineEnd = isCursorAtSentenceOrLineEnd(
+            doc,
+            cursorPos,
+          );
+
+          let inlineSuggestion = options.inlineSuggestion;
+          if (
+            this.stableInline &&
+            !resetBiasForThisPass &&
+            this.stableInline.anchorLine === cursorLine &&
+            now < this.stableInline.until
+          ) {
+            const stableCandidate = options.sectionCandidates.find(
+              (candidate) => candidate.path === this.stableInline?.path,
+            );
+            if (
+              stableCandidate &&
+              inlineSuggestion.similarity <=
+                this.stableInline.similarity +
+                  SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA
+            ) {
+              inlineSuggestion = stableCandidate;
+            }
+          }
+
+          if (sentenceAnchor && cursorAtSentenceOrLineEnd) {
+            const { anchorPos, anchorLine, sentence } = sentenceAnchor;
+            const editingInlineLocation =
+              options.isActivelyTyping && Math.abs(cursorLine - anchorLine) <= 1;
+            const anchorVisibleInViewport =
+              anchorPos >= view.viewport.from && anchorPos <= view.viewport.to;
+            const cursorAlignedWithAnchor =
+              cursorLine === anchorLine && cursorPos >= anchorPos;
+
+            if (
+              !editingInlineLocation &&
+              anchorVisibleInViewport &&
+              cursorAlignedWithAnchor
+            ) {
+              const triggerPhrase = extractInlineTriggerPhrase(
+                sentence,
+                inlineSuggestion,
+              );
+
+              if (
+                !this.stableInline ||
+                this.stableInline.path !== inlineSuggestion.path ||
+                this.stableInline.anchorLine !== anchorLine ||
+                now >= this.stableInline.until
+              ) {
+                this.stableInline = {
+                  path: inlineSuggestion.path,
+                  anchorLine,
+                  similarity: inlineSuggestion.similarity,
+                  until: now + SUGGESTION_STABILITY_WINDOW_MS,
+                };
+              }
+
+              // Only one inline suggestion can appear per viewport.
+              decorations.push(
+                Decoration.widget({
+                  widget: new InlineContextSuggestionWidget(
+                    inlineSuggestion,
+                    triggerPhrase,
+                    resolveSuggestionConfidence(inlineSuggestion.similarity),
+                    options.onInlineAccept,
+                  ),
+                  side: -1,
+                }).range(anchorPos),
+              );
+              inlineLayerActive = true;
+            }
+          }
+        }
+
+        if (
+          !inlineLayerActive &&
+          options.showSectionSuggestions &&
+          options.sectionCandidates.length > 0
+        ) {
+          if (sectionContext) {
+            let sectionPlan = buildSectionScopedSuggestions(
+              sectionContext,
+              options.sectionCandidates,
+              "section-primary",
+              options.allowForcedSectionMinimum,
+              resetBiasForThisPass,
+            );
+
+            if (sectionPlan.deferredMinimum) {
+              options.onSectionMinimumDeferred();
+            }
+
+            const sectionContextKey = `${sectionContext.heading.lineNumber}:${sectionContext.sectionStartLine}:${sectionContext.sectionEndLine}`;
+            if (
+              this.stableSection &&
+              !resetBiasForThisPass &&
+              this.stableSection.contextKey === sectionContextKey &&
+              now < this.stableSection.until
+            ) {
+              const existingTitles = new Set(
+                sectionContext.listItems
+                  .map((item) => normalizeSuggestionText(item.content))
+                  .filter(Boolean),
+              );
+
+              const stableSuggestions = this.stableSection.paths
+                .map((path) =>
+                  options.sectionCandidates.find((candidate) => candidate.path === path),
+                )
+                .filter((candidate): candidate is EnrichedSuggestion => Boolean(candidate))
+                .filter((candidate) =>
+                  !existingTitles.has(normalizeSuggestionText(candidate.title)),
+                );
+
+              if (stableSuggestions.length > 0) {
+                const shouldKeepStableSuggestions =
+                  sectionPlan.topSignalScore <=
+                  this.stableSection.topSignalScore +
+                    SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
+
+                if (shouldKeepStableSuggestions) {
+                  sectionPlan = {
+                    suggestions: stableSuggestions.slice(0, SECTION_DISPLAY_CAP),
+                    lowConfidencePaths: new Set(this.stableSection.lowConfidencePaths),
+                    deferredMinimum: false,
+                    topSignalScore: this.stableSection.topSignalScore,
+                  };
+                }
+              }
+            }
+
+            const sectionAnchorVisible =
+              sectionContext.anchorPos >= view.viewport.from &&
+              sectionContext.anchorPos <= view.viewport.to;
+            const cursorWithinSection =
+              cursorLine >= sectionContext.sectionStartLine &&
+              cursorLine <= sectionContext.sectionEndLine;
+
+            if (
+              sectionPlan.suggestions.length > 0 &&
+              sectionAnchorVisible &&
+              cursorWithinSection
+            ) {
+              if (
+                !this.stableSection ||
+                this.stableSection.contextKey !== sectionContextKey ||
+                now >= this.stableSection.until
+              ) {
+                this.stableSection = {
+                  contextKey: sectionContextKey,
+                  paths: sectionPlan.suggestions.map((suggestion) => suggestion.path),
+                  lowConfidencePaths: [...sectionPlan.lowConfidencePaths],
+                  topSignalScore: sectionPlan.topSignalScore,
+                  until: now + SUGGESTION_STABILITY_WINDOW_MS,
+                };
+              }
+
+              decorations.push(
+                Decoration.widget({
+                  widget: new SectionListSuggestionsWidget(
+                    sectionPlan.suggestions,
+                    sectionContext.listPrefix,
+                    sectionPlan.lowConfidencePaths,
+                    (suggestion) => options.onSectionAccept(suggestion, sectionContext),
+                  ),
+                  side: 1,
+                }).range(sectionContext.anchorPos),
+              );
+            }
+          }
+        }
+
+        if (options.showEndSuggestions && options.endSuggestions.length > 0) {
+          const nearEndStartLine = Math.max(1, doc.lines - 2);
+          const editingEndLocation =
+            options.isActivelyTyping && cursorLine >= nearEndStartLine;
+
+          if (!editingEndLocation) {
+            let endSuggestions = options.endSuggestions;
+            if (this.stableEnd && now < this.stableEnd.until) {
+              const topIncomingSimilarity = endSuggestions[0]?.similarity ?? 0;
+              const shouldKeepStableSuggestions =
+                !resetBiasForThisPass &&
+                topIncomingSimilarity <=
+                this.stableEnd.topSimilarity +
+                  SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
+
+              if (shouldKeepStableSuggestions) {
+                const stableSuggestions = this.stableEnd.paths
+                  .map((path) =>
+                    options.endSuggestions.find((suggestion) => suggestion.path === path),
+                  )
+                  .filter((suggestion): suggestion is EnrichedSuggestion => Boolean(suggestion));
+                if (stableSuggestions.length > 0) {
+                  endSuggestions = stableSuggestions;
+                }
+              }
+            }
+
+            if (
+              !this.stableEnd ||
+              now >= this.stableEnd.until
+            ) {
+              this.stableEnd = {
+                paths: endSuggestions.map((suggestion) => suggestion.path),
+                topSimilarity: endSuggestions[0]?.similarity ?? 0,
+                until: now + SUGGESTION_STABILITY_WINDOW_MS,
+              };
+            }
+
+            decorations.push(
+              Decoration.widget({
+                widget: new EndOfNoteSuggestionsWidget(
+                  endSuggestions,
+                  options.nextStepSuggestions,
+                  options.onEndAccept,
+                ),
+                side: 1,
+              }).range(doc.length),
+            );
+          }
+        }
+
+        if (
+          options.showEndSuggestions &&
+          options.endSuggestions.length === 0 &&
+          options.nextStepSuggestions.length > 0
+        ) {
+          decorations.push(
+            Decoration.widget({
+              widget: new EndOfNoteSuggestionsWidget(
+                [],
+                options.nextStepSuggestions,
+                options.onEndAccept,
+              ),
+              side: 1,
+            }).range(doc.length),
+          );
+        }
+
+        if (decorations.length === 0) return Decoration.none;
+
+        return Decoration.set(decorations, true);
+      }
+    },
+    {
+      decorations: (v) => v.decorations,
+    },
+  );
+}
+
 export function Editor({
   tabs,
   activeTabId,
@@ -837,6 +2176,12 @@ export function Editor({
   onLinkClick,
   onGetNoteContent,
   onImagePaste,
+  suggestions,
+  nextStepSuggestions,
+  onAcceptSuggestion,
+  onRejectSuggestion,
+  onOpenNote,
+  annotation,
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -845,14 +2190,353 @@ export function Editor({
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
   const wheelRemainderRef = useRef(0);
+  const suggestionContentCompartmentRef = useRef(new Compartment());
+  const typingPauseTimerRef = useRef<number | null>(null);
+  const flowTriggerDelayTimerRef = useRef<number | null>(null);
+  const flowTriggerWindowTimerRef = useRef<number | null>(null);
+  const sectionPauseTimerRef = useRef<number | null>(null);
+  const sectionEnterTriggerTimerRef = useRef<number | null>(null);
+  const sectionEnterAcceptRef = useRef<(view: EditorView) => boolean>(() => false);
 
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [editorMountTick, setEditorMountTick] = useState(0);
+  const [isActivelyTyping, setIsActivelyTyping] = useState(false);
+  const [isSuggestionIdle, setIsSuggestionIdle] = useState(false);
+  const [isSectionPauseReady, setIsSectionPauseReady] = useState(false);
+  const [hasSectionEnterTrigger, setHasSectionEnterTrigger] = useState(false);
+  const [, setSectionRetryPending] = useState(false);
+  const [allowForcedSectionMinimum, setAllowForcedSectionMinimum] = useState(false);
+  const [hasFlowTrigger, setHasFlowTrigger] = useState(false);
+  const [isNearNoteEnd, setIsNearNoteEnd] = useState(false);
+  const [dismissedInlinePaths, setDismissedInlinePaths] = useState<Set<string>>(
+    new Set(),
+  );
   const [imageLightbox, setImageLightbox] = useState<{
     src: string;
     alt: string;
   } | null>(null);
   const isSpecialTab = !!specialContent;
+
+  const activeSuggestions = useMemo(() => suggestions || [], [suggestions]);
+  const activeNextStepSuggestions = useMemo(
+    () => nextStepSuggestions || [],
+    [nextStepSuggestions],
+  );
+  const endOfNoteSuggestions = useMemo(() => {
+    const broaderPool = activeSuggestions
+      .filter((suggestion) => suggestion.group === "broader")
+      .sort((a, b) => b.similarity - a.similarity);
+    const primary = broaderPool
+      .filter((suggestion) => suggestion.similarity >= 0.4)
+      .slice(0, 3);
+    if (primary.length > 0) return primary;
+    return broaderPool.slice(0, Math.min(1, broaderPool.length));
+  }, [activeSuggestions]);
+  const nextStepEndSuggestions = useMemo(
+    () =>
+      activeNextStepSuggestions
+        .filter((suggestion) => suggestion.similarity >= 0.35)
+        .slice(0, 3),
+    [activeNextStepSuggestions],
+  );
+  const sectionSuggestionCandidates = useMemo(
+    () => activeSuggestions.slice(0, 24),
+    [activeSuggestions],
+  );
+
+  const showEndSuggestionContent =
+    !isSpecialTab &&
+    (activeSuggestions.length > 0 || nextStepEndSuggestions.length > 0) &&
+    !isActivelyTyping &&
+    (isSuggestionIdle || isNearNoteEnd || hasFlowTrigger);
+
+  const showSectionSuggestionContent =
+    !isSpecialTab &&
+    sectionSuggestionCandidates.length > 0 &&
+    ((isSectionPauseReady && !isActivelyTyping) || hasSectionEnterTrigger);
+
+  const highConfidenceInlineSuggestion = useMemo(() => {
+    if (!(isSuggestionIdle || hasFlowTrigger) || isSpecialTab || isActivelyTyping) {
+      return null;
+    }
+    return (
+      activeSuggestions.find(
+        (suggestion) =>
+          suggestion.similarity >= 0.82 &&
+          !dismissedInlinePaths.has(suggestion.path),
+      ) || null
+    );
+  }, [
+    activeSuggestions,
+    dismissedInlinePaths,
+    hasFlowTrigger,
+    isActivelyTyping,
+    isSuggestionIdle,
+    isSpecialTab,
+  ]);
+
+  const handleInlineContextAccept = useCallback(
+    (path: string) => {
+      setDismissedInlinePaths((prev) => {
+        const next = new Set(prev);
+        next.add(path);
+        return next;
+      });
+      onAcceptSuggestion?.(path, "related");
+    },
+    [onAcceptSuggestion],
+  );
+
+  const handleSectionSuggestionAccept = useCallback(
+    (suggestion: EnrichedSuggestion, context: ActiveListSectionContext) => {
+      const view = viewRef.current;
+      if (!view) return;
+      insertSectionSuggestionIntoDoc(view, suggestion, context);
+      setSectionRetryPending(false);
+      setAllowForcedSectionMinimum(false);
+    },
+    [],
+  );
+
+  const markSectionMinimumDeferred = useCallback(() => {
+    setSectionRetryPending(true);
+    setAllowForcedSectionMinimum(false);
+  }, []);
+
+  const tryAcceptSectionSuggestionOnEnter = useCallback(
+    (view: EditorView): boolean => {
+      if (highConfidenceInlineSuggestion) return false;
+      if (!showSectionSuggestionContent) return false;
+
+      const context = detectActiveListSectionContext(
+        view.state.doc,
+        view.state.selection.main.head,
+      );
+      if (!context) return false;
+
+      let sectionPlan = buildSectionScopedSuggestions(
+        context,
+        sectionSuggestionCandidates,
+        "section-enter-primary",
+        allowForcedSectionMinimum,
+      );
+
+      if (sectionPlan.deferredMinimum) {
+        markSectionMinimumDeferred();
+      }
+      if (sectionPlan.suggestions.length === 0) return false;
+
+      insertSectionSuggestionIntoDoc(view, sectionPlan.suggestions[0], context);
+      setSectionRetryPending(false);
+      setAllowForcedSectionMinimum(false);
+      return true;
+    },
+    [
+      allowForcedSectionMinimum,
+      highConfidenceInlineSuggestion,
+      markSectionMinimumDeferred,
+      sectionSuggestionCandidates,
+      showSectionSuggestionContent,
+    ],
+  );
+
+  sectionEnterAcceptRef.current = tryAcceptSectionSuggestionOnEnter;
+
+  const markActiveTyping = useCallback(() => {
+    setIsActivelyTyping(true);
+    if (typingPauseTimerRef.current) {
+      window.clearTimeout(typingPauseTimerRef.current);
+    }
+    typingPauseTimerRef.current = window.setTimeout(() => {
+      setIsActivelyTyping(false);
+      typingPauseTimerRef.current = null;
+    }, 750);
+  }, []);
+
+  const markFlowTrigger = useCallback(() => {
+    setHasFlowTrigger(false);
+    if (flowTriggerDelayTimerRef.current) {
+      window.clearTimeout(flowTriggerDelayTimerRef.current);
+      flowTriggerDelayTimerRef.current = null;
+    }
+    if (flowTriggerWindowTimerRef.current) {
+      window.clearTimeout(flowTriggerWindowTimerRef.current);
+      flowTriggerWindowTimerRef.current = null;
+    }
+
+    flowTriggerDelayTimerRef.current = window.setTimeout(() => {
+      setHasFlowTrigger(true);
+      flowTriggerDelayTimerRef.current = null;
+
+      flowTriggerWindowTimerRef.current = window.setTimeout(() => {
+        setHasFlowTrigger(false);
+        flowTriggerWindowTimerRef.current = null;
+      }, 1600);
+    }, 190);
+  }, []);
+
+  const markSectionPauseReady = useCallback(() => {
+    setIsSectionPauseReady(false);
+    if (sectionPauseTimerRef.current) {
+      window.clearTimeout(sectionPauseTimerRef.current);
+      sectionPauseTimerRef.current = null;
+    }
+
+    sectionPauseTimerRef.current = window.setTimeout(() => {
+      setIsSectionPauseReady(true);
+      sectionPauseTimerRef.current = null;
+    }, 380);
+  }, []);
+
+  const markSectionEnterTrigger = useCallback(() => {
+    setHasSectionEnterTrigger(true);
+    if (sectionEnterTriggerTimerRef.current) {
+      window.clearTimeout(sectionEnterTriggerTimerRef.current);
+    }
+    sectionEnterTriggerTimerRef.current = window.setTimeout(() => {
+      setHasSectionEnterTrigger(false);
+      sectionEnterTriggerTimerRef.current = null;
+    }, 900);
+  }, []);
+
+  const didCompleteSentenceOrParagraph = useCallback((update: ViewUpdate): boolean => {
+    let triggered = false;
+    update.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
+      const text = inserted.toString();
+      if (text.includes(".") || text.includes("!") || text.includes("?") || text.includes("\n")) {
+        triggered = true;
+      }
+    });
+    return triggered;
+  }, []);
+
+  const didPressEnter = useCallback((update: ViewUpdate): boolean => {
+    let pressedEnter = false;
+    update.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
+      if (inserted.toString().includes("\n")) {
+        pressedEnter = true;
+      }
+    });
+    return pressedEnter;
+  }, []);
+
+  const isNearScrollEnd = useCallback((element: HTMLElement | null): boolean => {
+    if (!element) return false;
+    const remaining = element.scrollHeight - (element.scrollTop + element.clientHeight);
+    return remaining <= 220;
+  }, []);
+
+  const updateEndSuggestionProximity = useCallback(() => {
+    if (isSpecialTab) {
+      setIsNearNoteEnd(false);
+      return;
+    }
+
+    const editorVisible = viewMode === "editor" || viewMode === "split";
+    const previewVisible = viewMode === "preview" || viewMode === "split";
+    const editorScroller = editorVisible
+      ? ((viewRef.current?.scrollDOM as HTMLElement | null) || null)
+      : null;
+    const previewScroller = previewVisible ? previewRef.current : null;
+
+    setIsNearNoteEnd(
+      isNearScrollEnd(editorScroller) || isNearScrollEnd(previewScroller),
+    );
+  }, [isNearScrollEnd, isSpecialTab, viewMode]);
+
+  useEffect(() => {
+    if (isSpecialTab || activeSuggestions.length === 0) {
+      setIsSuggestionIdle(false);
+      return;
+    }
+
+    setIsSuggestionIdle(false);
+    const timer = window.setTimeout(() => {
+      setIsSuggestionIdle(true);
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [activeSuggestions.length, activeTabId, content, isSpecialTab]);
+
+  useEffect(() => {
+    setDismissedInlinePaths(new Set());
+    setHasFlowTrigger(false);
+    setIsSectionPauseReady(false);
+    setHasSectionEnterTrigger(false);
+    setSectionRetryPending(false);
+    setAllowForcedSectionMinimum(false);
+    if (flowTriggerDelayTimerRef.current) {
+      window.clearTimeout(flowTriggerDelayTimerRef.current);
+      flowTriggerDelayTimerRef.current = null;
+    }
+    if (flowTriggerWindowTimerRef.current) {
+      window.clearTimeout(flowTriggerWindowTimerRef.current);
+      flowTriggerWindowTimerRef.current = null;
+    }
+    if (sectionPauseTimerRef.current) {
+      window.clearTimeout(sectionPauseTimerRef.current);
+      sectionPauseTimerRef.current = null;
+    }
+    if (sectionEnterTriggerTimerRef.current) {
+      window.clearTimeout(sectionEnterTriggerTimerRef.current);
+      sectionEnterTriggerTimerRef.current = null;
+    }
+  }, [activeTabId]);
+
+  useEffect(() => {
+    return () => {
+      if (typingPauseTimerRef.current) {
+        window.clearTimeout(typingPauseTimerRef.current);
+      }
+      if (flowTriggerDelayTimerRef.current) {
+        window.clearTimeout(flowTriggerDelayTimerRef.current);
+      }
+      if (flowTriggerWindowTimerRef.current) {
+        window.clearTimeout(flowTriggerWindowTimerRef.current);
+      }
+      if (sectionPauseTimerRef.current) {
+        window.clearTimeout(sectionPauseTimerRef.current);
+      }
+      if (sectionEnterTriggerTimerRef.current) {
+        window.clearTimeout(sectionEnterTriggerTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSpecialTab) {
+      setIsNearNoteEnd(false);
+      return;
+    }
+
+    const handleScroll = () => updateEndSuggestionProximity();
+    const editorScroller = viewRef.current?.scrollDOM as HTMLElement | null;
+    const previewScroller = previewRef.current;
+
+    editorScroller?.addEventListener("scroll", handleScroll, { passive: true });
+    previewScroller?.addEventListener("scroll", handleScroll, { passive: true });
+
+    const rafId = window.requestAnimationFrame(updateEndSuggestionProximity);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      editorScroller?.removeEventListener("scroll", handleScroll);
+      previewScroller?.removeEventListener("scroll", handleScroll);
+    };
+  }, [
+    activeTabId,
+    editorMountTick,
+    isSpecialTab,
+    updateEndSuggestionProximity,
+    viewMode,
+  ]);
+
+  useEffect(() => {
+    if (isSpecialTab) return;
+    const rafId = window.requestAnimationFrame(updateEndSuggestionProximity);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [content, isSpecialTab, updateEndSuggestionProximity]);
 
   const handleOpenImageLightbox = useCallback((src: string, alt: string) => {
     setImageLightbox({ src, alt });
@@ -1090,9 +2774,61 @@ export function Editor({
         tagPlugin(),
         imageWidgetPlugin(handleOpenImageLightbox),
         headingLivePreviewPlugin(),
+        suggestionContentCompartmentRef.current.of(
+          suggestionContentPlugin({
+            inlineSuggestion: highConfidenceInlineSuggestion,
+            endSuggestions: endOfNoteSuggestions,
+            nextStepSuggestions: nextStepEndSuggestions,
+            sectionCandidates: sectionSuggestionCandidates,
+            showEndSuggestions: showEndSuggestionContent,
+            showSectionSuggestions: showSectionSuggestionContent,
+            allowForcedSectionMinimum,
+            isActivelyTyping,
+            onInlineAccept: handleInlineContextAccept,
+            onEndAccept: (path) => onAcceptSuggestion?.(path, "related"),
+            onSectionAccept: handleSectionSuggestionAccept,
+            onSectionMinimumDeferred: markSectionMinimumDeferred,
+          }),
+        ),
+        EditorView.domEventHandlers({
+          keydown: (event, view) => {
+            if (event.key !== "Enter") return false;
+            if (!sectionEnterAcceptRef.current(view)) return false;
+            event.preventDefault();
+            return true;
+          },
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onContentChange(update.state.doc.toString());
+            const isUserEdit = update.transactions.some(
+              (tr) =>
+                tr.isUserEvent("input") ||
+                tr.isUserEvent("delete") ||
+                tr.isUserEvent("paste") ||
+                tr.isUserEvent("move"),
+            );
+            if (isUserEdit) {
+              markActiveTyping();
+              markSectionPauseReady();
+              setSectionRetryPending((pending) => {
+                if (pending) {
+                  setAllowForcedSectionMinimum(true);
+                  return false;
+                }
+                setAllowForcedSectionMinimum(false);
+                return pending;
+              });
+              const pressedEnter = didPressEnter(update);
+              if (didCompleteSentenceOrParagraph(update)) {
+                markFlowTrigger();
+              }
+              if (pressedEnter) {
+                markSectionEnterTrigger();
+              } else {
+                setHasSectionEnterTrigger(false);
+              }
+            }
           }
         }),
         EditorView.theme({
@@ -1182,12 +2918,53 @@ export function Editor({
     });
 
     viewRef.current = view;
+    setEditorMountTick((tick) => tick + 1);
 
     return () => {
       view.destroy();
       viewRef.current = null;
     };
   }, [activeTabId, isSpecialTab]); // Re-create when tab changes
+
+  useEffect(() => {
+    if (isSpecialTab || !viewRef.current) return;
+
+    viewRef.current.dispatch({
+      effects: suggestionContentCompartmentRef.current.reconfigure(
+        suggestionContentPlugin({
+          inlineSuggestion: highConfidenceInlineSuggestion,
+          endSuggestions: endOfNoteSuggestions,
+          nextStepSuggestions: nextStepEndSuggestions,
+          sectionCandidates: sectionSuggestionCandidates,
+          showEndSuggestions: showEndSuggestionContent,
+          showSectionSuggestions: showSectionSuggestionContent,
+          allowForcedSectionMinimum,
+          isActivelyTyping,
+          onInlineAccept: handleInlineContextAccept,
+          onEndAccept: (path) => onAcceptSuggestion?.(path, "related"),
+          onSectionAccept: handleSectionSuggestionAccept,
+          onSectionMinimumDeferred: markSectionMinimumDeferred,
+        }),
+      ),
+    });
+  }, [
+    allowForcedSectionMinimum,
+    didPressEnter,
+    endOfNoteSuggestions,
+    nextStepEndSuggestions,
+    handleInlineContextAccept,
+    handleSectionSuggestionAccept,
+    highConfidenceInlineSuggestion,
+    isActivelyTyping,
+    isSpecialTab,
+    markSectionMinimumDeferred,
+    markSectionEnterTrigger,
+    markSectionPauseReady,
+    onAcceptSuggestion,
+    sectionSuggestionCandidates,
+    showSectionSuggestionContent,
+    showEndSuggestionContent,
+  ]);
 
   // Update content when it changes externally (tab switch)
   useEffect(() => {
@@ -1328,6 +3105,13 @@ export function Editor({
         )}
       </div>
 
+      {/* Inline annotation */}
+      {annotation && (
+        <div className="editor-annotation">
+          <span className="editor-annotation-text">{annotation}</span>
+        </div>
+      )}
+
       {/* Editor & Preview Container */}
       <div
         className="editor-container"
@@ -1335,7 +3119,8 @@ export function Editor({
         style={{
           display: "flex",
           flexDirection: "row",
-          height: "100%",
+          flex: 1,
+          minHeight: 0,
           position: "relative",
         }}
       >

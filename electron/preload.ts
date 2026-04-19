@@ -97,6 +97,22 @@ const electronAPI = {
   saveImage: (fileName: string, base64Data: string): Promise<string> =>
     ipcRenderer.invoke('attachments:saveImage', fileName, base64Data),
 
+  saveImageDedup: (fileName: string, base64Data: string): Promise<{ relativePath: string; isDuplicate: boolean }> =>
+    ipcRenderer.invoke('attachments:saveImageDedup', fileName, base64Data),
+
+  // ── .openobsidian Data Storage ────────────────────
+  dataRead: (relativePath: string): Promise<string | null> =>
+    ipcRenderer.invoke('data:read', relativePath),
+
+  dataWrite: (relativePath: string, content: string): Promise<void> =>
+    ipcRenderer.invoke('data:write', relativePath, content),
+
+  dataDelete: (relativePath: string): Promise<void> =>
+    ipcRenderer.invoke('data:delete', relativePath),
+
+  dataList: (subDir: string): Promise<string[]> =>
+    ipcRenderer.invoke('data:list', subDir),
+
   // ── Thought Model ─────────────────────────────────
   thoughtModel: {
     build: (vaultPath: string, numClusters?: number): Promise<{ job_id: string; status: string }> =>

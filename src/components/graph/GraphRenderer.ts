@@ -48,6 +48,7 @@ interface RenderNode {
 interface RenderEdge {
   source: string;
   target: string;
+  directed?: boolean;
 }
 
 interface InputNode {
@@ -62,6 +63,7 @@ interface InputNode {
 interface InputEdge {
   source: string;
   target: string;
+  directed?: boolean;
 }
 
 // Helper to convert hex number to CSS color string
@@ -458,6 +460,34 @@ export class GraphRenderer {
       ctx.moveTo(sourceNode.x, sourceNode.y);
       ctx.lineTo(targetNode.x, targetNode.y);
       ctx.stroke();
+
+      if (edge.directed) {
+        const dx = targetNode.x - sourceNode.x;
+        const dy = targetNode.y - sourceNode.y;
+        const length = Math.hypot(dx, dy);
+        if (length > 0.001) {
+          const ux = dx / length;
+          const uy = dy / length;
+          const targetRadius =
+            this.nodeStyle.size + Math.sqrt(targetNode.connections) * 1.5;
+          const tipX = targetNode.x - ux * (targetRadius + 1.2);
+          const tipY = targetNode.y - uy * (targetRadius + 1.2);
+          const arrowLength = 6;
+          const arrowWidth = 3.2;
+          const leftX = tipX - ux * arrowLength - uy * arrowWidth;
+          const leftY = tipY - uy * arrowLength + ux * arrowWidth;
+          const rightX = tipX - ux * arrowLength + uy * arrowWidth;
+          const rightY = tipY - uy * arrowLength - ux * arrowWidth;
+
+          ctx.fillStyle = hexToColor(color, Math.min(1, alpha + 0.18));
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(leftX, leftY);
+          ctx.lineTo(rightX, rightY);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
     }
   }
 
@@ -591,7 +621,11 @@ export class GraphRenderer {
       });
     }
 
-    this.edges = edges.map((e) => ({ source: e.source, target: e.target }));
+    this.edges = edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      directed: Boolean(e.directed),
+    }));
     this.render();
   }
 

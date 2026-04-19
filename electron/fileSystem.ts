@@ -8,6 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 export interface FileEntry {
   name: string;
@@ -407,5 +408,119 @@ export class FileSystemManager {
     
     // Return relative path for markdown
     return `attachments/${uniqueName}`;
+  }
+
+  // ── .openobsidian/ Data Directory Operations ──────
+
+  /** Ensure .openobsidian/ directory structure exists */
+  private ensureDataDir(subDir?: string): string {
+    if (!this.vaultPath) throw new Error('No vault path set');
+    const dataDir = subDir
+      ? path.join(this.vaultPath, '.openobsidian', subDir)
+      : path.join(this.vaultPath, '.openobsidian');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    return dataDir;
+  }
+
+  /** Read a JSON file from .openobsidian/ */
+  async readDataFile(relativePath: string): Promise<string | null> {
+    try {
+      const dir = this.ensureDataDir();
+      const filePath = path.join(dir, relativePath);
+      if (!filePath.startsWith(dir)) throw new Error('Path traversal detected');
+      if (!fs.existsSync(filePath)) return null;
+      return await fs.promises.readFile(filePath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  /** Write a JSON file to .openobsidian/ */
+  async writeDataFile(relativePath: string, content: string): Promise<void> {
+    const dir = this.ensureDataDir();
+    const filePath = path.join(dir, relativePath);
+    if (!filePath.startsWith(dir)) throw new Error('Path traversal detected');
+    const fileDir = path.dirname(filePath);
+    if (!fs.existsSync(fileDir)) {
+      fs.mkdirSync(fileDir, { recursive: true });
+    }
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+  }
+
+  /** Delete a file from .openobsidian/ */
+  async deleteDataFile(relativePath: string): Promise<void> {
+    try {
+      const dir = this.ensureDataDir();
+      const filePath = path.join(dir, relativePath);
+      if (!filePath.startsWith(dir)) return;
+      if (fs.existsSync(filePath)) {
+        await fs.promises.unlink(filePath);
+      }
+    } catch { /* silent */ }
+  }
+
+  /** List files in a .openobsidian/ subdirectory */
+  async listDataDir(subDir: string): Promise<string[]> {
+    try {
+      const dir = this.ensureDataDir(subDir);
+      if (!fs.existsSync(dir)) return [];
+      const files = await fs.promises.readdir(dir);
+      return files.filter((f) => !f.startsWith('.'));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Hash file content for deduplication (SHA-256) */
+  hashContent(content: Buffer | string): string {
+    return crypto.createHash('sha256').update(content).digest('hex').substring(0, 16);
+  }
+
+  /**
+   * Save an attachment with content-hash deduplication.
+   * Returns the relative path and whether it was a duplicate.
+   */
+  async saveAttachmentDedup(
+    fileName: string,
+    base64Data: string,
+  ): Promise<{ relativePath: string; isDuplicate: boolean }> {
+    if (!this.vaultPath) throw new Error('No vault path set');
+
+    const attachmentsDir = path.join(this.vaultPath, 'attachments');
+    if (!fs.existsSync(attachmentsDir)) {
+      fs.mkdirSync(attachmentsDir, { recursive: true });
+    }
+
+    const base64Content = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Content, 'base64');
+    const hash = this.hashContent(buffer);
+    const ext = path.extname(fileName);
+
+    // Check if a file with this hash already exists
+    const mappingPath = path.join(this.ensureDataDir(), 'attachment-map.json');
+    let mapping: Record<string, string> = {};
+    try {
+      if (fs.existsSync(mappingPath)) {
+        mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf-8'));
+      }
+    } catch { /* fresh map */ }
+
+    if (mapping[hash]) {
+      // Duplicate — return existing path
+      return { relativePath: mapping[hash], isDuplicate: true };
+    }
+
+    // New file — store with hash name
+    const hashName = `${hash}${ext}`;
+    const imagePath = path.join(attachmentsDir, hashName);
+    fs.writeFileSync(imagePath, buffer);
+
+    // Update mapping
+    mapping[hash] = `attachments/${hashName}`;
+    fs.writeFileSync(mappingPath, JSON.stringify(mapping, null, 2));
+
+    return { relativePath: `attachments/${hashName}`, isDuplicate: false };
   }
 }
