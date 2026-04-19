@@ -22,7 +22,11 @@ import { SearchModal } from "./components/SearchModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { BacklinksPanel } from "./components/BacklinksPanel";
 import { StatusBar } from "./components/StatusBar";
-import { WelcomeScreen } from "./components/WelcomeScreen";
+import {
+  WelcomeScreen,
+  type VaultEntryAction,
+  type VaultEntryTransitionPhase,
+} from "./components/WelcomeScreen";
 import { Modal } from "./components/Modal";
 import { Ribbon } from "./components/Ribbon";
 import { OutlinePane } from "./components/OutlinePane";
@@ -908,6 +912,9 @@ export default function App() {
   const [ftuxInsightText, setFtuxInsightText] = useState<string | null>(null);
   const [ftuxSuggestionIdle, setFtuxSuggestionIdle] = useState(false);
   const [ftuxConnectionPulse, setFtuxConnectionPulse] = useState(false);
+  const [vaultEntryTransitionPhase, setVaultEntryTransitionPhase] =
+    useState<VaultEntryTransitionPhase>("idle");
+  const [isVaultEntryCalmReady, setIsVaultEntryCalmReady] = useState(true);
   const [notNowSuppressedUntilNotes, setNotNowSuppressedUntilNotes] = useState<number>(() =>
     loadFTUXNotNowSuppression(),
   );
@@ -921,6 +928,8 @@ export default function App() {
   const firstThoughtAutoFocusSkipRef = useRef(false);
   const ftuxIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ftuxPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vaultEntryTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vaultEntryCalmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Split pane references and dragging
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -1162,8 +1171,92 @@ export default function App() {
       if (ftuxPulseTimerRef.current) {
         clearTimeout(ftuxPulseTimerRef.current);
       }
+      if (vaultEntryTransitionTimerRef.current) {
+        clearTimeout(vaultEntryTransitionTimerRef.current);
+      }
+      if (vaultEntryCalmTimerRef.current) {
+        clearTimeout(vaultEntryCalmTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (vaultEntryTransitionPhase !== "transitioning") {
+      return;
+    }
+
+    if (vaultPath && ftuxState.notesCount === 0) {
+      setVaultEntryTransitionPhase("entered");
+      return;
+    }
+
+    if (vaultPath && ftuxState.notesCount > 0) {
+      setVaultEntryTransitionPhase("idle");
+    }
+  }, [ftuxState.notesCount, vaultEntryTransitionPhase, vaultPath]);
+
+  useEffect(() => {
+    if (vaultEntryTransitionPhase === "idle") {
+      setIsVaultEntryCalmReady(true);
+      if (vaultEntryTransitionTimerRef.current) {
+        clearTimeout(vaultEntryTransitionTimerRef.current);
+        vaultEntryTransitionTimerRef.current = null;
+      }
+      if (vaultEntryCalmTimerRef.current) {
+        clearTimeout(vaultEntryCalmTimerRef.current);
+        vaultEntryCalmTimerRef.current = null;
+      }
+      return;
+    }
+
+    setIsVaultEntryCalmReady(false);
+
+    if (vaultEntryTransitionPhase === "entered") {
+      if (vaultEntryTransitionTimerRef.current) {
+        clearTimeout(vaultEntryTransitionTimerRef.current);
+      }
+      vaultEntryTransitionTimerRef.current = setTimeout(() => {
+        setVaultEntryTransitionPhase("idle");
+        vaultEntryTransitionTimerRef.current = null;
+      }, 420);
+
+      if (vaultEntryCalmTimerRef.current) {
+        clearTimeout(vaultEntryCalmTimerRef.current);
+      }
+      vaultEntryCalmTimerRef.current = setTimeout(() => {
+        setIsVaultEntryCalmReady(true);
+        vaultEntryCalmTimerRef.current = null;
+      }, 150);
+    }
+
+    return () => {
+      if (vaultEntryTransitionTimerRef.current) {
+        clearTimeout(vaultEntryTransitionTimerRef.current);
+        vaultEntryTransitionTimerRef.current = null;
+      }
+      if (vaultEntryCalmTimerRef.current) {
+        clearTimeout(vaultEntryCalmTimerRef.current);
+        vaultEntryCalmTimerRef.current = null;
+      }
+    };
+  }, [vaultEntryTransitionPhase]);
+
+  useEffect(() => {
+    if (vaultEntryTransitionPhase !== "entered") {
+      return;
+    }
+    if (!(vaultPath !== null && ftuxState.notesCount === 0)) {
+      return;
+    }
+
+    const focusTimer = setTimeout(() => {
+      firstThoughtInputRef.current?.focus();
+    }, 80);
+
+    return () => {
+      clearTimeout(focusTimer);
+    };
+  }, [ftuxState.notesCount, vaultEntryTransitionPhase, vaultPath]);
 
   useEffect(() => {
     const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
@@ -1181,7 +1274,7 @@ export default function App() {
       }
     };
 
-    if (!isZeroState || shouldPausePromptRotation) {
+    if (!isZeroState || shouldPausePromptRotation || !isVaultEntryCalmReady) {
       clearPromptTimers();
       setFirstThoughtPromptCrossfading(false);
       setFirstThoughtPromptNextIndex(null);
@@ -1219,6 +1312,7 @@ export default function App() {
     firstThoughtPromptIndex,
     ftuxState.notesCount,
     hasFirstThoughtKeystroke,
+    isVaultEntryCalmReady,
     isFirstThoughtFocused,
     vaultPath,
   ]);
@@ -1226,7 +1320,7 @@ export default function App() {
   useEffect(() => {
     const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
 
-    if (!isZeroState) {
+    if (!isZeroState || !isVaultEntryCalmReady) {
       setShowFirstThoughtPromptEntry(false);
       setShowFirstThoughtGhostEntry(false);
       setShowFirstThoughtHintEntry(false);
@@ -1249,15 +1343,19 @@ export default function App() {
     setShownFirstThoughtExpansionDraftKey(null);
     setDismissedFirstThoughtExpansionDraftKey(null);
 
+    const promptDelayMs = vaultEntryTransitionPhase === "entered" ? 0 : 120;
+    const ghostDelayMs = vaultEntryTransitionPhase === "entered" ? 180 : 250;
+    const hintDelayMs = vaultEntryTransitionPhase === "entered" ? 260 : 350;
+
     firstThoughtEntryPromptTimerRef.current = setTimeout(() => {
       setShowFirstThoughtPromptEntry(true);
-    }, 120);
+    }, promptDelayMs);
     firstThoughtEntryGhostTimerRef.current = setTimeout(() => {
       setShowFirstThoughtGhostEntry(true);
-    }, 250);
+    }, ghostDelayMs);
     firstThoughtEntryHintTimerRef.current = setTimeout(() => {
       setShowFirstThoughtHintEntry(true);
-    }, 350);
+    }, hintDelayMs);
 
     return () => {
       if (firstThoughtEntryPromptTimerRef.current) {
@@ -1277,7 +1375,12 @@ export default function App() {
         firstThoughtExpansionTimerRef.current = null;
       }
     };
-  }, [ftuxState.notesCount, vaultPath]);
+  }, [
+    ftuxState.notesCount,
+    isVaultEntryCalmReady,
+    vaultEntryTransitionPhase,
+    vaultPath,
+  ]);
 
   useEffect(() => {
     const element = firstThoughtInputRef.current;
@@ -1290,7 +1393,7 @@ export default function App() {
   useEffect(() => {
     const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
 
-    if (!isZeroState) {
+    if (!isZeroState || !isVaultEntryCalmReady) {
       setFirstThoughtExpansionPlan(null);
       setShowFirstThoughtExpansionHint(false);
       setShownFirstThoughtExpansionDraftKey(null);
@@ -1374,6 +1477,7 @@ export default function App() {
     shownFirstThoughtExpansionDraftKey,
     dismissedFirstThoughtExpansionDraftKey,
     ftuxState.notesCount,
+    isVaultEntryCalmReady,
     vaultPath,
   ]);
 
@@ -1522,7 +1626,7 @@ export default function App() {
   }, [activeTabId, tabs, currentContent]);
 
   // ── Vault Operations ────────────────────────────────
-  const handleOpenVault = async () => {
+  const handleOpenVault = async (): Promise<boolean> => {
     try {
       const path = await api.openVaultDialog();
       if (path) {
@@ -1536,12 +1640,28 @@ export default function App() {
         setFileTree(tree);
         // Trigger background vault initialization for new vault
         runVaultInit(tree);
+        return true;
       }
+      return false;
     } catch (e) {
       console.error("Failed to open vault:", e);
       alert("Failed to open vault. It may be too large or inaccessible.");
+      return false;
     }
   };
+
+  const handleWelcomeVaultAction = useCallback(
+    async (_action: VaultEntryAction) => {
+      if (vaultEntryTransitionPhase !== "idle") return;
+
+      setVaultEntryTransitionPhase("transitioning");
+      const opened = await handleOpenVault();
+      if (!opened) {
+        setVaultEntryTransitionPhase("idle");
+      }
+    },
+    [vaultEntryTransitionPhase, handleOpenVault],
+  );
 
   const refreshFileTree = async () => {
     try {
@@ -3074,6 +3194,147 @@ export default function App() {
   const shouldShowPaneResizer =
     shouldShowEditorPane && !graphFullScreen && !canvasFullScreen && hasAuxPane;
 
+  const showVaultEntryTransitionScene =
+    vaultEntryTransitionPhase !== "idle" &&
+    (!vaultPath || isFTUXZeroState);
+
+  const renderFTUXZeroState = () => (
+    <div className={`ftux-zero-state ${hasFirstThoughtKeystroke ? "is-activated" : ""}`}>
+      <form
+        className={`ftux-first-thought-form ${hasFirstThoughtKeystroke ? "has-content" : ""}`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleCreateFirstThought();
+        }}
+      >
+        <div className="ftux-orientation-line">Start with a thought</div>
+
+        <div
+          className={`ftux-first-thought-shell ${isFirstThoughtFocused ? "is-focused" : ""} ${hasFirstThoughtKeystroke ? "is-typed" : ""}`}
+        >
+          <div
+            className={`ftux-dynamic-prompt ${showFirstThoughtPromptEntry ? "is-visible" : ""} ${firstThoughtPromptCrossfading ? "is-crossfading" : ""} ${hasFirstThoughtKeystroke ? "is-hidden is-instant-hidden" : ""}`}
+            style={{
+              "--ftux-prompt-fade-ms": `${firstThoughtPromptFadeMs}ms`,
+              "--ftux-prompt-overlap-delay-ms": `${firstThoughtPromptOverlapDelayMs}ms`,
+            } as React.CSSProperties}
+          >
+            <span className="ftux-dynamic-prompt-text is-current">
+              {FIRST_THOUGHT_PROMPTS[firstThoughtPromptIndex]}
+            </span>
+            {firstThoughtPromptNextIndex !== null && (
+              <span className="ftux-dynamic-prompt-text is-next">
+                {FIRST_THOUGHT_PROMPTS[firstThoughtPromptNextIndex]}
+              </span>
+            )}
+          </div>
+
+          <textarea
+            ref={firstThoughtInputRef}
+            className="ftux-first-thought-input"
+            value={firstThoughtDraft}
+            rows={3}
+            onChange={(event) => {
+              const next = event.target.value;
+              setFirstThoughtDraft(next);
+              if (showFirstThoughtExpansionHint) {
+                setShowFirstThoughtExpansionHint(false);
+              }
+              if (!hasFirstThoughtKeystroke && next.length > 0) {
+                if (firstThoughtPromptIntervalRef.current) {
+                  clearTimeout(firstThoughtPromptIntervalRef.current);
+                  firstThoughtPromptIntervalRef.current = null;
+                }
+                if (firstThoughtPromptFadeTimerRef.current) {
+                  clearTimeout(firstThoughtPromptFadeTimerRef.current);
+                  firstThoughtPromptFadeTimerRef.current = null;
+                }
+                if (firstThoughtEntryPromptTimerRef.current) {
+                  clearTimeout(firstThoughtEntryPromptTimerRef.current);
+                  firstThoughtEntryPromptTimerRef.current = null;
+                }
+                if (firstThoughtEntryGhostTimerRef.current) {
+                  clearTimeout(firstThoughtEntryGhostTimerRef.current);
+                  firstThoughtEntryGhostTimerRef.current = null;
+                }
+                if (firstThoughtEntryHintTimerRef.current) {
+                  clearTimeout(firstThoughtEntryHintTimerRef.current);
+                  firstThoughtEntryHintTimerRef.current = null;
+                }
+                setFirstThoughtPromptCrossfading(false);
+                setFirstThoughtPromptNextIndex(null);
+                setHasFirstThoughtKeystroke(true);
+              }
+            }}
+            onFocus={() => {
+              if (!firstThoughtAutoFocusSkipRef.current) {
+                firstThoughtAutoFocusSkipRef.current = true;
+                return;
+              }
+              setIsFirstThoughtFocused(true);
+            }}
+            onBlur={() => setIsFirstThoughtFocused(false)}
+            onKeyDown={(event) => {
+              if (!isFirstThoughtFocused) {
+                setIsFirstThoughtFocused(true);
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (firstThoughtDraft.trim().length > 0) {
+                  void handleCreateFirstThought();
+                }
+              }
+            }}
+            placeholder={FIRST_THOUGHT_PROMPTS[firstThoughtPromptIndex]}
+            aria-label="Write your first thought"
+            autoFocus
+          />
+        </div>
+
+        {showFirstThoughtExpansionHint && firstThoughtExpansionPlan && (
+          <div className="ftux-inline-expand-hint ftux-inline-expand-hint-fade-in">
+            <div className="ftux-inline-expand-title">Expand this:</div>
+            <ul className="ftux-inline-expand-list">
+              {firstThoughtExpansionPlan.bullets.map((bullet, index) => (
+                <li key={`${firstThoughtExpansionPlan.intent}-${index}`}>
+                  {bullet}
+                </li>
+              ))}
+            </ul>
+            <div className="ftux-inline-expand-actions">
+              <button
+                type="button"
+                className="ftux-inline-expand-btn ftux-inline-expand-btn-primary"
+                onClick={handleExpandFirstThought}
+              >
+                Expand
+              </button>
+              <button
+                type="button"
+                className="ftux-inline-expand-btn"
+                onClick={handleIgnoreFirstThoughtExpansion}
+              >
+                Ignore
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className={`ftux-ghost-examples ${showFirstThoughtGhostEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
+          {FIRST_THOUGHT_GHOST_EXAMPLES.map((example) => (
+            <div key={example} className="ftux-ghost-example">
+              {example}
+            </div>
+          ))}
+        </div>
+
+        <div className={`ftux-intelligence-hint ${showFirstThoughtHintEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
+          Your thoughts will start connecting
+        </div>
+      </form>
+    </div>
+  );
+
   return (
     <div className="app">
       <TitleBar
@@ -3151,143 +3412,30 @@ export default function App() {
             height: "100%",
           }}
         >
-          {!vaultPath ? (
-            <WelcomeScreen onOpenVault={handleOpenVault} />
-          ) : isFTUXZeroState ? (
-            <div className={`ftux-zero-state ${hasFirstThoughtKeystroke ? "is-activated" : ""}`}>
-              <form
-                className={`ftux-first-thought-form ${hasFirstThoughtKeystroke ? "has-content" : ""}`}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleCreateFirstThought();
-                }}
-              >
-                <div className="ftux-orientation-line">Start with a thought</div>
+          {showVaultEntryTransitionScene ? (
+            <div
+              className={`vault-entry-transition-scene phase-${vaultEntryTransitionPhase}`}
+            >
+              <div className="vault-entry-layer vault-entry-layer-welcome">
+                <WelcomeScreen
+                  onOpenVault={handleWelcomeVaultAction}
+                  transitionPhase={vaultEntryTransitionPhase}
+                />
+              </div>
 
-                <div
-                  className={`ftux-first-thought-shell ${isFirstThoughtFocused ? "is-focused" : ""} ${hasFirstThoughtKeystroke ? "is-typed" : ""}`}
-                >
-                  <div
-                    className={`ftux-dynamic-prompt ${showFirstThoughtPromptEntry ? "is-visible" : ""} ${firstThoughtPromptCrossfading ? "is-crossfading" : ""} ${hasFirstThoughtKeystroke ? "is-hidden is-instant-hidden" : ""}`}
-                    style={{
-                      "--ftux-prompt-fade-ms": `${firstThoughtPromptFadeMs}ms`,
-                      "--ftux-prompt-overlap-delay-ms": `${firstThoughtPromptOverlapDelayMs}ms`,
-                    } as React.CSSProperties}
-                  >
-                    <span className="ftux-dynamic-prompt-text is-current">
-                      {FIRST_THOUGHT_PROMPTS[firstThoughtPromptIndex]}
-                    </span>
-                    {firstThoughtPromptNextIndex !== null && (
-                      <span className="ftux-dynamic-prompt-text is-next">
-                        {FIRST_THOUGHT_PROMPTS[firstThoughtPromptNextIndex]}
-                      </span>
-                    )}
-                  </div>
-
-                  <textarea
-                    ref={firstThoughtInputRef}
-                    className="ftux-first-thought-input"
-                    value={firstThoughtDraft}
-                    rows={3}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setFirstThoughtDraft(next);
-                      if (showFirstThoughtExpansionHint) {
-                        setShowFirstThoughtExpansionHint(false);
-                      }
-                      if (!hasFirstThoughtKeystroke && next.length > 0) {
-                        if (firstThoughtPromptIntervalRef.current) {
-                          clearTimeout(firstThoughtPromptIntervalRef.current);
-                          firstThoughtPromptIntervalRef.current = null;
-                        }
-                        if (firstThoughtPromptFadeTimerRef.current) {
-                          clearTimeout(firstThoughtPromptFadeTimerRef.current);
-                          firstThoughtPromptFadeTimerRef.current = null;
-                        }
-                        if (firstThoughtEntryPromptTimerRef.current) {
-                          clearTimeout(firstThoughtEntryPromptTimerRef.current);
-                          firstThoughtEntryPromptTimerRef.current = null;
-                        }
-                        if (firstThoughtEntryGhostTimerRef.current) {
-                          clearTimeout(firstThoughtEntryGhostTimerRef.current);
-                          firstThoughtEntryGhostTimerRef.current = null;
-                        }
-                        if (firstThoughtEntryHintTimerRef.current) {
-                          clearTimeout(firstThoughtEntryHintTimerRef.current);
-                          firstThoughtEntryHintTimerRef.current = null;
-                        }
-                        setFirstThoughtPromptCrossfading(false);
-                        setFirstThoughtPromptNextIndex(null);
-                        setHasFirstThoughtKeystroke(true);
-                      }
-                    }}
-                    onFocus={() => {
-                      if (!firstThoughtAutoFocusSkipRef.current) {
-                        firstThoughtAutoFocusSkipRef.current = true;
-                        return;
-                      }
-                      setIsFirstThoughtFocused(true);
-                    }}
-                    onBlur={() => setIsFirstThoughtFocused(false)}
-                    onKeyDown={(event) => {
-                      if (!isFirstThoughtFocused) {
-                        setIsFirstThoughtFocused(true);
-                      }
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        if (firstThoughtDraft.trim().length > 0) {
-                          void handleCreateFirstThought();
-                        }
-                      }
-                    }}
-                    placeholder=""
-                    aria-label="Write your first thought"
-                    autoFocus
-                  />
+              {isFTUXZeroState && (
+                <div className="vault-entry-layer vault-entry-layer-thought">
+                  {renderFTUXZeroState()}
                 </div>
-
-                {showFirstThoughtExpansionHint && firstThoughtExpansionPlan && (
-                  <div className="ftux-inline-expand-hint ftux-inline-expand-hint-fade-in">
-                    <div className="ftux-inline-expand-title">Expand this:</div>
-                    <ul className="ftux-inline-expand-list">
-                      {firstThoughtExpansionPlan.bullets.map((bullet, index) => (
-                        <li key={`${firstThoughtExpansionPlan.intent}-${index}`}>
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="ftux-inline-expand-actions">
-                      <button
-                        type="button"
-                        className="ftux-inline-expand-btn ftux-inline-expand-btn-primary"
-                        onClick={handleExpandFirstThought}
-                      >
-                        Expand
-                      </button>
-                      <button
-                        type="button"
-                        className="ftux-inline-expand-btn"
-                        onClick={handleIgnoreFirstThoughtExpansion}
-                      >
-                        Ignore
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className={`ftux-ghost-examples ${showFirstThoughtGhostEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
-                  {FIRST_THOUGHT_GHOST_EXAMPLES.map((example) => (
-                    <div key={example} className="ftux-ghost-example">
-                      {example}
-                    </div>
-                  ))}
-                </div>
-
-                <div className={`ftux-intelligence-hint ${showFirstThoughtHintEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
-                  Your thoughts will start connecting
-                </div>
-              </form>
+              )}
             </div>
+          ) : !vaultPath ? (
+            <WelcomeScreen
+              onOpenVault={handleWelcomeVaultAction}
+              transitionPhase="idle"
+            />
+          ) : isFTUXZeroState ? (
+            renderFTUXZeroState()
           ) : (
             <>
               {/* Editor pane - hidden when graph/canvas is fullscreen, or when no note is open and an auxiliary pane is visible */}

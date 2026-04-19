@@ -1990,6 +1990,7 @@ blockquote:has(.callout) {
   gap: var(--space-4);
   padding: var(--space-10);
   background: var(--bg-primary);
+  transition: background 220ms ease-out;
 }
 
 .welcome-logo {
@@ -1998,6 +1999,10 @@ blockquote:has(.callout) {
   justify-content: center;
   color: var(--accent-primary);
   margin-bottom: var(--space-2);
+  transition:
+    opacity 260ms ease-out,
+    filter 260ms ease-out,
+    transform 260ms ease-out;
 }
 
 .welcome-title {
@@ -2006,6 +2011,10 @@ blockquote:has(.callout) {
   color: var(--text-primary);
   text-align: center;
   letter-spacing: -0.5px;
+  transition:
+    opacity 260ms ease-out,
+    filter 260ms ease-out,
+    transform 260ms ease-out;
 }
 
 .welcome-subtitle {
@@ -2015,12 +2024,46 @@ blockquote:has(.callout) {
   max-width: 480px;
   line-height: 1.5;
   margin-bottom: var(--space-4);
+  transition:
+    opacity 260ms ease-out,
+    filter 260ms ease-out,
+    transform 260ms ease-out;
 }
 
 .welcome-actions {
   display: flex;
   gap: var(--space-4);
   margin-top: var(--space-2);
+  transition:
+    opacity 180ms ease-out,
+    filter 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.welcome-screen[data-transition-phase="transitioning"] {
+  background: color-mix(in srgb, var(--bg-primary) 94%, var(--bg-elevated) 6%);
+}
+
+.welcome-screen[data-transition-phase="transitioning"] .welcome-logo,
+.welcome-screen[data-transition-phase="transitioning"] .welcome-title,
+.welcome-screen[data-transition-phase="transitioning"] .welcome-subtitle {
+  opacity: 0.22;
+  filter: blur(1.2px);
+  transform: scale(0.997);
+}
+
+.welcome-screen[data-transition-phase="transitioning"] .welcome-actions {
+  opacity: 0.18;
+  filter: blur(0.8px);
+  transform: translateY(1px);
+}
+
+.welcome-screen[data-transition-phase="entered"] .welcome-logo,
+.welcome-screen[data-transition-phase="entered"] .welcome-title,
+.welcome-screen[data-transition-phase="entered"] .welcome-subtitle,
+.welcome-screen[data-transition-phase="entered"] .welcome-actions {
+  opacity: 0;
+  filter: blur(1.4px);
 }
 
 /* ── Buttons ───────────────────────────────────────── */
@@ -2038,6 +2081,23 @@ blockquote:has(.callout) {
   cursor: pointer;
   transition: var(--transition-fast);
   white-space: nowrap;
+}
+
+.welcome-action-btn {
+  transition:
+    transform 130ms ease-out,
+    opacity 130ms ease-out,
+    filter 130ms ease-out;
+}
+
+.welcome-action-btn.is-pressing {
+  transform: scale(0.988);
+  opacity: 0.82;
+  filter: saturate(0.9);
+}
+
+.welcome-action-btn:disabled {
+  pointer-events: none;
 }
 
 .btn-primary {
@@ -2255,6 +2315,58 @@ blockquote:has(.callout) {
   font-size: var(--text-sm);
 }
 
+.vault-entry-transition-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.vault-entry-transition-scene::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    120% 100% at 50% 58%,
+    color-mix(in srgb, var(--bg-elevated) 5%, transparent),
+    transparent 82%
+  );
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+  pointer-events: none;
+}
+
+.vault-entry-transition-scene.phase-transitioning::before,
+.vault-entry-transition-scene.phase-entered::before {
+  opacity: 1;
+}
+
+.vault-entry-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.vault-entry-layer-welcome {
+  z-index: 1;
+}
+
+.vault-entry-layer-thought {
+  z-index: 2;
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 250ms ease-out 80ms,
+    transform 250ms ease-out 80ms;
+  pointer-events: none;
+}
+
+.vault-entry-transition-scene.phase-entered .vault-entry-layer-thought {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
 .ftux-zero-state {
   width: 100%;
   height: 100%;
@@ -2304,7 +2416,7 @@ blockquote:has(.callout) {
   font-size: 14px;
   line-height: 1.25;
   color: var(--text-secondary);
-  opacity: 0.66;
+  opacity: 0.28;
   padding-left: 10px;
   margin-bottom: 1px;
   letter-spacing: 0.01em;
@@ -2372,6 +2484,13 @@ blockquote:has(.callout) {
 
 .ftux-first-thought-input::placeholder {
   color: transparent;
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+
+.vault-entry-transition-scene.phase-entered .ftux-first-thought-input::placeholder {
+  color: color-mix(in srgb, var(--text-secondary) 76%, transparent);
+  opacity: 0.46;
 }
 
 .ftux-dynamic-prompt {
