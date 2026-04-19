@@ -200,46 +200,46 @@
 
 /* Light Theme Override — warm paper palette */
 [data-theme="light"] {
-  --color-base-00: #f4f4f0;
-  --color-base-05: #efefe9;
-  --color-base-10: #eaeae4;
-  --color-base-20: #e2e2dc;
-  --color-base-25: #d8d8d2;
-  --color-base-30: #cdcdc7;
-  --color-base-35: #bdbdb7;
-  --color-base-40: #a0a09a;
-  --color-base-50: #8c8c86;
-  --color-base-60: #6c6c68;
-  --color-base-70: #4e4e4a;
-  --color-base-100: #2c2c2a;
+  --color-base-00: #ece6da;
+  --color-base-05: #e6dfd2;
+  --color-base-10: #ded7c9;
+  --color-base-20: #d2cabd;
+  --color-base-25: #c7beaf;
+  --color-base-30: #b9af9f;
+  --color-base-35: #a79d8d;
+  --color-base-40: #908676;
+  --color-base-50: #766d5f;
+  --color-base-60: #5e564b;
+  --color-base-70: #484137;
+  --color-base-100: #2f2a24;
 
-  --color-accent: #333344;
-  --color-accent-1: #444458;
-  --color-accent-2: #555570;
-  --text-on-accent: #f4f4f0;
-  --scrollbar-thumb: rgba(0, 0, 0, 0.26);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
+  --color-accent: #4f473d;
+  --color-accent-1: #5d5448;
+  --color-accent-2: #6a6053;
+  --text-on-accent: #f1ecdf;
+  --scrollbar-thumb: rgba(44, 38, 31, 0.28);
+  --scrollbar-thumb-hover: rgba(44, 38, 31, 0.42);
 
-  --bg-hover: rgba(0, 0, 0, 0.05);
-  --bg-active: rgba(0, 0, 0, 0.08);
-  --bg-glass: rgba(244, 244, 240, 0.9);
+  --bg-hover: rgba(60, 52, 43, 0.06);
+  --bg-active: rgba(60, 52, 43, 0.1);
+  --bg-glass: rgba(236, 230, 218, 0.9);
 
   --text-link: var(--text-primary);
 
-  --bg-input: var(--color-base-00);
+  --bg-input: var(--color-base-05);
 
-  --accent-glow: rgba(0, 0, 0, 0.04);
+  --accent-glow: rgba(44, 38, 31, 0.03);
 
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-medium: rgba(0, 0, 0, 0.1);
-  --border-strong: rgba(0, 0, 0, 0.15);
-  --divider-color: rgba(0, 0, 0, 0.06);
+  --border-subtle: rgba(44, 38, 31, 0.09);
+  --border-medium: rgba(44, 38, 31, 0.14);
+  --border-strong: rgba(44, 38, 31, 0.2);
+  --divider-color: rgba(44, 38, 31, 0.09);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
+  --shadow-sm: 0 1px 2px rgba(30, 26, 21, 0.08);
+  --shadow-md: 0 4px 12px rgba(30, 26, 21, 0.12);
+  --shadow-lg: 0 8px 32px rgba(30, 26, 21, 0.16);
 
-  --nav-item-background-selected: rgba(0, 0, 0, 0.06);
+  --nav-item-background-selected: rgba(44, 38, 31, 0.08);
 
   --editor-caret: #2f59d1;
   --editor-selection: rgba(68, 68, 68, 0.2);
@@ -259,10 +259,10 @@
   --editor-search-active: rgba(250, 170, 43, 0.35);
   --editor-search-active-border: rgba(214, 137, 20, 0.82);
 
-  --titlebar-background-focused: var(--color-base-05);
+  --titlebar-background-focused: var(--color-base-10);
 
-  --graph-edge-color: rgba(30, 80, 100, 0.5);
-  --graph-node-color: #059669;
+  --graph-edge-color: rgba(74, 86, 92, 0.45);
+  --graph-node-color: #4d7a6c;
 }
 
 /* ── Reset & Base Styles ───────────────────────────── */
@@ -2259,9 +2259,9 @@ blockquote:has(.callout) {
   width: 100%;
   height: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 28px;
+  padding: clamp(84px, 17vh, 170px) 28px clamp(170px, 27vh, 300px);
   position: relative;
   overflow: hidden;
 }
@@ -2271,9 +2271,9 @@ blockquote:has(.callout) {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(68% 72% at 50% 54%, color-mix(in srgb, var(--accent-primary) 5%, transparent), transparent 74%),
-    radial-gradient(52% 56% at 50% 56%, color-mix(in srgb, var(--bg-elevated) 10%, transparent), transparent 80%);
-  opacity: 0.18;
+    radial-gradient(64% 66% at 50% 36%, color-mix(in srgb, var(--bg-elevated) 9%, transparent), transparent 78%),
+    radial-gradient(120% 90% at 50% 60%, color-mix(in srgb, var(--bg-base) 8%, transparent), transparent 88%);
+  opacity: 0.16;
   pointer-events: none;
   transition: opacity 180ms ease-out;
 }
@@ -2282,15 +2282,13 @@ blockquote:has(.callout) {
   content: "";
   position: absolute;
   inset: -1px;
-  background:
-    radial-gradient(122% 84% at 50% 56%, transparent 56%, color-mix(in srgb, var(--bg-base) 15%, transparent) 100%),
-    repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-muted) 2%, transparent) 0 1px, transparent 1px 2px);
-  opacity: 0.05;
+  background: radial-gradient(130% 86% at 50% 58%, transparent 58%, color-mix(in srgb, var(--bg-base) 12%, transparent) 100%);
+  opacity: 0.04;
   pointer-events: none;
 }
 
 .ftux-zero-state.is-activated::before {
-  opacity: 0.22;
+  opacity: 0.2;
 }
 
 .ftux-first-thought-form {
@@ -2299,7 +2297,17 @@ blockquote:has(.callout) {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+}
+
+.ftux-orientation-line {
+  font-size: 14px;
+  line-height: 1.25;
+  color: var(--text-secondary);
+  opacity: 0.66;
+  padding-left: 10px;
+  margin-bottom: 1px;
+  letter-spacing: 0.01em;
 }
 
 .ftux-first-thought-form::before {
@@ -2307,21 +2315,21 @@ blockquote:has(.callout) {
   position: absolute;
   left: -6%;
   right: -6%;
-  top: -16px;
-  height: 220px;
-  background: radial-gradient(78% 70% at 50% 52%, color-mix(in srgb, var(--bg-elevated) 17%, transparent), transparent 82%);
-  opacity: 0.24;
+  top: -10px;
+  height: 200px;
+  background: radial-gradient(72% 64% at 50% 52%, color-mix(in srgb, var(--bg-elevated) 14%, transparent), transparent 84%);
+  opacity: 0.2;
   z-index: -1;
   pointer-events: none;
 }
 
 .ftux-first-thought-shell {
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--border-medium) 46%, transparent);
-  background: color-mix(in srgb, var(--bg-elevated) 98%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-medium) 36%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 99%, transparent);
   border-radius: 22px;
   padding: 21px 23px;
-  box-shadow: 0 28px 72px color-mix(in srgb, var(--bg-base) 14%, transparent);
+  box-shadow: 0 20px 50px color-mix(in srgb, var(--bg-base) 10%, transparent);
   position: relative;
   transition:
     border-color 200ms ease-out,
@@ -2330,7 +2338,7 @@ blockquote:has(.callout) {
 }
 
 .ftux-first-thought-shell.is-focused {
-  border-color: color-mix(in srgb, var(--accent-primary) 16%, var(--border-medium));
+  border-color: color-mix(in srgb, var(--accent-primary) 12%, var(--border-medium));
 }
 
 .ftux-first-thought-shell.is-typed {
@@ -2384,7 +2392,7 @@ blockquote:has(.callout) {
 }
 
 .ftux-dynamic-prompt.is-visible {
-  opacity: 0.68;
+  opacity: 0.66;
 }
 
 .ftux-dynamic-prompt.is-hidden {
@@ -2422,11 +2430,11 @@ blockquote:has(.callout) {
   padding: 0 12px 0;
   opacity: 0;
   filter: blur(0.5px);
-  transition: opacity 200ms ease-out;
+  transition: opacity 180ms ease-out;
 }
 
 .ftux-ghost-examples.is-visible {
-  opacity: 0.26;
+  opacity: 0.18;
 }
 
 .ftux-ghost-examples.is-hidden {
@@ -2450,7 +2458,7 @@ blockquote:has(.callout) {
 }
 
 .ftux-intelligence-hint.is-visible {
-  opacity: 0.18;
+  opacity: 0.14;
 }
 
 .ftux-intelligence-hint.is-hidden {
@@ -2458,14 +2466,159 @@ blockquote:has(.callout) {
   transition-delay: 24ms;
 }
 
+.ftux-inline-expand-hint {
+  margin: 4px 10px 2px;
+  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+}
+
+.ftux-inline-expand-title {
+  font-size: 12px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-secondary) 82%, transparent);
+}
+
+.ftux-inline-expand-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ftux-inline-expand-list li {
+  font-size: 12px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-muted) 84%, transparent);
+}
+
+.ftux-inline-expand-actions {
+  margin-top: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ftux-inline-expand-btn {
+  border: 1px solid color-mix(in srgb, var(--border-medium) 58%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 140ms ease-out,
+    border-color 140ms ease-out,
+    color 140ms ease-out;
+}
+
+.ftux-inline-expand-btn:hover {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  color: var(--text-primary);
+}
+
+.ftux-inline-expand-btn-primary {
+  border-color: color-mix(in srgb, var(--accent-primary) 32%, var(--border-medium));
+  background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--text-primary) 92%, transparent);
+}
+
+.ftux-inline-expand-btn-primary:hover {
+  border-color: color-mix(in srgb, var(--accent-primary) 44%, var(--border-medium));
+  background: color-mix(in srgb, var(--accent-primary) 18%, var(--bg-elevated));
+}
+
+.ftux-inline-expand-hint-fade-in {
+  animation: ftux-inline-expand-hint-fade-in 180ms ease-out;
+}
+
+[data-theme="light"] .ftux-zero-state::before {
+  background:
+    radial-gradient(64% 66% at 50% 36%, color-mix(in srgb, var(--bg-tertiary) 26%, transparent), transparent 80%),
+    radial-gradient(120% 90% at 50% 62%, color-mix(in srgb, #e6e1d5 14%, transparent), transparent 90%);
+  opacity: 0.18;
+}
+
+[data-theme="light"] .ftux-zero-state::after {
+  opacity: 0.045;
+}
+
+[data-theme="light"] .ftux-zero-state {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-primary) 88%, #e7e2d7 12%) 0%,
+    color-mix(in srgb, var(--bg-primary) 92%, #e8e4da 8%) 100%
+  );
+}
+
+[data-theme="light"] .ftux-first-thought-form::before {
+  background: radial-gradient(72% 64% at 50% 52%, color-mix(in srgb, var(--bg-tertiary) 22%, transparent), transparent 84%);
+  opacity: 0.16;
+}
+
+[data-theme="light"] .ftux-first-thought-shell {
+  border-color: color-mix(in srgb, var(--border-medium) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-tertiary) 84%, var(--bg-primary) 16%);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .ftux-first-thought-shell.is-focused {
+  border-color: color-mix(in srgb, var(--accent-primary) 8%, var(--border-medium));
+}
+
+[data-theme="light"] .ftux-first-thought-shell.is-typed {
+  background: color-mix(in srgb, var(--bg-tertiary) 82%, var(--bg-primary) 18%);
+}
+
+[data-theme="light"] .ftux-dynamic-prompt {
+  color: color-mix(in srgb, var(--text-secondary) 86%, #9a8f7c 14%);
+}
+
+[data-theme="light"] .ftux-ghost-examples {
+  filter: blur(0.25px);
+}
+
+[data-theme="light"] .ftux-ghost-examples.is-visible {
+  opacity: 0.3;
+}
+
+[data-theme="light"] .ftux-ghost-example {
+  color: color-mix(in srgb, var(--text-secondary) 78%, var(--text-muted));
+}
+
+[data-theme="light"] .ftux-inline-expand-list li {
+  color: color-mix(in srgb, var(--text-secondary) 80%, var(--text-muted));
+}
+
+[data-theme="light"] .ftux-inline-expand-btn {
+  background: color-mix(in srgb, var(--bg-tertiary) 65%, var(--bg-primary) 35%);
+  border-color: color-mix(in srgb, var(--border-medium) 72%, transparent);
+}
+
+[data-theme="light"] .ftux-inline-expand-btn:hover {
+  background: color-mix(in srgb, var(--bg-hover) 76%, var(--bg-primary) 24%);
+}
+
+[data-theme="light"] .ftux-inline-expand-btn-primary {
+  background: color-mix(in srgb, var(--accent-primary) 15%, var(--bg-tertiary));
+  border-color: color-mix(in srgb, var(--accent-primary) 28%, var(--border-medium));
+}
+
 @media (max-width: 720px) {
   .ftux-zero-state {
-    padding: 20px;
+    padding: 68px 20px 118px;
   }
 
   .ftux-first-thought-form {
     width: 100%;
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .ftux-orientation-line {
+    font-size: 13px;
+    padding-left: 8px;
   }
 
   .ftux-first-thought-shell {
@@ -2488,6 +2641,20 @@ blockquote:has(.callout) {
 
   .ftux-ghost-example {
     font-size: 12px;
+  }
+
+  .ftux-inline-expand-hint {
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+
+  .ftux-inline-expand-list {
+    padding-left: 16px;
+  }
+
+  .ftux-inline-expand-btn {
+    font-size: 10.5px;
+    padding: 4px 9px;
   }
 }
 
@@ -2622,6 +2789,17 @@ blockquote:has(.callout) {
   to {
     opacity: 1;
     transform: translate(-50%, 0);
+  }
+}
+
+@keyframes ftux-inline-expand-hint-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

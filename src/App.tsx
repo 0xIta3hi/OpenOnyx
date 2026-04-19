@@ -98,8 +98,710 @@ const FIRST_THOUGHT_GHOST_EXAMPLES = [
   "Learning feels scattered lately",
 ];
 
+type FirstThoughtExpandableIntent =
+  | "goal"
+  | "problem"
+  | "idea"
+  | "confusion"
+  | "reflection";
+
+type FirstThoughtNonExpandableIntent =
+  | "identity"
+  | "factual"
+  | "greeting"
+  | "too_short"
+  | "unknown";
+
+type FirstThoughtIntentClassification =
+  | {
+      kind: "expandable";
+      intent: FirstThoughtExpandableIntent;
+      semantic: FirstThoughtSemanticIntent;
+    }
+  | {
+      kind: "non_expandable";
+      intent: FirstThoughtNonExpandableIntent;
+    };
+
+type FirstThoughtIntentType =
+  | "learn"
+  | "build"
+  | "social"
+  | "reflect"
+  | "plan"
+  | "problem";
+
+type FirstThoughtContext = {
+  knownSkills: string[];
+  constraints: string[];
+  timeframe: string | null;
+  audience: string | null;
+};
+
+type FirstThoughtSemanticIntent = {
+  intentType: FirstThoughtIntentType;
+  topic: string | null;
+  context: FirstThoughtContext;
+  clarityScore: number;
+  signals: {
+    hasVagueSignal: boolean;
+    hasSpecificTopicSignal: boolean;
+  };
+};
+
+type FirstThoughtExpansionPlan = {
+  intent: FirstThoughtExpandableIntent;
+  bullets: [string, string, string];
+  sections: [string, string, string];
+};
+
+const FIRST_THOUGHT_EXPANSION_IDLE_MS = 700;
+const FIRST_THOUGHT_MIN_MEANINGFUL_WORDS = 4;
+
+const FIRST_THOUGHT_MEANINGLESS_TOKENS = new Set([
+  "a",
+  "an",
+  "the",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "for",
+  "and",
+  "or",
+  "but",
+  "is",
+  "am",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "this",
+  "that",
+  "it",
+  "as",
+  "with",
+  "by",
+]);
+
 const randomInt = (min: number, max: number): number =>
   Math.floor(Math.random() * (max - min + 1)) + min;
+
+function normalizeFirstThoughtDraft(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function getMeaningfulWordCount(value: string): number {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9'\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(
+      (token) => token.length > 0 && !FIRST_THOUGHT_MEANINGLESS_TOKENS.has(token),
+    ).length;
+}
+
+const FIRST_THOUGHT_VAGUE_TOKENS = new Set([
+  "something",
+  "anything",
+  "stuff",
+  "things",
+  "idk",
+  "maybe",
+  "whatever",
+]);
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function extractKnownSkills(source: string): string[] {
+  const skills: string[] = [];
+  const candidates: Array<[RegExp, string]> = [
+    [/\bpython\b/, "Python"],
+    [/\bjavascript\b/, "JavaScript"],
+    [/\btypescript\b/, "TypeScript"],
+    [/\breact\b/, "React"],
+    [/\bnode(?:\.js)?\b/, "Node.js"],
+    [/\bsql\b/, "SQL"],
+  ];
+
+  candidates.forEach(([pattern, label]) => {
+    if (pattern.test(source)) skills.push(label);
+  });
+
+  return Array.from(new Set(skills));
+}
+
+function extractAudience(source: string): string | null {
+  const match = source.match(
+    /\bfor\s+(students|developers|beginners|founders|creators|teams|freelancers)\b/,
+  );
+  return match ? match[1] : null;
+}
+
+function extractTimeframe(source: string): string | null {
+  if (/\btoday\b/.test(source)) return "today";
+  if (/\bthis\s+week\b/.test(source)) return "this week";
+  if (/\bthis\s+month\b/.test(source)) return "this month";
+  const match = source.match(/\bin\s+\d+\s+(day|days|week|weeks|month|months)\b/);
+  return match ? match[0].replace(/^in\s+/, "in ") : null;
+}
+
+function extractConstraints(source: string): string[] {
+  const constraints: string[] = [];
+  if (/\b(no\s+time|limited\s+time|busy|full\s*time\s*job)\b/.test(source)) {
+    constraints.push("limited time");
+  }
+  if (/\b(low\s+budget|no\s+budget|cheap)\b/.test(source)) {
+    constraints.push("low budget");
+  }
+  return constraints;
+}
+
+function inferTopic(source: string): string | null {
+  if (/\b(swim|swimming|swimmer|pool|freestyle|backstroke)\b/.test(source)) {
+    return "swimming";
+  }
+  if (/\b(machine\s+learning|deep\s+learning|nlp|computer\s+vision)\b/.test(source)) {
+    return "machine learning";
+  }
+  if (/\bai|artificial\s+intelligence|llm\b/.test(source)) {
+    return "AI";
+  }
+  if (/\bsaas|startup\b/.test(source)) {
+    return "SaaS";
+  }
+  if (/\b(business|venture|company)\b/.test(source)) {
+    return "business";
+  }
+  if (/\b(propose|ask\s+out|date|dating|relationship|crush|girl|boy|partner)\b/.test(source)) {
+    return "relationship";
+  }
+  if (/\bfitness|workout|exercise|health\b/.test(source)) {
+    return "fitness";
+  }
+  if (/\bfocus|concentration|distract\w*\b/.test(source)) {
+    return "focus";
+  }
+  if (/\blearning|study\w*|exam\b/.test(source)) {
+    return "learning";
+  }
+  if (/\bproductivity|procrastinat\w*\b/.test(source)) {
+    return "productivity";
+  }
+  if (/\bpython|javascript|typescript|react|node\b/.test(source)) {
+    return "programming";
+  }
+  return null;
+}
+
+function inferFirstThoughtSemanticIntent(
+  rawText: string,
+  intentType: FirstThoughtIntentType,
+): FirstThoughtSemanticIntent {
+  const source = normalizeFirstThoughtDraft(rawText);
+  const topic = inferTopic(source);
+  const context: FirstThoughtContext = {
+    knownSkills: extractKnownSkills(source),
+    constraints: extractConstraints(source),
+    timeframe: extractTimeframe(source),
+    audience: extractAudience(source),
+  };
+
+  const meaningfulWords = getMeaningfulWordCount(source);
+  const hasVagueSignal = Array.from(FIRST_THOUGHT_VAGUE_TOKENS).some((token) =>
+    new RegExp(`\\b${token}\\b`).test(source),
+  );
+  const hasExplicitDifficultySignal = /\b(stuck|struggle|can'?t|cannot|overwhelmed|confused|blocked)\b/.test(source);
+  const hasSpecificTopicSignal =
+    topic !== null && !["learning", "programming", "productivity"].includes(topic);
+  const hasIntentVerbSignal =
+    /(learn|study|build|create|launch|plan|improve|fix|solve|propose|ask\s+out|reflect|think|feel)/.test(
+      source,
+    );
+
+  let clarityScore = 0.24;
+  if (hasIntentVerbSignal) clarityScore += 0.16;
+  if (topic) clarityScore += 0.25;
+  if (hasSpecificTopicSignal) clarityScore += 0.12;
+  if (hasExplicitDifficultySignal) clarityScore += 0.15;
+  if (meaningfulWords >= 6) clarityScore += 0.15;
+  if (meaningfulWords >= 9) clarityScore += 0.1;
+  if (context.knownSkills.length > 0) clarityScore += 0.12;
+  if (context.audience) clarityScore += 0.1;
+  if (context.timeframe) clarityScore += 0.08;
+  if (context.constraints.length > 0) clarityScore += 0.08;
+  if (hasVagueSignal) clarityScore -= 0.22;
+  if (!topic) clarityScore -= 0.1;
+
+  if (hasIntentVerbSignal && hasVagueSignal && !topic && meaningfulWords >= 4) {
+    clarityScore = Math.max(0.35, clarityScore);
+  }
+
+  return {
+    intentType,
+    topic,
+    context,
+    clarityScore: clampScore(clarityScore),
+    signals: {
+      hasVagueSignal,
+      hasSpecificTopicSignal,
+    },
+  };
+}
+
+function extractExpansionAnchors(semantic: FirstThoughtSemanticIntent): string[] {
+  const anchors = new Set<string>();
+
+  const intentCueMap: Record<FirstThoughtIntentType, string[]> = {
+    learn: ["learn", "learning", "study", "project", "skill", "explore", "goal"],
+    build: ["build", "product", "launch", "prototype", "users", "problem"],
+    social: ["approach", "interaction", "conversation", "relationship"],
+    reflect: ["feeling", "pattern", "clarity", "support"],
+    plan: ["plan", "priority", "action", "goal", "routine", "progress"],
+    problem: ["problem", "stuck", "unblock", "test", "difficult", "challenge"],
+  };
+
+  if (semantic.topic) {
+    semantic.topic
+      .toLowerCase()
+      .split(/\s+/)
+      .forEach((token) => {
+        if (token.length >= 3) anchors.add(token);
+      });
+  }
+
+  semantic.context.knownSkills.forEach((skill) => anchors.add(skill.toLowerCase()));
+  semantic.context.constraints.forEach((constraint) => {
+    constraint
+      .toLowerCase()
+      .split(/\s+/)
+      .forEach((token) => {
+        if (token.length >= 3) anchors.add(token);
+      });
+  });
+
+  if (semantic.context.audience) anchors.add(semantic.context.audience.toLowerCase());
+  if (semantic.context.timeframe) {
+    semantic.context.timeframe
+      .toLowerCase()
+      .split(/\s+/)
+      .forEach((token) => {
+        if (token.length >= 3) anchors.add(token);
+      });
+  }
+
+  intentCueMap[semantic.intentType].forEach((cue) => anchors.add(cue));
+
+  return Array.from(anchors);
+}
+
+function isExpansionPlanRelevant(
+  semantic: FirstThoughtSemanticIntent,
+  plan: FirstThoughtExpansionPlan,
+): boolean {
+  const prompts = plan.bullets.map((line) => line.toLowerCase());
+  const bannedGeneric = [
+    /why\s+is\s+this\s+important/,
+    /what\s+next\s+step\s+can\s+you\s+take/,
+    /what\s+result\s+are\s+you\s+hoping\s+for/,
+    /why\s+does\s+this\s+matter\s+to\s+you/,
+  ];
+
+  if (prompts.some((line) => bannedGeneric.some((pattern) => pattern.test(line)))) {
+    return false;
+  }
+
+  if (!semantic.topic) return false;
+
+  const anchors = extractExpansionAnchors(semantic);
+  if (anchors.length === 0) return false;
+
+  const anchoredPromptCount = prompts.filter((line) =>
+    anchors.some((anchor) => line.includes(anchor)),
+  ).length;
+
+  const minAnchoredPrompts = semantic.clarityScore >= 0.6 ? 2 : 1;
+  return anchoredPromptCount >= minAnchoredPrompts;
+}
+
+function classifyFirstThoughtIntent(
+  value: string,
+): FirstThoughtIntentClassification {
+  const normalized = normalizeFirstThoughtDraft(value);
+
+  if (!normalized) {
+    return { kind: "non_expandable", intent: "too_short" };
+  }
+
+  // Already expanded content should not trigger suggestions again.
+  if (/\n\s*##\s+/.test(value)) {
+    return { kind: "non_expandable", intent: "unknown" };
+  }
+
+  if (/^(hi|hello|hey|yo|good\s+(morning|afternoon|evening))\b/.test(normalized)) {
+    return { kind: "non_expandable", intent: "greeting" };
+  }
+
+  if (/^my\s+name\s+is\b/.test(normalized)) {
+    return { kind: "non_expandable", intent: "identity" };
+  }
+
+  if (/^(?:i\s+am|i'?m)\s+(?!feeling\b|thinking\b|struggling\b|confused\b|stuck\b|overwhelmed\b).+/.test(normalized)) {
+    return { kind: "non_expandable", intent: "identity" };
+  }
+
+  if (/^(today\s+is|this\s+is|it\s+is|there\s+is|there\s+are)\b/.test(normalized)) {
+    return { kind: "non_expandable", intent: "factual" };
+  }
+
+  if (/^i\s+(?:use|know|have|work\s+with)\s+[a-z0-9+#\s]+$/.test(normalized)) {
+    return { kind: "non_expandable", intent: "factual" };
+  }
+
+  if (/^(?:idk|i\s+don'?t\s+know|maybe|something|anything|whatever)$/.test(normalized)) {
+    return { kind: "non_expandable", intent: "unknown" };
+  }
+
+  const hasSocialIntent = /\b(propose|ask\s+out|date|dating|relationship|crush|girl|boy|partner)\b/.test(
+    normalized,
+  );
+
+  let match = normalized.match(
+    /^(?:i\s+want\s+to|i\s+need\s+to)\s+(.+)$/,
+  );
+  if (match) {
+    const semanticIntentType: FirstThoughtIntentType = hasSocialIntent
+      ? "social"
+      : /(learn|study|master|practice)\b/.test(normalized)
+        ? "learn"
+        : /(build|create|launch|ship|prototype)\b/.test(normalized)
+          ? "build"
+          : "plan";
+    return {
+      kind: "expandable",
+      intent: "goal",
+      semantic: inferFirstThoughtSemanticIntent(normalized, semanticIntentType),
+    };
+  }
+
+  match = normalized.match(/^(?:i\s+plan\s+to|i\s+aim\s+to|i\s+am\s+going\s+to)\s+(.+)$/);
+  if (match) {
+    const semanticIntentType: FirstThoughtIntentType = hasSocialIntent
+      ? "social"
+      : "plan";
+    return {
+      kind: "expandable",
+      intent: "goal",
+      semantic: inferFirstThoughtSemanticIntent(normalized, semanticIntentType),
+    };
+  }
+
+  match = normalized.match(
+    /^(?:i\s+can'?t|i\s+cannot|i\s+struggle\s+with|i\s+struggle\s+to|i\s+am\s+stuck\s+with)\s+(.+)$/,
+  );
+  if (match) {
+    return {
+      kind: "expandable",
+      intent: "problem",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "problem"),
+    };
+  }
+
+  if (/\b(stuck|blocked|overwhelmed|confused)\b/.test(normalized)) {
+    return {
+      kind: "expandable",
+      intent: "problem",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "problem"),
+    };
+  }
+
+  if (/^what\s+if\b/.test(normalized) || /\b(build|create|launch|ship|prototype)\b/.test(normalized)) {
+    return {
+      kind: "expandable",
+      intent: "idea",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "build"),
+    };
+  }
+
+  if (hasSocialIntent) {
+    return {
+      kind: "expandable",
+      intent: "goal",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "social"),
+    };
+  }
+
+  match = normalized.match(
+    /^(?:why|how\s+do\s+i|how\s+can\s+i|what\s+am\s+i\s+missing)\b(?:\s+(.+))?$/,
+  );
+  if (match) {
+    return {
+      kind: "expandable",
+      intent: "confusion",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "problem"),
+    };
+  }
+
+  match = normalized.match(/^(?:i\s+feel|i\s+think)\s+(.+)$/);
+  if (match) {
+    const semanticIntentType: FirstThoughtIntentType = /\bstuck\b/.test(normalized)
+      ? "problem"
+      : "reflect";
+    return {
+      kind: "expandable",
+      intent: "reflection",
+      semantic: inferFirstThoughtSemanticIntent(normalized, semanticIntentType),
+    };
+  }
+
+  match = normalized.match(/^(?:i\s+love|i\s+like|i\s+enjoy)\s+(.+)$/);
+  if (match) {
+    return {
+      kind: "expandable",
+      intent: "reflection",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "reflect"),
+    };
+  }
+
+  if (/\b(confused|unclear|lost|dont\s+understand|don't\s+understand)\b/.test(normalized)) {
+    return {
+      kind: "expandable",
+      intent: "confusion",
+      semantic: inferFirstThoughtSemanticIntent(normalized, "problem"),
+    };
+  }
+
+  if (getMeaningfulWordCount(normalized) < FIRST_THOUGHT_MIN_MEANINGFUL_WORDS) {
+    return { kind: "non_expandable", intent: "too_short" };
+  }
+
+  return { kind: "non_expandable", intent: "unknown" };
+}
+
+function getFirstThoughtExpansionPlan(value: string): FirstThoughtExpansionPlan | null {
+  const classification = classifyFirstThoughtIntent(value);
+  if (classification.kind !== "expandable") return null;
+
+  const semantic = classification.semantic;
+  if (semantic.clarityScore < 0.3) return null;
+  if (!semantic.topic) return null;
+
+  const normalized = normalizeFirstThoughtDraft(value);
+
+  let plan: FirstThoughtExpansionPlan | null = null;
+
+  if (semantic.intentType === "learn") {
+    if (semantic.topic === "machine learning" && semantic.context.knownSkills.includes("Python")) {
+      plan = {
+        intent: "goal",
+        bullets: [
+          "Which area of machine learning interests you (for example NLP, deep learning, or vision)?",
+          "What level are you aiming for (fundamentals, projects, or job-ready)?",
+          "What is the first project you could build using Python?",
+        ],
+        sections: ["Learning Goal", "Focus Area", "First Project"],
+      };
+    } else if (semantic.topic === "machine learning") {
+      plan = {
+        intent: "goal",
+        bullets: [
+          "Which area of machine learning do you want to start with first?",
+          "Are you aiming for fundamentals, projects, or interview readiness?",
+          "What is one machine learning project you can finish this month?",
+        ],
+        sections: ["Learning Goal", "Focus Area", "First Project"],
+      };
+    } else if (semantic.topic === "AI") {
+      plan = {
+        intent: "goal",
+        bullets: [
+          "Which area of AI are you most interested in right now?",
+          "Do you want to focus on concepts, tools, or AI applications?",
+          "What is the first small AI project you can start this week?",
+        ],
+        sections: ["Learning Goal", "AI Direction", "First Project"],
+      };
+    } else if (semantic.topic === "swimming") {
+      plan = {
+        intent: "goal",
+        bullets: [
+          "What do you enjoy most about swimming (relaxation, fitness, or challenge)?",
+          "How often do you swim now, or want to swim?",
+          "Do you want to improve your swimming skills or enjoy it more consistently?",
+        ],
+        sections: ["Why I Like Swimming", "My Routine", "Improvement / Goals"],
+      };
+    }
+  } else if (semantic.intentType === "build") {
+    if (/\b(note\s*taking|notes?)\b/.test(normalized) && /\b(casual|too\s+casual|unstructured)\b/.test(normalized)) {
+      plan = {
+        intent: "idea",
+        bullets: [
+          "Who exactly are these users (students, creators, or professionals)?",
+          "What problem does note-taking being too casual create for them?",
+          "What would a more structured note-taking system look like?",
+        ],
+        sections: ["Target Users", "Problem", "Solution Idea"],
+      };
+    } else if (semantic.topic === "SaaS" && semantic.context.audience === "students") {
+      plan = {
+        intent: "idea",
+        bullets: [
+          "Who exactly are you building for (school students, college students, or a niche group)?",
+          "What specific problem are those students facing right now?",
+          "What is the simplest student-facing version you could launch first?",
+        ],
+        sections: ["Product Direction", "Student Problem", "Simplest Launch"],
+      };
+    } else if (semantic.topic === "SaaS") {
+      plan = {
+        intent: "idea",
+        bullets: [
+          "What recurring pain should this SaaS solve first?",
+          "Which SaaS user segment feels that pain most urgently?",
+          "What is the leanest SaaS version you can launch first?",
+        ],
+        sections: ["Product Direction", "Target User", "Simplest Launch"],
+      };
+    } else if (semantic.topic === "business") {
+      plan = {
+        intent: "idea",
+        bullets: [
+          "Who are you building this business for?",
+          "What problem is this business solving for them?",
+          "What is the simplest version of the business you can start with?",
+        ],
+        sections: ["Target Users", "Problem", "Solution Idea"],
+      };
+    } else if (semantic.topic) {
+      plan = {
+        intent: "idea",
+        bullets: [
+          `What problem should this ${semantic.topic} product solve first?`,
+          `Who is the first user group for this ${semantic.topic} idea?`,
+          "What can you build as a minimal first version?",
+        ],
+        sections: ["Build Goal", "Target User", "First Version"],
+      };
+    }
+  } else if (semantic.intentType === "social") {
+    if (semantic.topic === "relationship") {
+      plan = {
+        intent: "goal",
+        bullets: [
+          "How do you want to approach her (direct, casual, or through context)?",
+          "What outcome are you hoping for from this interaction?",
+          "What is a safe first interaction you can make?",
+        ],
+        sections: ["Approach", "Intent", "First Move"],
+      };
+    }
+  } else if (semantic.intentType === "problem") {
+    if (semantic.topic === "learning") {
+      plan = {
+        intent: "problem",
+        bullets: [
+          "What part of learning feels stuck (understanding, consistency, or direction)?",
+          "What have you already tried to unblock it?",
+          "What would progress in learning look like this week?",
+        ],
+        sections: ["Where Learning Feels Stuck", "What I Have Tried", "Progress This Week"],
+      };
+    } else if (semantic.topic === "focus") {
+      plan = {
+        intent: "problem",
+        bullets: [
+          "What usually breaks your focus first?",
+          "When do focus drops happen most often?",
+          "What one change can you test in your next session?",
+        ],
+        sections: ["Focus Trigger", "When It Happens", "Next Focus Experiment"],
+      };
+    } else if (semantic.topic) {
+      plan = {
+        intent: "problem",
+        bullets: [
+          `What is the hardest part of this ${semantic.topic} problem right now?`,
+          `What conditions make this ${semantic.topic} issue worse?`,
+          "What is one targeted test you can run next?",
+        ],
+        sections: ["Problem Snapshot", "When It Gets Worse", "Next Test"],
+      };
+    }
+  } else if (semantic.intentType === "reflect") {
+    if (semantic.topic === "learning") {
+      plan = {
+        intent: "reflection",
+        bullets: [
+          "What part of your learning journey feels heavy right now?",
+          "What recent moment triggered that feeling most?",
+          "What would help you feel clearer in learning this week?",
+        ],
+        sections: ["Current Feeling", "Trigger Moment", "Support This Week"],
+      };
+    } else if (semantic.topic) {
+      plan = {
+        intent: "reflection",
+        bullets: [
+          `How are you feeling about ${semantic.topic} at this moment?`,
+          `What recent event shaped your thinking about ${semantic.topic}?`,
+          "What would help you feel clearer this week?",
+        ],
+        sections: ["Current Feeling", "Recent Trigger", "Clarity This Week"],
+      };
+    }
+  } else if (semantic.intentType === "plan") {
+    if (semantic.topic && semantic.context.timeframe) {
+      plan = {
+        intent: "goal",
+        bullets: [
+          `What concrete result do you want in ${semantic.context.timeframe}?`,
+          `What part of ${semantic.topic} should be prioritized first?`,
+          "What is the first action you can complete today?",
+        ],
+        sections: ["Plan Outcome", "Priority", "First Action"],
+      };
+    } else if (semantic.topic) {
+      plan = {
+        intent: "goal",
+        bullets: [
+          `What concrete result are you aiming for in ${semantic.topic}?`,
+          `What milestone will show your ${semantic.topic} plan is on track?`,
+          "What is the first action you can complete today?",
+        ],
+        sections: ["Plan Outcome", "Milestone", "First Action"],
+      };
+    }
+  }
+
+  if (!plan) return null;
+
+  return isExpansionPlanRelevant(semantic, plan) ? plan : null;
+}
+
+function expandFirstThoughtDraft(
+  value: string,
+  plan: FirstThoughtExpansionPlan,
+): { value: string; cursor: number } {
+  const trimmed = value.trim();
+  const sections = plan.sections.map((heading) => `## ${heading}\n- `).join("\n\n");
+  const expandedValue = `${trimmed}\n\n${sections}\n`;
+  const firstBulletIndex = expandedValue.indexOf("- ");
+
+  return {
+    value: expandedValue,
+    cursor:
+      firstBulletIndex >= 0
+        ? firstBulletIndex + 2
+        : expandedValue.length,
+  };
+}
 
 function extractConceptTokens(value: string, maxTokens = 8): string[] {
   return value
@@ -199,6 +901,10 @@ export default function App() {
   const [showFirstThoughtHintEntry, setShowFirstThoughtHintEntry] = useState(false);
   const [isFirstThoughtFocused, setIsFirstThoughtFocused] = useState(false);
   const [hasFirstThoughtKeystroke, setHasFirstThoughtKeystroke] = useState(false);
+  const [firstThoughtExpansionPlan, setFirstThoughtExpansionPlan] = useState<FirstThoughtExpansionPlan | null>(null);
+  const [showFirstThoughtExpansionHint, setShowFirstThoughtExpansionHint] = useState(false);
+  const [shownFirstThoughtExpansionDraftKey, setShownFirstThoughtExpansionDraftKey] = useState<string | null>(null);
+  const [dismissedFirstThoughtExpansionDraftKey, setDismissedFirstThoughtExpansionDraftKey] = useState<string | null>(null);
   const [ftuxInsightText, setFtuxInsightText] = useState<string | null>(null);
   const [ftuxSuggestionIdle, setFtuxSuggestionIdle] = useState(false);
   const [ftuxConnectionPulse, setFtuxConnectionPulse] = useState(false);
@@ -211,6 +917,7 @@ export default function App() {
   const firstThoughtEntryPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstThoughtEntryGhostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstThoughtEntryHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstThoughtExpansionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstThoughtAutoFocusSkipRef = useRef(false);
   const ftuxIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ftuxPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -446,6 +1153,9 @@ export default function App() {
       if (firstThoughtEntryHintTimerRef.current) {
         clearTimeout(firstThoughtEntryHintTimerRef.current);
       }
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+      }
       if (ftuxIdleTimerRef.current) {
         clearTimeout(ftuxIdleTimerRef.current);
       }
@@ -520,12 +1230,24 @@ export default function App() {
       setShowFirstThoughtPromptEntry(false);
       setShowFirstThoughtGhostEntry(false);
       setShowFirstThoughtHintEntry(false);
+      setFirstThoughtExpansionPlan(null);
+      setShowFirstThoughtExpansionHint(false);
+      setShownFirstThoughtExpansionDraftKey(null);
+      setDismissedFirstThoughtExpansionDraftKey(null);
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
       return;
     }
 
     setShowFirstThoughtPromptEntry(false);
     setShowFirstThoughtGhostEntry(false);
     setShowFirstThoughtHintEntry(false);
+    setFirstThoughtExpansionPlan(null);
+    setShowFirstThoughtExpansionHint(false);
+    setShownFirstThoughtExpansionDraftKey(null);
+    setDismissedFirstThoughtExpansionDraftKey(null);
 
     firstThoughtEntryPromptTimerRef.current = setTimeout(() => {
       setShowFirstThoughtPromptEntry(true);
@@ -550,6 +1272,10 @@ export default function App() {
         clearTimeout(firstThoughtEntryHintTimerRef.current);
         firstThoughtEntryHintTimerRef.current = null;
       }
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
     };
   }, [ftuxState.notesCount, vaultPath]);
 
@@ -560,6 +1286,96 @@ export default function App() {
     element.style.height = "auto";
     element.style.height = `${Math.max(96, element.scrollHeight)}px`;
   }, [firstThoughtDraft]);
+
+  useEffect(() => {
+    const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
+
+    if (!isZeroState) {
+      setFirstThoughtExpansionPlan(null);
+      setShowFirstThoughtExpansionHint(false);
+      setShownFirstThoughtExpansionDraftKey(null);
+      setDismissedFirstThoughtExpansionDraftKey(null);
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
+      return;
+    }
+
+    const trimmedDraft = firstThoughtDraft.trim();
+    const draftKey = normalizeFirstThoughtDraft(firstThoughtDraft);
+
+    if (!trimmedDraft) {
+      setFirstThoughtExpansionPlan(null);
+      setShowFirstThoughtExpansionHint(false);
+      setShownFirstThoughtExpansionDraftKey(null);
+      setDismissedFirstThoughtExpansionDraftKey(null);
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
+      return;
+    }
+
+    const immediatePlan = getFirstThoughtExpansionPlan(firstThoughtDraft);
+    if (!immediatePlan) {
+      setFirstThoughtExpansionPlan(null);
+      setShowFirstThoughtExpansionHint(false);
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (dismissedFirstThoughtExpansionDraftKey === draftKey) {
+      setShowFirstThoughtExpansionHint(false);
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (shownFirstThoughtExpansionDraftKey === draftKey) {
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (firstThoughtExpansionTimerRef.current) {
+      clearTimeout(firstThoughtExpansionTimerRef.current);
+    }
+
+    firstThoughtExpansionTimerRef.current = setTimeout(() => {
+      const plan = getFirstThoughtExpansionPlan(firstThoughtDraft);
+      if (plan && dismissedFirstThoughtExpansionDraftKey !== normalizeFirstThoughtDraft(firstThoughtDraft)) {
+        setFirstThoughtExpansionPlan(plan);
+        setShowFirstThoughtExpansionHint(true);
+        setShownFirstThoughtExpansionDraftKey(
+          normalizeFirstThoughtDraft(firstThoughtDraft),
+        );
+      } else {
+        setShowFirstThoughtExpansionHint(false);
+      }
+      firstThoughtExpansionTimerRef.current = null;
+    }, FIRST_THOUGHT_EXPANSION_IDLE_MS);
+
+    return () => {
+      if (firstThoughtExpansionTimerRef.current) {
+        clearTimeout(firstThoughtExpansionTimerRef.current);
+        firstThoughtExpansionTimerRef.current = null;
+      }
+    };
+  }, [
+    firstThoughtDraft,
+    shownFirstThoughtExpansionDraftKey,
+    dismissedFirstThoughtExpansionDraftKey,
+    ftuxState.notesCount,
+    vaultPath,
+  ]);
 
   // Helper: collect all .md paths from file tree
   const collectAllMdPaths = useCallback((entries: FileEntry[]): string[] => {
@@ -912,6 +1728,37 @@ export default function App() {
     );
   };
 
+  const handleExpandFirstThought = useCallback(() => {
+    if (!firstThoughtExpansionPlan) return;
+    if (!firstThoughtDraft.trim()) return;
+
+    const expandedDraft = expandFirstThoughtDraft(
+      firstThoughtDraft,
+      firstThoughtExpansionPlan,
+    );
+
+    setFirstThoughtDraft(expandedDraft.value);
+    setShowFirstThoughtExpansionHint(false);
+    setDismissedFirstThoughtExpansionDraftKey(
+      normalizeFirstThoughtDraft(expandedDraft.value),
+    );
+
+    window.requestAnimationFrame(() => {
+      const element = firstThoughtInputRef.current;
+      if (!element) return;
+      element.focus();
+      const cursor = Math.min(expandedDraft.cursor, expandedDraft.value.length);
+      element.setSelectionRange(cursor, cursor);
+    });
+  }, [firstThoughtDraft, firstThoughtExpansionPlan]);
+
+  const handleIgnoreFirstThoughtExpansion = useCallback(() => {
+    setShowFirstThoughtExpansionHint(false);
+    setDismissedFirstThoughtExpansionDraftKey(
+      normalizeFirstThoughtDraft(firstThoughtDraft),
+    );
+  }, [firstThoughtDraft]);
+
   const handleCreateFirstThought = useCallback(async () => {
     if (!vaultPath) return;
 
@@ -944,6 +1791,10 @@ export default function App() {
     await refreshFileTree();
     await openFile(candidatePath, "editor");
     setFirstThoughtDraft("");
+    setFirstThoughtExpansionPlan(null);
+    setShowFirstThoughtExpansionHint(false);
+    setShownFirstThoughtExpansionDraftKey(null);
+    setDismissedFirstThoughtExpansionDraftKey(null);
 
     const store = loadStore();
     void embedNote(store, candidatePath, content);
@@ -2311,6 +3162,8 @@ export default function App() {
                   void handleCreateFirstThought();
                 }}
               >
+                <div className="ftux-orientation-line">Start with a thought</div>
+
                 <div
                   className={`ftux-first-thought-shell ${isFirstThoughtFocused ? "is-focused" : ""} ${hasFirstThoughtKeystroke ? "is-typed" : ""}`}
                 >
@@ -2339,6 +3192,9 @@ export default function App() {
                     onChange={(event) => {
                       const next = event.target.value;
                       setFirstThoughtDraft(next);
+                      if (showFirstThoughtExpansionHint) {
+                        setShowFirstThoughtExpansionHint(false);
+                      }
                       if (!hasFirstThoughtKeystroke && next.length > 0) {
                         if (firstThoughtPromptIntervalRef.current) {
                           clearTimeout(firstThoughtPromptIntervalRef.current);
@@ -2389,6 +3245,35 @@ export default function App() {
                     autoFocus
                   />
                 </div>
+
+                {showFirstThoughtExpansionHint && firstThoughtExpansionPlan && (
+                  <div className="ftux-inline-expand-hint ftux-inline-expand-hint-fade-in">
+                    <div className="ftux-inline-expand-title">Expand this:</div>
+                    <ul className="ftux-inline-expand-list">
+                      {firstThoughtExpansionPlan.bullets.map((bullet, index) => (
+                        <li key={`${firstThoughtExpansionPlan.intent}-${index}`}>
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="ftux-inline-expand-actions">
+                      <button
+                        type="button"
+                        className="ftux-inline-expand-btn ftux-inline-expand-btn-primary"
+                        onClick={handleExpandFirstThought}
+                      >
+                        Expand
+                      </button>
+                      <button
+                        type="button"
+                        className="ftux-inline-expand-btn"
+                        onClick={handleIgnoreFirstThoughtExpansion}
+                      >
+                        Ignore
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className={`ftux-ghost-examples ${showFirstThoughtGhostEntry ? "is-visible" : ""} ${hasFirstThoughtKeystroke ? "is-hidden" : ""}`}>
                   {FIRST_THOUGHT_GHOST_EXAMPLES.map((example) => (
