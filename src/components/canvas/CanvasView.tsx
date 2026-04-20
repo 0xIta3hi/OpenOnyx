@@ -3111,6 +3111,20 @@ export function CanvasView({
           y: selectionBounds.y,
         }
       : null;
+  const groupMenuLiftPx = useMemo(() => {
+    if (!firstSel || firstSel.type !== "group") return 0;
+    const raw = (firstSel as CanvasGroupNode).label || "";
+    const lines = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const lineCount = Math.max(1, lines.length || 1);
+    const fontSize = 14 * groupLabelZoomMult;
+    const lineHeight = fontSize * 1.12;
+    const labelHeight = lineCount * lineHeight + 10 * groupLabelZoomMult + 2;
+    const labelGap = 6 * groupLabelZoomMult;
+    return (labelHeight + labelGap + 8) * renderVp.zoom;
+  }, [firstSel, groupLabelZoomMult, renderVp.zoom]);
 
   const firstSelEdge =
     selEdges.size === 1 ? edges.find((ed) => selEdges.has(ed.id)) || null : null;
@@ -3499,7 +3513,7 @@ export function CanvasView({
           className="cv-card-menu"
           style={{
             left: renderVp.x + menuAnchor.x * renderVp.zoom,
-            top: renderVp.y + menuAnchor.y * renderVp.zoom - 8,
+            top: renderVp.y + menuAnchor.y * renderVp.zoom - 8 - groupMenuLiftPx,
           }}
         >
           {firstSel && (
