@@ -1025,12 +1025,13 @@ export function CanvasView({
     (sx: number, sy: number) => {
       const r = areaRef.current?.getBoundingClientRect();
       if (!r) return { x: 0, y: 0 };
+      const currentVp = vpRef.current;
       return {
-        x: (sx - r.left - vp.x) / vp.zoom,
-        y: (sy - r.top - vp.y) / vp.zoom,
+        x: (sx - r.left - currentVp.x) / currentVp.zoom,
+        y: (sy - r.top - currentVp.y) / currentVp.zoom,
       };
     },
-    [vp],
+    [],
   );
 
   const snap = useCallback(
@@ -1727,8 +1728,9 @@ export function CanvasView({
           break;
         }
         case "node": {
-          const dx = (e.clientX - drag.startX) / vp.zoom;
-          const dy = (e.clientY - drag.startY) / vp.zoom;
+          const currentZoom = vpRef.current.zoom;
+          const dx = (e.clientX - drag.startX) / currentZoom;
+          const dy = (e.clientY - drag.startY) / currentZoom;
           const snap0 = nodesRef.current;
           const originById = drag.originById || {};
           let ax: number[] = [];
@@ -1754,9 +1756,12 @@ export function CanvasView({
             bestDy = ny - origMain.y;
 
             if (!e.shiftKey) {
-              const THRESHOLD = 8 / vp.zoom;
+              const THRESHOLD = 8 / currentZoom;
               let minXDist = THRESHOLD;
               let minYDist = THRESHOLD;
+              const draggedNode = snap0.find((n) => n.id === drag.nodeId);
+              const dw = draggedNode?.width || 0;
+              const dh = draggedNode?.height || 0;
 
               snap0.forEach((other) => {
                 if (drag.movingIds?.has(other.id)) return;
@@ -1809,9 +1814,6 @@ export function CanvasView({
                   );
                 };
 
-                const draggedNode = snap0.find((n) => n.id === drag.nodeId);
-                const dw = draggedNode?.width || 0;
-                const dh = draggedNode?.height || 0;
                 checkAlign(
                   [other.x, other.x + other.width / 2, other.x + other.width],
                   [nx, nx + dw / 2, nx + dw],
@@ -1918,10 +1920,11 @@ export function CanvasView({
           break;
         }
         case "resize": {
+          const currentZoom = vpRef.current.zoom;
           if (drag.selectionBounds && drag.selectionOriginById) {
             const base = drag.selectionBounds;
-            const dx = (e.clientX - drag.startX) / vp.zoom;
-            const dy = (e.clientY - drag.startY) / vp.zoom;
+            const dx = (e.clientX - drag.startX) / currentZoom;
+            const dy = (e.clientY - drag.startY) / currentZoom;
             const h = drag.resizeHandle || "se";
             let nx = base.x;
             let ny = base.y;
@@ -1968,8 +1971,8 @@ export function CanvasView({
             width: n.width,
             height: n.height,
           };
-          const dx = (e.clientX - drag.startX) / vp.zoom;
-          const dy = (e.clientY - drag.startY) / vp.zoom;
+          const dx = (e.clientX - drag.startX) / currentZoom;
+          const dy = (e.clientY - drag.startY) / currentZoom;
           const h = drag.resizeHandle || "se";
           let nx = base.x,
             ny = base.y,
@@ -2005,7 +2008,8 @@ export function CanvasView({
           if (!active) break;
           const point = s2c(e.clientX, e.clientY);
           const last = active.points[active.points.length - 1];
-          const minDist = MIN_SCRIBBLE_POINT_DIST / Math.max(vp.zoom, 0.25);
+          const minDist =
+            MIN_SCRIBBLE_POINT_DIST / Math.max(vpRef.current.zoom, 0.25);
           if (last && Math.hypot(point.x - last.x, point.y - last.y) < minDist)
             break;
           const nextStroke = { ...active, points: [...active.points, point] };
@@ -2033,7 +2037,7 @@ export function CanvasView({
             if (
               last &&
               Math.hypot(point.x - last.x, point.y - last.y) <
-                MIN_LASSO_POINT_DIST / Math.max(vp.zoom, 0.25)
+                MIN_LASSO_POINT_DIST / Math.max(vpRef.current.zoom, 0.25)
             ) {
               return prev;
             }
@@ -2047,8 +2051,10 @@ export function CanvasView({
           const origin = scribbleMoveOriginRef.current;
           const ids = selectedScribbleIdsRef.current;
           if (!Object.keys(origin).length || !ids.size) break;
-          const dx = (e.clientX - drag.startX) / Math.max(vp.zoom, 0.25);
-          const dy = (e.clientY - drag.startY) / Math.max(vp.zoom, 0.25);
+          const dx =
+            (e.clientX - drag.startX) / Math.max(vpRef.current.zoom, 0.25);
+          const dy =
+            (e.clientY - drag.startY) / Math.max(vpRef.current.zoom, 0.25);
           if (
             !scribbleMoveChangedRef.current &&
             (Math.abs(dx) > 0.02 || Math.abs(dy) > 0.02)
@@ -2126,7 +2132,8 @@ export function CanvasView({
                 : dy > 0
                   ? "bottom"
                   : "top";
-            const dup = edges.some(
+            const currentEdges = edgesRef.current;
+            const dup = currentEdges.some(
               (ed) =>
                 (ed.fromNode === drag.edgeFromNode && ed.toNode === n.id) ||
                 (ed.fromNode === n.id && ed.toNode === drag.edgeFromNode),
@@ -2140,7 +2147,7 @@ export function CanvasView({
                 toSide: toSide,
                 toEnd: "arrow",
               };
-              const newEdges = [...edges, ne];
+              const newEdges = [...currentEdges, ne];
               setEdges(newEdges);
               push(nodesRef.current, newEdges);
             }
@@ -2156,7 +2163,7 @@ export function CanvasView({
           const nextScribbles = [...scribblesRef.current, finalized];
           setScribbles(nextScribbles);
           scribblesRef.current = nextScribbles;
-          push(nodesRef.current, edges, nextScribbles);
+          push(nodesRef.current, edgesRef.current, nextScribbles);
         }
         setActiveScribble(null);
         activeScribbleRef.current = null;
@@ -2164,7 +2171,7 @@ export function CanvasView({
 
       if (drag.type === "erase") {
         if (eraseChangedRef.current) {
-          push(nodesRef.current, edges, scribblesRef.current);
+          push(nodesRef.current, edgesRef.current, scribblesRef.current);
         }
         eraseChangedRef.current = false;
       }
@@ -2187,7 +2194,7 @@ export function CanvasView({
 
       if (drag.type === "scribble-move") {
         if (scribbleMoveChangedRef.current) {
-          push(nodesRef.current, edges, scribblesRef.current);
+          push(nodesRef.current, edgesRef.current, scribblesRef.current);
         }
         scribbleMoveChangedRef.current = false;
       }
@@ -2200,7 +2207,7 @@ export function CanvasView({
       }
 
       if (drag.type === "node" || drag.type === "resize")
-        push(nodesRef.current, edges);
+        push(nodesRef.current, edgesRef.current);
       setDrag({ type: "none", startX: 0, startY: 0 });
       setAlignLines({ x: [], y: [] });
       setSelBox(null);
@@ -2211,7 +2218,7 @@ export function CanvasView({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [drag, vp, selNodes, edges, s2c, snap, push, startPanInertia]);
+  }, [drag, grid, s2c, push, startPanInertia]);
 
   /* ═══ WHEEL / ZOOM ═══ */
   useEffect(() => {
@@ -2423,6 +2430,70 @@ export function CanvasView({
     if (n?.type === "group") updateNode(editingId, { label: editText });
     setEditingId(null);
   }, [editingId, editText, nodes, updateNode]);
+
+  const onNodeDownRef = useRef(onNodeDown);
+  const onPortDownRef = useRef(onPortDown);
+  const onResizeDownRef = useRef(onResizeDown);
+  const startEditRef = useRef(startEdit);
+  const commitEditRef = useRef(commitEdit);
+
+  useEffect(() => {
+    onNodeDownRef.current = onNodeDown;
+  }, [onNodeDown]);
+
+  useEffect(() => {
+    onPortDownRef.current = onPortDown;
+  }, [onPortDown]);
+
+  useEffect(() => {
+    onResizeDownRef.current = onResizeDown;
+  }, [onResizeDown]);
+
+  useEffect(() => {
+    startEditRef.current = startEdit;
+  }, [startEdit]);
+
+  useEffect(() => {
+    commitEditRef.current = commitEdit;
+  }, [commitEdit]);
+
+  const handleNodeMouseDown = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      onNodeDownRef.current(e, id);
+    },
+    [],
+  );
+
+  const handleNodeDoubleClick = useCallback((id: string) => {
+    startEditRef.current(id);
+  }, []);
+
+  const handleNodePortDown = useCallback(
+    (id: string, side: EdgeSide, e: React.MouseEvent) => {
+      onPortDownRef.current(e, id, side);
+    },
+    [],
+  );
+
+  const handleNodeResizeDown = useCallback(
+    (id: string, handle: string, e: React.MouseEvent) => {
+      onResizeDownRef.current(e, id, handle);
+    },
+    [],
+  );
+
+  const handleNodeEditKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        setEditingId(null);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        commitEditRef.current();
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (editingId && editRef.current) {
@@ -2697,7 +2768,13 @@ export function CanvasView({
       className="cv"
       ref={wrapRef}
       data-dragging={drag.type !== "none"}
-      style={{ cursor, "--zoom-mult": uiZoomMult } as any}
+      style={
+        {
+          cursor,
+          "--zoom-mult": uiZoomMult,
+          "--group-label-zoom-mult": groupLabelZoomMult,
+        } as any
+      }
     >
       {/* ── Canvas area ── */}
       <div
@@ -2916,29 +2993,22 @@ export function CanvasView({
 
           {/* Nodes */}
           {visibleNodes.map((n) => (
-            <NodeCard
+            <MemoNodeCard
               key={n.id}
+              nodeId={n.id}
               node={n}
               selected={selNodes.has(n.id)}
               editing={editingId === n.id}
-              editText={editText}
-              zoomMult={uiZoomMult}
-              groupLabelZoomMult={groupLabelZoomMult}
+              editText={editingId === n.id ? editText : ""}
               enableMarkdownPreview={markdownPreviewNodeIds.has(n.id)}
               vaultPath={vaultPath}
-              onMouseDown={(e) => onNodeDown(e, n.id)}
-              onDoubleClick={() => startEdit(n.id)}
-              onPortDown={(side, e) => onPortDown(e, n.id, side)}
-              onResizeDown={(handle, e) => onResizeDown(e, n.id, handle)}
+              onMouseDown={handleNodeMouseDown}
+              onDoubleClick={handleNodeDoubleClick}
+              onPortDown={handleNodePortDown}
+              onResizeDown={handleNodeResizeDown}
               onEditChange={setEditText}
               onEditBlur={commitEdit}
-              onEditKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Escape") {
-                  setEditingId(null);
-                }
-                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") commitEdit();
-              }}
+              onEditKeyDown={handleNodeEditKeyDown}
             />
           ))}
         </div>
@@ -3977,30 +4047,28 @@ function EmbeddedFileNode({
 
 /* ── Node card ── */
 interface NodeCardProps {
+  nodeId: string;
   node: CanvasNode;
   selected: boolean;
   editing: boolean;
   editText: string;
-  zoomMult: number;
-  groupLabelZoomMult: number;
   vaultPath: string;
   enableMarkdownPreview: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
-  onDoubleClick: () => void;
-  onPortDown: (side: EdgeSide, e: React.MouseEvent) => void;
-  onResizeDown: (handle: string, e: React.MouseEvent) => void;
+  onMouseDown: (id: string, e: React.MouseEvent) => void;
+  onDoubleClick: (id: string) => void;
+  onPortDown: (id: string, side: EdgeSide, e: React.MouseEvent) => void;
+  onResizeDown: (id: string, handle: string, e: React.MouseEvent) => void;
   onEditChange: (v: string) => void;
   onEditBlur: () => void;
   onEditKeyDown: (e: React.KeyboardEvent) => void;
 }
 
 function NodeCard({
+  nodeId,
   node,
   selected,
   editing,
   editText,
-  zoomMult,
-  groupLabelZoomMult,
   vaultPath,
   enableMarkdownPreview,
   onMouseDown,
@@ -4042,8 +4110,8 @@ function NodeCard({
     <div
       className={`cv-node cv-node-${node.type}${selected ? " sel" : ""}${editing ? " editing" : ""}${node.locked ? " locked" : ""}`}
       style={style}
-      onMouseDown={onMouseDown}
-      onDoubleClick={onDoubleClick}
+      onMouseDown={(e) => onMouseDown(nodeId, e)}
+      onDoubleClick={() => onDoubleClick(nodeId)}
       data-id={node.id}
     >
       {/* Connection ports (only non-group) */}
@@ -4054,8 +4122,7 @@ function NodeCard({
           <div
             key={s}
             className={`cv-port cv-port-${s}`}
-            onMouseDown={(e) => onPortDown(s, e)}
-            style={{ "--zm": zoomMult } as any}
+            onMouseDown={(e) => onPortDown(nodeId, s, e)}
           />
         ))}
 
@@ -4066,8 +4133,7 @@ function NodeCard({
           <div
             key={h}
             className={`cv-resize cv-resize-${h}`}
-            onMouseDown={(e) => onResizeDown(h, e)}
-            style={{ "--zm": zoomMult } as any}
+            onMouseDown={(e) => onResizeDown(nodeId, h, e)}
           />
         ))}
 
@@ -4086,13 +4152,9 @@ function NodeCard({
               onEditKeyDown(e);
               if (e.key === "Enter") onEditBlur();
             }}
-            style={{ "--zm": zoomMult, "--glm": groupLabelZoomMult } as any}
           />
         ) : (
-          <div
-            className="cv-group-label"
-            style={{ "--zm": zoomMult, "--glm": groupLabelZoomMult } as any}
-          >
+          <div className="cv-group-label">
             {(() => {
               const label = (node as CanvasGroupNode).label || "";
               const parts = label.split("\n").filter((p) => p.trim());
@@ -4169,3 +4231,17 @@ function NodeCard({
     </div>
   );
 }
+
+function areNodeCardPropsEqual(prev: NodeCardProps, next: NodeCardProps) {
+  return (
+    prev.nodeId === next.nodeId &&
+    prev.node === next.node &&
+    prev.selected === next.selected &&
+    prev.editing === next.editing &&
+    prev.editText === next.editText &&
+    prev.vaultPath === next.vaultPath &&
+    prev.enableMarkdownPreview === next.enableMarkdownPreview
+  );
+}
+
+const MemoNodeCard = React.memo(NodeCard, areNodeCardPropsEqual);

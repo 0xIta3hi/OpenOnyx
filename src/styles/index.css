@@ -8446,6 +8446,7 @@ blockquote:has(.callout) {
   background: var(--cv-bg, var(--bg-primary));
   font-family: var(--font-sans);
   user-select: none;
+  contain: strict;
 }
 
 /* ═══ Viewport area ═══ */
@@ -8638,6 +8639,24 @@ blockquote:has(.callout) {
   min-height: 0;
   flex: 1;
 }
+
+.cv-node-body-lite {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.cv-node-lite-title {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
 .cv-embedded-md {
   padding: 1px 4px;
   min-height: 0;
@@ -8711,6 +8730,18 @@ blockquote:has(.callout) {
   padding: 16px;
   height: 100%;
 }
+
+.cv-file-body-lite {
+  padding: 8px 10px;
+}
+
+.cv-file-name-lite {
+  line-clamp: 1;
+  -webkit-line-clamp: 1;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+}
 .cv-file-name {
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -8777,13 +8808,15 @@ blockquote:has(.callout) {
 }
 .cv-group-label {
   position: absolute;
-  top: calc(-6px * var(--glm, var(--zm, 1)));
+  top: calc(
+    -6px * var(--group-label-zoom-mult, var(--zoom-mult, 1))
+  );
   left: 0;
   width: max-content;
   max-width: none;
-  padding: calc(5px * var(--glm, var(--zm, 1)))
-    calc(9px * var(--glm, var(--zm, 1)));
-  font-size: calc(14px * var(--glm, var(--zm, 1)));
+  padding: calc(5px * var(--group-label-zoom-mult, var(--zoom-mult, 1)))
+    calc(9px * var(--group-label-zoom-mult, var(--zoom-mult, 1)));
+  font-size: calc(14px * var(--group-label-zoom-mult, var(--zoom-mult, 1)));
   font-weight: 700;
   line-height: 1.12;
   letter-spacing: 0.01em;
@@ -8813,10 +8846,10 @@ blockquote:has(.callout) {
 .cv-group-input {
   position: absolute;
   top: 0;
-  left: calc(12px * var(--glm, var(--zm, 1)));
-  height: calc(28px * var(--glm, var(--zm, 1)));
-  padding: 0 calc(9px * var(--glm, var(--zm, 1)));
-  font-size: calc(16px * var(--glm, var(--zm, 1)));
+  left: calc(12px * var(--group-label-zoom-mult, var(--zoom-mult, 1)));
+  height: calc(28px * var(--group-label-zoom-mult, var(--zoom-mult, 1)));
+  padding: 0 calc(9px * var(--group-label-zoom-mult, var(--zoom-mult, 1)));
+  font-size: calc(16px * var(--group-label-zoom-mult, var(--zoom-mult, 1)));
   font-weight: 700;
   color: var(--text-primary);
   background: color-mix(in srgb, var(--bg-primary) 86%, transparent);
@@ -8831,8 +8864,8 @@ blockquote:has(.callout) {
 /* ── Connection ports ── */
 .cv-port {
   position: absolute;
-  width: calc(10px * var(--zm, 1));
-  height: calc(10px * var(--zm, 1));
+  width: calc(10px * var(--zoom-mult, 1));
+  height: calc(10px * var(--zoom-mult, 1));
   background: var(--cv-sel);
   border-radius: 50%;
   opacity: 0;
@@ -8851,54 +8884,54 @@ blockquote:has(.callout) {
   transform: scale(1.25) !important;
 }
 .cv-port-top {
-  top: calc(-5px * var(--zm, 1));
+  top: calc(-5px * var(--zoom-mult, 1));
   left: 50%;
-  margin-left: calc(-5px * var(--zm, 1));
+  margin-left: calc(-5px * var(--zoom-mult, 1));
 }
 .cv-port-bottom {
-  bottom: calc(-5px * var(--zm, 1));
+  bottom: calc(-5px * var(--zoom-mult, 1));
   left: 50%;
-  margin-left: calc(-5px * var(--zm, 1));
+  margin-left: calc(-5px * var(--zoom-mult, 1));
 }
 .cv-port-left {
-  left: calc(-5px * var(--zm, 1));
+  left: calc(-5px * var(--zoom-mult, 1));
   top: 50%;
-  margin-top: calc(-5px * var(--zm, 1));
+  margin-top: calc(-5px * var(--zoom-mult, 1));
 }
 .cv-port-right {
-  right: calc(-5px * var(--zm, 1));
+  right: calc(-5px * var(--zoom-mult, 1));
   top: 50%;
-  margin-top: calc(-5px * var(--zm, 1));
+  margin-top: calc(-5px * var(--zoom-mult, 1));
 }
 
 /* ── Resize handles ── */
 .cv-resize {
   position: absolute;
-  width: calc(8px * var(--zm, 1));
-  height: calc(8px * var(--zm, 1));
+  width: calc(8px * var(--zoom-mult, 1));
+  height: calc(8px * var(--zoom-mult, 1));
   background: var(--cv-sel);
   border-radius: 2px;
   z-index: 20;
   opacity: 0.8;
 }
 .cv-resize-nw {
-  top: calc(-4px * var(--zm, 1));
-  left: calc(-4px * var(--zm, 1));
+  top: calc(-4px * var(--zoom-mult, 1));
+  left: calc(-4px * var(--zoom-mult, 1));
   cursor: nw-resize;
 }
 .cv-resize-ne {
-  top: calc(-4px * var(--zm, 1));
-  right: calc(-4px * var(--zm, 1));
+  top: calc(-4px * var(--zoom-mult, 1));
+  right: calc(-4px * var(--zoom-mult, 1));
   cursor: ne-resize;
 }
 .cv-resize-sw {
-  bottom: calc(-4px * var(--zm, 1));
-  left: calc(-4px * var(--zm, 1));
+  bottom: calc(-4px * var(--zoom-mult, 1));
+  left: calc(-4px * var(--zoom-mult, 1));
   cursor: sw-resize;
 }
 .cv-resize-se {
-  bottom: calc(-4px * var(--zm, 1));
-  right: calc(-4px * var(--zm, 1));
+  bottom: calc(-4px * var(--zoom-mult, 1));
+  right: calc(-4px * var(--zoom-mult, 1));
   cursor: se-resize;
 }
 
