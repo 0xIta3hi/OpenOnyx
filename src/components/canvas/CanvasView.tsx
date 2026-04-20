@@ -93,7 +93,12 @@ const MIN_MD_PREVIEW_SCREEN_HEIGHT = 140;
 const MD_PREVIEW_RESUME_DELAY_MS = 160;
 const MD_PREVIEW_REFRESH_INTERVAL_MS = 1200;
 const CANVAS_SCRIBBLES_KEY = "noteworkScribblesV1";
+const CANVAS_CUSTOMIZATION_KEY = "noteworkCanvasCustomizationV1";
+const CANVAS_VIEWPORT_KEY = "noteworkCanvasViewportV1";
 const DEFAULT_SCRIBBLE_WIDTH = 2.4;
+const MIN_SCRIBBLE_WIDTH = 0.8;
+const MAX_SCRIBBLE_WIDTH = 48;
+const DEFAULT_DOT_OPACITY_MULTIPLIER = 1;
 const MIN_SCRIBBLE_POINT_DIST = 0.8;
 const MIN_LASSO_POINT_DIST = 1.2;
 const ERASER_RADIUS_PX = 14;
@@ -116,6 +121,16 @@ interface CanvasScribbleStroke {
   points: CanvasScribblePoint[];
   width: number;
   color?: string;
+}
+
+interface CanvasCustomizationSettings {
+  backgroundColor?: string;
+  dotColor?: string;
+  dotOpacityMultiplier?: number;
+  defaultNodeColor?: string;
+  defaultEdgeColor?: string;
+  defaultScribbleColor?: string;
+  defaultScribbleWidth?: number;
 }
 
 interface Props {
@@ -367,7 +382,7 @@ function sanitizeCanvasScribbles(value: unknown): CanvasScribbleStroke[] {
     const widthRaw = record.width;
     const width =
       typeof widthRaw === "number" && Number.isFinite(widthRaw)
-        ? Math.max(0.8, Math.min(12, widthRaw))
+        ? Math.max(MIN_SCRIBBLE_WIDTH, Math.min(MAX_SCRIBBLE_WIDTH, widthRaw))
         : DEFAULT_SCRIBBLE_WIDTH;
 
     out.push({
@@ -382,6 +397,106 @@ function sanitizeCanvasScribbles(value: unknown): CanvasScribbleStroke[] {
   });
 
   return out;
+}
+
+function sanitizeColorValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+function clampScribbleWidth(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_SCRIBBLE_WIDTH;
+  return Math.max(MIN_SCRIBBLE_WIDTH, Math.min(MAX_SCRIBBLE_WIDTH, value));
+}
+
+function clampDotOpacityMultiplier(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_DOT_OPACITY_MULTIPLIER;
+  return Math.max(0, Math.min(1, value));
+}
+
+function sanitizeCanvasCustomization(
+  value: unknown,
+): CanvasCustomizationSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const record = value as Record<string, unknown>;
+  const dotOpacityMultiplierRaw = record.dotOpacityMultiplier;
+  const defaultScribbleWidthRaw = record.defaultScribbleWidth;
+
+  return {
+    backgroundColor: sanitizeColorValue(record.backgroundColor),
+    dotColor: sanitizeColorValue(record.dotColor),
+    dotOpacityMultiplier:
+      typeof dotOpacityMultiplierRaw === "number"
+        ? clampDotOpacityMultiplier(dotOpacityMultiplierRaw)
+        : DEFAULT_DOT_OPACITY_MULTIPLIER,
+    defaultNodeColor: sanitizeColorValue(record.defaultNodeColor),
+    defaultEdgeColor: sanitizeColorValue(record.defaultEdgeColor),
+    defaultScribbleColor: sanitizeColorValue(record.defaultScribbleColor),
+    defaultScribbleWidth:
+      typeof defaultScribbleWidthRaw === "number"
+        ? clampScribbleWidth(defaultScribbleWidthRaw)
+        : DEFAULT_SCRIBBLE_WIDTH,
+  };
+}
+
+function sanitizeCanvasViewport(value: unknown): CanvasViewport | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const xRaw = record.x;
+  const yRaw = record.y;
+  const zoomRaw = record.zoom;
+  if (
+    typeof xRaw !== "number" ||
+    !Number.isFinite(xRaw) ||
+    typeof yRaw !== "number" ||
+    !Number.isFinite(yRaw)
+  ) {
+    return null;
+  }
+  const zoom =
+    typeof zoomRaw === "number" && Number.isFinite(zoomRaw)
+      ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRaw))
+      : 1;
+  return { x: xRaw, y: yRaw, zoom };
+}
+
+function compactCanvasCustomization(
+  settings: CanvasCustomizationSettings,
+): CanvasCustomizationSettings | undefined {
+  const compact: CanvasCustomizationSettings = {};
+
+  if (settings.backgroundColor) compact.backgroundColor = settings.backgroundColor;
+  if (settings.dotColor) compact.dotColor = settings.dotColor;
+  if (
+    typeof settings.dotOpacityMultiplier === "number" &&
+    Math.abs(settings.dotOpacityMultiplier - DEFAULT_DOT_OPACITY_MULTIPLIER) >
+      0.001
+  ) {
+    compact.dotOpacityMultiplier = clampDotOpacityMultiplier(
+      settings.dotOpacityMultiplier,
+    );
+  }
+  if (settings.defaultNodeColor) compact.defaultNodeColor = settings.defaultNodeColor;
+  if (settings.defaultEdgeColor) compact.defaultEdgeColor = settings.defaultEdgeColor;
+  if (settings.defaultScribbleColor) {
+    compact.defaultScribbleColor = settings.defaultScribbleColor;
+  }
+  if (
+    typeof settings.defaultScribbleWidth === "number" &&
+    Math.abs(settings.defaultScribbleWidth - DEFAULT_SCRIBBLE_WIDTH) > 0.001
+  ) {
+    compact.defaultScribbleWidth = clampScribbleWidth(
+      settings.defaultScribbleWidth,
+    );
+  }
+
+  return Object.keys(compact).length ? compact : undefined;
 }
 
 function pointsToStrokePath(points: CanvasScribblePoint[]): string {
@@ -571,6 +686,36 @@ export function CanvasView({
   const [scribbleWidth, setScribbleWidth] = useState<number>(
     DEFAULT_SCRIBBLE_WIDTH,
   );
+  const [showCustomizationPanel, setShowCustomizationPanel] = useState(false);
+  const [canvasBackgroundColor, setCanvasBackgroundColor] =
+    useState<string>("");
+  const [canvasDotColor, setCanvasDotColor] = useState<string>("");
+  const [canvasDotOpacityMultiplier, setCanvasDotOpacityMultiplier] =
+    useState<number>(DEFAULT_DOT_OPACITY_MULTIPLIER);
+  const [defaultNodeColor, setDefaultNodeColor] = useState<string>("");
+  const [defaultEdgeColor, setDefaultEdgeColor] = useState<string>("");
+
+  const canvasCustomizationMeta = useMemo(
+    () =>
+      compactCanvasCustomization({
+        backgroundColor: canvasBackgroundColor || undefined,
+        dotColor: canvasDotColor || undefined,
+        dotOpacityMultiplier: canvasDotOpacityMultiplier,
+        defaultNodeColor: defaultNodeColor || undefined,
+        defaultEdgeColor: defaultEdgeColor || undefined,
+        defaultScribbleColor: scribbleColor || undefined,
+        defaultScribbleWidth: scribbleWidth,
+      }),
+    [
+      canvasBackgroundColor,
+      canvasDotColor,
+      canvasDotOpacityMultiplier,
+      defaultNodeColor,
+      defaultEdgeColor,
+      scribbleColor,
+      scribbleWidth,
+    ],
+  );
 
   /* refs */
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -578,6 +723,7 @@ export function CanvasView({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
   const recentMenuRef = useRef<HTMLDivElement>(null);
+  const customizationPanelRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes); // always-latest snapshot for move handler
   const edgesRef = useRef(edges);
   const scribblesRef = useRef(scribbles);
@@ -601,6 +747,11 @@ export function CanvasView({
   const previewResumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const saveDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const saveInFlightRef = useRef(false);
+  const queuedSaveRef = useRef<{ path: string; payload: string } | null>(null);
   const loadingCanvasRef = useRef(false);
   const pendingInitialZoomFitRef = useRef(false);
   const lastSavedPayloadRef = useRef("");
@@ -649,6 +800,18 @@ export function CanvasView({
     document.addEventListener("mousedown", onDocDown);
     return () => document.removeEventListener("mousedown", onDocDown);
   }, [showRecentCanvasMenu]);
+
+  useEffect(() => {
+    if (!showCustomizationPanel) return;
+    const onDocDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (customizationPanelRef.current?.contains(target)) return;
+      setShowCustomizationPanel(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [showCustomizationPanel]);
 
   const push = useCallback(
     (
@@ -834,6 +997,99 @@ export function CanvasView({
     [],
   );
 
+  const buildCanvasMetadata = useCallback(
+    (
+      baseMeta: Record<string, unknown>,
+      nextScribbles: CanvasScribbleStroke[],
+      customizationOverride?: CanvasCustomizationSettings,
+      viewportOverride?: CanvasViewport,
+    ) => {
+      const metadata: Record<string, unknown> = {
+        ...baseMeta,
+        [CANVAS_SCRIBBLES_KEY]: nextScribbles,
+      };
+      const customization =
+        compactCanvasCustomization(
+          customizationOverride ?? canvasCustomizationMeta ?? {},
+        );
+      if (customization) {
+        metadata[CANVAS_CUSTOMIZATION_KEY] = customization;
+      } else {
+        delete metadata[CANVAS_CUSTOMIZATION_KEY];
+      }
+      const viewport = viewportOverride ?? vpRef.current;
+      metadata[CANVAS_VIEWPORT_KEY] = {
+        x: Number.isFinite(viewport.x) ? viewport.x : 0,
+        y: Number.isFinite(viewport.y) ? viewport.y : 0,
+        zoom: Math.max(
+          MIN_ZOOM,
+          Math.min(MAX_ZOOM, Number.isFinite(viewport.zoom) ? viewport.zoom : 1),
+        ),
+      };
+      return metadata;
+    },
+    [canvasCustomizationMeta],
+  );
+
+  const flushCanvasSaveQueue = useCallback(
+    async (initialRequest: { path: string; payload: string }) => {
+      if (saveInFlightRef.current) {
+        queuedSaveRef.current = initialRequest;
+        return;
+      }
+
+      saveInFlightRef.current = true;
+      let request: { path: string; payload: string } | null = initialRequest;
+
+      while (request) {
+        const current = request;
+        request = null;
+
+        if (canvasFilePath === current.path) {
+          setSaveState("saving");
+        }
+
+        try {
+          await getAPI().writeFile(current.path, current.payload);
+          lastSavedPayloadRef.current = current.payload;
+          if (canvasFilePath === current.path) {
+            setSaveState("saved");
+            setLastSavedAt(Date.now());
+          }
+
+          try {
+            await getAPI().writeFile(
+              `${current.path}${RECOVERY_SUFFIX}`,
+              current.payload,
+            );
+          } catch (snapshotError) {
+            console.warn(
+              "Failed to update canvas recovery snapshot:",
+              snapshotError,
+            );
+          }
+        } catch (error) {
+          console.error("Failed to save canvas file:", current.path, error);
+          if (canvasFilePath === current.path) {
+            setSaveState("error");
+          }
+        }
+
+        const queued = queuedSaveRef.current;
+        queuedSaveRef.current = null;
+        if (
+          queued &&
+          (queued.path !== current.path || queued.payload !== current.payload)
+        ) {
+          request = queued;
+        }
+      }
+
+      saveInFlightRef.current = false;
+    },
+    [canvasFilePath],
+  );
+
   /* ── canvas file load/save ── */
   useEffect(() => {
     let cancelled = false;
@@ -843,6 +1099,10 @@ export function CanvasView({
         pendingInitialZoomFitRef.current = false;
         setNodes([]);
         setEdges([]);
+        const defaultViewport = { x: 0, y: 0, zoom: 1 };
+        setVp(defaultViewport);
+        vpRef.current = defaultViewport;
+        targetVpRef.current = defaultViewport;
         setScribbles([]);
         setActiveScribble(null);
         setSelectedScribbleIds(new Set());
@@ -853,11 +1113,24 @@ export function CanvasView({
         setRecoveryUsed(false);
         setSaveState("saved");
         setLastSavedAt(null);
+        setShowCustomizationPanel(false);
+        setCanvasBackgroundColor("");
+        setCanvasDotColor("");
+        setCanvasDotOpacityMultiplier(DEFAULT_DOT_OPACITY_MULTIPLIER);
+        setDefaultNodeColor("");
+        setDefaultEdgeColor("");
+        setScribbleColor("");
+        setScribbleWidth(DEFAULT_SCRIBBLE_WIDTH);
         lastSavedPayloadRef.current = "";
         setSelNodes(new Set());
         setSelEdges(new Set());
         setHist([{ nodes: [], edges: [], scribbles: [] }]);
         setHistIdx(0);
+        if (saveDebounceTimerRef.current) {
+          clearTimeout(saveDebounceTimerRef.current);
+          saveDebounceTimerRef.current = null;
+        }
+        queuedSaveRef.current = null;
         return;
       }
 
@@ -900,10 +1173,29 @@ export function CanvasView({
         const nextScribbles = sanitizeCanvasScribbles(
           metadata[CANVAS_SCRIBBLES_KEY],
         );
+        const customization = sanitizeCanvasCustomization(
+          metadata[CANVAS_CUSTOMIZATION_KEY],
+        );
+        const savedViewport = sanitizeCanvasViewport(
+          metadata[CANVAS_VIEWPORT_KEY],
+        );
         delete metadata[CANVAS_SCRIBBLES_KEY];
+        delete metadata[CANVAS_CUSTOMIZATION_KEY];
+        delete metadata[CANVAS_VIEWPORT_KEY];
+        const normalizedMetadata: Record<string, unknown> = {
+          ...metadata,
+          [CANVAS_SCRIBBLES_KEY]: nextScribbles,
+        };
+        const compactCustomization = compactCanvasCustomization(customization);
+        if (compactCustomization) {
+          normalizedMetadata[CANVAS_CUSTOMIZATION_KEY] = compactCustomization;
+        }
+        if (savedViewport) {
+          normalizedMetadata[CANVAS_VIEWPORT_KEY] = savedViewport;
+        }
         const normalizedPayload = serializeCanvasDocument(
           { nodes: nextNodes, edges: nextEdges },
-          { ...metadata, [CANVAS_SCRIBBLES_KEY]: nextScribbles },
+          normalizedMetadata,
         );
 
         if (cancelled) return;
@@ -919,6 +1211,26 @@ export function CanvasView({
         setRecoveryUsed(usedRecovery);
         setSaveState("saved");
         setLastSavedAt(Date.now());
+        setCanvasBackgroundColor(customization.backgroundColor || "");
+        setCanvasDotColor(customization.dotColor || "");
+        setCanvasDotOpacityMultiplier(
+          clampDotOpacityMultiplier(
+            customization.dotOpacityMultiplier ?? DEFAULT_DOT_OPACITY_MULTIPLIER,
+          ),
+        );
+        setDefaultNodeColor(customization.defaultNodeColor || "");
+        setDefaultEdgeColor(customization.defaultEdgeColor || "");
+        setScribbleColor(customization.defaultScribbleColor || "");
+        setScribbleWidth(
+          clampScribbleWidth(
+            customization.defaultScribbleWidth ?? DEFAULT_SCRIBBLE_WIDTH,
+          ),
+        );
+        if (savedViewport) {
+          setVp(savedViewport);
+          vpRef.current = savedViewport;
+          targetVpRef.current = savedViewport;
+        }
         lastSavedPayloadRef.current = normalizedPayload;
         setSelNodes(new Set());
         setSelEdges(new Set());
@@ -930,7 +1242,7 @@ export function CanvasView({
           },
         ]);
         setHistIdx(0);
-        pendingInitialZoomFitRef.current = nextNodes.length > 0;
+        pendingInitialZoomFitRef.current = nextNodes.length > 0 && !savedViewport;
       } catch (error) {
         console.error("Failed to load canvas file:", canvasFilePath, error);
         if (cancelled) return;
@@ -954,6 +1266,18 @@ export function CanvasView({
         setRecoveryUsed(false);
         setSaveState("error");
         setLastSavedAt(null);
+        const defaultViewport = { x: 0, y: 0, zoom: 1 };
+        setVp(defaultViewport);
+        vpRef.current = defaultViewport;
+        targetVpRef.current = defaultViewport;
+        setShowCustomizationPanel(false);
+        setCanvasBackgroundColor("");
+        setCanvasDotColor("");
+        setCanvasDotOpacityMultiplier(DEFAULT_DOT_OPACITY_MULTIPLIER);
+        setDefaultNodeColor("");
+        setDefaultEdgeColor("");
+        setScribbleColor("");
+        setScribbleWidth(DEFAULT_SCRIBBLE_WIDTH);
         lastSavedPayloadRef.current = "";
         setSelNodes(new Set());
         setSelEdges(new Set());
@@ -979,7 +1303,7 @@ export function CanvasView({
 
     const payload = serializeCanvasDocument(
       { nodes, edges },
-      { ...docMeta, [CANVAS_SCRIBBLES_KEY]: scribbles },
+      buildCanvasMetadata(docMeta, scribbles, undefined, vp),
     );
     if (payload === lastSavedPayloadRef.current) {
       setSaveState((prev) =>
@@ -990,35 +1314,30 @@ export function CanvasView({
 
     setSaveState((prev) => (prev === "saving" ? prev : "unsaved"));
 
-    const timer = setTimeout(() => {
-      setSaveState("saving");
-      getAPI()
-        .writeFile(canvasFilePath, payload)
-        .then(async () => {
-          lastSavedPayloadRef.current = payload;
-          setSaveState("saved");
-          setLastSavedAt(Date.now());
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+    }
 
-          try {
-            await getAPI().writeFile(
-              `${canvasFilePath}${RECOVERY_SUFFIX}`,
-              payload,
-            );
-          } catch (snapshotError) {
-            console.warn(
-              "Failed to update canvas recovery snapshot:",
-              snapshotError,
-            );
-          }
-        })
-        .catch((error) => {
-          console.error("Failed to save canvas file:", canvasFilePath, error);
-          setSaveState("error");
-        });
+    saveDebounceTimerRef.current = setTimeout(() => {
+      void flushCanvasSaveQueue({ path: canvasFilePath, payload });
     }, 300);
 
-    return () => clearTimeout(timer);
-  }, [canvasFilePath, nodes, edges, docMeta, scribbles]);
+    return () => {
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
+        saveDebounceTimerRef.current = null;
+      }
+    };
+  }, [
+    canvasFilePath,
+    nodes,
+    edges,
+    vp,
+    docMeta,
+    scribbles,
+    buildCanvasMetadata,
+    flushCanvasSaveQueue,
+  ]);
 
   /* ── coordinate helpers ── */
   const s2c = useCallback(
@@ -1066,6 +1385,7 @@ export function CanvasView({
         y: snap(c.y - h / 2),
         width: w,
         height: h,
+        color: defaultNodeColor || undefined,
       };
       let n: CanvasNode;
       switch (type) {
@@ -1099,7 +1419,7 @@ export function CanvasView({
       push(sorted, edges);
       return n;
     },
-    [nodes, edges, viewCenter, snap, push],
+    [nodes, edges, viewCenter, snap, push, defaultNodeColor],
   );
 
   const updateNode = useCallback(
@@ -1170,6 +1490,63 @@ export function CanvasView({
     setLassoPoints([]);
     push(nn, ee, ss);
   }, [nodes, edges, scribbles, selNodes, selEdges, selectedScribbleIds, push]);
+
+  const setScribbleWidthSafe = useCallback((value: number) => {
+    setScribbleWidth(clampScribbleWidth(value));
+  }, []);
+
+  const applyDefaultNodeColorToSelection = useCallback(() => {
+    if (!selNodes.size) return;
+    let changed = false;
+    const next = nodes.map((node) => {
+      if (!selNodes.has(node.id)) return node;
+      const nextColor = defaultNodeColor || undefined;
+      if (node.color === nextColor) return node;
+      changed = true;
+      return { ...node, color: nextColor };
+    });
+    if (!changed) return;
+    setNodes(next);
+    push(next, edgesRef.current, scribblesRef.current);
+  }, [nodes, selNodes, defaultNodeColor, push]);
+
+  const applyDefaultEdgeColorToSelection = useCallback(() => {
+    if (!selEdges.size) return;
+    let changed = false;
+    const next = edges.map((edge) => {
+      if (!selEdges.has(edge.id) || edge.locked) return edge;
+      const nextColor = defaultEdgeColor || undefined;
+      if (edge.color === nextColor) return edge;
+      changed = true;
+      return { ...edge, color: nextColor };
+    });
+    if (!changed) return;
+    setEdges(next);
+    push(nodesRef.current, next, scribblesRef.current);
+  }, [edges, selEdges, defaultEdgeColor, push]);
+
+  const applyScribbleStyleToSelection = useCallback(() => {
+    if (!selectedScribbleIds.size) return;
+    let changed = false;
+    const next = scribbles.map((stroke) => {
+      if (!selectedScribbleIds.has(stroke.id)) return stroke;
+      const nextColor = scribbleColor || undefined;
+      const nextWidth = clampScribbleWidth(scribbleWidth);
+      if (stroke.color === nextColor && stroke.width === nextWidth) {
+        return stroke;
+      }
+      changed = true;
+      return {
+        ...stroke,
+        color: nextColor,
+        width: nextWidth,
+      };
+    });
+    if (!changed) return;
+    setScribbles(next);
+    scribblesRef.current = next;
+    push(nodesRef.current, edgesRef.current, next);
+  }, [selectedScribbleIds, scribbles, scribbleColor, scribbleWidth, push]);
 
   const duplicateNode = useCallback(
     (id: string) => {
@@ -1300,7 +1677,7 @@ export function CanvasView({
     if (!canvasFilePath) return;
     const payload = serializeCanvasDocument(
       { nodes, edges },
-      { ...docMeta, [CANVAS_SCRIBBLES_KEY]: scribbles },
+      buildCanvasMetadata(docMeta, scribbles, undefined, vpRef.current),
     );
     setSaveState("saving");
     try {
@@ -1315,7 +1692,7 @@ export function CanvasView({
       console.error("Repair save failed:", error);
       setSaveState("error");
     }
-  }, [canvasFilePath, nodes, edges, docMeta, scribbles]);
+  }, [canvasFilePath, nodes, edges, docMeta, scribbles, buildCanvasMetadata]);
 
   const restoreFromRecovery = useCallback(async () => {
     if (!canvasFilePath) return;
@@ -1334,7 +1711,15 @@ export function CanvasView({
       const nextScribbles = sanitizeCanvasScribbles(
         metadata[CANVAS_SCRIBBLES_KEY],
       );
+      const customization = sanitizeCanvasCustomization(
+        metadata[CANVAS_CUSTOMIZATION_KEY],
+      );
+      const savedViewport = sanitizeCanvasViewport(
+        metadata[CANVAS_VIEWPORT_KEY],
+      );
       delete metadata[CANVAS_SCRIBBLES_KEY];
+      delete metadata[CANVAS_CUSTOMIZATION_KEY];
+      delete metadata[CANVAS_VIEWPORT_KEY];
       setNodes(nextNodes);
       setEdges(nextEdges);
       setScribbles(nextScribbles);
@@ -1342,6 +1727,26 @@ export function CanvasView({
       setSelectedScribbleIds(new Set());
       setLassoPoints([]);
       setDocMeta(metadata);
+      setCanvasBackgroundColor(customization.backgroundColor || "");
+      setCanvasDotColor(customization.dotColor || "");
+      setCanvasDotOpacityMultiplier(
+        clampDotOpacityMultiplier(
+          customization.dotOpacityMultiplier ?? DEFAULT_DOT_OPACITY_MULTIPLIER,
+        ),
+      );
+      setDefaultNodeColor(customization.defaultNodeColor || "");
+      setDefaultEdgeColor(customization.defaultEdgeColor || "");
+      setScribbleColor(customization.defaultScribbleColor || "");
+      setScribbleWidth(
+        clampScribbleWidth(
+          customization.defaultScribbleWidth ?? DEFAULT_SCRIBBLE_WIDTH,
+        ),
+      );
+      if (savedViewport) {
+        setVp(savedViewport);
+        vpRef.current = savedViewport;
+        targetVpRef.current = savedViewport;
+      }
       setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
       setShowDiagnostics(parsed.diagnostics.repaired);
       setRecoveryUsed(true);
@@ -1362,7 +1767,7 @@ export function CanvasView({
         const stroke: CanvasScribbleStroke = {
           id: generateId(),
           points: [p],
-          width: scribbleWidth,
+          width: clampScribbleWidth(scribbleWidth),
           color: scribbleColor || undefined,
         };
         setActiveScribble(stroke);
@@ -2146,6 +2551,7 @@ export function CanvasView({
                 toNode: n.id,
                 toSide: toSide,
                 toEnd: "arrow",
+                color: defaultEdgeColor || undefined,
               };
               const newEdges = [...currentEdges, ne];
               setEdges(newEdges);
@@ -2218,7 +2624,7 @@ export function CanvasView({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [drag, grid, s2c, push, startPanInertia]);
+  }, [drag, grid, s2c, push, startPanInertia, defaultEdgeColor]);
 
   /* ═══ WHEEL / ZOOM ═══ */
   useEffect(() => {
@@ -2736,6 +3142,8 @@ export function CanvasView({
         ? { x: edgeMenuClickAnchor.x, y: edgeMenuClickAnchor.y }
         : edgeMidpoint(firstSelEdge, nodeMap)
       : null;
+  const fallbackCanvasBgColor = theme === "light" ? "#ffffff" : "#0a0a0a";
+  const fallbackCanvasDotColor = theme === "light" ? "#000000" : "#ffffff";
 
   const commitEdgeLabel = useCallback(() => {
     if (!firstSelEdge || firstSelEdge.locked) return;
@@ -2773,6 +3181,7 @@ export function CanvasView({
           cursor,
           "--zoom-mult": uiZoomMult,
           "--group-label-zoom-mult": groupLabelZoomMult,
+          "--cv-custom-bg": canvasBackgroundColor || "var(--cv-bg)",
         } as any
       }
     >
@@ -2785,7 +3194,13 @@ export function CanvasView({
       >
         {/* Dot-pattern background (SVG stays in viewport space) */}
         {grid && (
-          <DotGrid zoom={renderVp.zoom} offX={renderVp.x} offY={renderVp.y} />
+          <DotGrid
+            zoom={renderVp.zoom}
+            offX={renderVp.x}
+            offY={renderVp.y}
+            color={canvasDotColor || undefined}
+            opacityMultiplier={canvasDotOpacityMultiplier}
+          />
         )}
 
         {/* Transform group */}
@@ -3458,7 +3873,7 @@ export function CanvasView({
             <Type size={16} />
           </button>
         </div>
-        <div className="cv-draw-tools">
+        <div className="cv-draw-tools" ref={customizationPanelRef}>
           <div className="cv-ctrl-group">
             <button
               className={`cv-ctrl${tool === "draw" ? " on" : ""}`}
@@ -3509,17 +3924,52 @@ export function CanvasView({
                   />
                 ))}
               </div>
+              <label className="cv-color-custom cv-draw-custom-color" title="Custom scribble color">
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={scribbleColor || "#e8eeff"}
+                  onChange={(e) => setScribbleColor(e.target.value)}
+                />
+                <span className="cv-color-custom-label">Custom stroke</span>
+              </label>
               <label className="cv-draw-size">
                 <span>{scribbleWidth.toFixed(1)}px</span>
                 <input
                   type="range"
-                  min={1}
-                  max={10}
+                  min={MIN_SCRIBBLE_WIDTH}
+                  max={MAX_SCRIBBLE_WIDTH}
                   step={0.2}
                   value={scribbleWidth}
-                  onChange={(e) => setScribbleWidth(Number(e.target.value))}
+                  onChange={(e) =>
+                    setScribbleWidthSafe(Number(e.target.value))
+                  }
                 />
+                <div className="cv-size-input-row">
+                  <input
+                    type="number"
+                    className="cv-size-input"
+                    min={MIN_SCRIBBLE_WIDTH}
+                    max={MAX_SCRIBBLE_WIDTH}
+                    step={0.1}
+                    value={Number(scribbleWidth.toFixed(1))}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      if (!Number.isFinite(next)) return;
+                      setScribbleWidthSafe(next);
+                    }}
+                  />
+                  <span>px</span>
+                </div>
               </label>
+              {selectedScribbleIds.size > 0 ? (
+                <button
+                  className="cv-file-row"
+                  onClick={applyScribbleStyleToSelection}
+                >
+                  Apply color + size to selected strokes
+                </button>
+              ) : null}
               {selectedScribbleIds.size > 0 ? (
                 <button
                   className="cv-file-row cv-draw-delete"
@@ -3530,6 +3980,110 @@ export function CanvasView({
               ) : null}
             </div>
           )}
+        </div>
+
+        <div className="cv-draw-tools">
+          <div className="cv-ctrl-group">
+            <button
+              className={`cv-ctrl${showCustomizationPanel ? " on" : ""}`}
+              title="Canvas customization"
+              onClick={() => setShowCustomizationPanel((prev) => !prev)}
+            >
+              <Palette size={15} />
+            </button>
+          </div>
+          {showCustomizationPanel ? (
+            <div className="cv-ctrl-group cv-draw-panel cv-draw-popout cv-custom-panel">
+              <div className="cv-custom-head">Canvas background</div>
+              <label className="cv-custom-field">
+                <span>Background</span>
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={canvasBackgroundColor || fallbackCanvasBgColor}
+                  onChange={(e) => setCanvasBackgroundColor(e.target.value)}
+                />
+              </label>
+              <button
+                className="cv-file-row cv-custom-clear"
+                onClick={() => setCanvasBackgroundColor("")}
+                disabled={!canvasBackgroundColor}
+              >
+                Use theme background
+              </button>
+
+              <label className="cv-custom-field">
+                <span>Grid dot color</span>
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={canvasDotColor || fallbackCanvasDotColor}
+                  onChange={(e) => setCanvasDotColor(e.target.value)}
+                />
+              </label>
+              <label className="cv-draw-size">
+                <span>Grid dot visibility {(canvasDotOpacityMultiplier * 100).toFixed(0)}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={canvasDotOpacityMultiplier}
+                  onChange={(e) =>
+                    setCanvasDotOpacityMultiplier(
+                      clampDotOpacityMultiplier(Number(e.target.value)),
+                    )
+                  }
+                />
+              </label>
+
+              <div className="cv-custom-head cv-custom-head-spaced">Custom colors</div>
+              <label className="cv-custom-field">
+                <span>Default node color</span>
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={defaultNodeColor || "#64748b"}
+                  onChange={(e) => setDefaultNodeColor(e.target.value)}
+                />
+              </label>
+              <button
+                className="cv-file-row"
+                onClick={applyDefaultNodeColorToSelection}
+                disabled={!selNodes.size}
+              >
+                Apply to selected nodes ({selNodes.size})
+              </button>
+
+              <label className="cv-custom-field">
+                <span>Default edge color</span>
+                <input
+                  type="color"
+                  className="cv-color-custom-input"
+                  value={defaultEdgeColor || "#94a3b8"}
+                  onChange={(e) => setDefaultEdgeColor(e.target.value)}
+                />
+              </label>
+              <button
+                className="cv-file-row"
+                onClick={applyDefaultEdgeColorToSelection}
+                disabled={!selEdges.size}
+              >
+                Apply to selected edges ({selEdges.size})
+              </button>
+
+              <button
+                className="cv-file-row cv-custom-clear"
+                onClick={() => {
+                  setDefaultNodeColor("");
+                  setDefaultEdgeColor("");
+                }}
+                disabled={!defaultNodeColor && !defaultEdgeColor}
+              >
+                Reset default node/edge colors
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className="cv-ctrl-group">
           <button className="cv-ctrl" title="Zoom in" onClick={() => zoomBy(1)}>
@@ -3732,15 +4286,20 @@ function DotGrid({
   zoom,
   offX,
   offY,
+  color,
+  opacityMultiplier,
 }: {
   zoom: number;
   offX: number;
   offY: number;
+  color?: string;
+  opacityMultiplier: number;
 }) {
   const gap = GRID_SIZE * zoom;
   const dotRadius = Math.max(0.1, Math.min(0.5, 0.5 * zoom));
   const dotOpacity = Math.max(0, Math.min(0.72, (gap - 1.8) / 5.8));
-  if (dotOpacity <= 0.01) return null;
+  const finalOpacity = dotOpacity * clampDotOpacityMultiplier(opacityMultiplier);
+  if (finalOpacity <= 0.01) return null;
   const ox = ((offX % gap) + gap) % gap;
   const oy = ((offY % gap) + gap) % gap;
   return (
@@ -3758,8 +4317,8 @@ function DotGrid({
             cx={gap / 2}
             cy={gap / 2}
             r={dotRadius}
-            fill="var(--cv-dot)"
-            opacity={dotOpacity}
+            fill={color || "var(--cv-dot)"}
+            opacity={finalOpacity}
           />
         </pattern>
       </defs>

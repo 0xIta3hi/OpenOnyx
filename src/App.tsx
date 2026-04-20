@@ -1800,7 +1800,9 @@ export default function App() {
       setActiveTabId(existingTab.id);
       const content = await readOrCreateMissingMarkdown(filePath);
       setCurrentContent(content);
-      setViewMode(mode || "preview");
+      if (mode) {
+        setViewMode(mode);
+      }
       loadBacklinks(filePath);
       return;
     }
@@ -1817,7 +1819,9 @@ export default function App() {
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
     setCurrentContent(content);
-    setViewMode(mode || "preview");
+    if (mode) {
+      setViewMode(mode);
+    }
     loadBacklinks(filePath);
   };
 
