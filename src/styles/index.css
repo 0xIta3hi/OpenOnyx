@@ -8417,7 +8417,7 @@ blockquote:has(.callout) {
 
 /* ── Canvas tokens ────────────────────────────────── */
 :root {
-  --cv-bg: #0a0a0a;
+  --cv-bg: color-mix(in srgb, var(--bg-primary, #1f1f1f) 90%, #2c2c2c 10%);
   --cv-dot: rgba(255, 255, 255, 0.07);
   --cv-edge: rgba(255, 255, 255, 0.35);
   --cv-scribble: rgba(232, 238, 255, 0.9);
