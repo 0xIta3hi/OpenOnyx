@@ -16,6 +16,8 @@ import React, {
   useEffect,
   useMemo,
 } from "react";
+import { HexColorPicker } from "react-colorful";
+import { createPortal } from "react-dom";
 import {
   Plus,
   Minus,
@@ -723,7 +725,6 @@ export function CanvasView({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
   const recentMenuRef = useRef<HTMLDivElement>(null);
-  const customizationPanelRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef(nodes); // always-latest snapshot for move handler
   const edgesRef = useRef(edges);
   const scribblesRef = useRef(scribbles);
@@ -800,18 +801,6 @@ export function CanvasView({
     document.addEventListener("mousedown", onDocDown);
     return () => document.removeEventListener("mousedown", onDocDown);
   }, [showRecentCanvasMenu]);
-
-  useEffect(() => {
-    if (!showCustomizationPanel) return;
-    const onDocDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (customizationPanelRef.current?.contains(target)) return;
-      setShowCustomizationPanel(false);
-    };
-    document.addEventListener("mousedown", onDocDown);
-    return () => document.removeEventListener("mousedown", onDocDown);
-  }, [showCustomizationPanel]);
 
   const push = useCallback(
     (
@@ -1761,6 +1750,9 @@ export function CanvasView({
   const onAreaDown = useCallback(
     (e: React.MouseEvent) => {
       commitPendingEdgeLabel();
+      if (showCustomizationPanel) {
+        setShowCustomizationPanel(false);
+      }
 
       if (e.button === 0 && tool === "draw") {
         const p = s2c(e.clientX, e.clientY);
@@ -1891,6 +1883,7 @@ export function CanvasView({
       stopSmoothZoom,
       scribbleWidth,
       scribbleColor,
+      showCustomizationPanel,
       commitPendingEdgeLabel,
     ],
   );
@@ -3635,13 +3628,9 @@ export function CanvasView({
                 />
               ))}
               <label className="cv-color-custom" title="Custom color">
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={resolveCanvasColor(firstSel.color) || "#64748b"}
-                  onChange={(e) =>
-                    updateNode(firstSel.id, { color: e.target.value })
-                  }
+                  onChange={(value) => updateNode(firstSel.id, { color: value })}
                 />
                 <span className="cv-color-custom-label">Custom</span>
               </label>
@@ -3753,13 +3742,9 @@ export function CanvasView({
                 />
               ))}
               <label className="cv-color-custom" title="Custom color">
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={resolveCanvasColor(firstSelEdge.color) || "#64748b"}
-                  onChange={(e) =>
-                    updateEdge(firstSelEdge.id, { color: e.target.value })
-                  }
+                  onChange={(value) => updateEdge(firstSelEdge.id, { color: value })}
                 />
                 <span className="cv-color-custom-label">Custom</span>
               </label>
@@ -3873,7 +3858,7 @@ export function CanvasView({
             <Type size={16} />
           </button>
         </div>
-        <div className="cv-draw-tools" ref={customizationPanelRef}>
+        <div className="cv-draw-tools">
           <div className="cv-ctrl-group">
             <button
               className={`cv-ctrl${tool === "draw" ? " on" : ""}`}
@@ -3925,11 +3910,10 @@ export function CanvasView({
                 ))}
               </div>
               <label className="cv-color-custom cv-draw-custom-color" title="Custom scribble color">
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={scribbleColor || "#e8eeff"}
-                  onChange={(e) => setScribbleColor(e.target.value)}
+                  onChange={setScribbleColor}
+                  title="Custom scribble color"
                 />
                 <span className="cv-color-custom-label">Custom stroke</span>
               </label>
@@ -3993,15 +3977,18 @@ export function CanvasView({
             </button>
           </div>
           {showCustomizationPanel ? (
-            <div className="cv-ctrl-group cv-draw-panel cv-draw-popout cv-custom-panel">
+            <div
+              className="cv-ctrl-group cv-draw-panel cv-draw-popout cv-custom-panel"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="cv-custom-head">Canvas background</div>
               <label className="cv-custom-field">
                 <span>Background</span>
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={canvasBackgroundColor || fallbackCanvasBgColor}
-                  onChange={(e) => setCanvasBackgroundColor(e.target.value)}
+                  onChange={setCanvasBackgroundColor}
+                  title="Canvas background color"
                 />
               </label>
               <button
@@ -4014,11 +4001,10 @@ export function CanvasView({
 
               <label className="cv-custom-field">
                 <span>Grid dot color</span>
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={canvasDotColor || fallbackCanvasDotColor}
-                  onChange={(e) => setCanvasDotColor(e.target.value)}
+                  onChange={setCanvasDotColor}
+                  title="Grid dot color"
                 />
               </label>
               <label className="cv-draw-size">
@@ -4040,11 +4026,10 @@ export function CanvasView({
               <div className="cv-custom-head cv-custom-head-spaced">Custom colors</div>
               <label className="cv-custom-field">
                 <span>Default node color</span>
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={defaultNodeColor || "#64748b"}
-                  onChange={(e) => setDefaultNodeColor(e.target.value)}
+                  onChange={setDefaultNodeColor}
+                  title="Default node color"
                 />
               </label>
               <button
@@ -4057,11 +4042,10 @@ export function CanvasView({
 
               <label className="cv-custom-field">
                 <span>Default edge color</span>
-                <input
-                  type="color"
-                  className="cv-color-custom-input"
+                <InlineHexColorControl
                   value={defaultEdgeColor || "#94a3b8"}
-                  onChange={(e) => setDefaultEdgeColor(e.target.value)}
+                  onChange={setDefaultEdgeColor}
+                  title="Default edge color"
                 />
               </label>
               <button
@@ -4324,6 +4308,89 @@ function DotGrid({
       </defs>
       <rect width="100%" height="100%" fill="url(#cvDot)" />
     </svg>
+  );
+}
+
+function InlineHexColorControl({
+  value,
+  onChange,
+  title,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState({ x: 0, y: 0 });
+
+  const updateAnchor = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setAnchor({
+      x: rect.left - 8,
+      y: rect.top + rect.height / 2,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updateAnchor();
+
+    const onViewportChange = () => updateAnchor();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+
+    const onDocDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (wrapRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [open, updateAnchor]);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="cv-inline-color-wrap"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        className="cv-color-custom-btn"
+        title={title || "Custom color"}
+        aria-label={title || "Custom color"}
+        style={{ backgroundColor: value }}
+        onClick={() => setOpen((prev) => !prev)}
+      />
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="cv-inline-color-popover"
+              role="dialog"
+              aria-label="Color picker"
+              style={{ left: anchor.x, top: anchor.y }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <HexColorPicker color={value} onChange={onChange} />
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
   );
 }
 

@@ -413,6 +413,7 @@ body {
   flex-shrink: 0;
   font-size: var(--font-ui-small);
   position: relative;
+  z-index: 3200;
 }
 
 .titlebar-left {
@@ -443,6 +444,10 @@ body {
 
 .menu-item {
   -webkit-app-region: no-drag;
+}
+
+.menu-dropdown {
+  z-index: 3400 !important;
 }
 
 .titlebar-center {
@@ -9189,23 +9194,63 @@ blockquote:has(.callout) {
   border-left: 1px solid color-mix(in srgb, var(--cv-ctrl-border) 55%, transparent);
 }
 
-.cv-color-custom-input {
+.cv-inline-color-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.cv-color-custom-btn {
   width: 22px;
   height: 22px;
-  border: none;
+  border: 1px solid var(--cv-ctrl-border);
   padding: 0;
   border-radius: 6px;
-  background: transparent;
+  background: var(--cv-ctrl-bg);
   cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 18%, transparent);
 }
 
-.cv-color-custom-input::-webkit-color-swatch-wrapper {
-  padding: 0;
+.cv-color-custom-btn:hover {
+  border-color: var(--cv-sel);
 }
 
-.cv-color-custom-input::-webkit-color-swatch {
+.cv-inline-color-popover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-100%, -50%);
+  z-index: 3600;
+  padding: 8px;
+  background: color-mix(in srgb, var(--cv-ctrl-bg) 96%, transparent);
   border: 1px solid var(--cv-ctrl-border);
   border-radius: 6px;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.cv-inline-color-popover .react-colorful {
+  width: 168px;
+  height: 132px;
+}
+
+.cv-inline-color-popover .react-colorful__saturation {
+  border-radius: 7px;
+}
+
+.cv-inline-color-popover .react-colorful__hue {
+  height: 12px;
+  margin-top: 8px;
+  border-radius: 999px;
+}
+
+.cv-inline-color-popover .react-colorful__hue-pointer {
+  width: 14px;
+  height: 14px;
+}
+
+.cv-inline-color-popover .react-colorful__saturation-pointer {
+  width: 14px;
+  height: 14px;
 }
 
 .cv-color-custom-label {
@@ -9351,6 +9396,7 @@ blockquote:has(.callout) {
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 700;
+}
 
 @media (max-width: 900px) {
   .cv-draw-popout {
@@ -9361,7 +9407,6 @@ blockquote:has(.callout) {
   .cv-custom-panel {
     width: min(280px, calc(100vw - 32px));
   }
-}
 }
 
 .cv-custom-head-spaced {
