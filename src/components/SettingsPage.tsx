@@ -208,22 +208,21 @@ export function SettingsPage({
                         />
                       </label>
                     </div>
+                    <div className="setting-group">
+                      <label className="setting-label">
+                        <span>Accent Color</span>
+                        <input
+                          type="color"
+                          value={localSettings.accentColor}
+                          onChange={(e) =>
+                            updateSetting("accentColor", e.target.value)
+                          }
+                          className="setting-color"
+                        />
+                      </label>
+                    </div>
                   </>
                 )}
-
-                <div className="setting-group">
-                  <label className="setting-label">
-                    <span>Accent Color</span>
-                    <input
-                      type="color"
-                      value={localSettings.accentColor}
-                      onChange={(e) =>
-                        updateSetting("accentColor", e.target.value)
-                      }
-                      className="setting-color"
-                    />
-                  </label>
-                </div>
 
                 <div className="setting-group">
                   <label className="setting-label">

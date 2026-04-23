@@ -83,6 +83,147 @@ const MAX_EDITOR_FONT_SIZE = 24;
 type FontZoomScope = "both" | "editor" | "preview";
 type GraphMode = "manual" | "ai";
 
+type RGB = { r: number; g: number; b: number };
+
+const clampByte = (value: number): number =>
+  Math.max(0, Math.min(255, Math.round(value)));
+
+const hexToRgb = (hex: string): RGB | null => {
+  const raw = hex.trim().replace("#", "");
+  if (raw.length === 3) {
+    const [r, g, b] = raw.split("").map((c) => parseInt(c + c, 16));
+    if ([r, g, b].some(Number.isNaN)) return null;
+    return { r, g, b };
+  }
+  if (raw.length === 6) {
+    const r = parseInt(raw.slice(0, 2), 16);
+    const g = parseInt(raw.slice(2, 4), 16);
+    const b = parseInt(raw.slice(4, 6), 16);
+    if ([r, g, b].some(Number.isNaN)) return null;
+    return { r, g, b };
+  }
+  return null;
+};
+
+const rgbToHex = ({ r, g, b }: RGB): string => {
+  const toHex = (v: number) => clampByte(v).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const mixRgb = (from: RGB, to: RGB, ratio: number): RGB => {
+  const t = Math.max(0, Math.min(1, ratio));
+  return {
+    r: from.r + (to.r - from.r) * t,
+    g: from.g + (to.g - from.g) * t,
+    b: from.b + (to.b - from.b) * t,
+  };
+};
+
+const rgbToRgba = ({ r, g, b }: RGB, alpha: number): string =>
+  `rgba(${clampByte(r)}, ${clampByte(g)}, ${clampByte(b)}, ${Math.max(
+    0,
+    Math.min(1, alpha),
+  ).toFixed(3)})`;
+
+const relativeLuminance = ({ r, g, b }: RGB): number => {
+  const toLinear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.03928
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  const rl = toLinear(r);
+  const gl = toLinear(g);
+  const bl = toLinear(b);
+  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+};
+
+const getReadableTextOn = (bg: RGB): string =>
+  relativeLuminance(bg) > 0.5 ? "#0a0a0a" : "#f5f5f5";
+
+const CUSTOM_THEME_VARIABLES = [
+  "--accent-color",
+  "--color-base-00",
+  "--color-base-05",
+  "--color-base-10",
+  "--color-base-20",
+  "--color-base-25",
+  "--color-base-30",
+  "--color-base-35",
+  "--color-base-40",
+  "--color-base-50",
+  "--color-base-60",
+  "--color-base-70",
+  "--color-base-100",
+  "--bg-primary",
+  "--bg-secondary",
+  "--bg-tertiary",
+  "--bg-elevated",
+  "--bg-hover",
+  "--bg-active",
+  "--bg-glass",
+  "--bg-input",
+  "--text-primary",
+  "--text-secondary",
+  "--text-tertiary",
+  "--text-muted",
+  "--text-faint",
+  "--text-link",
+  "--color-accent",
+  "--color-accent-1",
+  "--color-accent-2",
+  "--accent-primary",
+  "--accent-secondary",
+  "--text-on-accent",
+  "--accent-glow",
+  "--scrollbar-thumb",
+  "--scrollbar-thumb-hover",
+  "--border-subtle",
+  "--border-medium",
+  "--border-strong",
+  "--divider-color",
+  "--titlebar-background",
+  "--titlebar-background-focused",
+  "--titlebar-text-color",
+  "--titlebar-text-color-focused",
+  "--status-bar-background",
+  "--status-bar-text-color",
+  "--tab-container-background",
+  "--tab-background-active",
+  "--tab-text-color",
+  "--tab-text-color-active",
+  "--tab-text-color-focused",
+  "--tab-text-color-focused-active",
+  "--tab-text-color-focused-active-current",
+  "--nav-item-color",
+  "--nav-item-color-hover",
+  "--nav-item-color-active",
+  "--nav-item-color-selected",
+  "--nav-item-background-hover",
+  "--nav-item-background-active",
+  "--nav-item-background-selected",
+  "--editor-caret",
+  "--editor-selection",
+  "--editor-selection-focused",
+  "--editor-active-line",
+  "--editor-active-line-border",
+  "--editor-heading",
+  "--editor-heading-marker",
+  "--editor-link",
+  "--editor-link-hover",
+  "--editor-tag",
+  "--editor-tag-bg",
+  "--editor-code",
+  "--editor-muted-token",
+  "--editor-emphasis",
+  "--editor-search-match",
+  "--editor-search-match-border",
+  "--editor-search-active",
+  "--editor-search-active-border",
+  "--graph-edge-color",
+  "--graph-node-color",
+] as const;
+
 const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
 const GRAPH_TAB_PATH = "__graph__.view";
 
@@ -1108,7 +1249,6 @@ export default function App() {
 
     // Apply CSS custom properties from settings
     const root = document.documentElement;
-    root.style.setProperty("--accent-color", settings.accentColor);
     root.style.setProperty("--font-family", settings.fontFamily);
     root.style.setProperty("--editor-font-size", `${settings.fontSize}px`);
     root.style.setProperty(
@@ -1122,20 +1262,106 @@ export default function App() {
     root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
 
     if (theme === "custom") {
-      root.style.setProperty("--bg-primary", settings.customBgPrimary);
-      root.style.setProperty("--text-primary", settings.customTextPrimary);
-      // derive some other basic colors for decent UI
-      root.style.setProperty("--bg-secondary", settings.customBgPrimary);
-      root.style.setProperty("--bg-elevated", settings.customBgPrimary);
-      root.style.setProperty("--text-secondary", settings.customTextPrimary);
-      root.style.setProperty("--text-muted", settings.customTextPrimary);
+      const bg = hexToRgb(settings.customBgPrimary) ?? { r: 21, g: 21, b: 21 };
+      const text = hexToRgb(settings.customTextPrimary) ?? { r: 230, g: 230, b: 230 };
+      const accent = hexToRgb(settings.accentColor) ?? text;
+      const tone = (ratio: number) => rgbToHex(mixRgb(bg, text, ratio));
+      const baseBg = rgbToHex(bg);
+
+      root.style.setProperty("--accent-color", settings.accentColor);
+
+      root.style.setProperty("--color-base-00", baseBg);
+      root.style.setProperty("--color-base-05", baseBg);
+      root.style.setProperty("--color-base-10", baseBg);
+      root.style.setProperty("--color-base-20", baseBg);
+      root.style.setProperty("--color-base-25", baseBg);
+      root.style.setProperty("--color-base-30", baseBg);
+      root.style.setProperty("--color-base-35", baseBg);
+      root.style.setProperty("--color-base-40", tone(0.16));
+      root.style.setProperty("--color-base-50", tone(0.34));
+      root.style.setProperty("--color-base-60", tone(0.5));
+      root.style.setProperty("--color-base-70", tone(0.68));
+      root.style.setProperty("--color-base-100", tone(1));
+
+      root.style.setProperty("--bg-primary", baseBg);
+      root.style.setProperty("--bg-secondary", baseBg);
+      root.style.setProperty("--bg-tertiary", baseBg);
+      root.style.setProperty("--bg-elevated", baseBg);
+      root.style.setProperty("--bg-input", baseBg);
+      root.style.setProperty("--bg-hover", rgbToRgba(text, 0.08));
+      root.style.setProperty("--bg-active", rgbToRgba(text, 0.14));
+      root.style.setProperty("--bg-glass", rgbToRgba(bg, 0.98));
+
+      root.style.setProperty("--text-primary", tone(1));
+      root.style.setProperty("--text-secondary", tone(0.72));
+      root.style.setProperty("--text-tertiary", tone(0.6));
+      root.style.setProperty("--text-muted", tone(0.48));
+      root.style.setProperty("--text-faint", tone(0.34));
+      root.style.setProperty("--text-link", settings.accentColor);
+
+      root.style.setProperty("--color-accent", settings.accentColor);
+      root.style.setProperty("--color-accent-1", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--color-accent-2", rgbToHex(mixRgb(accent, text, 0.42)));
+      root.style.setProperty("--accent-primary", settings.accentColor);
+      root.style.setProperty("--accent-secondary", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--text-on-accent", getReadableTextOn(accent));
+      root.style.setProperty("--accent-glow", rgbToRgba(accent, 0.16));
+
+      root.style.setProperty("--scrollbar-thumb", rgbToRgba(text, 0.26));
+      root.style.setProperty("--scrollbar-thumb-hover", rgbToRgba(text, 0.42));
+      root.style.setProperty("--border-subtle", rgbToRgba(text, 0.1));
+      root.style.setProperty("--border-medium", rgbToRgba(text, 0.16));
+      root.style.setProperty("--border-strong", rgbToRgba(text, 0.24));
+      root.style.setProperty("--divider-color", rgbToRgba(text, 0.1));
+
+      root.style.setProperty("--titlebar-background", baseBg);
+      root.style.setProperty("--titlebar-background-focused", baseBg);
+      root.style.setProperty("--titlebar-text-color", tone(0.72));
+      root.style.setProperty("--titlebar-text-color-focused", tone(1));
+      root.style.setProperty("--status-bar-background", baseBg);
+      root.style.setProperty("--status-bar-text-color", tone(0.48));
+
+      root.style.setProperty("--tab-container-background", baseBg);
+      root.style.setProperty("--tab-background-active", baseBg);
+      root.style.setProperty("--tab-text-color", tone(0.48));
+      root.style.setProperty("--tab-text-color-active", tone(0.72));
+      root.style.setProperty("--tab-text-color-focused", tone(0.72));
+      root.style.setProperty("--tab-text-color-focused-active", tone(0.72));
+      root.style.setProperty("--tab-text-color-focused-active-current", tone(1));
+
+      root.style.setProperty("--nav-item-color", tone(0.72));
+      root.style.setProperty("--nav-item-color-hover", tone(1));
+      root.style.setProperty("--nav-item-color-active", tone(1));
+      root.style.setProperty("--nav-item-color-selected", tone(1));
+      root.style.setProperty("--nav-item-background-hover", rgbToRgba(text, 0.08));
+      root.style.setProperty("--nav-item-background-active", rgbToRgba(text, 0.1));
+      root.style.setProperty("--nav-item-background-selected", rgbToRgba(text, 0.12));
+
+      root.style.setProperty("--editor-caret", tone(1));
+      root.style.setProperty("--editor-selection", rgbToRgba(accent, 0.2));
+      root.style.setProperty("--editor-selection-focused", rgbToRgba(accent, 0.3));
+      root.style.setProperty("--editor-active-line", rgbToRgba(text, 0.04));
+      root.style.setProperty("--editor-active-line-border", rgbToRgba(text, 0.1));
+      root.style.setProperty("--editor-heading", tone(1));
+      root.style.setProperty("--editor-heading-marker", tone(0.6));
+      root.style.setProperty("--editor-link", settings.accentColor);
+      root.style.setProperty("--editor-link-hover", rgbToHex(mixRgb(accent, text, 0.2)));
+      root.style.setProperty("--editor-tag", settings.accentColor);
+      root.style.setProperty("--editor-tag-bg", rgbToRgba(accent, 0.18));
+      root.style.setProperty("--editor-code", tone(0.66));
+      root.style.setProperty("--editor-muted-token", tone(0.5));
+      root.style.setProperty("--editor-emphasis", tone(1));
+      root.style.setProperty("--editor-search-match", rgbToRgba(accent, 0.24));
+      root.style.setProperty("--editor-search-match-border", rgbToRgba(accent, 0.45));
+      root.style.setProperty("--editor-search-active", rgbToRgba(accent, 0.34));
+      root.style.setProperty("--editor-search-active-border", rgbToRgba(accent, 0.72));
+
+      root.style.setProperty("--graph-edge-color", rgbToRgba(text, 0.35));
+      root.style.setProperty("--graph-node-color", settings.accentColor);
     } else {
-      root.style.removeProperty("--bg-primary");
-      root.style.removeProperty("--text-primary");
-      root.style.removeProperty("--bg-secondary");
-      root.style.removeProperty("--bg-elevated");
-      root.style.removeProperty("--text-secondary");
-      root.style.removeProperty("--text-muted");
+      for (const variableName of CUSTOM_THEME_VARIABLES) {
+        root.style.removeProperty(variableName);
+      }
     }
 
     // Save settings to localStorage
