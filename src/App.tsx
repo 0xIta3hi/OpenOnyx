@@ -1007,7 +1007,7 @@ export default function App() {
   const [graphFullScreen, setGraphFullScreen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [showBacklinks, setShowBacklinks] = useState(true);
+  const [showBacklinks, setShowBacklinks] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
   const [showTags, setShowTags] = useState(false);
   const [showOutgoingLinks, setShowOutgoingLinks] = useState(false);
