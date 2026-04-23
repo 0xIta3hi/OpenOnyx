@@ -44,19 +44,11 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (_loadingPromise) return _loadingPromise;
 
   _loadingPromise = (async () => {
-    _onProgress?.(0, "Loading analysis engine...");
-    const p = await pipeline("feature-extraction", MODEL_ID, {
-      progress_callback: (x: any) => {
-        if (x.status === "progress" && x.progress != null) {
-          _loadProgress = Math.round(x.progress);
-          _onProgress?.(_loadProgress, "Downloading model...");
-        }
-        if (x.status === "ready") {
-          _loadProgress = 100;
-          _onProgress?.(100, "Model ready");
-        }
-      },
-    });
+    _loadProgress = 10;
+    _onProgress?.(10, "Loading analysis engine...");
+    const p = await pipeline("feature-extraction", MODEL_ID);
+    _loadProgress = 100;
+    _onProgress?.(100, "Model ready");
     _pipeline = p as FeatureExtractionPipeline;
     _loadingPromise = null;
     return _pipeline;

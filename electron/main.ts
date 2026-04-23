@@ -25,6 +25,13 @@ function isExternalHttpUrl(url: string): boolean {
   }
 }
 
+function shouldForwardRendererLog(message: string): boolean {
+  const suppressedMessages = [
+    '[vite] server connection lost. Polling for restart...',
+  ];
+  return !suppressedMessages.some((entry) => message.includes(entry));
+}
+
 /** Create the main application window */
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -54,8 +61,10 @@ function createWindow(): void {
   }
 
   // Debugging: Forward renderer console logs to main process console
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`[RENDERER] ${message} (at ${sourceId}:${line})`);
+  mainWindow.webContents.on('console-message', (details) => {
+    const { message, sourceId, lineNumber } = details;
+    if (!shouldForwardRendererLog(message)) return;
+    console.log(`[RENDERER] ${message} (at ${sourceId}:${lineNumber})`);
   });
 
   // Always open external HTTP(S) links in the user's default browser.
