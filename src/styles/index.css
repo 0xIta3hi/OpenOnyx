@@ -1276,8 +1276,8 @@ body {
   padding: var(--space-8);
   max-width: 850px;
   margin: 0 auto;
-  overflow-y: auto;
-  height: 100%;
+  height: auto;
+  min-height: 100%;
   font-family: var(--font-family);
   font-size: var(--preview-font-size);
 }
