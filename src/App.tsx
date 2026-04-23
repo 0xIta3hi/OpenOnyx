@@ -44,6 +44,10 @@ import { AIPage } from "./components/AIPage";
 import {
   embedNote,
   loadStore,
+  removeEmbedding,
+  renameEmbeddingPath,
+  renameEmbeddingsByPrefix,
+  removeEmbeddingsByPrefix,
   findSimilar,
   applyHistoryWeighting,
   loadSuggestionHistory,
@@ -1068,6 +1072,13 @@ export default function App() {
   } | null>(null);
 
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAutoSaveTimer = useCallback(() => {
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+  }, []);
 
   // Track system color scheme for 'system' theme option
   const [systemPrefersDark, setSystemPrefersDark] = useState(
@@ -2466,8 +2477,9 @@ export default function App() {
       );
 
       // Auto-save after 2 seconds of no typing
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      clearAutoSaveTimer();
       autoSaveTimer.current = setTimeout(async () => {
+        autoSaveTimer.current = null;
         const tab = tabs.find((t) => t.id === activeTabId);
         if (tab) {
           await api.writeFile(tab.path, content);
@@ -2489,7 +2501,7 @@ export default function App() {
         }
       }, 2000);
     },
-    [activeTabId, tabs],
+    [activeTabId, tabs, clearAutoSaveTimer],
   );
 
   useEffect(() => {
@@ -2512,6 +2524,12 @@ export default function App() {
       ftuxIdleTimerRef.current = null;
     }, 600);
   }, [activeTabId, currentContent, tabs]);
+
+  useEffect(() => {
+    return () => {
+      clearAutoSaveTimer();
+    };
+  }, [clearAutoSaveTimer]);
 
   const closeTab = async (tabId: string) => {
     const tab = tabs.find((t) => t.id === tabId);
@@ -2621,10 +2639,18 @@ export default function App() {
         if (!confirmed) return;
 
         try {
+          clearAutoSaveTimer();
+
           if (isDir) {
             await api.deleteDirectory(filePath);
+            const store = loadStore();
+            removeEmbeddingsByPrefix(store, filePath);
           } else {
             await api.deleteFile(filePath);
+            if (filePath.toLowerCase().endsWith(".md")) {
+              const store = loadStore();
+              removeEmbedding(store, filePath);
+            }
           }
 
           // Close tab if open (for files) or close all tabs within the folder
@@ -2652,18 +2678,91 @@ export default function App() {
   };
 
   const handleRenameFile = async (oldPath: string, newName: string) => {
+    clearAutoSaveTimer();
+
+    const findEntryByPath = (entries: FileEntry[], targetPath: string): FileEntry | null => {
+      for (const entry of entries) {
+        if (entry.path === targetPath) return entry;
+        if (entry.isDirectory && entry.children) {
+          const found = findEntryByPath(entry.children, targetPath);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const existingEntry = findEntryByPath(fileTree, oldPath);
+    const isDirectory = existingEntry?.isDirectory === true;
+
     const dir = oldPath.includes("/")
       ? oldPath.substring(0, oldPath.lastIndexOf("/") + 1)
       : "";
     const raw = newName.trim();
     const hasExt = /\.[a-z0-9]+$/i.test(raw);
     const inferredExt = isCanvasFile(oldPath) ? ".canvas" : ".md";
-    const normalized = hasExt ? raw : `${raw}${inferredExt}`;
+    const normalized = isDirectory
+      ? raw
+      : hasExt
+        ? raw
+        : `${raw}${inferredExt}`;
     const newPath = dir + normalized;
 
     await api.renameFile(oldPath, newPath);
 
+    const store = loadStore();
+    if (isDirectory) {
+      renameEmbeddingsByPrefix(store, oldPath, newPath);
+    } else if (oldPath.toLowerCase().endsWith(".md")) {
+      if (newPath.toLowerCase().endsWith(".md")) {
+        renameEmbeddingPath(store, oldPath, newPath);
+      } else {
+        removeEmbedding(store, oldPath);
+      }
+    }
+
     // Update tab if open
+    setTabs((prev) => {
+      if (isDirectory) {
+        const oldPrefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
+        const newPrefix = newPath.endsWith("/") ? newPath : `${newPath}/`;
+        return prev.map((t) => {
+          if (t.path === oldPath) {
+            return { ...t, path: newPath, name: getNoteName(newPath) };
+          }
+          if (t.path.startsWith(oldPrefix)) {
+            const nextPath = `${newPrefix}${t.path.slice(oldPrefix.length)}`;
+            return { ...t, path: nextPath, name: getNoteName(nextPath) };
+          }
+          return t;
+        });
+      }
+
+      return prev.map((t) =>
+        t.path === oldPath
+          ? { ...t, path: newPath, name: getNoteName(newPath) }
+          : t,
+      );
+    });
+
+    await refreshFileTree();
+  };
+
+  const handleMoveFile = useCallback(async (oldPath: string, newPath: string) => {
+    if (oldPath === newPath) return;
+
+    clearAutoSaveTimer();
+
+    await api.renameFile(oldPath, newPath);
+
+    if (oldPath.toLowerCase().endsWith(".md")) {
+      const store = loadStore();
+      if (newPath.toLowerCase().endsWith(".md")) {
+        renameEmbeddingPath(store, oldPath, newPath);
+      } else {
+        removeEmbedding(store, oldPath);
+      }
+    }
+
     setTabs((prev) =>
       prev.map((t) =>
         t.path === oldPath
@@ -2673,7 +2772,7 @@ export default function App() {
     );
 
     await refreshFileTree();
-  };
+  }, [refreshFileTree, clearAutoSaveTimer]);
 
   const handleCreateFolder = async (parentPath: string) => {
     setModal({
@@ -3386,6 +3485,7 @@ export default function App() {
             onNewFolder={handleCreateFolder}
             onDeleteFile={handleDeleteFile}
             onRenameFile={handleRenameFile}
+            onMoveFile={handleMoveFile}
             onRefresh={refreshFileTree}
             onCollapse={() => setShowSidebar(false)}
             onToggleStar={(path) => {

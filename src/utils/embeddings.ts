@@ -295,6 +295,89 @@ export function removeEmbedding(store: EmbeddingStore, path: string): void {
   _debouncedWrite("embeddings/_index.json", index);
 }
 
+/**
+ * Rename/move a single embedding path without re-embedding content.
+ */
+export function renameEmbeddingPath(
+  store: EmbeddingStore,
+  oldPath: string,
+  newPath: string,
+): boolean {
+  if (oldPath === newPath) return false;
+
+  const existing = store.entries.get(oldPath);
+  if (!existing) return false;
+
+  const oldSafeName = oldPath.replace(/[/\\]/g, "_").replace(/\.md$/, "") + ".json";
+  deleteData(`embeddings/${oldSafeName}`);
+
+  const updated: StoredEmbedding = {
+    ...existing,
+    path: newPath,
+    updatedAt: Date.now(),
+  };
+
+  store.entries.delete(oldPath);
+  _memoryStore.entries.delete(oldPath);
+  store.entries.set(newPath, updated);
+  _memoryStore.entries.set(newPath, updated);
+
+  persistEntry(updated);
+  return true;
+}
+
+/**
+ * Rename/move all embeddings within a directory prefix.
+ */
+export function renameEmbeddingsByPrefix(
+  store: EmbeddingStore,
+  oldPrefix: string,
+  newPrefix: string,
+): number {
+  if (!oldPrefix || oldPrefix === newPrefix) return 0;
+
+  const normalizedOldPrefix = oldPrefix.endsWith("/") ? oldPrefix : `${oldPrefix}/`;
+  const normalizedNewPrefix = newPrefix.endsWith("/") ? newPrefix : `${newPrefix}/`;
+
+  let moved = 0;
+  const entries = Array.from(store.entries.values());
+  for (const entry of entries) {
+    const path = entry.path;
+    if (!(path === oldPrefix || path.startsWith(normalizedOldPrefix))) continue;
+
+    const nextPath = path === oldPrefix
+      ? newPrefix
+      : `${normalizedNewPrefix}${path.slice(normalizedOldPrefix.length)}`;
+
+    if (renameEmbeddingPath(store, path, nextPath)) {
+      moved += 1;
+    }
+  }
+
+  return moved;
+}
+
+/**
+ * Remove all embeddings within a directory prefix.
+ */
+export function removeEmbeddingsByPrefix(
+  store: EmbeddingStore,
+  prefix: string,
+): number {
+  if (!prefix) return 0;
+
+  const normalizedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  const paths = Array.from(store.entries.keys()).filter(
+    (path) => path === prefix || path.startsWith(normalizedPrefix),
+  );
+
+  for (const path of paths) {
+    removeEmbedding(store, path);
+  }
+
+  return paths.length;
+}
+
 // ── Similarity search ────────────────────────────────────────────────────────
 
 export interface SimilarNote {

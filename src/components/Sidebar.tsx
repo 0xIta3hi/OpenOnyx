@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
-import { getAPI } from "../utils/api";
 
 interface SidebarProps {
   visible: boolean;
@@ -34,6 +33,7 @@ interface SidebarProps {
   onNewFolder: (parentPath: string) => void;
   onDeleteFile: (path: string, isDir: boolean) => void;
   onRenameFile: (oldPath: string, newName: string) => void;
+  onMoveFile: (oldPath: string, newPath: string) => void | Promise<void>;
   onRefresh: () => void;
   onToggleStar: (path: string) => void;
   onCollapse: () => void;
@@ -49,6 +49,7 @@ export function Sidebar({
   onNewFolder,
   onDeleteFile,
   onRenameFile,
+  onMoveFile,
   onRefresh,
   onToggleStar,
   onCollapse,
@@ -64,6 +65,7 @@ export function Sidebar({
   const [renameValue, setRenameValue] = useState("");
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [showStarred, setShowStarred] = useState(true);
+  const renameInFlightRef = useRef(false);
 
   const toggleDir = (path: string) => {
     setExpandedDirs((prev) => {
@@ -90,6 +92,7 @@ export function Sidebar({
   const closeContextMenu = () => setContextMenu(null);
 
   const startRename = (path: string) => {
+    renameInFlightRef.current = false;
     setRenamingPath(path);
     setRenameValue(getNoteName(path));
     closeContextMenu();
@@ -97,8 +100,14 @@ export function Sidebar({
 
   const handleRenameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (renameInFlightRef.current) return;
+
     if (renamingPath && renameValue.trim()) {
+      renameInFlightRef.current = true;
       onRenameFile(renamingPath, renameValue.trim());
+      setTimeout(() => {
+        renameInFlightRef.current = false;
+      }, 0);
     }
     setRenamingPath(null);
     setRenameValue("");
@@ -128,8 +137,7 @@ export function Sidebar({
       const fileName = sourcePath.split("/").pop() || sourcePath;
       const newPath = targetDir ? `${targetDir}/${fileName}` : fileName;
       try {
-        await getAPI().renameFile(sourcePath, newPath);
-        onRefresh();
+        await onMoveFile(sourcePath, newPath);
       } catch (err) {
         console.error("Move failed:", err);
       }
