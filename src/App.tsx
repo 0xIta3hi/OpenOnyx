@@ -41,6 +41,7 @@ import {
 import { TemplateModal } from "./components/TemplateModal";
 import { UnlinkedMentionsPanel } from "./components/UnlinkedMentionsPanel";
 import { AIPage } from "./components/AIPage";
+import { SpacesPage } from "./components/SpacesPage";
 import {
   embedNote,
   loadStore,
@@ -58,7 +59,7 @@ import {
   recordTransition,
   type EmbeddingStore,
 } from "./utils/embeddings";
-import { getAnnotation, getCachedAnnotation } from "./utils/ai-core";
+import { getAnnotation, getCachedAnnotation, generateFirstThoughtExpansion } from "./utils/ai-core";
 import { initializeVault, setQueueStatusCallback, type QueueStatus } from "./utils/background-queue";
 import { type LinkType } from "./components/SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-enrichment";
@@ -226,6 +227,7 @@ const CUSTOM_THEME_VARIABLES = [
 
 const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
 const GRAPH_TAB_PATH = "__graph__.view";
+const SPACES_TAB_PATH = "__spaces__.view";
 
 const TRANSITION_STOP_WORDS = new Set([
   "the", "and", "for", "with", "from", "that", "this", "into", "while", "where",
@@ -298,10 +300,14 @@ type FirstThoughtSemanticIntent = {
   };
 };
 
+type FirstThoughtTemplate = {
+  label: string;
+  template: string;
+};
+
 type FirstThoughtExpansionPlan = {
   intent: FirstThoughtExpandableIntent;
-  bullets: [string, string, string];
-  sections: [string, string, string];
+  suggestions: [FirstThoughtTemplate, FirstThoughtTemplate, FirstThoughtTemplate];
 };
 
 const FIRST_THOUGHT_EXPANSION_IDLE_MS = 700;
@@ -412,41 +418,60 @@ function extractConstraints(source: string): string[] {
   return constraints;
 }
 
+const TOPIC_STOP_WORDS = new Set([
+  "i", "me", "my", "mine", "myself", "yourself", "himself", "herself", "itself",
+  "want", "to", "a", "an", "the", "is", "am", "are",
+  "was", "were", "be", "been", "being", "do", "does", "did", "have",
+  "has", "had", "will", "would", "could", "should", "can", "may",
+  "might", "shall", "need", "just", "really", "very", "so", "too",
+  "also", "but", "and", "or", "if", "then", "that", "this", "it",
+  "its", "of", "in", "on", "at", "for", "with", "from", "by",
+  "about", "into", "like", "some", "something", "anything",
+  "feel", "think", "know", "get", "make", "go", "keep", "try",
+  "start", "stop", "lot", "lots", "more", "much", "many",
+  // Intent verbs — these describe the action, NOT the topic
+  "learn", "study", "build", "create", "launch", "ship", "improve",
+  "fix", "solve", "plan", "explore", "master", "practice", "develop",
+  "design", "write", "read", "understand", "figure", "work",
+  "become", "achieve", "find", "change", "grow", "manage",
+  // Common fillers
+  "how", "why", "what", "when", "where", "who", "which",
+  "better", "good", "bad", "new", "old", "big", "small",
+  "out", "up", "down", "way", "thing", "things", "stuff",
+]);
+
 function inferTopic(source: string): string | null {
-  if (/\b(swim|swimming|swimmer|pool|freestyle|backstroke)\b/.test(source)) {
-    return "swimming";
-  }
-  if (/\b(machine\s+learning|deep\s+learning|nlp|computer\s+vision)\b/.test(source)) {
-    return "machine learning";
-  }
-  if (/\bai|artificial\s+intelligence|llm\b/.test(source)) {
-    return "AI";
-  }
-  if (/\bsaas|startup\b/.test(source)) {
-    return "SaaS";
-  }
-  if (/\b(business|venture|company)\b/.test(source)) {
-    return "business";
-  }
-  if (/\b(propose|ask\s+out|date|dating|relationship|crush|girl|boy|partner)\b/.test(source)) {
-    return "relationship";
-  }
-  if (/\bfitness|workout|exercise|health\b/.test(source)) {
-    return "fitness";
-  }
-  if (/\bfocus|concentration|distract\w*\b/.test(source)) {
-    return "focus";
-  }
-  if (/\blearning|study\w*|exam\b/.test(source)) {
-    return "learning";
-  }
-  if (/\bproductivity|procrastinat\w*\b/.test(source)) {
-    return "productivity";
-  }
-  if (/\bpython|javascript|typescript|react|node\b/.test(source)) {
-    return "programming";
-  }
-  return null;
+  // Known topics first (high-confidence matches)
+  if (/\b(swim|swimming|swimmer|pool|freestyle|backstroke)\b/.test(source)) return "swimming";
+  if (/\b(machine\s+learning|deep\s+learning|nlp|computer\s+vision)\b/.test(source)) return "machine learning";
+  if (/\bai|artificial\s+intelligence|llm\b/.test(source)) return "AI";
+  if (/\bsaas|startup\b/.test(source)) return "SaaS";
+  if (/\b(business|venture|company)\b/.test(source)) return "business";
+  if (/\b(propose|ask\s+out|date|dating|relationship|crush|girl|boy|partner)\b/.test(source)) return "relationship";
+  if (/\bfitness|workout|exercise|health\b/.test(source)) return "fitness";
+  if (/\bfocus|concentration|distract\w*\b/.test(source)) return "focus";
+  if (/\bproductivity|procrastinat\w*\b/.test(source)) return "productivity";
+  if (/\b(python|javascript|typescript|react|node|coding|code|programming|web\s*dev|app\s*dev|software)\b/.test(source)) return "coding";
+  if (/\b(learning|study\w*|exam)\b/.test(source)) return "learning";
+
+  // Dynamic extraction: strip the full intent phrase, then extract meaningful nouns
+  const stripped = source
+    .replace(/^(?:i\s+(?:want|need|plan|aim|love|like|enjoy|feel|think|keep)\s+(?:to\s+)?)/i, "")
+    .replace(/^(?:i\s+(?:am|was)\s+(?:trying\s+to\s+)?)/i, "")
+    .replace(/^(?:how\s+(?:do|can|should)\s+i\s+)/i, "")
+    .replace(/^(?:why\s+(?:do|can't|don't|am)\s+i\s+)/i, "")
+    .trim();
+
+  const tokens = stripped
+    .split(/\s+/)
+    .map((t) => t.replace(/[^a-z0-9]/g, ""))
+    .filter((t) => t.length > 2 && !TOPIC_STOP_WORDS.has(t));
+
+  if (tokens.length === 0) return null;
+
+  // Take up to 3 meaningful tokens as the topic phrase
+  const topicTokens = tokens.slice(0, Math.min(3, tokens.length));
+  return topicTokens.join(" ");
 }
 
 function inferFirstThoughtSemanticIntent(
@@ -551,32 +576,11 @@ function extractExpansionAnchors(semantic: FirstThoughtSemanticIntent): string[]
 }
 
 function isExpansionPlanRelevant(
-  semantic: FirstThoughtSemanticIntent,
-  plan: FirstThoughtExpansionPlan,
+  _semantic: FirstThoughtSemanticIntent,
+  _plan: FirstThoughtExpansionPlan,
 ): boolean {
-  const prompts = plan.bullets.map((line) => line.toLowerCase());
-  const bannedGeneric = [
-    /why\s+is\s+this\s+important/,
-    /what\s+next\s+step\s+can\s+you\s+take/,
-    /what\s+result\s+are\s+you\s+hoping\s+for/,
-    /why\s+does\s+this\s+matter\s+to\s+you/,
-  ];
-
-  if (prompts.some((line) => bannedGeneric.some((pattern) => pattern.test(line)))) {
-    return false;
-  }
-
-  if (!semantic.topic) return false;
-
-  const anchors = extractExpansionAnchors(semantic);
-  if (anchors.length === 0) return false;
-
-  const anchoredPromptCount = prompts.filter((line) =>
-    anchors.some((anchor) => line.includes(anchor)),
-  ).length;
-
-  const minAnchoredPrompts = semantic.clarityScore >= 0.6 ? 2 : 1;
-  return anchoredPromptCount >= minAnchoredPrompts;
+  // Always relevant — we generate dynamic topic-aware templates now
+  return true;
 }
 
 function classifyFirstThoughtIntent(
@@ -735,220 +739,110 @@ function classifyFirstThoughtIntent(
 
 function getFirstThoughtExpansionPlan(value: string): FirstThoughtExpansionPlan | null {
   const classification = classifyFirstThoughtIntent(value);
-  if (classification.kind !== "expandable") return null;
+  if (classification.kind !== "expandable") {
+    // Even non-expandable intents with enough words should get a generic plan
+    const words = getMeaningfulWordCount(value);
+    if (words < 3) return null;
+    // Extract a topic from raw text for generic expansion
+    const fallbackTopic = inferTopic(normalizeFirstThoughtDraft(value)) || "this";
+    const cap = fallbackTopic.charAt(0).toUpperCase() + fallbackTopic.slice(1);
+    return {
+      intent: "goal",
+      suggestions: [
+        { label: `What matters about ${fallbackTopic}`, template: `## Why ${cap} Matters\n- \n- \n` },
+        { label: `Explore ${fallbackTopic} deeper`, template: `## Exploring ${cap}\n- \n- \n` },
+        { label: `What to do with ${fallbackTopic}`, template: `## Next Steps for ${cap}\n- [ ] \n- [ ] \n` },
+      ],
+    };
+  }
 
   const semantic = classification.semantic;
-  if (semantic.clarityScore < 0.3) return null;
-  if (!semantic.topic) return null;
-
-  const normalized = normalizeFirstThoughtDraft(value);
+  // Extract topic — use inferred topic, or pull it from the raw input
+  const topic = semantic.topic || inferTopic(normalizeFirstThoughtDraft(value)) || "this";
+  const cap = topic.charAt(0).toUpperCase() + topic.slice(1);
 
   let plan: FirstThoughtExpansionPlan | null = null;
 
   if (semantic.intentType === "learn") {
-    if (semantic.topic === "machine learning" && semantic.context.knownSkills.includes("Python")) {
-      plan = {
-        intent: "goal",
-        bullets: [
-          "Which area of machine learning interests you (for example NLP, deep learning, or vision)?",
-          "What level are you aiming for (fundamentals, projects, or job-ready)?",
-          "What is the first project you could build using Python?",
-        ],
-        sections: ["Learning Goal", "Focus Area", "First Project"],
-      };
-    } else if (semantic.topic === "machine learning") {
-      plan = {
-        intent: "goal",
-        bullets: [
-          "Which area of machine learning do you want to start with first?",
-          "Are you aiming for fundamentals, projects, or interview readiness?",
-          "What is one machine learning project you can finish this month?",
-        ],
-        sections: ["Learning Goal", "Focus Area", "First Project"],
-      };
-    } else if (semantic.topic === "AI") {
-      plan = {
-        intent: "goal",
-        bullets: [
-          "Which area of AI are you most interested in right now?",
-          "Do you want to focus on concepts, tools, or AI applications?",
-          "What is the first small AI project you can start this week?",
-        ],
-        sections: ["Learning Goal", "AI Direction", "First Project"],
-      };
-    } else if (semantic.topic === "swimming") {
-      plan = {
-        intent: "goal",
-        bullets: [
-          "What do you enjoy most about swimming (relaxation, fitness, or challenge)?",
-          "How often do you swim now, or want to swim?",
-          "Do you want to improve your swimming skills or enjoy it more consistently?",
-        ],
-        sections: ["Why I Like Swimming", "My Routine", "Improvement / Goals"],
-      };
-    }
+    plan = {
+      intent: "goal",
+      suggestions: [
+        { label: `Map out learning ${topic}`, template: `## Learning ${cap} — Roadmap\n- Start with fundamentals of ${topic}\n- Build a small ${topic} project\n- Review and iterate\n` },
+        { label: `Find ${topic} resources`, template: `## ${cap} Resources\n- [ ] Find a beginner course for ${topic}\n- [ ] Look for ${topic} communities\n- [ ] Set aside weekly time for ${topic}\n` },
+        { label: `Why ${topic} matters to me`, template: `## Why ${cap}?\n- What drew me to ${topic}\n- What I hope to do with ${topic}\n- How I'll know I'm making progress\n` },
+      ],
+    };
   } else if (semantic.intentType === "build") {
-    if (/\b(note\s*taking|notes?)\b/.test(normalized) && /\b(casual|too\s+casual|unstructured)\b/.test(normalized)) {
-      plan = {
-        intent: "idea",
-        bullets: [
-          "Who exactly are these users (students, creators, or professionals)?",
-          "What problem does note-taking being too casual create for them?",
-          "What would a more structured note-taking system look like?",
-        ],
-        sections: ["Target Users", "Problem", "Solution Idea"],
-      };
-    } else if (semantic.topic === "SaaS" && semantic.context.audience === "students") {
-      plan = {
-        intent: "idea",
-        bullets: [
-          "Who exactly are you building for (school students, college students, or a niche group)?",
-          "What specific problem are those students facing right now?",
-          "What is the simplest student-facing version you could launch first?",
-        ],
-        sections: ["Product Direction", "Student Problem", "Simplest Launch"],
-      };
-    } else if (semantic.topic === "SaaS") {
-      plan = {
-        intent: "idea",
-        bullets: [
-          "What recurring pain should this SaaS solve first?",
-          "Which SaaS user segment feels that pain most urgently?",
-          "What is the leanest SaaS version you can launch first?",
-        ],
-        sections: ["Product Direction", "Target User", "Simplest Launch"],
-      };
-    } else if (semantic.topic === "business") {
-      plan = {
-        intent: "idea",
-        bullets: [
-          "Who are you building this business for?",
-          "What problem is this business solving for them?",
-          "What is the simplest version of the business you can start with?",
-        ],
-        sections: ["Target Users", "Problem", "Solution Idea"],
-      };
-    } else if (semantic.topic) {
-      plan = {
-        intent: "idea",
-        bullets: [
-          `What problem should this ${semantic.topic} product solve first?`,
-          `Who is the first user group for this ${semantic.topic} idea?`,
-          "What can you build as a minimal first version?",
-        ],
-        sections: ["Build Goal", "Target User", "First Version"],
-      };
-    }
+    plan = {
+      intent: "idea",
+      suggestions: [
+        { label: `Define what ${topic} solves`, template: `## What ${cap} Solves\n- The core problem\n- Who feels this pain\n- Why existing solutions fail\n` },
+        { label: `Sketch ${topic} v1`, template: `## ${cap} — First Version\n- Core feature #1\n- Core feature #2\n- What to skip for now\n` },
+        { label: `Who needs ${topic}`, template: `## ${cap} — Target Users\n- Primary user type\n- Their biggest frustration\n- How they'd find ${topic}\n` },
+      ],
+    };
   } else if (semantic.intentType === "social") {
-    if (semantic.topic === "relationship") {
-      plan = {
-        intent: "goal",
-        bullets: [
-          "How do you want to approach her (direct, casual, or through context)?",
-          "What outcome are you hoping for from this interaction?",
-          "What is a safe first interaction you can make?",
-        ],
-        sections: ["Approach", "Intent", "First Move"],
-      };
-    }
+    plan = {
+      intent: "goal",
+      suggestions: [
+        { label: `Plan the first move`, template: `## First Interaction\n- Setting/context for ${topic}\n- What to say or do\n- How to read the response\n` },
+        { label: `Why ${topic} matters`, template: `## Why This Matters\n- What I'm hoping for\n- What I'm afraid of\n- What I'd regret not doing\n` },
+        { label: `Best & worst outcomes`, template: `## Possible Outcomes\n- Best case\n- Realistic case\n- Worst case (and why it's fine)\n` },
+      ],
+    };
   } else if (semantic.intentType === "problem") {
-    if (semantic.topic === "learning") {
-      plan = {
-        intent: "problem",
-        bullets: [
-          "What part of learning feels stuck (understanding, consistency, or direction)?",
-          "What have you already tried to unblock it?",
-          "What would progress in learning look like this week?",
-        ],
-        sections: ["Where Learning Feels Stuck", "What I Have Tried", "Progress This Week"],
-      };
-    } else if (semantic.topic === "focus") {
-      plan = {
-        intent: "problem",
-        bullets: [
-          "What usually breaks your focus first?",
-          "When do focus drops happen most often?",
-          "What one change can you test in your next session?",
-        ],
-        sections: ["Focus Trigger", "When It Happens", "Next Focus Experiment"],
-      };
-    } else if (semantic.topic) {
-      plan = {
-        intent: "problem",
-        bullets: [
-          `What is the hardest part of this ${semantic.topic} problem right now?`,
-          `What conditions make this ${semantic.topic} issue worse?`,
-          "What is one targeted test you can run next?",
-        ],
-        sections: ["Problem Snapshot", "When It Gets Worse", "Next Test"],
-      };
-    }
+    plan = {
+      intent: "problem",
+      suggestions: [
+        { label: `Root cause of ${topic}`, template: `## Why ${cap} Happens\n- When it started\n- What makes it worse\n- What I've tried so far\n` },
+        { label: `One action for ${topic}`, template: `## One Thing I Can Do\n- [ ] Smallest step to address ${topic}\n- When I'll do it\n- How I'll know it worked\n` },
+        { label: `Patterns around ${topic}`, template: `## ${cap} — Patterns\n- Times when ${topic} gets worse\n- Times when it gets better\n- What's different in those moments\n` },
+      ],
+    };
   } else if (semantic.intentType === "reflect") {
-    if (semantic.topic === "learning") {
-      plan = {
-        intent: "reflection",
-        bullets: [
-          "What part of your learning journey feels heavy right now?",
-          "What recent moment triggered that feeling most?",
-          "What would help you feel clearer in learning this week?",
-        ],
-        sections: ["Current Feeling", "Trigger Moment", "Support This Week"],
-      };
-    } else if (semantic.topic) {
-      plan = {
-        intent: "reflection",
-        bullets: [
-          `How are you feeling about ${semantic.topic} at this moment?`,
-          `What recent event shaped your thinking about ${semantic.topic}?`,
-          "What would help you feel clearer this week?",
-        ],
-        sections: ["Current Feeling", "Recent Trigger", "Clarity This Week"],
-      };
-    }
+    plan = {
+      intent: "reflection",
+      suggestions: [
+        { label: `Unpack this feeling`, template: `## What I'm Feeling About ${cap}\n- The core emotion\n- What triggered it\n- What I need right now\n` },
+        { label: `What triggered ${topic}`, template: `## ${cap} — The Trigger\n- What happened recently\n- Why it hit differently this time\n- What I wish had happened\n` },
+        { label: `Moving forward from ${topic}`, template: `## Moving Forward\n- One thing that would help\n- Who I could talk to about ${topic}\n- What "better" looks like this week\n` },
+      ],
+    };
   } else if (semantic.intentType === "plan") {
-    if (semantic.topic && semantic.context.timeframe) {
-      plan = {
-        intent: "goal",
-        bullets: [
-          `What concrete result do you want in ${semantic.context.timeframe}?`,
-          `What part of ${semantic.topic} should be prioritized first?`,
-          "What is the first action you can complete today?",
-        ],
-        sections: ["Plan Outcome", "Priority", "First Action"],
-      };
-    } else if (semantic.topic) {
-      plan = {
-        intent: "goal",
-        bullets: [
-          `What concrete result are you aiming for in ${semantic.topic}?`,
-          `What milestone will show your ${semantic.topic} plan is on track?`,
-          "What is the first action you can complete today?",
-        ],
-        sections: ["Plan Outcome", "Milestone", "First Action"],
-      };
-    }
+    plan = {
+      intent: "goal",
+      suggestions: [
+        { label: `${cap} milestones`, template: `## ${cap} — Milestones\n- First milestone for ${topic}\n- Mid-point checkpoint\n- End goal\n` },
+        { label: `${cap} priorities`, template: `## ${cap} — What Comes First\n- Most important thing for ${topic}\n- What can wait\n- What to drop entirely\n` },
+        { label: `${cap} constraints`, template: `## ${cap} — Reality Check\n- Time available for ${topic}\n- Skills or resources I need\n- Biggest risk\n` },
+      ],
+    };
   }
 
-  if (!plan) return null;
+  if (!plan) {
+    // Generic fallback — still topic-aware
+    plan = {
+      intent: "goal",
+      suggestions: [
+        { label: `Explore ${topic} further`, template: `## Exploring ${cap}\n- What I know so far\n- What I want to figure out\n- First thing to try\n` },
+        { label: `Why ${topic} matters`, template: `## Why ${cap} Matters\n- What draws me to ${topic}\n- What changes if I pursue this\n- What I'd regret skipping\n` },
+        { label: `Next step for ${topic}`, template: `## ${cap} — Next Step\n- [ ] The one thing I can do today\n- [ ] Who or what can help\n- [ ] How I'll track progress\n` },
+      ],
+    };
+  }
 
-  return isExpansionPlanRelevant(semantic, plan) ? plan : null;
+  return plan;
 }
 
 function expandFirstThoughtDraft(
   value: string,
-  plan: FirstThoughtExpansionPlan,
+  templateString: string,
 ): { value: string; cursor: number } {
   const trimmed = value.trim();
-  const sections = plan.sections.map((heading) => `## ${heading}\n- `).join("\n\n");
-  const expandedValue = `${trimmed}\n\n${sections}\n`;
-  const firstBulletIndex = expandedValue.indexOf("- ");
-
+  const expandedValue = `${trimmed}\n\n${templateString}`;
   return {
     value: expandedValue,
-    cursor:
-      firstBulletIndex >= 0
-        ? firstBulletIndex + 2
-        : expandedValue.length,
+    cursor: expandedValue.length,
   };
 }
 
@@ -1051,6 +945,7 @@ export default function App() {
   const [isFirstThoughtFocused, setIsFirstThoughtFocused] = useState(false);
   const [hasFirstThoughtKeystroke, setHasFirstThoughtKeystroke] = useState(false);
   const [firstThoughtExpansionPlan, setFirstThoughtExpansionPlan] = useState<FirstThoughtExpansionPlan | null>(null);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<number>(0);
   const [showFirstThoughtExpansionHint, setShowFirstThoughtExpansionHint] = useState(false);
   const [shownFirstThoughtExpansionDraftKey, setShownFirstThoughtExpansionDraftKey] = useState<string | null>(null);
   const [dismissedFirstThoughtExpansionDraftKey, setDismissedFirstThoughtExpansionDraftKey] = useState<string | null>(null);
@@ -1689,13 +1584,36 @@ export default function App() {
       clearTimeout(firstThoughtExpansionTimerRef.current);
     }
 
-    firstThoughtExpansionTimerRef.current = setTimeout(() => {
-      const plan = getFirstThoughtExpansionPlan(firstThoughtDraft);
-      if (plan && dismissedFirstThoughtExpansionDraftKey !== normalizeFirstThoughtDraft(firstThoughtDraft)) {
-        setFirstThoughtExpansionPlan(plan);
+    firstThoughtExpansionTimerRef.current = setTimeout(async () => {
+      const draft = firstThoughtDraft;
+      if (dismissedFirstThoughtExpansionDraftKey === normalizeFirstThoughtDraft(draft)) {
+        setShowFirstThoughtExpansionHint(false);
+        return;
+      }
+      
+      const llmPlan = await generateFirstThoughtExpansion(draft);
+      let mappedPlan: FirstThoughtExpansionPlan | null = null;
+
+      if (llmPlan && llmPlan.continuations && llmPlan.continuations.length === 3) {
+        mappedPlan = {
+          intent: "goal",
+          suggestions: llmPlan.continuations.map((c) => ({
+            label: c.text,
+            template: c.structure,
+          })) as [FirstThoughtTemplate, FirstThoughtTemplate, FirstThoughtTemplate],
+        };
+      } else {
+        mappedPlan = getFirstThoughtExpansionPlan(draft);
+      }
+
+      const validPlan = mappedPlan;
+
+      if (validPlan && validPlan.suggestions && validPlan.suggestions.length > 0) {
+        setFirstThoughtExpansionPlan(validPlan);
+        setSelectedSuggestionIndex(0);
         setShowFirstThoughtExpansionHint(true);
         setShownFirstThoughtExpansionDraftKey(
-          normalizeFirstThoughtDraft(firstThoughtDraft),
+          normalizeFirstThoughtDraft(draft),
         );
       } else {
         setShowFirstThoughtExpansionHint(false);
@@ -2089,13 +2007,39 @@ export default function App() {
     );
   };
 
+  const openSpacesAsTab = () => {
+    setShowThoughtModel(false);
+    setShowCanvas(false);
+    setShowGraph(false);
+
+    const existingSpacesTab = tabs.find((t) => t.path === SPACES_TAB_PATH);
+    if (existingSpacesTab) {
+      setActiveTabId(existingSpacesTab.id);
+    } else {
+      const spacesTab: Tab = {
+        id: generateId(),
+        path: SPACES_TAB_PATH,
+        name: "Spaces",
+        isModified: false,
+      };
+      setTabs((prev) => [...prev, spacesTab]);
+      setActiveTabId(spacesTab.id);
+    }
+
+    setCurrentContent("");
+    setBacklinks([]);
+  };
+
   const handleExpandFirstThought = useCallback(() => {
     if (!firstThoughtExpansionPlan) return;
     if (!firstThoughtDraft.trim()) return;
 
+    const suggestion = firstThoughtExpansionPlan.suggestions[selectedSuggestionIndex];
+    if (!suggestion) return;
+
     const expandedDraft = expandFirstThoughtDraft(
       firstThoughtDraft,
-      firstThoughtExpansionPlan,
+      suggestion.template,
     );
 
     setFirstThoughtDraft(expandedDraft.value);
@@ -2111,7 +2055,7 @@ export default function App() {
       const cursor = Math.min(expandedDraft.cursor, expandedDraft.value.length);
       element.setSelectionRange(cursor, cursor);
     });
-  }, [firstThoughtDraft, firstThoughtExpansionPlan]);
+  }, [firstThoughtDraft, firstThoughtExpansionPlan, selectedSuggestionIndex]);
 
   const handleIgnoreFirstThoughtExpansion = useCallback(() => {
     setShowFirstThoughtExpansionHint(false);
@@ -2657,7 +2601,7 @@ export default function App() {
     if (!activeTabId) return;
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab) return;
-    if (isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH) return;
+    if (isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH) return;
 
     await api.writeFile(tab.path, currentContent);
     if (tab.path.toLowerCase().endsWith(".md")) {
@@ -2732,7 +2676,7 @@ export default function App() {
 
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);
-    if (!tab || isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH) {
+    if (!tab || isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH) {
       setFtuxSuggestionIdle(false);
       if (ftuxIdleTimerRef.current) {
         clearTimeout(ftuxIdleTimerRef.current);
@@ -3453,6 +3397,7 @@ export default function App() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTabIsCanvas = !!activeTab && isCanvasFile(activeTab.path);
   const activeTabIsGraph = !!activeTab && activeTab.path === GRAPH_TAB_PATH;
+  const activeTabIsSpaces = !!activeTab && activeTab.path === SPACES_TAB_PATH;
   const ftuxStage: FTUXStage = getFTUXStage(ftuxState);
   const isFTUXZeroState = Boolean(vaultPath) && ftuxStage === "zero";
   const isFTUXFirstNote = ftuxStage === "first_note";
@@ -3464,6 +3409,7 @@ export default function App() {
     !!activeTab &&
     !activeTabIsCanvas &&
     !activeTabIsGraph &&
+    !activeTabIsSpaces &&
     ftuxSuggestionIdle &&
     !showGraph &&
     !showCanvas;
@@ -3622,11 +3568,33 @@ export default function App() {
 
         {showFirstThoughtExpansionHint && firstThoughtExpansionPlan && (
           <div className="ftux-inline-expand-hint ftux-inline-expand-hint-fade-in">
-            <div className="ftux-inline-expand-title">Expand this:</div>
-            <ul className="ftux-inline-expand-list">
-              {firstThoughtExpansionPlan.bullets.map((bullet, index) => (
-                <li key={`${firstThoughtExpansionPlan.intent}-${index}`}>
-                  {bullet}
+            <div className="ftux-inline-expand-title">Continue this:</div>
+            <ul className="ftux-inline-expand-list" style={{ listStyleType: "none", paddingLeft: 0, marginTop: "8px", marginBottom: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              {firstThoughtExpansionPlan.suggestions.map((suggestion, index) => (
+                <li
+                  key={`${firstThoughtExpansionPlan.intent}-${index}`}
+                  style={{
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    border: index === selectedSuggestionIndex ? "1px solid var(--border-strong)" : "1px solid transparent",
+                    background: index === selectedSuggestionIndex ? "var(--bg-active)" : "transparent",
+                    transition: "all 0.2s ease"
+                  }}
+                  onClick={() => setSelectedSuggestionIndex(index)}
+                  onMouseEnter={(e) => {
+                    if (index !== selectedSuggestionIndex) {
+                      e.currentTarget.style.background = "var(--bg-hover)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (index !== selectedSuggestionIndex) {
+                      e.currentTarget.style.background = "transparent";
+                    }
+                  }}
+                >
+                  <span style={{ marginRight: "8px", opacity: 0.5 }}>•</span>
+                  {suggestion.label}
                 </li>
               ))}
             </ul>
@@ -3636,14 +3604,14 @@ export default function App() {
                 className="ftux-inline-expand-btn ftux-inline-expand-btn-primary"
                 onClick={handleExpandFirstThought}
               >
-                Expand
+                Continue
               </button>
               <button
                 type="button"
                 className="ftux-inline-expand-btn"
                 onClick={handleIgnoreFirstThoughtExpansion}
               >
-                Ignore
+                Dismiss
               </button>
             </div>
           </div>
@@ -3694,6 +3662,9 @@ export default function App() {
               setShowGraph(false);
               setShowCanvas(false);
               setShowThoughtModel((t) => !t);
+            }}
+            onSpaces={() => {
+              openSpacesAsTab();
             }}
             onCanvas={() => {
               void handleToggleCanvas();
@@ -3841,6 +3812,14 @@ export default function App() {
                               onAIViewChange={(enabled: boolean) =>
                                 setGraphMode(enabled ? "ai" : "manual")
                               }
+                            />
+                          ) : activeTabIsSpaces ? (
+                            <SpacesPage
+                              onClose={() => closeTab(activeTab.id)}
+                              fileTree={fileTree}
+                              onOpenNote={(path) => {
+                                openFile(path);
+                              }}
                             />
                           ) : undefined
                         }

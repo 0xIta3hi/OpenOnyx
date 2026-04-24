@@ -126,3 +126,13 @@ export interface ThoughtModelQueryResponse {
   query: string;
   results: ThoughtModelQueryResult[];
 }
+
+// Re-export Spaces types
+export type {
+  Space,
+  SpaceChunk,
+  SpaceVectorIndex,
+  SpaceIndexEntry,
+  SpaceChatMessage,
+  SpaceForkRequest,
+} from "./spaces";

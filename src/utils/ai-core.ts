@@ -232,3 +232,180 @@ If information is insufficient, say so. Reply with ONLY the answer.`;
 export function isAIConfigured(): boolean {
   return loadAIConfig() !== null;
 }
+
+// ── 4. Smart Expansion (First Thought) ───────────────────────────────────────
+
+export interface AIContinuation {
+  type: "action" | "clarity" | "insight";
+  text: string;
+  structure: string;
+}
+
+export interface AIFirstThoughtExpansionPlan {
+  continuations: [AIContinuation, AIContinuation, AIContinuation];
+}
+
+export async function generateFirstThoughtExpansion(
+  userThought: string,
+): Promise<AIFirstThoughtExpansionPlan | null> {
+  const config = loadAIConfig();
+  if (!config) return null;
+
+  try {
+    const systemPrompt = `GOAL:
+Extend the user's thought into something more useful, specific, and insightful.
+
+This is NOT a template generator. This is NOT a formatting tool. This is a thinking partner.
+You must help the user think better — not just organize text.
+
+---
+
+INPUT:
+User will provide a single thought (can be vague, emotional, or incomplete).
+
+---
+
+OUTPUT:
+Return EXACTLY 3 continuations in JSON format.
+
+Each continuation must include:
+- type: "action" | "clarity" | "insight"
+- text: short, natural continuation (1–2 lines max)
+- structure: a structured markdown expansion derived from the text
+
+---
+
+STRICT RULES:
+
+1. ALWAYS be context-specific
+- Directly reference the user's topic
+- Never give generic advice
+
+Bad: "Start with basics"
+Good: "Start with Python and build small scripts like a calculator or file organizer"
+
+---
+
+2. NEVER generate generic productivity phrases
+
+BANNED:
+- "Break this into steps"
+- "Make a plan"
+- "Define your goal"
+- "Start with fundamentals"
+- "Be consistent"
+- "Set milestones"
+- "Explore this further"
+
+If your output matches any of these patterns → REWRITE.
+
+---
+
+3. EACH continuation must feel DIFFERENT
+
+You must generate:
+
+(ACTION) → A concrete next move
+(CLARITY) → Make the thought more specific or defined
+(INSIGHT) → A non-obvious idea, mistake, or reframing
+
+---
+
+4. FORCE SPECIFICITY
+
+Every continuation must include at least ONE of:
+- a real-world example
+- a constraint
+- a comparison
+- a mistake to avoid
+
+---
+
+5. ANTI-BORING CHECK (MANDATORY)
+
+Before returning, validate:
+- Could this apply to 50+ different topics?
+- Does this feel obvious?
+
+If YES → rewrite with more specificity and depth.
+
+---
+
+6. HANDLE ALL VALID INPUTS
+
+Expand ANY meaningful thought, including:
+- goals → "I want to learn coding"
+- feelings → "I feel stuck"
+- casual → "I love swimming"
+- messy → "I want to sleep but also work"
+
+DO NOT expand (return {"continuations":[]} for):
+- greeting ("hi")
+- identity ("my name is x")
+
+---
+
+7. STRUCTURE GENERATION RULE
+
+The structure MUST be derived from the meaning of the continuation.
+
+NOT generic headings like:
+❌ "## Steps"
+❌ "## Plan"
+
+Instead:
+✔ compress the idea into a natural heading
+
+Example:
+Text: "Start with Python and build small tools"
+Structure:
+## Start with Python
+- Build simple tools like calculator or file organizer
+- Avoid only watching tutorials — write code from day one
+
+---
+
+8. KEEP IT HUMAN
+- Natural language only
+- No robotic phrasing
+- No quotes around user input
+- No repeating input awkwardly
+
+---
+
+OUTPUT FORMAT:
+Return ONLY valid JSON:
+{
+  "continuations": [
+    {
+      "type": "action",
+      "text": "...",
+      "structure": "## ...\\n- ...\\n- ..."
+    },
+    {
+      "type": "clarity",
+      "text": "...",
+      "structure": "## ...\\n- ...\\n- ..."
+    },
+    {
+      "type": "insight",
+      "text": "...",
+      "structure": "## ...\\n- ...\\n- ..."
+    }
+  ]
+}`;
+
+    const text = await callLLM(systemPrompt, userThought, 800, 0.4);
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    
+    const parsed = JSON.parse(match[0]);
+    if (!parsed.continuations || parsed.continuations.length !== 3) return null;
+    
+    return parsed as AIFirstThoughtExpansionPlan;
+  } catch (err) {
+    console.warn("[AI] Smart expansion failed:", err);
+    return null;
+  }
+}
+

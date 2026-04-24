@@ -10,6 +10,7 @@ import {
   List,
   Sparkles,
   Layout,
+  Globe,
 } from "lucide-react";
 import { getAPI } from "../utils/api";
 
@@ -23,6 +24,7 @@ interface RibbonProps {
   onToggleTags?: () => void;
   onToggleOutline?: () => void;
   onThoughtModel?: () => void;
+  onSpaces?: () => void;
   onCanvas?: () => void;
 }
 
@@ -36,6 +38,7 @@ export function Ribbon({
   onToggleTags,
   onToggleOutline,
   onThoughtModel,
+  onSpaces,
   onCanvas,
 }: RibbonProps) {
   const handleSearch = () => {
@@ -107,6 +110,15 @@ export function Ribbon({
             title="AI Assistant"
           >
             <Sparkles size={20} strokeWidth={1.5} />
+          </button>
+        )}
+        {onSpaces && (
+          <button
+            className="ribbon-btn"
+            onClick={onSpaces}
+            title="Spaces"
+          >
+            <Globe size={20} strokeWidth={1.5} />
           </button>
         )}
         {onCanvas && (

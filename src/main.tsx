@@ -10,6 +10,7 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "katex/dist/katex.min.css";
 import "./styles/index.css";
+import "./styles/spaces.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
