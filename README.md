@@ -22,6 +22,12 @@ A local-first knowledge management tool for creating, editing, and linking Markd
 - **Split View**: Edit and preview markdown side by side
 - **Drag & Drop**: Reorganize files between folders
 
+### 🌌 Knowledge Spaces
+- **Automated Vault Indexing**: A background pipeline automatically scans your entire vault, chunks markdown files, and builds a semantic vector index for RAG queries.
+- **"Thinking Layer" RAG Engine**: A custom AI pipeline that acts as a distilled version of your vault's thinking, prioritizing context and avoiding generic answers.
+- **Spaces Marketplace**: Manage your knowledge systems—create, delete, or remix spaces to explore different thematic views of your vault.
+- **Streaming Chat Interface**: High-fidelity chat experience with real-time response streaming, markdown rendering, and intelligent source citation.
+
 ## Getting Started
 
 ### Prerequisites
@@ -63,9 +69,19 @@ openobsidian/
 │   ├── main.tsx                # React entry point
 │   ├── App.tsx                 # Root component and state management
 │   ├── types/index.ts          # TypeScript type definitions
-│   ├── utils/helpers.ts        # Utility functions
-│   ├── styles/index.css        # Application styles
+│   ├── utils/
+│   │   ├── helpers.ts          # Utility functions
+│   │   ├── spaces-store.ts     # CRUD for knowledge spaces
+│   │   ├── spaces-processing.ts # Vault indexing pipeline
+│   │   ├── spaces-rag.ts        # Retrieval-Augmented Generation
+│   │   └── ai-core.ts          # AI provider configuration
+│   │
+│   ├── styles/
+│   │   ├── index.css           # Global application styles
+│   │   └── spaces.css          # Spaces-specific aesthetics
+│   │
 │   └── components/
+│       ├── SpacesPage.tsx      # Knowledge Spaces entry point
 │       ├── TitleBar.tsx
 │       ├── Sidebar.tsx
 │       ├── SearchModal.tsx
