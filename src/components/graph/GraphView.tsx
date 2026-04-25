@@ -56,26 +56,30 @@ interface GraphSettings {
 }
 
 // Default colors matching app theme
-const getDefaultSettings = (isDark: boolean): GraphSettings => ({
-  searchTerm: "",
-  existingFilesOnly: false,
-  showOrphans: true,
-  backgroundColor: isDark ? "#101010" : "#f0f0f6",
-  // Grayscale nodes that match app theme
-  nodeColor: isDark ? "#a0a0a0" : "#4a4a4a",
-  connectedColor: isDark ? "#c0c0c0" : "#3a3a3a",
-  edgeColor: isDark ? "#505050" : "#b0b0b0",
-  nodeSize: 5,
-  linkWidth: 1,
-  textColor: isDark ? "#808080" : "#606060",
-  textSize: 11,
-  showLabels: true,
-  labelThreshold: 0.4,
-  centerForce: 10,
-  repelForce: 100,
-  linkForce: 50,
-  linkDistance: 100,
-});
+export const getDefaultSettings = (theme: Theme): GraphSettings => {
+  const isLight = theme === "light";
+  const isOceanic = theme === "oceanic";
+
+  return {
+    searchTerm: "",
+    existingFilesOnly: false,
+    showOrphans: true,
+    backgroundColor: isOceanic ? "#14161a" : isLight ? "#fff7ed" : "#1f1f1f",
+    nodeColor: isOceanic ? "#ffffff" : isLight ? "#4a4a4a" : "#d5d1d1",
+    connectedColor: isOceanic ? "#7dd3fc" : isLight ? "#3a3a3a" : "#c0c0c0",
+    edgeColor: isOceanic ? "#878787" : isLight ? "#404040" : "#5d5d5d",
+    nodeSize: isLight ? 8 : 6,
+    linkWidth: isOceanic ? 1.5 : (isLight ? 2 : 2.5),
+    textColor: isOceanic ? "#a2aab4" : isLight ? "#606060" : "#a0a0a0",
+    textSize: 18,
+    showLabels: true,
+    labelThreshold: 0.5,
+    centerForce: 50,
+    repelForce: 10,
+    linkForce: 100,
+    linkDistance: 20,
+  };
+};
 
 function hexToNumber(hex: string): number {
   return parseInt(hex.replace("#", ""), 16);
@@ -295,18 +299,18 @@ export function GraphView({
     [vaultPath],
   );
 
-  // Separate settings keys for dark and light themes
-  const settingsKeyDark = `openobsidian-graph-settings-v7-dark-${vaultHash}`;
-  const settingsKeyLight = `openobsidian-graph-settings-v7-light-${vaultHash}`;
-  const settingsKey = isDark ? settingsKeyDark : settingsKeyLight;
+  // Separate settings keys for different themes
+  let settingsKey = `openobsidian-graph-settings-v7-dark-${vaultHash}`;
+  if (theme === "light") settingsKey = `openobsidian-graph-settings-v7-light-${vaultHash}`;
+  if (theme === "oceanic") settingsKey = `openobsidian-graph-settings-v7-oceanic-${vaultHash}`;
   const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
 
   const [settings, setSettings] = useState<GraphSettings>(() => {
     try {
       const saved = localStorage.getItem(settingsKey);
-      if (saved) return { ...getDefaultSettings(isDark), ...JSON.parse(saved) };
+      if (saved) return { ...getDefaultSettings(theme), ...JSON.parse(saved) };
     } catch {}
-    return getDefaultSettings(isDark);
+    return getDefaultSettings(theme);
   });
 
   // Load settings when theme changes and update renderer background
@@ -316,12 +320,12 @@ export function GraphView({
       try {
         const saved = localStorage.getItem(settingsKey);
         if (saved) {
-          setSettings({ ...getDefaultSettings(isDark), ...JSON.parse(saved) });
+          setSettings({ ...getDefaultSettings(theme), ...JSON.parse(saved) });
         } else {
-          setSettings(getDefaultSettings(isDark));
+          setSettings(getDefaultSettings(theme));
         }
       } catch {
-        setSettings(getDefaultSettings(isDark));
+        setSettings(getDefaultSettings(theme));
       }
 
       // Update background color immediately without full re-init
@@ -343,6 +347,7 @@ export function GraphView({
   useEffect(() => {
     try {
       localStorage.setItem(settingsKey, JSON.stringify(settings));
+      window.dispatchEvent(new Event("manual-graph-settings-changed"));
     } catch {}
   }, [settings, settingsKey]);
 
@@ -692,7 +697,6 @@ export function GraphView({
     settings.labelThreshold,
   ]);
 
-  // Live force updates - reheat on change
   useEffect(() => {
     const worker = workerRef.current;
     if (!worker) return;
@@ -726,8 +730,8 @@ export function GraphView({
   }, []);
 
   const resetSettings = useCallback(() => {
-    setSettings(getDefaultSettings(isDark));
-  }, [isDark]);
+    setSettings(getDefaultSettings(theme));
+  }, [theme]);
 
   const centerView = useCallback(() => {
     rendererRef.current?.centerView();

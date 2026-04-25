@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Theme } from "../../types";
 import { GraphRenderer } from "./GraphRenderer";
+import { getDefaultSettings as getManualDefaultSettings } from "./GraphView";
 import {
   loadStoreAsync,
   loadSuggestionHistory,
@@ -144,24 +145,9 @@ interface AIGraphSettings {
   focusMode: boolean;
   showDirectionalFlow: boolean;
   searchTerm: string;
-
-  backgroundColor: string;
-  nodeColor: string;
-  connectedColor: string;
-  edgeColor: string;
-  textColor: string;
-  nodeSize: number;
-  linkWidth: number;
-  textSize: number;
-  labelThreshold: number;
-
-  centerForce: number;
-  repelForce: number;
-  linkForce: number;
-  linkDistance: number;
 }
 
-function getDefaultSettings(isDark: boolean): AIGraphSettings {
+function getDefaultSettings(theme: Theme): AIGraphSettings {
   return {
     threshold: AI_GRAPH_SIMILARITY_THRESHOLD,
     clusterThreshold: AI_GRAPH_CLUSTER_THRESHOLD,
@@ -171,21 +157,6 @@ function getDefaultSettings(isDark: boolean): AIGraphSettings {
     focusMode: true,
     showDirectionalFlow: true,
     searchTerm: "",
-
-    backgroundColor: isDark ? "#101010" : "#f0f0f6",
-    nodeColor: isDark ? "#7aa2f7" : "#4a5fbf",
-    connectedColor: isDark ? "#6ee7b7" : "#1f8f6d",
-    edgeColor: isDark ? "#7c82b4" : "#7a7f99",
-    textColor: isDark ? "#b3b8d4" : "#4b4f66",
-    nodeSize: 5,
-    linkWidth: 1,
-    textSize: 11,
-    labelThreshold: 0.4,
-
-    centerForce: 8,
-    repelForce: 95,
-    linkForce: 45,
-    linkDistance: 105,
   };
 }
 
@@ -442,17 +413,33 @@ export function AIKnowledgeGraph({
 
   const isDark = theme === "dark" || theme === "oceanic";
   const vaultHash = useMemo(() => getVaultHash(vaultPath || "default"), [vaultPath]);
-  const settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-${isDark ? "dark" : "light"}`;
+
+  const [manualSettingsTick, setManualSettingsTick] = useState(0);
+
+  useEffect(() => {
+    const handleManualSettingsChange = () => {
+      setManualSettingsTick((tick) => tick + 1);
+    };
+    window.addEventListener("manual-graph-settings-changed", handleManualSettingsChange);
+    return () => {
+      window.removeEventListener("manual-graph-settings-changed", handleManualSettingsChange);
+    };
+  }, []);
+
+  let settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-dark`;
+  if (theme === "light") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-light`;
+  if (theme === "oceanic") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-oceanic`;
+  
   const positionsKey = `openobsidian-ai-graph-positions-v2-${vaultHash}`;
 
   const [settings, setSettings] = useState<AIGraphSettings>(() => {
     try {
       const saved = localStorage.getItem(settingsKey);
-      if (saved) return { ...getDefaultSettings(isDark), ...JSON.parse(saved) };
+      if (saved) return { ...getDefaultSettings(theme), ...JSON.parse(saved) };
     } catch {
       // Ignore parse errors.
     }
-    return getDefaultSettings(isDark);
+    return getDefaultSettings(theme);
   });
 
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -489,14 +476,14 @@ export function AIKnowledgeGraph({
     try {
       const saved = localStorage.getItem(settingsKey);
       if (saved) {
-        setSettings({ ...getDefaultSettings(isDark), ...JSON.parse(saved) });
+        setSettings({ ...getDefaultSettings(theme), ...JSON.parse(saved) });
       } else {
-        setSettings(getDefaultSettings(isDark));
+        setSettings(getDefaultSettings(theme));
       }
     } catch {
-      setSettings(getDefaultSettings(isDark));
+      setSettings(getDefaultSettings(theme));
     }
-  }, [settingsKey, isDark]);
+  }, [settingsKey, theme]);
 
   // Keep semantic graph rebuild responsive while dragging sliders.
   useEffect(() => {
@@ -941,10 +928,17 @@ export function AIKnowledgeGraph({
     const rect = container.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
 
+    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    let manualSettings = getManualDefaultSettings(theme);
+    try {
+      const saved = localStorage.getItem(manualSettingsKey);
+      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
+    } catch {}
+
     const renderer = new GraphRenderer(canvas, {
       width: rect.width,
       height: rect.height,
-      backgroundColor: hexToNumber(settings.backgroundColor),
+      backgroundColor: hexToNumber(manualSettings.backgroundColor),
       isDark,
     });
     rendererRef.current = renderer;
@@ -990,6 +984,32 @@ export function AIKnowledgeGraph({
             });
           },
         });
+
+        const selectedClusterColor = selectedNodeId
+          ? CLUSTER_COLORS[
+              (graphData?.nodes.find((n) => n.id === selectedNodeId)?.clusterId || 0) %
+                CLUSTER_COLORS.length
+            ]
+          : manualSettings.connectedColor;
+
+        renderer.setNodeStyle({
+          color: hexToNumber(manualSettings.nodeColor),
+          size: manualSettings.nodeSize,
+          selectedColor: hexToNumber(selectedClusterColor),
+          hoveredColor: hexToNumber(selectedClusterColor),
+          connectedColor: hexToNumber(selectedClusterColor),
+        });
+        renderer.setEdgeStyle({
+          color: hexToNumber(manualSettings.edgeColor),
+          width: manualSettings.linkWidth,
+          highlightColor: hexToNumber(selectedClusterColor),
+        });
+        renderer.setLabelStyle({
+          color: manualSettings.textColor,
+          size: manualSettings.textSize,
+          show: true,
+          threshold: manualSettings.labelThreshold,
+        });
       })
       .catch((err) => {
         console.error("[AI Graph] Renderer init failed", err);
@@ -1021,7 +1041,7 @@ export function AIKnowledgeGraph({
         rendererRef.current = null;
       }
     };
-  }, [loading, isDark, positionsKey, settings.backgroundColor]);
+  }, [loading, isDark, positionsKey, theme, vaultHash, manualSettingsTick]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1060,6 +1080,13 @@ export function AIKnowledgeGraph({
 
     renderer.setData(nodesWithPositions, filteredData.edges);
 
+    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    let manualSettings = getManualDefaultSettings(theme);
+    try {
+      const saved = localStorage.getItem(manualSettingsKey);
+      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
+    } catch {}
+
     worker.postMessage({
       type: "init",
       data: {
@@ -1071,10 +1098,10 @@ export function AIKnowledgeGraph({
         })),
         edges: filteredData.edges,
         forces: {
-          centerStrength: settings.centerForce / 100,
-          repelStrength: settings.repelForce * 10,
-          linkStrength: settings.linkForce / 50,
-          linkDistance: settings.linkDistance * 2.5,
+          centerStrength: manualSettings.centerForce / 100,
+          repelStrength: manualSettings.repelForce * 10,
+          linkStrength: manualSettings.linkForce / 50,
+          linkDistance: manualSettings.linkDistance * 2.5,
           collisionRadius: 60,
         },
       },
@@ -1093,10 +1120,9 @@ export function AIKnowledgeGraph({
     filteredData.edges,
     loading,
     positionsKey,
-    settings.centerForce,
-    settings.repelForce,
-    settings.linkForce,
-    settings.linkDistance,
+    theme,
+    vaultHash,
+    manualSettingsTick,
     layoutResetTick,
   ]);
 
@@ -1104,57 +1130,61 @@ export function AIKnowledgeGraph({
     const renderer = rendererRef.current;
     if (!renderer || !renderer.isInitialized()) return;
 
+    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    let manualSettings = getManualDefaultSettings(theme);
+    try {
+      const saved = localStorage.getItem(manualSettingsKey);
+      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
+    } catch {}
+
     const selectedClusterColor = selectedNode
       ? CLUSTER_COLORS[selectedNode.clusterId % CLUSTER_COLORS.length]
-      : settings.connectedColor;
+      : manualSettings.connectedColor;
 
-    renderer.setBackgroundColor(hexToNumber(settings.backgroundColor));
+    renderer.setBackgroundColor(hexToNumber(manualSettings.backgroundColor));
     renderer.setNodeStyle({
-      color: hexToNumber(settings.nodeColor),
-      size: settings.nodeSize,
+      color: hexToNumber(manualSettings.nodeColor),
+      size: manualSettings.nodeSize,
       selectedColor: hexToNumber(selectedClusterColor),
       hoveredColor: hexToNumber(selectedClusterColor),
       connectedColor: hexToNumber(selectedClusterColor),
     });
     renderer.setEdgeStyle({
-      color: hexToNumber(settings.edgeColor),
-      width: settings.linkWidth,
+      color: hexToNumber(manualSettings.edgeColor),
+      width: manualSettings.linkWidth,
       highlightColor: hexToNumber(selectedClusterColor),
     });
     renderer.setLabelStyle({
-      color: settings.textColor,
-      size: settings.textSize,
+      color: manualSettings.textColor,
+      size: manualSettings.textSize,
       show: true,
-      threshold: settings.labelThreshold,
+      threshold: manualSettings.labelThreshold,
     });
-  }, [
-    settings.backgroundColor,
-    settings.nodeColor,
-    settings.connectedColor,
-    settings.edgeColor,
-    settings.nodeSize,
-    settings.linkWidth,
-    settings.textColor,
-    settings.textSize,
-    settings.labelThreshold,
-    selectedNode,
-  ]);
+  }, [theme, vaultHash, selectedNode, manualSettingsTick]);
 
   useEffect(() => {
     const worker = workerRef.current;
     if (!worker) return;
+
+    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    let manualSettings = getManualDefaultSettings(theme);
+    try {
+      const saved = localStorage.getItem(manualSettingsKey);
+      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
+    } catch {}
+
     setSimulating(true);
     worker.postMessage({
       type: "forces",
       data: {
-        centerStrength: settings.centerForce / 100,
-        repelStrength: settings.repelForce * 10,
-        linkStrength: settings.linkForce / 50,
-        linkDistance: settings.linkDistance * 2.5,
+        centerStrength: manualSettings.centerForce / 100,
+        repelStrength: manualSettings.repelForce * 10,
+        linkStrength: manualSettings.linkForce / 50,
+        linkDistance: manualSettings.linkDistance * 2.5,
       },
     });
     worker.postMessage({ type: "reheat" });
-  }, [settings.centerForce, settings.repelForce, settings.linkForce, settings.linkDistance]);
+  }, [theme, vaultHash, manualSettingsTick]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1174,7 +1204,7 @@ export function AIKnowledgeGraph({
   }, []);
 
   const resetSettings = useCallback(() => {
-    const defaults = getDefaultSettings(isDark);
+    const defaults = getDefaultSettings(theme);
 
     try {
       localStorage.removeItem(settingsKey);
@@ -1426,70 +1456,6 @@ export function AIKnowledgeGraph({
               />
             </Section>
 
-            <Section title="Display" defaultOpen={false}>
-              <ColorPicker
-                label="Background"
-                value={settings.backgroundColor}
-                onChange={(v) => setSettings((current) => ({ ...current, backgroundColor: v }))}
-                presets={["#101010", "#151515", "#f0f0f6", "#ffffff"]}
-              />
-              <ColorPicker
-                label="Node"
-                value={settings.nodeColor}
-                onChange={(v) => setSettings((current) => ({ ...current, nodeColor: v }))}
-                presets={["#7aa2f7", "#60a5fa", "#a78bfa", "#6ee7b7", "#f59e0b"]}
-              />
-              <ColorPicker
-                label="Connected"
-                value={settings.connectedColor}
-                onChange={(v) => setSettings((current) => ({ ...current, connectedColor: v }))}
-                presets={["#6ee7b7", "#34d399", "#22d3ee", "#f472b6", "#cbd5e1"]}
-              />
-              <ColorPicker
-                label="Edge"
-                value={settings.edgeColor}
-                onChange={(v) => setSettings((current) => ({ ...current, edgeColor: v }))}
-                presets={["#7c82b4", "#505050", "#707070", "#9ca3af", "#b0b0b0"]}
-              />
-              <ColorPicker
-                label="Text"
-                value={settings.textColor}
-                onChange={(v) => setSettings((current) => ({ ...current, textColor: v }))}
-                presets={["#b3b8d4", "#909090", "#a0a0a0", "#4b4f66", "#606060"]}
-              />
-
-              <Slider
-                label="Node size"
-                value={settings.nodeSize}
-                onChange={(v) => setSettings((current) => ({ ...current, nodeSize: v }))}
-                min={2}
-                max={14}
-              />
-              <Slider
-                label="Edge width"
-                value={settings.linkWidth}
-                onChange={(v) => setSettings((current) => ({ ...current, linkWidth: v }))}
-                min={1}
-                max={4}
-                step={1}
-              />
-              <Slider
-                label="Text size"
-                value={settings.textSize}
-                onChange={(v) => setSettings((current) => ({ ...current, textSize: v }))}
-                min={8}
-                max={16}
-              />
-              <Slider
-                label="Label zoom"
-                value={settings.labelThreshold}
-                onChange={(v) => setSettings((current) => ({ ...current, labelThreshold: v }))}
-                min={0.1}
-                max={1}
-                step={0.1}
-              />
-            </Section>
-
             <Section title="Semantic" defaultOpen={false}>
               <Slider
                 label="Similarity"
@@ -1544,37 +1510,6 @@ export function AIKnowledgeGraph({
                 min={AI_GRAPH_MIN_NODES}
                 max={AI_GRAPH_MAX_NODES}
                 step={10}
-              />
-            </Section>
-
-            <Section title="Forces" defaultOpen={false}>
-              <Slider
-                label="Center"
-                value={settings.centerForce}
-                onChange={(v) => setSettings((current) => ({ ...current, centerForce: v }))}
-                min={0}
-                max={50}
-              />
-              <Slider
-                label="Repel"
-                value={settings.repelForce}
-                onChange={(v) => setSettings((current) => ({ ...current, repelForce: v }))}
-                min={10}
-                max={200}
-              />
-              <Slider
-                label="Link force"
-                value={settings.linkForce}
-                onChange={(v) => setSettings((current) => ({ ...current, linkForce: v }))}
-                min={0}
-                max={100}
-              />
-              <Slider
-                label="Link distance"
-                value={settings.linkDistance}
-                onChange={(v) => setSettings((current) => ({ ...current, linkDistance: v }))}
-                min={20}
-                max={200}
               />
             </Section>
 
