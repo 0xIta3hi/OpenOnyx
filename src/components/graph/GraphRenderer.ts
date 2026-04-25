@@ -533,7 +533,18 @@ export class GraphRenderer {
   }
 
   private drawLabels(ctx: CanvasRenderingContext2D): void {
-    if (!this.labelStyle.show || this.scale < this.labelStyle.threshold) return;
+    if (!this.labelStyle.show) return;
+
+    // Fade transition properties
+    const fadeStart = this.labelStyle.threshold;
+    const fadeEnd = this.labelStyle.threshold + 0.15;
+    
+    if (this.scale < fadeStart) return;
+
+    let textRevealAlpha = 1;
+    if (this.scale < fadeEnd) {
+      textRevealAlpha = (this.scale - fadeStart) / (fadeEnd - fadeStart);
+    }
 
     ctx.font = `${this.labelStyle.size}px Inter, system-ui, sans-serif`;
     ctx.textAlign = "center";
@@ -564,6 +575,9 @@ export class GraphRenderer {
       ) {
         alpha = 0.2;
       }
+      
+      // Apply the global zoom-based reveal fade
+      alpha *= textRevealAlpha;
 
       // Parse label color
       let r = 127,

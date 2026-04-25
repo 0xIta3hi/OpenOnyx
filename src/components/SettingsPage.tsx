@@ -172,7 +172,7 @@ export function SettingsPage({
                       className="setting-select"
                     >
                       <option value="dark">Dark</option>
-                      <option value="oceanic">Oceanic</option>
+                      <option value="oceanic">blue night</option>
                       <option value="light">Light</option>
                       <option value="system">System</option>
                       <option value="custom">Custom</option>
