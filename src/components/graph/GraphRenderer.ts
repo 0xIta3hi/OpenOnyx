@@ -172,11 +172,14 @@ export class GraphRenderer {
 
     this.width = safeWidth;
     this.height = safeHeight;
-    this.dpr = window.devicePixelRatio || 1;
+    
+    // Enforce high-quality rendering by scaling up DPR
+    const baseDpr = window.devicePixelRatio || 1;
+    this.dpr = Math.max(2, baseDpr * 1.5); // Ensure at least 2x, or 1.5x of native
 
     // Setup canvas with proper HiDPI scaling
-    this.canvas.width = safeWidth * this.dpr;
-    this.canvas.height = safeHeight * this.dpr;
+    this.canvas.width = Math.floor(safeWidth * this.dpr);
+    this.canvas.height = Math.floor(safeHeight * this.dpr);
     this.canvas.style.width = `${safeWidth}px`;
     this.canvas.style.height = `${safeHeight}px`;
 
@@ -403,6 +406,10 @@ export class GraphRenderer {
 
     const ctx = this.ctx;
 
+    // Enable high quality rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
     // Clear and fill background
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = hexToColor(this.backgroundColor);
@@ -410,7 +417,8 @@ export class GraphRenderer {
 
     // Apply DPR and viewport transform
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.translate(this.offsetX, this.offsetY);
+    // Use Math.round to prevent subpixel blurring of the viewport
+    ctx.translate(Math.round(this.offsetX), Math.round(this.offsetY));
     ctx.scale(this.scale, this.scale);
 
     // Draw edges
@@ -571,7 +579,7 @@ export class GraphRenderer {
       const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
       const labelY = screenY + size * this.scale + 4;
 
-      ctx.fillText(node.name, screenX, labelY);
+      ctx.fillText(node.name, Math.round(screenX), Math.round(labelY));
     }
   }
 
@@ -708,8 +716,11 @@ export class GraphRenderer {
     this.width = safeWidth;
     this.height = safeHeight;
 
-    this.canvas.width = safeWidth * this.dpr;
-    this.canvas.height = safeHeight * this.dpr;
+    const baseDpr = window.devicePixelRatio || 1;
+    this.dpr = Math.max(2, baseDpr * 1.5);
+
+    this.canvas.width = Math.floor(safeWidth * this.dpr);
+    this.canvas.height = Math.floor(safeHeight * this.dpr);
     this.canvas.style.width = `${safeWidth}px`;
     this.canvas.style.height = `${safeHeight}px`;
 
