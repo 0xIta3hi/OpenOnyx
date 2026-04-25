@@ -128,6 +128,47 @@ async function callLLM(
   return content.trim();
 }
 
+// ── Utility ──────────────────────────────────────────────────────────────────
+
+function parseInsight(rawText: string): string {
+  let text = rawText.trim();
+  
+  // 1. Try to parse JSON
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed && typeof parsed.insight === "string") return parsed.insight;
+    } catch { /* ignore */ }
+  }
+
+  // 2. Strip surrounding quotes if the ENTIRE thing is wrapped in quotes
+  if (text.startsWith('"') && text.endsWith('"') && text.length > 2) {
+    text = text.slice(1, -1).trim();
+  }
+
+  // 3. Markers fallback (Try this before arbitrary quotes, because CoT markers are very reliable)
+  const markers = [/(?:Let's craft:|Let's write:|Insight:|Core insight:|Output:)/i];
+  for (const regex of markers) {
+    const parts = text.split(regex);
+    if (parts.length > 1) {
+      let candidate = parts[parts.length - 1].trim();
+      candidate = candidate.replace(/Count words:[\s\S]*$/i, "").trim();
+      candidate = candidate.replace(/^"|"$/g, "").trim();
+      if (candidate.length > 10) {
+        return candidate;
+      }
+    }
+  }
+
+  // 4. Quotes fallback
+  const quotes = [...text.matchAll(/"([^"]+)"/g)];
+  const validQuotes = quotes.filter(q => q[1].length > 15 && q[1].toLowerCase() !== "insight");
+  if (validQuotes.length > 0) return validQuotes[validQuotes.length - 1][1];
+
+  return text;
+}
+
 // ── 1. Auto-annotation ──────────────────────────────────────────────────────
 
 export async function getAnnotation(
@@ -138,7 +179,9 @@ export async function getAnnotation(
   const hash = simpleHash(noteContent);
 
   const cached = cache.annotations[notePath];
-  if (cached && cached.hash === hash) return cached.text;
+  if (cached && cached.hash === hash) {
+    return parseInsight(cached.text);
+  }
 
   const config = loadAIConfig();
   if (!config) return null;
@@ -146,12 +189,15 @@ export async function getAnnotation(
   try {
     const systemPrompt = `You are a subtle assistant in a knowledge management tool.
 Generate ONE sentence (max 20 words) capturing the core insight of this note.
-Be specific. No fluff. Reply with ONLY the sentence.`;
+Be specific. No fluff. 
+You MUST respond ONLY with a valid JSON object in this exact format:
+{"insight": "your one sentence insight here"}`;
 
     const cleaned = noteContent.replace(/^---[\s\S]*?---\s*/m, "").trim();
     if (cleaned.length < 20) return null;
 
-    const text = await callLLM(systemPrompt, cleaned.substring(0, 1500), 100);
+    const rawResponse = await callLLM(systemPrompt, cleaned.substring(0, 1500), 150);
+    const text = parseInsight(rawResponse);
 
     cache.annotations[notePath] = { text, hash, createdAt: Date.now() };
     saveCache(cache);
@@ -164,7 +210,9 @@ Be specific. No fluff. Reply with ONLY the sentence.`;
 
 export function getCachedAnnotation(notePath: string): string | null {
   const cache = loadCacheSync();
-  return cache.annotations[notePath]?.text || null;
+  const raw = cache.annotations[notePath]?.text;
+  if (!raw) return null;
+  return parseInsight(raw);
 }
 
 // ── 2. Synthesis ────────────────────────────────────────────────────────────

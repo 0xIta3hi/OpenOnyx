@@ -11,6 +11,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { X, Lightbulb } from "lucide-react";
 import { Compartment, EditorState } from "@codemirror/state";
 import {
   EditorView,
@@ -2189,6 +2190,7 @@ export function Editor({
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
+  const [showInsight, setShowInsight] = useState(false);
   const wheelRemainderRef = useRef(0);
   const suggestionContentCompartmentRef = useRef(new Compartment());
   const typingPauseTimerRef = useRef<number | null>(null);
@@ -3105,10 +3107,30 @@ export function Editor({
         )}
       </div>
 
-      {/* Inline annotation */}
-      {annotation && (
-        <div className="editor-annotation">
-          <span className="editor-annotation-text">{annotation}</span>
+      {/* Inline annotation toggle */}
+      {annotation && !showInsight && (
+        <div 
+          className="editor-insight-toggle" 
+          onClick={() => setShowInsight(true)}
+        >
+          <Lightbulb size={12} style={{ marginRight: 4 }} />
+          View insight of note
+        </div>
+      )}
+
+      {/* Inline annotation content */}
+      {annotation && showInsight && (
+        <div className="editor-annotation readable-insight">
+          <div className="editor-annotation-header">
+            <span className="editor-annotation-title">
+              <Lightbulb size={14} style={{ marginRight: 6 }} />
+              Note Insight
+            </span>
+            <button className="editor-annotation-close" onClick={() => setShowInsight(false)} title="Close Insight">
+              <X size={14} />
+            </button>
+          </div>
+          <div className="editor-annotation-text">{annotation}</div>
         </div>
       )}
 

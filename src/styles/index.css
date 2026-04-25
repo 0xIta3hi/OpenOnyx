@@ -7462,16 +7462,76 @@ blockquote:has(.callout) {
 
 /* Editor inline annotation */
 .editor-annotation {
-  padding: 4px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-secondary);
 }
 
-.editor-annotation-text {
-  font-size: 11px;
-  font-style: italic;
+.editor-annotation.readable-insight {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin: 16px 40px;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.editor-annotation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.editor-annotation-title {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.editor-annotation-close {
+  background: transparent;
+  border: none;
   color: var(--text-muted);
-  line-height: 1.4;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.editor-annotation-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.editor-annotation-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.editor-insight-toggle {
+  position: absolute;
+  top: calc(var(--header-height) + 16px);
+  left: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+.editor-insight-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* ── Virtual Suggestion Content (Editor Flow) ───────── */
