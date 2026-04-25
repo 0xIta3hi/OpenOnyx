@@ -2922,27 +2922,57 @@ export default function App() {
 
     clearAutoSaveTimer();
 
-    await api.renameFile(oldPath, newPath);
+    try {
+      await api.renameFile(oldPath, newPath);
 
-    if (oldPath.toLowerCase().endsWith(".md")) {
+      // Update embeddings
       const store = loadStore();
-      if (newPath.toLowerCase().endsWith(".md")) {
-        renameEmbeddingPath(store, oldPath, newPath);
+      if (oldPath.toLowerCase().endsWith(".md")) {
+        if (newPath.toLowerCase().endsWith(".md")) {
+          renameEmbeddingPath(store, oldPath, newPath);
+        } else {
+          removeEmbedding(store, oldPath);
+        }
       } else {
-        removeEmbedding(store, oldPath);
+        // It might be a folder move, handle all nested md files
+        renameEmbeddingsByPrefix(store, oldPath, newPath);
       }
+
+      // Update Starred Notes
+      setStarredNotes((prev) =>
+        prev.map((p) => {
+          if (p === oldPath) return newPath;
+          if (p.startsWith(oldPath + "/")) {
+            return newPath + p.substring(oldPath.length);
+          }
+          return p;
+        }),
+      );
+
+      // Update Tabs
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.path === oldPath) {
+            return { ...t, path: newPath, name: getNoteName(newPath) };
+          }
+          if (t.path.startsWith(oldPath + "/")) {
+            const nestedPath = newPath + t.path.substring(oldPath.length);
+            return { ...t, path: nestedPath, name: getNoteName(nestedPath) };
+          }
+          return t;
+        }),
+      );
+
+      await refreshFileTree();
+    } catch (err) {
+      console.error("Move failed:", err);
+      setModal({
+        type: "confirm",
+        title: "Move Failed",
+        message: `Could not move ${oldPath} to ${newPath}.`,
+      });
     }
-
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.path === oldPath
-          ? { ...t, path: newPath, name: getNoteName(newPath) }
-          : t,
-      ),
-    );
-
-    await refreshFileTree();
-  }, [refreshFileTree, clearAutoSaveTimer]);
+  }, [refreshFileTree, clearAutoSaveTimer, setStarredNotes, setTabs]);
 
   const handleCreateFolder = async (parentPath: string) => {
     setModal({

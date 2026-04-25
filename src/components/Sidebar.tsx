@@ -64,6 +64,7 @@ export function Sidebar({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
+  const [draggingPath, setDraggingPath] = useState<string | null>(null);
   const [showStarred, setShowStarred] = useState(true);
   const renameInFlightRef = useRef(false);
 
@@ -117,6 +118,7 @@ export function Sidebar({
   const handleDragStart = (e: React.DragEvent, path: string) => {
     e.dataTransfer.setData("text/plain", path);
     e.dataTransfer.effectAllowed = "move";
+    setDraggingPath(path);
   };
 
   const handleDragOver = (e: React.DragEvent, targetPath: string) => {
@@ -129,13 +131,32 @@ export function Sidebar({
     setDragOverPath(null);
   };
 
+  const handleDragEnd = () => {
+    setDraggingPath(null);
+    setDragOverPath(null);
+  };
+
   const handleDrop = async (e: React.DragEvent, targetDir: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverPath(null);
+    setDraggingPath(null);
     const sourcePath = e.dataTransfer.getData("text/plain");
+    
+    // Safety check: don't move a folder into itself or its child
+    if (sourcePath && targetDir.startsWith(sourcePath + "/")) {
+      return;
+    }
+
     if (sourcePath && sourcePath !== targetDir) {
-      const fileName = sourcePath.split("/").pop() || sourcePath;
+      const parts = sourcePath.split("/");
+      const fileName = parts.pop() || sourcePath;
+      
+      // If we are moving a folder, we need its name too
       const newPath = targetDir ? `${targetDir}/${fileName}` : fileName;
+      
+      if (sourcePath === newPath) return;
+
       try {
         await onMoveFile(sourcePath, newPath);
       } catch (err) {
@@ -149,12 +170,13 @@ export function Sidebar({
       const isExpanded = expandedDirs.has(entry.path);
       const isActive = entry.path === activeFilePath;
       const isDragOver = entry.path === dragOverPath;
+      const isDragging = entry.path === draggingPath;
       const isRenaming = entry.path === renamingPath;
 
       return (
         <React.Fragment key={entry.path}>
           <button
-            className={`file-tree-item ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""}`}
+            className={`file-tree-item ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""} ${isDragging ? "dragging" : ""}`}
             onClick={() => {
               if (entry.isDirectory) {
                 toggleDir(entry.path);
@@ -168,17 +190,20 @@ export function Sidebar({
             onContextMenu={(e) =>
               handleContextMenu(e, entry.path, entry.isDirectory)
             }
-            draggable={!entry.isDirectory}
+            draggable={true}
             onDragStart={(e) => handleDragStart(e, entry.path)}
-            onDragOver={
-              entry.isDirectory
-                ? (e) => handleDragOver(e, entry.path)
-                : undefined
-            }
-            onDragLeave={entry.isDirectory ? handleDragLeave : undefined}
-            onDrop={
-              entry.isDirectory ? (e) => handleDrop(e, entry.path) : undefined
-            }
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => {
+              // If it's a directory, we drop INTO it
+              // If it's a file, we drop into its PARENT directory
+              const targetPath = entry.isDirectory ? entry.path : (entry.path.split('/').slice(0, -1).join('/'));
+              handleDragOver(e, targetPath);
+            }}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => {
+              const targetPath = entry.isDirectory ? entry.path : (entry.path.split('/').slice(0, -1).join('/'));
+              handleDrop(e, targetPath);
+            }}
           >
             {entry.isDirectory && (
               <span className={`chevron ${isExpanded ? "open" : ""}`}>
@@ -288,9 +313,12 @@ export function Sidebar({
                 {starredNotes.map((path) => (
                   <button
                     key={path}
-                    className={`file-tree-item starred-item ${activeFilePath === path ? "active" : ""}`}
+                    className={`file-tree-item starred-item ${activeFilePath === path ? "active" : ""} ${draggingPath === path ? "dragging" : ""}`}
                     onClick={() => onFileSelect(path)}
                     onContextMenu={(e) => handleContextMenu(e, path, false)}
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, path)}
+                    onDragEnd={handleDragEnd}
                   >
                     <Star
                       size={14}
@@ -312,7 +340,7 @@ export function Sidebar({
         )}
 
         <div
-          className="file-explorer"
+          className={`file-explorer ${dragOverPath === "" ? "drag-over" : ""}`}
           onDragOver={(e) => handleDragOver(e, "")}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, "")}

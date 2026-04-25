@@ -700,6 +700,12 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 12px 24px 12px;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.file-explorer.drag-over {
+  background: rgba(var(--accent-color-rgb, 108, 99, 255), 0.05);
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
 }
 
 .file-tree-item {
@@ -729,6 +735,26 @@ body {
 .file-tree-item.active {
   background: var(--nav-item-background-selected);
   color: var(--nav-item-color-active);
+}
+
+.file-tree-item.dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+  filter: grayscale(0.5);
+  background: var(--bg-hover);
+}
+
+.file-tree-item.dragging .name {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.file-tree-item.drag-over {
+  background: var(--nav-item-background-hover) !important;
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
+  transform: translateX(4px);
+  z-index: 10;
 }
 
 .file-tree-item .icon {

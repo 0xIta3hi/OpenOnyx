@@ -282,8 +282,23 @@ export function createMockAPI(): ElectronAPI {
 
     renameFile: async (oldPath: string, newPath: string) => {
       if (mockFiles[oldPath] !== undefined) {
+        // Renaming a file
         mockFiles[newPath] = mockFiles[oldPath];
         delete mockFiles[oldPath];
+      } else {
+        // Potentially renaming a directory
+        const keys = Object.keys(mockFiles);
+        const prefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
+        const newPrefix = newPath.endsWith("/") ? newPath : `${newPath}/`;
+
+        for (const key of keys) {
+          if (key.startsWith(prefix)) {
+            const suffix = key.substring(prefix.length);
+            const newKey = newPrefix + suffix;
+            mockFiles[newKey] = mockFiles[key];
+            delete mockFiles[key];
+          }
+        }
       }
     },
 
