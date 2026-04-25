@@ -143,7 +143,7 @@ export function StatusBar({
           className="status-item"
           style={{ display: "flex", alignItems: "center" }}
         >
-          {theme === "dark" || theme === "oceanic" ? (
+          {theme === "dark" || theme === "oceanic" || theme === "dark-plus" ? (
             <Moon size={14} />
           ) : (
             <Sun size={14} />

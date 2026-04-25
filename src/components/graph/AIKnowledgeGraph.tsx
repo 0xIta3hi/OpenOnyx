@@ -411,7 +411,7 @@ export function AIKnowledgeGraph({
   const similarityCacheRef = useRef<Map<string, SimilarityPair[]>>(new Map());
   const hasRenderedGraphRef = useRef(false);
 
-  const isDark = theme === "dark" || theme === "oceanic";
+  const isDark = theme === "dark" || theme === "oceanic" || theme === "dark-plus";
   const vaultHash = useMemo(() => getVaultHash(vaultPath || "default"), [vaultPath]);
 
   const [manualSettingsTick, setManualSettingsTick] = useState(0);

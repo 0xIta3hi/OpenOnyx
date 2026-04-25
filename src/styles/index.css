@@ -330,6 +330,41 @@
   --nav-item-background-selected: rgba(212, 212, 212, 0.12);
 }
 
+/* Dark+ Theme Override */
+[data-theme="dark-plus"] {
+  --color-base-00: #121212;
+  --color-base-05: #181818;
+  --color-base-10: #1e1e1e;
+  --color-base-20: #2a2a2a;
+  --color-base-25: #333333;
+  --color-base-30: #444444;
+  --color-base-35: #555555;
+  --color-base-40: #666666;
+  --color-base-50: #888888;
+  --color-base-60: #aaaaaa;
+  --color-base-70: #cccccc;
+  --color-base-100: #e6e6e6;
+
+  --color-accent: #ffffff;
+  --color-accent-1: #e0e0e0;
+  --color-accent-2: #c0c0c0;
+  --text-on-accent: #000000;
+
+  --bg-hover: rgba(230, 230, 230, 0.08);
+  --bg-active: rgba(230, 230, 230, 0.12);
+  --bg-glass: rgba(18, 18, 18, 0.88);
+
+  --scrollbar-thumb: rgba(230, 230, 230, 0.24);
+  --scrollbar-thumb-hover: rgba(230, 230, 230, 0.4);
+
+  --border-subtle: rgba(230, 230, 230, 0.06);
+  --border-medium: rgba(230, 230, 230, 0.12);
+  --border-strong: rgba(230, 230, 230, 0.2);
+  --divider-color: rgba(230, 230, 230, 0.08);
+
+  --nav-item-background-selected: rgba(230, 230, 230, 0.12);
+}
+
 /* ── Reset & Base Styles ───────────────────────────── */
 *,
 *::before,
