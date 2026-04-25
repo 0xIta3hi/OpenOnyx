@@ -231,6 +231,9 @@ export async function buildVectorIndex(
 
     processed++;
     onProgress?.(processed, totalNotes);
+    
+    // Yield to the main thread so the progress bar and spinner can render in real-time
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 
   // 3. Save vector index

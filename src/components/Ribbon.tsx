@@ -10,7 +10,7 @@ import {
   List,
   Sparkles,
   Layout,
-  Globe,
+  Package,
 } from "lucide-react";
 import { getAPI } from "../utils/api";
 
@@ -94,15 +94,6 @@ export function Ribbon({
             <List size={20} strokeWidth={1.5} />
           </button>
         )}
-        {onToggleTags && (
-          <button
-            className="ribbon-btn"
-            onClick={onToggleTags}
-            title="Toggle Tags"
-          >
-            <Hash size={20} strokeWidth={1.5} />
-          </button>
-        )}
         {onThoughtModel && (
           <button
             className="ribbon-btn"
@@ -118,7 +109,7 @@ export function Ribbon({
             onClick={onSpaces}
             title="Spaces"
           >
-            <Globe size={20} strokeWidth={1.5} />
+            <Package size={20} strokeWidth={1.5} />
           </button>
         )}
         {onCanvas && (
