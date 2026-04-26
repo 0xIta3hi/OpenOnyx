@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Layers, Plus, X, Trash2, ArrowLeft, Send, Loader2,
-  Copy, FileText, Globe, RefreshCw,
+  Copy, FileText, Globe, RefreshCw, LogIn, LogOut,
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
@@ -20,9 +20,12 @@ import {
 import { buildVectorIndex } from "../utils/spaces-processing";
 import { querySpaceStreaming, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
-import type { Space, SpaceIndexEntry, SpaceChatMessage } from "../types/spaces";
+import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
 import type { FileEntry } from "../types/index";
 import { MarkdownPreview } from "./editor/MarkdownPreview";
+import { authManager, AuthRequiredError } from "../lib/auth";
+import { isSupabaseConfigured } from "../lib/supabase";
+import { AuthModal } from "./AuthModal";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +78,19 @@ function getPreviewNotes(entries: FileEntry[] = [], max = 6): { path: string; ti
   return notes.slice(0, max);
 }
 
+function getVisibilityLabel(visibility: SpaceVisibility): string {
+  switch (visibility) {
+    case "local":
+      return "Local";
+    case "private":
+      return "Private";
+    case "public":
+      return "Public";
+    default:
+      return "Local";
+  }
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
@@ -94,6 +110,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [createDesc, setCreateDesc] = useState("");
   const [createTags, setCreateTags] = useState<string[]>([]);
   const [createTagInput, setCreateTagInput] = useState("");
+  const [createVisibility, setCreateVisibility] = useState<SpaceVisibility>("local");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Auth/cloud state
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [authEmail, setAuthEmail] = useState<string | null>(authManager.getUser()?.email ?? null);
 
   // Chat state
   const [chatInput, setChatInput] = useState("");
@@ -114,10 +137,21 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const vaultNoteCount = countNotes(fileTree);
   const previewNotes = getPreviewNotes(fileTree);
 
+  useEffect(() => {
+    return authManager.subscribe((state) => {
+      setAuthEmail(state.user?.email ?? null);
+    });
+  }, []);
+
   // ── Load spaces ──────────────────────────────────────
   const refreshSpaces = useCallback(async () => {
-    const list = await listSpaces();
-    setSpaces(list);
+    try {
+      const list = await listSpaces();
+      setSpaces(list);
+    } catch (err) {
+      console.error("[Spaces] Failed to load spaces:", err);
+      setSpaces([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -141,19 +175,33 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // ── Create space ─────────────────────────────────────
   const handleCreate = useCallback(async () => {
     if (!createTitle.trim()) return;
-    const space = await createSpace({
-      title: createTitle.trim(),
-      description: createDesc.trim(),
-      helpsWith: createTags,
-      noteCount: vaultNoteCount,
-    });
-    setCreateTitle("");
-    setCreateDesc("");
-    setCreateTags([]);
-    setShowCreateModal(false);
-    await refreshSpaces();
-    openSpace(space.id);
-  }, [createTitle, createDesc, createTags, vaultNoteCount, refreshSpaces, openSpace]);
+    setCreateError(null);
+    try {
+      const space = await createSpace({
+        title: createTitle.trim(),
+        description: createDesc.trim(),
+        helpsWith: createTags,
+        noteCount: vaultNoteCount,
+        visibility: createVisibility,
+      });
+      setCreateTitle("");
+      setCreateDesc("");
+      setCreateTags([]);
+      setCreateTagInput("");
+      setCreateVisibility("local");
+      setShowCreateModal(false);
+      await refreshSpaces();
+      openSpace(space.id);
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        setAuthMessage("Sign in to create private/public cloud spaces.");
+        setShowAuthModal(true);
+        return;
+      }
+      console.error("[SpacesPage] Failed to create space:", err);
+      setCreateError(err instanceof Error ? err.message : "Failed to create space.");
+    }
+  }, [createTitle, createDesc, createTags, vaultNoteCount, createVisibility, refreshSpaces, openSpace]);
 
   // ── Delete space ─────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
@@ -169,12 +217,30 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   // ── Fork space ───────────────────────────────────────
   const handleFork = useCallback(async (id: string) => {
-    const forked = await forkSpace(id);
-    if (forked) {
-      await refreshSpaces();
-      openSpace(forked.id);
+    try {
+      const forked = await forkSpace(id);
+      if (forked) {
+        await refreshSpaces();
+        openSpace(forked.id);
+      }
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        setAuthMessage("Sign in to fork cloud spaces.");
+        setShowAuthModal(true);
+      } else {
+        console.error("[Spaces] Fork failed:", err);
+      }
     }
   }, [refreshSpaces, openSpace]);
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      await authManager.signOut();
+      await refreshSpaces();
+    } catch (err) {
+      console.error("[Spaces] Sign out failed:", err);
+    }
+  }, [refreshSpaces]);
 
   // ── Build index (auto-indexes entire vault) ──────────
   const handleBuildIndex = useCallback(async () => {
@@ -300,6 +366,35 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
         </div>
 
+        <div className="space-cloud-status">
+          <div className="space-cloud-status-text">
+            {isSupabaseConfigured
+              ? authEmail
+                ? `Cloud DB connected. Signed in as ${authEmail}.`
+                : "Cloud DB connected. Sign in to create private/public spaces."
+              : "Cloud DB not configured. Spaces run in local-only mode."}
+          </div>
+          <div className="space-cloud-status-actions">
+            {authEmail ? (
+              <button className="btn btn-ghost btn-sm" onClick={handleSignOut}>
+                <LogOut size={12} /> Sign out
+              </button>
+            ) : (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setAuthMessage("Sign in to create cloud spaces and sync with Supabase.");
+                  setShowAuthModal(true);
+                }}
+                disabled={!isSupabaseConfigured}
+                title={!isSupabaseConfigured ? "Set Supabase env vars to enable cloud auth" : undefined}
+              >
+                <LogIn size={12} /> Sign in
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="spaces-body">
           {spaces.length === 0 ? (
             <div className="spaces-empty">
@@ -325,7 +420,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     </div>
                   )}
                   <div className="space-card-meta">
-                    <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} indexed</span>
+                    <div className="space-card-meta-left">
+                      <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} indexed</span>
+                      <span className={`visibility-badge ${s.visibility}`}>
+                        {getVisibilityLabel(s.visibility)}
+                      </span>
+                    </div>
                     <div className="space-card-actions" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => handleFork(s.id)} title="Remix">
                         <Copy size={12} /> Remix
@@ -393,6 +493,47 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     />
                   </div>
                 </div>
+                <div className="space-form-field">
+                  <label>Visibility</label>
+                  <div className="space-visibility-options">
+                    <button
+                      type="button"
+                      className={`space-visibility-option ${createVisibility === "local" ? "active" : ""}`}
+                      onClick={() => setCreateVisibility("local")}
+                    >
+                      Local only
+                    </button>
+                    <button
+                      type="button"
+                      className={`space-visibility-option ${createVisibility === "private" ? "active" : ""}`}
+                      onClick={() => setCreateVisibility("private")}
+                      disabled={!isSupabaseConfigured}
+                    >
+                      Private cloud
+                    </button>
+                    <button
+                      type="button"
+                      className={`space-visibility-option ${createVisibility === "public" ? "active" : ""}`}
+                      onClick={() => setCreateVisibility("public")}
+                      disabled={!isSupabaseConfigured}
+                    >
+                      Public
+                    </button>
+                  </div>
+                  <div className="space-form-hint">
+                    {createVisibility === "local"
+                      ? "Stored only on this device."
+                      : createVisibility === "private"
+                        ? "Synced to cloud and visible only to your account."
+                        : "Published publicly so others can discover and remix it."}
+                  </div>
+                  {!isSupabaseConfigured && (
+                    <div className="space-form-hint warning">
+                      Cloud options require VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.
+                    </div>
+                  )}
+                </div>
+                {createError && <div className="space-form-error">{createError}</div>}
                 <div className="space-form-actions">
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(false)}>
                     Cancel
@@ -429,6 +570,17 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
           </div>
         )}
+
+        {showAuthModal && (
+          <AuthModal
+            onClose={() => setShowAuthModal(false)}
+            onSuccess={() => {
+              setShowAuthModal(false);
+              refreshSpaces();
+            }}
+            message={authMessage}
+          />
+        )}
       </div>
     );
   }
@@ -462,6 +614,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               {activeSpace.description && (
                 <p className="space-view-desc">{activeSpace.description}</p>
               )}
+              <div className={`visibility-badge ${activeSpace.visibility}`} style={{ marginTop: 8 }}>
+                {getVisibilityLabel(activeSpace.visibility)}
+              </div>
             </div>
             <div className="space-view-actions">
               <button
@@ -622,6 +777,17 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           )}
         </div>
       </div>
+
+      {showAuthModal && (
+        <AuthModal
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => {
+            setShowAuthModal(false);
+            refreshSpaces();
+          }}
+          message={authMessage}
+        />
+      )}
     </div>
   );
 }

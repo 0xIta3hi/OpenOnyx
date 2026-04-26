@@ -8,6 +8,7 @@
 
 import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
 import { registerIpcHandlers } from './ipc';
@@ -16,10 +17,79 @@ let mainWindow: BrowserWindow | null = null;
 let fsManager: FileSystemManager | null = null;
 let searchEngine: SearchEngine | null = null;
 
+const isDevMode = !app.isPackaged;
+
+function addDisableFeatures(features: string[]): void {
+  const existing = app.commandLine.getSwitchValue('disable-features');
+  const merged = new Set([
+    ...existing.split(',').map((item) => item.trim()).filter(Boolean),
+    ...features,
+  ]);
+  app.commandLine.appendSwitch('disable-features', [...merged].join(','));
+}
+
+function configureLinuxFontConfig(): void {
+  if (process.platform !== 'linux') return;
+  if (process.env.FONTCONFIG_PATH && process.env.FONTCONFIG_FILE) return;
+
+  const candidates = [
+    { path: '/etc/fonts', file: '/etc/fonts/fonts.conf' },
+    { path: '/usr/share/defaults/fonts', file: '/usr/share/defaults/fonts/fonts.conf' },
+    { path: '/usr/local/etc/fonts', file: '/usr/local/etc/fonts/fonts.conf' },
+  ];
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate.file)) continue;
+    if (!process.env.FONTCONFIG_PATH) process.env.FONTCONFIG_PATH = candidate.path;
+    if (!process.env.FONTCONFIG_FILE) process.env.FONTCONFIG_FILE = candidate.file;
+    break;
+  }
+}
+
+function configureChromiumRuntime(): void {
+  configureLinuxFontConfig();
+
+  if (!isDevMode) return;
+  if (process.env.OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS === '1') return;
+
+  // Suppress noisy Chromium diagnostics that are non-actionable in local dev.
+  app.commandLine.appendSwitch('disable-logging');
+  app.commandLine.appendSwitch('log-level', '3');
+  app.commandLine.appendSwitch('no-first-run');
+  app.commandLine.appendSwitch('no-default-browser-check');
+  app.commandLine.appendSwitch('disable-component-update');
+  app.commandLine.appendSwitch('disable-background-networking');
+  app.commandLine.appendSwitch('disable-domain-reliability');
+  app.commandLine.appendSwitch('disable-client-side-phishing-detection');
+  app.commandLine.appendSwitch('metrics-recording-only');
+
+  addDisableFeatures([
+    'MediaRouter',
+    'OptimizationHints',
+    'AutofillServerCommunication',
+    'SegmentationPlatform',
+  ]);
+}
+
+configureChromiumRuntime();
+
 function isExternalHttpUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isAppRedirectUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    // Check if it's a redirect back to our app with auth tokens
+    return (
+      (parsed.hostname === 'localhost' && parsed.port === '5173') ||
+      (parsed.hostname === '127.0.0.1' && parsed.port === '5173')
+    );
   } catch {
     return false;
   }
@@ -60,6 +130,8 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  // (Removed aggressive URL hash stripping here, supabase-js handles it automatically)
+
   // Debugging: Forward renderer console logs to main process console
   mainWindow.webContents.on('console-message', (details) => {
     const { message, sourceId, lineNumber } = details;
@@ -67,26 +139,74 @@ function createWindow(): void {
     console.log(`[RENDERER] ${message} (at ${sourceId}:${lineNumber})`);
   });
 
-  // Always open external HTTP(S) links in the user's default browser.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalHttpUrl(url)) {
-      void shell.openExternal(url);
-      return { action: 'deny' };
-    }
-    return { action: 'allow' };
-  });
-
+  // OAuth redirect handling: if redirect goes back to our app with auth tokens, handle it
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
-    if (!mainWindow || !isExternalHttpUrl(navigationUrl)) return;
+    if (!mainWindow) return;
+
+    // If redirect is back to our app, let it happen (it contains auth tokens)
+    if (isAppRedirectUrl(navigationUrl)) {
+      return;
+    }
+
+    if (!isExternalHttpUrl(navigationUrl)) return;
 
     let isSameOrigin = false;
     try {
-      isSameOrigin = new URL(navigationUrl).origin === new URL(mainWindow.webContents.getURL()).origin;
+      const currentUrl = mainWindow.webContents.getURL();
+      isSameOrigin = new URL(navigationUrl).origin === new URL(currentUrl).origin;
     } catch {
       isSameOrigin = false;
     }
 
     if (isSameOrigin) return;
+
+    // Intercept Supabase Auth and open in an Electron popup instead of default browser
+    if (navigationUrl.includes('.supabase.co/auth/v1/authorize')) {
+      event.preventDefault();
+      
+      console.log('[MAIN] Intercepted OAuth URL:', navigationUrl);
+      
+      const authWindow = new BrowserWindow({
+        width: 600,
+        height: 700,
+        parent: mainWindow,
+        modal: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        }
+      });
+
+      // Google blocks OAuth in Electron's default UserAgent. Spoof a standard Chrome agent:
+      const userAgent = authWindow.webContents.getUserAgent()
+        .replace(/\s?Electron\/[^\s]+/g, '')
+        .replace(/\s?openobsidian\/[^\s]+/ig, '');
+      authWindow.webContents.setUserAgent(userAgent);
+
+      authWindow.loadURL(navigationUrl);
+
+      const handleRedirect = (e: Electron.Event, newUrl: string) => {
+        console.log('[MAIN] Auth window navigating to:', newUrl);
+        if (isAppRedirectUrl(newUrl)) {
+          console.log('[MAIN] Captured app redirect. Sending to main window and closing popup.');
+          e.preventDefault();
+          // Force the main window to navigate to the new URL and reload so Supabase-js parses the hash
+          if (mainWindow) {
+            mainWindow.webContents.executeJavaScript(`
+              window.location.href = "${newUrl}";
+              window.location.reload();
+            `);
+          }
+          authWindow.close();
+        }
+      };
+
+      authWindow.webContents.on('will-navigate', handleRedirect);
+      authWindow.webContents.on('will-redirect', handleRedirect);
+      
+      return;
+    }
+
     event.preventDefault();
     void shell.openExternal(navigationUrl);
   });

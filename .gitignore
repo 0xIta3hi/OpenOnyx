@@ -6,3 +6,5 @@ release/
 .DS_Store
 thought_model/
 PROMPT.md
+.env.local
+.env

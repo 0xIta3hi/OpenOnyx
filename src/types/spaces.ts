@@ -8,11 +8,15 @@
 
 // ── Core Space Model ─────────────────────────────────────────────────────────
 
+export type SpaceVisibility = "local" | "private" | "public";
+
 export interface Space {
   id: string;
   title: string;
   description: string;
   helpsWith: string[];
+  visibility: SpaceVisibility;
+  ownerId: string;
   /** Number of vault notes indexed at last build */
   noteCount: number;
   createdAt: string;
@@ -48,6 +52,8 @@ export interface SpaceIndexEntry {
   title: string;
   description: string;
   helpsWith: string[];
+  visibility: SpaceVisibility;
+  ownerId: string;
   noteCount: number;
   createdAt: string;
   updatedAt: string;
