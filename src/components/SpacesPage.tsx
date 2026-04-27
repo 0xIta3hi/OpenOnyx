@@ -53,7 +53,7 @@ function countNotes(entries: FileEntry[] = []): number {
   let count = 0;
   for (const e of entries) {
     if (e.isDirectory && e.children) count += countNotes(e.children);
-    else if (e.name.endsWith(".md")) count++;
+    else if (e.name.endsWith(".md") || e.name.endsWith(".canvas")) count++;
   }
   return count;
 }
@@ -132,6 +132,16 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // Delete confirm
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // Toast notifications
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"success" | "error">("success");
+
+  const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
+    setToastMessage(message);
+    setToastType(type);
+    setTimeout(() => setToastMessage(null), 4000);
+  }, []);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const vaultNoteCount = countNotes(fileTree);
@@ -205,15 +215,26 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   // ── Delete space ─────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
-    await deleteSpace(id);
-    setDeleteConfirmId(null);
-    if (activeSpaceId === id) {
-      setView("marketplace");
-      setActiveSpace(null);
-      setActiveSpaceId(null);
+    try {
+      await deleteSpace(id);
+      setDeleteConfirmId(null);
+      if (activeSpaceId === id) {
+        setView("marketplace");
+        setActiveSpace(null);
+        setActiveSpaceId(null);
+      }
+      await refreshSpaces();
+      showToast("Space deleted.");
+    } catch (err) {
+      setDeleteConfirmId(null);
+      if (err instanceof AuthRequiredError) {
+        setAuthMessage("Sign in to delete cloud spaces.");
+        setShowAuthModal(true);
+      } else {
+        showToast(err instanceof Error ? err.message : "Failed to delete space.", "error");
+      }
     }
-    await refreshSpaces();
-  }, [activeSpaceId, refreshSpaces]);
+  }, [activeSpaceId, refreshSpaces, showToast]);
 
   // ── Fork space ───────────────────────────────────────
   const handleFork = useCallback(async (id: string) => {
@@ -221,6 +242,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       const forked = await forkSpace(id);
       if (forked) {
         await refreshSpaces();
+        showToast(`\u201c${forked.title}\u201d saved to your vault.`);
         openSpace(forked.id);
       }
     } catch (err) {
@@ -228,10 +250,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         setAuthMessage("Sign in to fork cloud spaces.");
         setShowAuthModal(true);
       } else {
-        console.error("[Spaces] Fork failed:", err);
+        showToast(err instanceof Error ? err.message : "Remix failed.", "error");
       }
     }
-  }, [refreshSpaces, openSpace]);
+  }, [refreshSpaces, openSpace, showToast]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -351,6 +373,15 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   if (view === "marketplace") {
     return (
       <div className="spaces-page">
+        {/* Toast notification */}
+        {toastMessage && (
+          <div
+            className={`space-toast ${toastType}`}
+            onClick={() => setToastMessage(null)}
+          >
+            {toastMessage}
+          </div>
+        )}
         <div className="spaces-header">
           <h2>
             <Globe size={18} strokeWidth={1.5} style={{ opacity: 0.5 }} />
@@ -553,23 +584,53 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         )}
 
         {/* Delete Confirm */}
-        {deleteConfirmId && (
-          <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
-              <div className="space-delete-confirm">
-                <p>Delete this space? Your vault notes are not affected.</p>
-                <div className="space-form-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirmId(null)}>
-                    Cancel
-                  </button>
-                  <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(deleteConfirmId)}>
-                    Delete
-                  </button>
+        {deleteConfirmId && (() => {
+          const spaceToDelete = spaces.find(s => s.id === deleteConfirmId);
+          const isCloud = spaceToDelete && spaceToDelete.visibility !== "local";
+          const currentUserId = authManager.getUserId();
+          const isOwner = spaceToDelete && currentUserId && spaceToDelete.ownerId === currentUserId;
+          const canDelete = !isCloud || (authManager.isLoggedIn() && isOwner);
+
+          return (
+            <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+                <div className="space-delete-confirm">
+                  <p>
+                    Delete <strong>{spaceToDelete?.title || "this space"}</strong>?
+                    {" "}
+                    {spaceToDelete?.visibility === "local"
+                      ? "This local space will be removed from your vault."
+                      : isOwner
+                        ? "This will also remove it from the cloud."
+                        : ""}
+                  </p>
+                  {isCloud && !authManager.isLoggedIn() && (
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                      You must sign in to delete cloud spaces.
+                    </p>
+                  )}
+                  {isCloud && authManager.isLoggedIn() && !isOwner && (
+                    <p style={{ fontSize: 11, color: "#e8a838", marginTop: 4 }}>
+                      Only the owner can delete this space.
+                    </p>
+                  )}
+                  <div className="space-form-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirmId(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm btn-danger"
+                      onClick={() => handleDelete(deleteConfirmId)}
+                      disabled={!canDelete}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {showAuthModal && (
           <AuthModal

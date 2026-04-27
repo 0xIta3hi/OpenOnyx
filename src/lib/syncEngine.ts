@@ -161,28 +161,36 @@ export class SyncEngine {
       count++;
     }
 
-    // 2. Pull notes for user's spaces
-    const { data: notes, error: notesErr } = await supabase
-      .from('notes')
-      .select('*')
-      .gte('updated_at', lastSyncTime);
-    if (notesErr) throw notesErr;
+    // 2. Pull notes scoped to user's spaces only
+    const spaceIds = (spaces || []).map(s => s.id);
+    if (spaceIds.length > 0) {
+      const { data: notes, error: notesErr } = await supabase
+        .from('notes')
+        .select('*')
+        .in('space_id', spaceIds)
+        .gte('updated_at', lastSyncTime);
+      if (notesErr) throw notesErr;
 
-    for (const note of (notes || [])) {
-      await localDB.putNote(note, false);
-      count++;
-    }
+      for (const note of (notes || [])) {
+        await localDB.putNote(note, false);
+        count++;
+      }
 
-    // 3. Pull chunks
-    const { data: chunks, error: chunkErr } = await supabase
-      .from('note_chunks')
-      .select('*')
-      .gte('created_at', lastSyncTime);
-    if (chunkErr) throw chunkErr;
+      // 3. Pull chunks scoped to user's notes
+      const noteIds = (notes || []).map(n => n.id);
+      if (noteIds.length > 0) {
+        const { data: chunks, error: chunkErr } = await supabase
+          .from('note_chunks')
+          .select('*')
+          .in('note_id', noteIds)
+          .gte('created_at', lastSyncTime);
+        if (chunkErr) throw chunkErr;
 
-    for (const chunk of (chunks || [])) {
-      await localDB.putChunk(chunk, false);
-      count++;
+        for (const chunk of (chunks || [])) {
+          await localDB.putChunk(chunk, false);
+          count++;
+        }
+      }
     }
 
     await localDB.setLastSyncTime(now);

@@ -130,7 +130,14 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // (Removed aggressive URL hash stripping here, supabase-js handles it automatically)
+  // Strip OAuth tokens from URL hash after load
+  mainWindow.webContents.on('did-finish-load', () => {
+    const current = mainWindow?.webContents.getURL() || '';
+    if (current.includes('#access_token=')) {
+      const clean = current.split('#')[0];
+      void mainWindow?.webContents.loadURL(clean);
+    }
+  });
 
   // Debugging: Forward renderer console logs to main process console
   mainWindow.webContents.on('console-message', (details) => {
@@ -159,54 +166,6 @@ function createWindow(): void {
     }
 
     if (isSameOrigin) return;
-
-    // Intercept Supabase Auth and open in an Electron popup instead of default browser
-    if (navigationUrl.includes('.supabase.co/auth/v1/authorize')) {
-      event.preventDefault();
-      
-      console.log('[MAIN] Intercepted OAuth URL:', navigationUrl);
-      
-      const authWindow = new BrowserWindow({
-        width: 600,
-        height: 700,
-        parent: mainWindow,
-        modal: true,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        }
-      });
-
-      // Google blocks OAuth in Electron's default UserAgent. Spoof a standard Chrome agent:
-      const userAgent = authWindow.webContents.getUserAgent()
-        .replace(/\s?Electron\/[^\s]+/g, '')
-        .replace(/\s?openobsidian\/[^\s]+/ig, '');
-      authWindow.webContents.setUserAgent(userAgent);
-
-      authWindow.loadURL(navigationUrl);
-
-      const handleRedirect = (e: Electron.Event, newUrl: string) => {
-        console.log('[MAIN] Auth window navigating to:', newUrl);
-        if (isAppRedirectUrl(newUrl)) {
-          console.log('[MAIN] Captured app redirect. Sending to main window and closing popup.');
-          e.preventDefault();
-          // Force the main window to navigate to the new URL and reload so Supabase-js parses the hash
-          if (mainWindow) {
-            mainWindow.webContents.executeJavaScript(`
-              window.location.href = "${newUrl}";
-              window.location.reload();
-            `);
-          }
-          authWindow.close();
-        }
-      };
-
-      authWindow.webContents.on('will-navigate', handleRedirect);
-      authWindow.webContents.on('will-redirect', handleRedirect);
-      
-      return;
-    }
-
     event.preventDefault();
     void shell.openExternal(navigationUrl);
   });

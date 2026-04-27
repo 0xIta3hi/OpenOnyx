@@ -31,6 +31,7 @@ interface VaultNote {
   path: string;
   title: string;
   content: string;
+  isCanvas: boolean;
 }
 
 /**
@@ -47,14 +48,17 @@ async function collectVaultNotes(fileTree: FileEntry[]): Promise<VaultNote[]> {
         await walk(entry.children);
         continue;
       }
-      if (entry.name.endsWith(".md")) {
+      const isMd = entry.name.endsWith(".md");
+      const isCanvas = entry.name.endsWith(".canvas");
+      if (isMd || isCanvas) {
         try {
           const content = await api.readFile(entry.path);
           if (content && content.trim().length > 0) {
             notes.push({
               path: entry.path,
-              title: entry.name.replace(/\.md$/, ""),
+              title: entry.name.replace(/\.(md|canvas)$/, ""),
               content,
+              isCanvas,
             });
           }
         } catch {
@@ -211,22 +215,24 @@ export async function buildVectorIndex(
   const allChunks: SpaceChunk[] = [];
   let processed = 0;
 
-  // 2. Chunk + embed each note
+  // 2. Chunk + embed each note (skip canvas files — they're structural JSON)
   for (const note of vaultNotes) {
-    const textChunks = chunkText(note.content);
+    if (!note.isCanvas) {
+      const textChunks = chunkText(note.content);
 
-    for (const chunk of textChunks) {
-      const vector = await embedText(chunk.text);
-      allChunks.push({
-        id: `chunk-${allChunks.length}`,
-        spaceId,
-        notePath: note.path,
-        noteTitle: note.title,
-        chunkText: chunk.text,
-        vector,
-        startOffset: chunk.startOffset,
-        endOffset: chunk.endOffset,
-      });
+      for (const chunk of textChunks) {
+        const vector = await embedText(chunk.text);
+        allChunks.push({
+          id: `chunk-${allChunks.length}`,
+          spaceId,
+          notePath: note.path,
+          noteTitle: note.title,
+          chunkText: chunk.text,
+          vector,
+          startOffset: chunk.startOffset,
+          endOffset: chunk.endOffset,
+        });
+      }
     }
 
     processed++;

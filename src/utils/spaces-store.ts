@@ -306,12 +306,31 @@ export async function updateSpace(
 
 export async function deleteSpace(id: string): Promise<void> {
   const existing = await getSpace(id);
+  if (!existing) throw new Error("Space not found.");
 
-  if (existing && existing.visibility !== "local" && isSupabaseConfigured && authManager.isLoggedIn()) {
-    const { error } = await supabase.from("spaces").delete().eq("id", id);
-    if (error) throw error;
+  // ── Permission checks based on visibility ──
+  if (existing.visibility !== "local") {
+    // Cloud spaces (private / public): require login + ownership
+    if (!authManager.isLoggedIn()) {
+      throw new AuthRequiredError("Sign in to delete cloud spaces.");
+    }
+    const userId = authManager.getUserId();
+    if (!userId || existing.ownerId !== userId) {
+      throw new Error("You can only delete spaces you own.");
+    }
+    // Remove from cloud with owner guard
+    if (isSupabaseConfigured) {
+      const { error } = await supabase
+        .from("spaces")
+        .delete()
+        .eq("id", id)
+        .eq("owner_id", userId);
+      if (error) throw error;
+    }
   }
+  // Local spaces are always deletable — they belong to this vault.
 
+  // ── Remove local data ──
   await deleteData(`spaces/${id}.json`);
   await deleteData(`spaces/${id}/vectors.json`);
   _spaceCache.delete(id);
@@ -324,8 +343,13 @@ export async function deleteSpace(id: string): Promise<void> {
 // ── Fork / Remix ─────────────────────────────────────────────────────────────
 
 /**
- * Fork a space — creates a copy of the metadata with a new ID.
- * The vector index is NOT copied — it will be rebuilt on open.
+ * Fork / Remix a space.
+ *
+ * Rules:
+ *  - Remixed spaces ALWAYS start as LOCAL (user can publish later).
+ *  - If the source's vector index exists locally, it is copied.
+ *    (For Explore forks, the index won't exist locally — expected.)
+ *  - Returns the new Space object saved to the vault.
  */
 export async function forkSpace(
   sourceId: string,
@@ -334,16 +358,35 @@ export async function forkSpace(
   const source = await getSpace(sourceId);
   if (!source) return null;
 
-  const visibility: SpaceVisibility = source.visibility === "local" ? "local" : "private";
-
-  return createSpace({
+  const forkedSpace = await createSpace({
     title: overrides?.title || `${source.title} (Remix)`,
     description: overrides?.description || source.description,
     helpsWith: [...(source.helpsWith || [])],
     noteCount: source.noteCount,
-    visibility,
+    visibility: "local",
     forkedFrom: source.id,
   });
+
+  // Copy the source's vector index if available locally
+  try {
+    const sourceIndex = await loadVectorIndex(sourceId);
+    if (sourceIndex && sourceIndex.chunks.length > 0) {
+      const forkedIndex: SpaceVectorIndex = {
+        spaceId: forkedSpace.id,
+        chunks: sourceIndex.chunks.map((chunk, i) => ({
+          ...chunk,
+          id: `chunk-${i}-${Date.now()}`,
+          spaceId: forkedSpace.id,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveVectorIndex(forkedIndex);
+    }
+  } catch {
+    // Source vector index not available (e.g. forking from Explore) — expected
+  }
+
+  return forkedSpace;
 }
 
 // ── Vector Index ─────────────────────────────────────────────────────────────

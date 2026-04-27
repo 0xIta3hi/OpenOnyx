@@ -18,7 +18,7 @@ import {
   searchSpacesSemantic, recordSpaceView, type ExploreSpace,
 } from '../lib/explore';
 import { voteOnSpace, getUserVote, type VoteValue } from '../lib/votes';
-import { forkSpace } from '../lib/spaces';
+import { forkSpace } from '../utils/spaces-store';
 import { authManager, AuthRequiredError } from '../lib/auth';
 import { AuthModal } from './AuthModal';
 
@@ -113,8 +113,10 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
     requireAuthFor('fork this space', async () => {
       setForkingId(spaceId);
       try {
-        const newId = await forkSpace(spaceId);
-        onOpenSpace?.(newId);
+        const forked = await forkSpace(spaceId);
+        if (forked) {
+          onOpenSpace?.(forked.id);
+        }
       } catch (err) {
         console.error('[Explore] Fork failed:', err);
       }
