@@ -4127,9 +4127,15 @@ export default function App() {
                 currentNotePath={activeTab?.path || null}
                 currentNoteName={activeTab?.name || ""}
                 visible={showUnlinkedMentions}
-                onNavigate={(path, line) => {
-                  openFile(path);
-                  // TODO: Scroll to line after file opens
+                onNavigate={async (path, line) => {
+                  await openFile(path);
+                  if (line) {
+                    setTimeout(() => {
+                      document.dispatchEvent(
+                        new CustomEvent("editor:goto-line", { detail: line }),
+                      );
+                    }, 150);
+                  }
                 }}
               />
             )}
