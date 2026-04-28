@@ -3008,12 +3008,40 @@ export function Editor({
       handleOpenSearch as EventListener,
     );
     document.addEventListener("keydown", handleKeyDown);
+
+    const handleGotoLine = (e: any) => {
+      const line = e.detail;
+      const view = viewRef.current;
+      if (view && typeof line === "number") {
+        try {
+          const safeLine = Math.max(1, Math.min(line, view.state.doc.lines));
+          const linePos = view.state.doc.line(safeLine);
+          view.dispatch({
+            selection: { anchor: linePos.from, head: linePos.from },
+            scrollIntoView: true,
+          });
+          view.focus();
+        } catch (err) {
+          console.error("Error scrolling to line:", err);
+        }
+      }
+    };
+
+    document.addEventListener(
+      "editor:goto-line",
+      handleGotoLine as EventListener,
+    );
+
     return () => {
       document.removeEventListener(
         "editor:open-search",
         handleOpenSearch as EventListener,
       );
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener(
+        "editor:goto-line",
+        handleGotoLine as EventListener,
+      );
     };
   }, [isSpecialTab]);
 

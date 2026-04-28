@@ -39,7 +39,7 @@ export function OutlinePane({
         result.push({
           level: match[1].length,
           text: match[2].replace(/[#*_`\[\]]/g, "").trim(),
-          line: index,
+          line: index + 1,
         });
       }
     });
