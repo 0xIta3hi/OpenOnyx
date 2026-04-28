@@ -2,31 +2,65 @@
 
 A local-first knowledge management tool for creating, editing, and linking Markdown notes stored locally as files. OpenObsidian forms a graph-based knowledge system inspired by Obsidian, built with Electron, React, and TypeScript.
 
-## Features
+## Table of Contents
 
-### Core Functionality
+1. [Overview](#overview)
+2. [Core Features](#core-features)
+3. [AI & Intelligence Features](#ai--intelligence-features)
+4. [Getting Started](#getting-started)
+5. [Project Structure](#project-structure)
+6. [Architecture](#architecture)
+7. [Keyboard Shortcuts](#keyboard-shortcuts)
+8. [Extending OpenObsidian](#extending-openobsidian)
+9. [Privacy and Security](#privacy-and-security)
+10. [Technology Stack](#technology-stack)
+11. [License](#license)
+
+## Overview
+
+OpenObsidian implements a secure, offline-first multi-process architecture combining a local Markdown-based knowledge graph with a hybrid AI architecture. It leverages local semantic embeddings using Transformers.js directly in the browser and integrates remote LLM capabilities (via OpenRouter or OpenAI) to power an intelligent "Thinking Layer" RAG Engine.
+
+## Core Features
+
 - **Markdown Editor**: CodeMirror 6 with syntax highlighting, line wrapping, and keyboard shortcuts
 - **Wiki Links**: Connect notes using `[[note-name]]` syntax with automatic creation of missing notes
 - **Graph View**: Interactive D3.js force-directed visualization of note connections
 - **File Explorer**: Sidebar with tree view, drag-and-drop support, and context menus
 - **Full-Text Search**: Fuzzy search across all notes powered by Fuse.js
 - **Auto-Save**: Automatic saving after 2 seconds of inactivity
-
-### Advanced Features
-- **Tags**: Organize notes using `#tag` syntax
-- **Daily Notes**: One-click creation of daily note entries
+- **Tags & Daily Notes**: Organize using `#tag` syntax and create daily note entries
 - **Command Palette**: VS Code-style command launcher (Ctrl+P)
 - **Backlinks Panel**: View all notes that link to the current note
 - **Theme Toggle**: Switch between dark and light modes
-- **Tabs**: Work with multiple notes simultaneously
-- **Split View**: Edit and preview markdown side by side
-- **Drag & Drop**: Reorganize files between folders
+- **Tabs & Split View**: Work with multiple notes simultaneously and preview markdown side-by-side
 
-### 🌌 Knowledge Spaces
-- **Automated Vault Indexing**: A background pipeline automatically scans your entire vault, chunks markdown files, and builds a semantic vector index for RAG queries.
-- **"Thinking Layer" RAG Engine**: A custom AI pipeline that acts as a distilled version of your vault's thinking, prioritizing context and avoiding generic answers.
+## AI & Intelligence Features
+
+### 🌌 Knowledge Spaces & RAG Engine
+- **Automated Vault Indexing**: A background pipeline automatically scans your entire vault, chunks markdown files, and builds a semantic vector index directly on your machine.
+- **"Thinking Layer" RAG Engine**: A custom Retrieval-Augmented Generation pipeline. The AI acts as a distilled version of your vault's thinking, prioritizing context from your notes and citing sources.
 - **Spaces Marketplace**: Manage your knowledge systems—create, delete, or remix spaces to explore different thematic views of your vault.
-- **Streaming Chat Interface**: High-fidelity chat experience with real-time response streaming, markdown rendering, and intelligent source citation.
+- **Streaming Chat Interface**: High-fidelity chat experience with real-time response streaming, markdown rendering, and intelligent source citation. You can jump directly from chat references to the actual markdown files.
+
+### Local Semantic Embeddings
+- **Model**: `Xenova/all-MiniLM-L6-v2` running locally in the browser via Transformers.js
+- **Automatic Note Embedding**: Notes are automatically embedded when saved with debounced disk writes and hash-based change detection.
+- **Semantic Similarity Search**: Find related notes instantly, both via note-to-note and query-to-note search, without needing an internet connection.
+
+### AI-Powered Annotation & Suggestion System
+- **Auto-Annotation**: Generates a single-sentence summary (max 20 words) for each note using LLMs.
+- **Context-Aware Suggestions**: When viewing a note, see strong matches and broader connections categorized as Related, Expands, Contradicts, or Example.
+- **Suggestion History**: The system learns from your interactions (accepting, rejecting, or ignoring suggestions) using temporal weighting and boosts.
+
+### Graph Intelligence & Synthesis
+- **Cluster Detection**: Finds groups of semantically similar notes.
+- **Missing Link Detection**: Discover hidden knowledge gaps between semantically close but unlinked notes.
+- **Synthesis Generation**: Generates high-level insights connecting multiple note excerpts when clusters have meaningful variation.
+
+### AI Settings & Configuration
+- Supports **OpenRouter** and **OpenAI**.
+- Select from various models including Claude 3.5 Sonnet, GPT-4o, Gemini 1.5 Pro, etc.
+- Works offline-first; core AI features like embeddings operate without any API keys.
 
 ## Getting Started
 
@@ -37,12 +71,9 @@ A local-first knowledge management tool for creating, editing, and linking Markd
 ### Installation
 
 ```bash
+git clone <repository-url>
 cd openobsidian
-
 npm install
-
-npx tsc -p tsconfig.electron.json
-
 npm run dev
 ```
 
@@ -50,7 +81,6 @@ npm run dev
 
 ```bash
 npm run build
-
 npm run package
 ```
 
@@ -114,6 +144,7 @@ The application follows a secure multi-process architecture:
 │  │   - GraphView (D3.js)            │   │
 │  │   - Sidebar (File Explorer)      │   │
 │  │   - Search / CommandPalette      │   │
+│  │   - AI Chat & Suggestions        │   │
 │  └──────────┬───────────────────────┘   │
 │             │ window.electronAPI         │
 │  ┌──────────▼───────────────────────┐   │
@@ -132,20 +163,16 @@ The application follows a secure multi-process architecture:
 └─────────────────────────────────────────┘
               │
               ▼
-      Local Filesystem (.md files)
+      Local Filesystem (.md files) & AI Cache (.openobsidian)
 ```
 
 ### Key Design Principles
 
-**Context Isolation**: The renderer process has no direct access to Node.js APIs. All operations are routed through the preload script's contextBridge.
-
-**Asynchronous Operations**: All filesystem operations are asynchronous to prevent blocking the main thread.
-
-**In-Memory Search Index**: Fuse.js maintains an in-memory search index that is rebuilt when files change, providing fast search results.
-
-**File-Based Storage**: All notes are stored as plain Markdown (.md) files. The graph structure is computed dynamically from wiki-link syntax.
-
-**Automatic Persistence**: Changes are automatically saved after 2 seconds of inactivity to prevent data loss.
+- **Context Isolation**: The renderer process has no direct access to Node.js APIs. All operations are routed through the preload script's contextBridge.
+- **Asynchronous Operations**: All filesystem operations are asynchronous to prevent blocking the main thread.
+- **In-Memory Search Index**: Fuse.js maintains an in-memory search index that is rebuilt when files change, providing fast search results.
+- **File-Based Storage**: All notes are stored as plain Markdown (.md) files. AI embeddings, syntheses, and caches are persisted to disk in the `.openobsidian/` folder.
+- **Local AI Processing**: Transformer models run in-browser through Web Workers to maintain responsiveness and ensure privacy.
 
 ## Keyboard Shortcuts
 
@@ -196,33 +223,23 @@ customAction: (arg: string) => ipcRenderer.invoke('custom:action', arg)
 await window.electronAPI.customAction(arg);
 ```
 
-## Sample Vault
-
-The `sample-vault/` directory contains demonstration notes showcasing:
-- Wiki-style links between notes
-- Tag-based organization
-- Task lists and checkboxes
-- Code blocks with syntax highlighting
-- Tables and advanced Markdown formatting
-
-Open this vault to explore all features.
-
 ## Privacy and Security
 
-- **Fully Offline**: No internet connection required
-- **Local Storage**: All data remains on your device as Markdown files
-- **No Telemetry**: Zero data collection or analytics
-- **Context Isolation**: Renderer process runs in a sandboxed environment
-- **Path Traversal Protection**: Filesystem operations are restricted to the vault directory
+- **Fully Offline Core**: Core application functionality and local semantic embeddings require no internet connection.
+- **Local Storage**: All data, including notes and AI generated embeddings/caches, remain on your device.
+- **No Telemetry**: Zero data collection or analytics.
+- **Context Isolation**: Renderer process runs in a sandboxed environment.
+- **API Keys**: Stored locally in localStorage and sent securely only to configured providers.
 
 ## Technology Stack
 
-- **Electron 35**: Cross-platform desktop framework
-- **React 19**: UI framework
+- **Electron**: Cross-platform desktop framework
+- **React**: UI framework
 - **TypeScript**: Type-safe development
 - **CodeMirror 6**: Advanced text editor
 - **D3.js**: Graph visualization
 - **Fuse.js**: Fuzzy search engine
+- **Transformers.js**: Local machine learning models
 - **Vite**: Build tool and development server
 
 ## License
