@@ -627,14 +627,16 @@ body {
 /* ── Sidebar (Obsidian mod-left-split) ─────────────── */
 .sidebar {
   width: var(--sidebar-width);
+  min-width: 0;
   background: var(--tab-container-background);
   border-right: 1px solid var(--divider-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   position: relative;
+  will-change: width;
 }
 
 .sidebar.collapsed {
@@ -643,29 +645,37 @@ body {
 }
 
 .sidebar-header {
-  padding: 8px;
+  padding: 6px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 4px;
+  flex-shrink: 0;
+  min-height: 36px;
 }
 
 .sidebar-header h3 {
-  font-size: var(--font-ui-small);
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .sidebar-actions {
   display: flex;
-  gap: 2px;
-  flex-wrap: wrap;
+  gap: 1px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .sidebar-btn {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -675,6 +685,7 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .sidebar-btn:hover {
@@ -823,6 +834,115 @@ body {
 
 .file-tree-item .chevron.open {
   transform: rotate(90deg);
+}
+
+/* ── File type icons ────────────────── */
+.file-tree-item .file-type-icon {
+  color: var(--text-muted);
+}
+
+.file-tree-item:hover .file-type-icon,
+.file-tree-item.active .file-type-icon {
+  color: var(--text-secondary);
+}
+
+/* ── Folder child count badge ────────── */
+.folder-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0 5px;
+  border-radius: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 16px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.file-tree-item:hover .folder-count {
+  opacity: 1;
+}
+
+/* ── Empty folder hint ────────────────── */
+.empty-folder-hint {
+  padding: 4px 8px 4px 24px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* ── Sidebar filter bar ────────────────── */
+.sidebar-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  animation: filterSlideIn 0.15s ease-out;
+}
+
+@keyframes filterSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sidebar-filter-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sidebar-filter-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  outline: none;
+  padding: 4px 0;
+}
+
+.sidebar-filter-input::placeholder {
+  color: var(--text-muted);
+}
+
+.sidebar-filter-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  transition: var(--transition-fast);
+}
+
+.sidebar-filter-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Sort indicator ────────────────────── */
+.sidebar-sort-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+/* ── Active sidebar button state ─────── */
+.sidebar-btn.active {
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
 }
 
 /* Tree item children (Obsidian tree-item-children) */

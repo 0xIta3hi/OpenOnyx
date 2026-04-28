@@ -5,7 +5,7 @@
  * context menus for file operations, and drag-and-drop support.
  */
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import {
   ChevronRight,
   Folder,
@@ -19,6 +19,14 @@ import {
   Star,
   ChevronDown,
   ChevronLeft,
+  Search,
+  X,
+  ArrowUpDown,
+  Palette,
+  Image,
+  FileCode,
+  File,
+  LayoutGrid,
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
@@ -37,6 +45,88 @@ interface SidebarProps {
   onRefresh: () => void;
   onToggleStar: (path: string) => void;
   onCollapse: () => void;
+}
+
+type SortMode = "name" | "modified" | "type";
+
+// ── File Type Helpers ────────────────────────────────────────────────────────
+
+function getFileIcon(entry: FileEntry) {
+  if (entry.isDirectory) return null;
+  const ext = entry.extension?.toLowerCase() || "";
+  switch (ext) {
+    case ".canvas":
+      return <LayoutGrid size={14} strokeWidth={1.5} />;
+    case ".png":
+    case ".jpg":
+    case ".jpeg":
+    case ".gif":
+    case ".svg":
+    case ".webp":
+      return <Image size={14} strokeWidth={1.5} />;
+    case ".json":
+    case ".js":
+    case ".ts":
+    case ".css":
+      return <FileCode size={14} strokeWidth={1.5} />;
+    case ".md":
+      return <FileText size={14} strokeWidth={1.5} />;
+    default:
+      return <File size={14} strokeWidth={1.5} />;
+  }
+}
+
+function countChildren(entries: FileEntry[]): number {
+  let count = 0;
+  for (const e of entries) {
+    if (e.isDirectory && e.children) count += countChildren(e.children);
+    else count++;
+  }
+  return count;
+}
+
+function sortEntries(entries: FileEntry[], mode: SortMode): FileEntry[] {
+  const sorted = [...entries].sort((a, b) => {
+    // Directories always first
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+
+    switch (mode) {
+      case "modified":
+        return (b.modifiedAt || 0) - (a.modifiedAt || 0);
+      case "type": {
+        const extA = a.extension || "";
+        const extB = b.extension || "";
+        if (extA !== extB) return extA.localeCompare(extB);
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }
+      case "name":
+      default:
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    }
+  });
+
+  return sorted.map((e) =>
+    e.isDirectory && e.children
+      ? { ...e, children: sortEntries(e.children, mode) }
+      : e,
+  );
+}
+
+function filterTree(entries: FileEntry[], query: string): FileEntry[] {
+  if (!query) return entries;
+  const q = query.toLowerCase();
+  return entries.reduce<FileEntry[]>((acc, entry) => {
+    if (entry.isDirectory && entry.children) {
+      const filtered = filterTree(entry.children, query);
+      if (filtered.length > 0) {
+        acc.push({ ...entry, children: filtered });
+      }
+    } else if (entry.name.toLowerCase().includes(q)) {
+      acc.push(entry);
+    }
+    return acc;
+  }, []);
 }
 
 export function Sidebar({
@@ -66,7 +156,41 @@ export function Sidebar({
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
   const [showStarred, setShowStarred] = useState(true);
+  const [filterQuery, setFilterQuery] = useState("");
+  const [showFilter, setShowFilter] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("name");
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const renameInFlightRef = useRef(false);
+  const filterInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus filter input when shown
+  useEffect(() => {
+    if (showFilter && filterInputRef.current) {
+      filterInputRef.current.focus();
+    }
+  }, [showFilter]);
+
+  // Process file tree: filter then sort
+  const processedTree = useMemo(() => {
+    const filtered = filterTree(fileTree, filterQuery);
+    return sortEntries(filtered, sortMode);
+  }, [fileTree, filterQuery, sortMode]);
+
+  // When filtering, auto-expand all directories so matches are visible
+  const effectiveExpanded = useMemo(() => {
+    if (!filterQuery) return expandedDirs;
+    const allDirs = new Set<string>();
+    function walk(entries: FileEntry[]) {
+      for (const e of entries) {
+        if (e.isDirectory) {
+          allDirs.add(e.path);
+          if (e.children) walk(e.children);
+        }
+      }
+    }
+    walk(processedTree);
+    return allDirs;
+  }, [filterQuery, expandedDirs, processedTree]);
 
   const toggleDir = (path: string) => {
     setExpandedDirs((prev) => {
@@ -165,13 +289,29 @@ export function Sidebar({
     }
   };
 
+  const handleFilterKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setFilterQuery("");
+      setShowFilter(false);
+    }
+  };
+
+  const cycleSortMode = () => {
+    setSortMode((prev) => {
+      if (prev === "name") return "modified";
+      if (prev === "modified") return "type";
+      return "name";
+    });
+  };
+
   const renderFileTree = (entries: FileEntry[], depth: number = 0) => {
     return entries.map((entry) => {
-      const isExpanded = expandedDirs.has(entry.path);
+      const isExpanded = effectiveExpanded.has(entry.path);
       const isActive = entry.path === activeFilePath;
       const isDragOver = entry.path === dragOverPath;
       const isDragging = entry.path === draggingPath;
       const isRenaming = entry.path === renamingPath;
+      const childCount = entry.isDirectory && entry.children ? countChildren(entry.children) : 0;
 
       return (
         <React.Fragment key={entry.path}>
@@ -194,8 +334,6 @@ export function Sidebar({
             onDragStart={(e) => handleDragStart(e, entry.path)}
             onDragEnd={handleDragEnd}
             onDragOver={(e) => {
-              // If it's a directory, we drop INTO it
-              // If it's a file, we drop into its PARENT directory
               const targetPath = entry.isDirectory ? entry.path : (entry.path.split('/').slice(0, -1).join('/'));
               handleDragOver(e, targetPath);
             }}
@@ -210,7 +348,7 @@ export function Sidebar({
                 <ChevronRight size={12} strokeWidth={2} />
               </span>
             )}
-            <span className={`icon ${entry.isDirectory ? "folder-icon" : ""}`}>
+            <span className={`icon ${entry.isDirectory ? "folder-icon" : "file-type-icon"}`}>
               {entry.isDirectory ? (
                 isExpanded ? (
                   <FolderOpen size={15} strokeWidth={1.5} />
@@ -218,7 +356,7 @@ export function Sidebar({
                   <Folder size={15} strokeWidth={1.5} />
                 )
               ) : (
-                <FileText size={15} strokeWidth={1.5} />
+                getFileIcon(entry)
               )}
             </span>
             {isRenaming ? (
@@ -237,13 +375,20 @@ export function Sidebar({
                 {entry.isDirectory ? entry.name : getNoteName(entry.name)}
               </span>
             )}
+            {entry.isDirectory && childCount > 0 && !isRenaming && (
+              <span className="folder-count">{childCount}</span>
+            )}
           </button>
 
           {entry.isDirectory &&
             isExpanded &&
             entry.children && (
               <div className="file-tree-children">
-                {renderFileTree(entry.children, depth + 1)}
+                {entry.children.length > 0 ? (
+                  renderFileTree(sortEntries(entry.children, sortMode), depth + 1)
+                ) : (
+                  <div className="empty-folder-hint">Empty</div>
+                )}
               </div>
             )}
         </React.Fragment>
@@ -257,6 +402,8 @@ export function Sidebar({
     return path.slice(0, idx);
   };
 
+  const sortLabel = sortMode === "name" ? "A-Z" : sortMode === "modified" ? "Recent" : "Type";
+
   return (
     <>
       <div className={`sidebar ${!visible ? "collapsed" : ""}`}>
@@ -264,34 +411,83 @@ export function Sidebar({
           <h3>Explorer</h3>
           <div className="sidebar-actions">
             <button
+              className={`sidebar-btn ${showFilter ? "active" : ""}`}
+              onClick={() => {
+                setShowFilter(!showFilter);
+                if (showFilter) setFilterQuery("");
+              }}
+              title="Filter files (Ctrl+Shift+F)"
+            >
+              <Search size={14} strokeWidth={1.5} />
+            </button>
+            <button
               className="sidebar-btn"
               onClick={onNewNote}
               title="New Note"
             >
-              <FilePlus size={16} strokeWidth={1.5} />
+              <FilePlus size={14} strokeWidth={1.5} />
             </button>
             <button
               className="sidebar-btn"
               onClick={() => onNewFolder("")}
               title="New Folder"
             >
-              <FolderPlus size={16} strokeWidth={1.5} />
+              <FolderPlus size={14} strokeWidth={1.5} />
+            </button>
+            <button
+              className="sidebar-btn"
+              onClick={cycleSortMode}
+              title={`Sort: ${sortLabel}`}
+            >
+              <ArrowUpDown size={14} strokeWidth={1.5} />
             </button>
             <button className="sidebar-btn" onClick={onRefresh} title="Refresh">
-              <RefreshCw size={16} strokeWidth={1.5} />
+              <RefreshCw size={14} strokeWidth={1.5} />
             </button>
             <button
               className="sidebar-btn"
               onClick={onCollapse}
               title="Collapse Explorer"
             >
-              <ChevronLeft size={16} strokeWidth={1.5} />
+              <ChevronLeft size={14} strokeWidth={1.5} />
             </button>
           </div>
         </div>
 
+        {/* Filter Bar */}
+        {showFilter && (
+          <div className="sidebar-filter">
+            <Search size={13} className="sidebar-filter-icon" />
+            <input
+              ref={filterInputRef}
+              type="text"
+              className="sidebar-filter-input"
+              placeholder="Filter files..."
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              onKeyDown={handleFilterKeyDown}
+            />
+            {filterQuery && (
+              <button
+                className="sidebar-filter-clear"
+                onClick={() => setFilterQuery("")}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Sort indicator */}
+        {sortMode !== "name" && (
+          <div className="sidebar-sort-indicator">
+            <ArrowUpDown size={10} />
+            <span>Sorted by {sortLabel.toLowerCase()}</span>
+          </div>
+        )}
+
         {/* Starred Notes Section */}
-        {starredNotes.length > 0 && (
+        {starredNotes.length > 0 && !filterQuery && (
           <div className="sidebar-section starred-section">
             <button
               className="section-header"
@@ -345,14 +541,23 @@ export function Sidebar({
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, "")}
         >
-          {fileTree.length > 0 ? (
-            renderFileTree(fileTree)
-          ) : (
+          {processedTree.length > 0 ? (
+            renderFileTree(processedTree)
+          ) : filterQuery ? (
             <div className="empty-state" style={{ padding: "2rem 1rem" }}>
-              <div style={{ opacity: 0.5, marginBottom: "0.5rem" }}>
-                <FolderOpen size={48} strokeWidth={1} />
+              <div style={{ opacity: 0.3, marginBottom: "0.5rem" }}>
+                <Search size={36} strokeWidth={1} />
               </div>
               <div className="empty-text" style={{ textAlign: "center" }}>
+                No files matching &ldquo;{filterQuery}&rdquo;
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state" style={{ padding: "2rem 1rem" }}>
+              <div style={{ opacity: 0.15, marginBottom: "0.5rem" }}>
+                <FolderOpen size={48} strokeWidth={1} />
+              </div>
+              <div className="empty-text" style={{ textAlign: "center", lineHeight: 1.5 }}>
                 No files yet.
                 <br />
                 Create a new note to get started.
@@ -415,16 +620,18 @@ export function Sidebar({
               <FileEdit size={14} style={{ marginRight: 8 }} /> Rename
             </button>
             {contextMenu.isDir && (
-              <button
-                className="context-menu-item"
-                onClick={() => {
-                  onNewFolder(contextMenu.path);
-                  closeContextMenu();
-                }}
-              >
-                <FolderPlus size={14} style={{ marginRight: 8 }} /> New
-                Subfolder
-              </button>
+              <>
+                <button
+                  className="context-menu-item"
+                  onClick={() => {
+                    onNewFolder(contextMenu.path);
+                    closeContextMenu();
+                  }}
+                >
+                  <FolderPlus size={14} style={{ marginRight: 8 }} /> New
+                  Subfolder
+                </button>
+              </>
             )}
             <div className="context-menu-separator" />
             <button
