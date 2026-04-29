@@ -156,9 +156,9 @@ export class SyncEngine {
       .gte('updated_at', lastSyncTime);
     if (spaceErr) throw spaceErr;
 
-    for (const space of (spaces || [])) {
-      await localDB.putSpace(toLocalSpace(space), false);
-      count++;
+    if (spaces && spaces.length > 0) {
+      await Promise.all(spaces.map(space => localDB.putSpace(toLocalSpace(space), false)));
+      count += spaces.length;
     }
 
     // 2. Pull notes scoped to user's spaces only
@@ -171,9 +171,9 @@ export class SyncEngine {
         .gte('updated_at', lastSyncTime);
       if (notesErr) throw notesErr;
 
-      for (const note of (notes || [])) {
-        await localDB.putNote(note, false);
-        count++;
+      if (notes && notes.length > 0) {
+        await Promise.all(notes.map(note => localDB.putNote(note, false)));
+        count += notes.length;
       }
 
       // 3. Pull chunks scoped to user's notes
@@ -186,9 +186,9 @@ export class SyncEngine {
           .gte('created_at', lastSyncTime);
         if (chunkErr) throw chunkErr;
 
-        for (const chunk of (chunks || [])) {
-          await localDB.putChunk(chunk, false);
-          count++;
+        if (chunks && chunks.length > 0) {
+          await Promise.all(chunks.map(chunk => localDB.putChunk(chunk, false)));
+          count += chunks.length;
         }
       }
     }
@@ -213,9 +213,9 @@ export class SyncEngine {
       .select('*')
       .eq('owner_id', user.id);
 
-    for (const space of (spaces || [])) {
-      await localDB.putSpace(toLocalSpace(space), false);
-      count++;
+    if (spaces && spaces.length > 0) {
+      await Promise.all(spaces.map(space => localDB.putSpace(toLocalSpace(space), false)));
+      count += spaces.length;
     }
 
     // Pull all notes for those spaces
@@ -226,9 +226,9 @@ export class SyncEngine {
         .select('*')
         .in('space_id', spaceIds);
 
-      for (const note of (notes || [])) {
-        await localDB.putNote(note, false);
-        count++;
+      if (notes && notes.length > 0) {
+        await Promise.all(notes.map(note => localDB.putNote(note, false)));
+        count += notes.length;
       }
 
       // Pull chunks
@@ -239,9 +239,9 @@ export class SyncEngine {
           .select('*')
           .in('note_id', noteIds);
 
-        for (const chunk of (chunks || [])) {
-          await localDB.putChunk(chunk, false);
-          count++;
+        if (chunks && chunks.length > 0) {
+          await Promise.all(chunks.map(chunk => localDB.putChunk(chunk, false)));
+          count += chunks.length;
         }
       }
     }
@@ -262,15 +262,17 @@ export class SyncEngine {
     const localSpaces = allSpaces.filter((s: any) => s.visibility === 'local' || !s.visibility);
     let count = 0;
 
-    for (const space of localSpaces) {
-      const updated = {
-        ...space,
-        visibility: 'private',
-        owner_id: user.id,
-        updated_at: new Date().toISOString(),
-      };
-      await localDB.putSpace(updated as any, true);
-      count++;
+    if (localSpaces.length > 0) {
+      await Promise.all(localSpaces.map(space => {
+        const updated = {
+          ...space,
+          visibility: 'private',
+          owner_id: user.id,
+          updated_at: new Date().toISOString(),
+        };
+        return localDB.putSpace(updated as any, true);
+      }));
+      count += localSpaces.length;
     }
 
     // Trigger immediate sync
