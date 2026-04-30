@@ -189,12 +189,14 @@ export function AIPage({
         try { sourceContent = await api.readFile(activeNotePath); } catch { /* empty */ }
 
         const noteContents = new Map<string, string>();
-        for (const s of basic) {
-          try {
-            const content = await api.readFile(s.path);
-            noteContents.set(s.path, content);
-          } catch { /* skip */ }
-        }
+        await Promise.all(
+          basic.map(async (s) => {
+            try {
+              const content = await api.readFile(s.path);
+              noteContents.set(s.path, content);
+            } catch { /* skip */ }
+          }),
+        );
 
         const enriched = enrichSuggestions(sourceContent, basic, noteContents);
         // Apply threshold filter after enrichment
@@ -278,12 +280,14 @@ export function AIPage({
 
     (async () => {
       const contents = new Map<string, string>();
-      for (const [path] of currentStore.entries) {
-        try {
-          const content = await api.readFile(path);
-          contents.set(path, content);
-        } catch { /* skip */ }
-      }
+      await Promise.all(
+        [...currentStore.entries.keys()].map(async (path) => {
+          try {
+            const content = await api.readFile(path);
+            contents.set(path, content);
+          } catch { /* skip */ }
+        }),
+      );
       const ml = detectMissingLinks(currentStore, contents, 0.4, 10);
       setMissingLinks(ml);
       const rawInsights = detectUnwrittenInsights(currentStore, contents, 0.35);
@@ -304,11 +308,12 @@ export function AIPage({
       setIsSynthesizing(true);
       setSynthesisResult(null);
       try {
-        const notes: { title: string; content: string }[] = [];
-        for (const path of clusterMembers.slice(0, 5)) {
-          const content = await api.readFile(path);
-          notes.push({ title: getNoteName(path), content });
-        }
+        const notes = await Promise.all(
+          clusterMembers.slice(0, 5).map(async (path) => {
+            const content = await api.readFile(path);
+            return { title: getNoteName(path), content };
+          }),
+        );
         const result = await generateSynthesis(notes);
         if (result) {
           setSynthesisResult(result);
@@ -403,13 +408,17 @@ export function AIPage({
     setQueryResult(null);
     try {
       const relevant = await searchByQuery(loadStore(), q, 8);
-      const notesWithContent: { title: string; content: string; similarity: number }[] = [];
-      for (const r of relevant) {
-        try {
-          const content = await api.readFile(r.path);
-          notesWithContent.push({ title: getNoteName(r.path), content, similarity: r.similarity });
-        } catch { /* skip */ }
-      }
+      const results = await Promise.all(
+        relevant.map(async (r) => {
+          try {
+            const content = await api.readFile(r.path);
+            return { title: getNoteName(r.path), content, similarity: r.similarity };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const notesWithContent = results.filter((n): n is { title: string; content: string; similarity: number } => n !== null);
       const result = await queryRAG(q, notesWithContent);
       setQueryResult(result);
     } catch (err) {
