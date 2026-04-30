@@ -1,0 +1,355 @@
+/**
+ * Plugin Style Injection — Scoped
+ *
+ * Manages CSS injection/removal for plugin styles with automatic scoping.
+ * Plugin CSS selectors are auto-prefixed to prevent global style contamination.
+ */
+
+const PLUGIN_STYLE_ATTR = 'data-plugin-id';
+
+/**
+ * Scope plugin CSS by prefixing all top-level selectors with a plugin container class.
+ * This prevents plugins from modifying global application styles.
+ *
+ * Strategy: Prefix each rule with `.oo-plugin-scope-{pluginId}` unless the rule
+ * already targets a known plugin-scoped class, or is an @-rule.
+ */
+function scopePluginCss(pluginId: string, css: string): string {
+  const prefix = `.oo-plugin-scope-${pluginId}`;
+
+  // Simple CSS rule parser — handles most real-world plugin CSS
+  // We split on `}` boundaries and re-prefix selectors
+  const rules: string[] = [];
+  let depth = 0;
+  let current = '';
+
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    current += ch;
+
+    if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth <= 0) {
+        depth = 0;
+        rules.push(current.trim());
+        current = '';
+      }
+    }
+  }
+  if (current.trim()) rules.push(current.trim());
+
+  return rules.map(rule => {
+    // Skip @-rules (keyframes, media, etc.) — leave as-is
+    if (rule.trimStart().startsWith('@keyframes') || rule.trimStart().startsWith('@font-face')) {
+      return rule;
+    }
+
+    // For @media rules, scope the inner content
+    if (rule.trimStart().startsWith('@media') || rule.trimStart().startsWith('@supports')) {
+      const braceIdx = rule.indexOf('{');
+      if (braceIdx === -1) return rule;
+      const mediaQuery = rule.substring(0, braceIdx + 1);
+      const rest = rule.substring(braceIdx + 1);
+      // Recursively scope inner rules
+      return mediaQuery + scopePluginCss(pluginId, rest);
+    }
+
+    // Normal rule: prefix the selector
+    const braceIdx = rule.indexOf('{');
+    if (braceIdx === -1) return rule;
+
+    const selector = rule.substring(0, braceIdx).trim();
+    const body = rule.substring(braceIdx);
+
+    // Don't double-scope if already scoped
+    if (selector.includes(`oo-plugin-scope-${pluginId}`)) return rule;
+
+    // Skip universal reset selectors that plugins commonly use
+    if (selector === '*' || selector === ':root') return rule;
+
+    // Scope each comma-separated selector
+    const scopedSelectors = selector.split(',').map(s => {
+      s = s.trim();
+      if (!s) return s;
+
+      // If selector starts with :root, body, html — replace with our scope
+      if (/^(html|body|:root)\s*/.test(s)) {
+        return s.replace(/^(html|body|:root)/, prefix);
+      }
+
+      return `${prefix} ${s}`;
+    }).join(', ');
+
+    return `${scopedSelectors} ${body}`;
+  }).join('\n');
+}
+
+export function injectPluginStyles(pluginId: string, css: string): void {
+  // Remove existing styles for this plugin first
+  removePluginStyles(pluginId);
+
+  const style = document.createElement('style');
+  style.setAttribute(PLUGIN_STYLE_ATTR, pluginId);
+  style.textContent = scopePluginCss(pluginId, css);
+  document.head.appendChild(style);
+}
+
+export function removePluginStyles(pluginId: string): void {
+  const existing = document.querySelectorAll(`style[${PLUGIN_STYLE_ATTR}="${pluginId}"]`);
+  existing.forEach(el => el.remove());
+}
+
+/** Get the scope container class name for a plugin */
+export function getPluginScopeClass(pluginId: string): string {
+  return `oo-plugin-scope-${pluginId}`;
+}
+
+/** Inject the base plugin CSS (Notice container, Modal styles, Setting styles) */
+export function injectPluginBaseCss(): void {
+  if (document.querySelector('style[data-plugin-base]')) return;
+
+  const style = document.createElement('style');
+  style.setAttribute('data-plugin-base', 'true');
+  style.textContent = `
+/* ── Plugin Notice Container ─────────────────────── */
+.oo-notice-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 360px;
+}
+
+.oo-notice {
+  pointer-events: auto;
+  background: var(--bg-elevated, #1e1e2e);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  animation: oo-notice-in 0.2s ease;
+}
+
+@keyframes oo-notice-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Plugin Modal ────────────────────────────────── */
+.oo-plugin-modal-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.oo-plugin-modal-container .modal-bg {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+.oo-plugin-modal {
+  position: relative;
+  background: var(--bg-primary, #181825);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 1;
+}
+
+.oo-plugin-modal .modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.oo-plugin-modal .modal-content {
+  color: var(--text-secondary, #b0b0b0);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Plugin Setting ──────────────────────────────── */
+.oo-plugin-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05));
+  gap: 16px;
+}
+
+.oo-plugin-setting .setting-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.oo-plugin-setting .setting-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.oo-plugin-setting .setting-item-description {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  margin-top: 2px;
+}
+
+.oo-plugin-setting .setting-item-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.oo-plugin-setting.setting-item-heading {
+  border-bottom: none;
+  padding-top: 20px;
+}
+
+.oo-plugin-setting.setting-item-heading .setting-item-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ── Plugin UI Widgets ───────────────────────────── */
+.oo-plugin-text-input,
+.oo-plugin-textarea,
+.oo-plugin-search-input {
+  background: var(--bg-input, rgba(255,255,255,0.05));
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-primary, #e0e0e0);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.oo-plugin-text-input:focus,
+.oo-plugin-textarea:focus,
+.oo-plugin-search-input:focus {
+  border-color: var(--accent-primary, #7c3aed);
+}
+
+.oo-plugin-textarea { min-height: 60px; resize: vertical; }
+
+.oo-plugin-btn {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  padding: 6px 14px;
+  color: var(--text-primary, #e0e0e0);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.oo-plugin-btn:hover { background: var(--bg-active, rgba(255,255,255,0.1)); }
+.oo-plugin-btn.mod-cta {
+  background: var(--accent-primary, #7c3aed);
+  color: white;
+  border-color: transparent;
+}
+.oo-plugin-btn.mod-cta:hover { filter: brightness(1.1); }
+.oo-plugin-btn.mod-warning { background: #ef4444; color: white; border-color: transparent; }
+
+.oo-plugin-toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--bg-hover, rgba(255,255,255,0.1));
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.oo-plugin-toggle::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted, #888);
+  top: 3px;
+  left: 3px;
+  transition: all 0.2s;
+}
+
+.oo-plugin-toggle.is-enabled {
+  background: var(--accent-primary, #7c3aed);
+}
+
+.oo-plugin-toggle.is-enabled::after {
+  background: white;
+  left: 19px;
+}
+
+.oo-plugin-dropdown {
+  background: var(--bg-input, rgba(255,255,255,0.05));
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-primary, #e0e0e0);
+  font-size: 13px;
+}
+
+/* ── Plugin Menu ─────────────────────────────────── */
+.oo-plugin-menu {
+  background: var(--bg-elevated, #1e1e2e);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 9500;
+}
+
+.oo-plugin-menu .menu-item {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.oo-plugin-menu .menu-item:hover { background: var(--bg-hover, rgba(255,255,255,0.06)); }
+.oo-plugin-menu .menu-separator { height: 1px; background: var(--border-subtle, rgba(255,255,255,0.05)); margin: 4px 0; }
+
+/* ── Plugin Ribbon Button ────────────────────────── */
+.oo-plugin-ribbon-btn {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.oo-plugin-ribbon-btn:hover { opacity: 1; }
+
+/* ── Plugin Status Bar Item ──────────────────────── */
+.oo-plugin-status-item {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+`;
+  document.head.appendChild(style);
+}

@@ -12,7 +12,7 @@ import {
   Layout,
   Package,
 } from "lucide-react";
-import { getAPI } from "../utils/api";
+import type { PluginRibbonAction } from '../types/plugin';
 
 interface RibbonProps {
   onNewNote: () => void;
@@ -26,6 +26,7 @@ interface RibbonProps {
   onThoughtModel?: () => void;
   onSpaces?: () => void;
   onCanvas?: () => void;
+  pluginRibbonActions?: PluginRibbonAction[];
 }
 
 export function Ribbon({
@@ -40,6 +41,7 @@ export function Ribbon({
   onThoughtModel,
   onSpaces,
   onCanvas,
+  pluginRibbonActions = [],
 }: RibbonProps) {
   const handleSearch = () => {
     document.dispatchEvent(new CustomEvent("editor:open-search"));
@@ -121,6 +123,24 @@ export function Ribbon({
             <Layout size={20} strokeWidth={1.5} />
           </button>
         )}
+        {/* Plugin ribbon actions */}
+        {pluginRibbonActions.map((action, i) => (
+          <button
+            key={`plugin-ribbon-${action.pluginId}-${i}`}
+            className="ribbon-btn oo-plugin-ribbon-btn"
+            onClick={(e) => action.callback(e.nativeEvent)}
+            title={action.title}
+          >
+            <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              ref={(el) => {
+                if (el && action.el) {
+                  el.innerHTML = '';
+                  el.appendChild(action.el.cloneNode(true));
+                }
+              }}
+            />
+          </button>
+        ))}
       </div>
       <div className="ribbon-bottom">
         <button className="ribbon-btn" onClick={onSettings} title="Settings">

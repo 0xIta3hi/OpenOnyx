@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Tab, Theme, ViewMode, FileEntry } from "../types";
 import { countWords, countCharacters } from "../utils/helpers";
+import type { PluginStatusBarItem } from '../types/plugin';
 
 interface StatusBarProps {
   activeTab: Tab | null;
@@ -26,6 +27,7 @@ interface StatusBarProps {
   viewMode: ViewMode;
   fileTree?: FileEntry[];
   queueStatus?: QueueStatus | null;
+  pluginStatusBarItems?: PluginStatusBarItem[];
 }
 
 // Count notes and folders recursively
@@ -71,6 +73,7 @@ export function StatusBar({
   viewMode,
   fileTree = [],
   queueStatus,
+  pluginStatusBarItems = [],
 }: StatusBarProps) {
   const wordCount = content ? countWords(content) : 0;
   const charCount = content ? countCharacters(content) : 0;
@@ -124,6 +127,22 @@ export function StatusBar({
           {queueStatus.progress > 0 && queueStatus.progress < 100 && (
             <span className="status-bar-queue-progress">{queueStatus.progress}%</span>
           )}
+        </div>
+      )}
+      {/* Plugin status bar items */}
+      {pluginStatusBarItems.length > 0 && (
+        <div className="status-bar-plugins" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {pluginStatusBarItems.map((item, i) => (
+            <span
+              key={`plugin-status-${item.pluginId}-${i}`}
+              ref={(el) => {
+                if (el && item.el && !el.contains(item.el)) {
+                  el.innerHTML = '';
+                  el.appendChild(item.el);
+                }
+              }}
+            />
+          ))}
         </div>
       )}
       <div className="status-bar-right">

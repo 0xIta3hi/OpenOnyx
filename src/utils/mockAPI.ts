@@ -494,6 +494,12 @@ export function createMockAPI(): ElectronAPI {
       return files;
     },
 
+    dataFetch: async (url: string): Promise<string> => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      return res.text();
+    },
+
     // Thought Model (mock implementation for browser)
     thoughtModel: {
       build: async (_vaultPath: string, _numClusters?: number) => {

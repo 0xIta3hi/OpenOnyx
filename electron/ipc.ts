@@ -152,6 +152,26 @@ export function registerIpcHandlers(
     return fsManager.listDataDir(subDir);
   });
 
+  // ── Network (CORS Bypass) ─────────────────────────
+  ipcMain.handle('data:fetch', async (_event, url: string) => {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'OpenObsidian/1.0',
+          'Accept': 'application/json, text/plain, */*',
+        },
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${res.statusText} fetching ${url}: ${body.slice(0, 200)}`);
+      }
+      return await res.text();
+    } catch (e: any) {
+      console.error('[data:fetch] Error:', e.message);
+      throw e;
+    }
+  });
+
   // ── Thought Model ─────────────────────────────────
   const THOUGHT_MODEL_URL = 'http://127.0.0.1:8765';
 

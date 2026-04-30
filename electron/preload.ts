@@ -113,6 +113,9 @@ const electronAPI = {
   dataList: (subDir: string): Promise<string[]> =>
     ipcRenderer.invoke('data:list', subDir),
 
+  dataFetch: (url: string): Promise<string> =>
+    ipcRenderer.invoke('data:fetch', url),
+
   // ── Thought Model ─────────────────────────────────
   thoughtModel: {
     build: (vaultPath: string, numClusters?: number): Promise<{ job_id: string; status: string }> =>

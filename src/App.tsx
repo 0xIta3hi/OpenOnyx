@@ -66,8 +66,13 @@ import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-e
 import { generateSynthesis } from "./utils/synthesis";
 import { FileText, Layout } from "lucide-react";
 import { Tab, ViewMode, Theme, Command, FileEntry } from "./types";
+import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
 import { getNoteName, generateId, debounce } from "./utils/helpers";
 import { getAPI } from "./utils/api";
+import { PluginManager } from "./lib/pluginManager";
+import { OOApp } from "./lib/obsidian-api/app";
+import { PluginPermissionModal } from "./components/PluginPermissionModal";
+import type { PluginPermission, PluginManifest } from "./types/plugin";
 import {
   FTUXState,
   FTUXStage,
@@ -932,6 +937,21 @@ export default function App() {
     new Map(),
   );
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+
+  // ── Plugin System State ───────────────────────────
+  const [pluginCommands, setPluginCommands] = useState<PluginCommand[]>([]);
+  const [pluginRibbonActions, setPluginRibbonActions] = useState<PluginRibbonAction[]>([]);
+  const [pluginStatusBarItems, setPluginStatusBarItems] = useState<PluginStatusBarItem[]>([]);
+  const [pluginList, setPluginList] = useState<PluginRegistration[]>([]);
+  const [pluginSettingTabs, setPluginSettingTabs] = useState<PluginSettingTabRegistration[]>([]);
+  const pluginManagerRef = useRef<PluginManager | null>(null);
+  const ooAppRef = useRef<OOApp | null>(null);
+  // Permission modal state
+  const [permissionModalData, setPermissionModalData] = useState<{
+    manifest: PluginManifest;
+    permissions: PluginPermission[];
+    resolve: (approved: boolean) => void;
+  } | null>(null);
   const [ftuxState, setFtuxState] = useState<FTUXState>(() => loadFTUXState());
   const [firstThoughtDraft, setFirstThoughtDraft] = useState("");
   const [firstThoughtPromptIndex, setFirstThoughtPromptIndex] = useState(0);
@@ -1686,6 +1706,40 @@ export default function App() {
           setFileTree(tree);
           // Trigger background vault initialization
           runVaultInit(tree);
+
+          // Initialize plugin system
+          (window as any).__oo_vault_path = savedPath;
+          try {
+            const ooApp = new OOApp();
+            ooAppRef.current = ooApp;
+            await ooApp.initialize();
+
+            const pm = new PluginManager(ooApp, {
+              onCommandsChanged: setPluginCommands,
+              onRibbonChanged: setPluginRibbonActions,
+              onStatusBarChanged: setPluginStatusBarItems,
+              onSettingTabsChanged: setPluginSettingTabs,
+              onPluginsChanged: setPluginList,
+              onPermissionRequired: (manifest, permissions) => {
+                return new Promise<boolean>((resolve) => {
+                  setPermissionModalData({ manifest, permissions, resolve });
+                });
+              },
+            });
+            pluginManagerRef.current = pm;
+
+            // Wire up file navigation from plugins
+            (window as any).__oo_open_file = (path: string) => {
+              openFile(path);
+            };
+
+            // Discover and load enabled plugins
+            await pm.discoverPlugins();
+            await pm.loadEnabledPlugins();
+            console.log('[PluginSystem] Initialized successfully');
+          } catch (pluginErr) {
+            console.warn('[PluginSystem] Initialization failed:', pluginErr);
+          }
         }
       } catch (e) {
         console.log("No saved vault path");
@@ -3428,6 +3482,9 @@ export default function App() {
   const activeTabIsCanvas = !!activeTab && isCanvasFile(activeTab.path);
   const activeTabIsGraph = !!activeTab && activeTab.path === GRAPH_TAB_PATH;
   const activeTabIsSpaces = !!activeTab && activeTab.path === SPACES_TAB_PATH;
+
+  // Sync active file path to plugin API
+  (window as any).__oo_active_file = activeTab?.path || null;
   const ftuxStage: FTUXStage = getFTUXStage(ftuxState);
   const isFTUXZeroState = Boolean(vaultPath) && ftuxStage === "zero";
   const isFTUXFirstNote = ftuxStage === "first_note";
@@ -3699,6 +3756,7 @@ export default function App() {
             onCanvas={() => {
               void handleToggleCanvas();
             }}
+            pluginRibbonActions={pluginRibbonActions}
           />
         )}
         {vaultPath && !isFTUXZeroState && (
@@ -4158,6 +4216,7 @@ export default function App() {
           viewMode={viewMode}
           fileTree={fileTree}
           queueStatus={queueStatus}
+          pluginStatusBarItems={pluginStatusBarItems}
         />
       )}
 
@@ -4176,7 +4235,18 @@ export default function App() {
 
       {showCommandPalette && (
         <CommandPalette
-          commands={commands}
+          commands={[
+            ...commands,
+            ...pluginCommands.map(pc => ({
+              id: pc.id,
+              label: pc.name,
+              action: () => {
+                if (pc.callback) pc.callback();
+                else if (pc.checkCallback) pc.checkCallback(false);
+              },
+              category: pc.pluginId,
+            })),
+          ]}
           onClose={() => setShowCommandPalette(false)}
         />
       )}
@@ -4186,6 +4256,32 @@ export default function App() {
           settings={settings}
           onSettingsChange={setSettings}
           onClose={() => setShowSettings(false)}
+          plugins={pluginList}
+          pluginSettingTabs={pluginSettingTabs}
+          onEnablePlugin={async (id) => { await pluginManagerRef.current?.enablePlugin(id); }}
+          onDisablePlugin={async (id) => { await pluginManagerRef.current?.disablePlugin(id); }}
+          onRefreshPlugins={async () => {
+            await pluginManagerRef.current?.discoverPlugins();
+          }}
+          onReloadPlugin={async (id) => { await pluginManagerRef.current?.reloadPlugin(id); }}
+          onInstallPlugin={async (repo, id) => { 
+            return await pluginManagerRef.current?.installFromGithubRepo(repo, id) || false; 
+          }}
+        />
+      )}
+
+      {permissionModalData && (
+        <PluginPermissionModal
+          manifest={permissionModalData.manifest}
+          permissions={permissionModalData.permissions}
+          onApprove={() => {
+            permissionModalData.resolve(true);
+            setPermissionModalData(null);
+          }}
+          onDeny={() => {
+            permissionModalData.resolve(false);
+            setPermissionModalData(null);
+          }}
         />
       )}
 

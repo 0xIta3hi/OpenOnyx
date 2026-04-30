@@ -18,7 +18,10 @@ import {
   Info,
   FolderOpen,
   RotateCcw,
+  Puzzle,
 } from "lucide-react";
+import { PluginSettingsPanel } from './PluginSettingsPanel';
+import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
 
 export interface AppSettings {
   // Appearance
@@ -94,14 +97,28 @@ interface SettingsPageProps {
   settings: AppSettings;
   onSettingsChange: (settings: AppSettings) => void;
   onClose: () => void;
+  plugins?: PluginRegistration[];
+  pluginSettingTabs?: PluginSettingTabRegistration[];
+  onEnablePlugin?: (pluginId: string) => Promise<void>;
+  onDisablePlugin?: (pluginId: string) => Promise<void>;
+  onRefreshPlugins?: () => Promise<void>;
+  onReloadPlugin?: (pluginId: string) => Promise<void>;
+  onInstallPlugin?: (repo: string, pluginId: string) => Promise<boolean>;
 }
 
-type SettingsSection = "appearance" | "editor" | "files" | "hotkeys" | "about";
+type SettingsSection = "appearance" | "editor" | "files" | "hotkeys" | "plugins" | "about";
 
 export function SettingsPage({
   settings,
   onSettingsChange,
   onClose,
+  plugins = [],
+  pluginSettingTabs = [],
+  onEnablePlugin,
+  onDisablePlugin,
+  onRefreshPlugins,
+  onReloadPlugin,
+  onInstallPlugin,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("appearance");
@@ -126,6 +143,7 @@ export function SettingsPage({
     { id: "editor" as const, label: "Editor", icon: Type },
     { id: "files" as const, label: "Files & Links", icon: FileText },
     { id: "hotkeys" as const, label: "Hotkeys", icon: Keyboard },
+    { id: "plugins" as const, label: "Community Plugins", icon: Puzzle },
     { id: "about" as const, label: "About", icon: Info },
   ];
 
@@ -512,6 +530,20 @@ export function SettingsPage({
                     <kbd>Ctrl/Cmd+Shift+Scroll</kbd>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeSection === "plugins" && (
+              <div className="settings-section">
+                <PluginSettingsPanel
+                  plugins={plugins}
+                  settingTabs={pluginSettingTabs}
+                  onEnablePlugin={onEnablePlugin || (async () => {})}
+                  onDisablePlugin={onDisablePlugin || (async () => {})}
+                  onRefresh={onRefreshPlugins || (async () => {})}
+                  onReloadPlugin={onReloadPlugin}
+                  onInstallPlugin={onInstallPlugin}
+                />
               </div>
             )}
 
