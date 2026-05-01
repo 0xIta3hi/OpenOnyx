@@ -35,7 +35,8 @@ import type {
   PluginApprovals,
 } from '../types/plugin';
 
-const api = () => (window as any).electronAPI;
+import { getAPI } from '../utils/api';
+const api = () => getAPI();
 
 // ── Constants ────────────────────────────────────────
 
@@ -519,10 +520,23 @@ window["${globalKey}"].__done = true;
     try {
       releaseText = await api().dataFetch(`https://api.github.com/repos/${repo}/releases/latest`);
     } catch (e: any) {
+      console.error(`[PluginManager] Step 1 FAILED:`, e);
       throw new Error(`Failed to fetch release info for ${repo}: ${e.message}`);
     }
     
-    const releaseData = JSON.parse(releaseText);
+    let releaseData: any;
+    try {
+      releaseData = JSON.parse(releaseText);
+    } catch (e: any) {
+      console.error(`[PluginManager] Release JSON parse failed. Raw text:`, releaseText?.slice(0, 200));
+      throw new Error(`Invalid release data from GitHub for ${repo}`);
+    }
+
+    // Check for GitHub API errors (rate limit, not found, etc.)
+    if (releaseData.message) {
+      throw new Error(`GitHub API error for ${repo}: ${releaseData.message}`);
+    }
+
     const assets = releaseData.assets;
     if (!assets || !Array.isArray(assets)) {
       throw new Error(`No release assets found for ${repo}. The plugin may not have any releases.`);
@@ -539,7 +553,11 @@ window["${globalKey}"].__done = true;
     }
     
     // 3. Download files
-    console.log(`[PluginManager] Step 2: Downloading ${assets.length} files...`);
+    console.log(`[PluginManager] Step 2: Downloading files...`);
+    console.log(`[PluginManager]   manifest.json: ${manifestAsset.browser_download_url}`);
+    console.log(`[PluginManager]   main.js: ${mainAsset.browser_download_url}`);
+    if (stylesAsset) console.log(`[PluginManager]   styles.css: ${stylesAsset.browser_download_url}`);
+
     let manifestText: string, mainText: string, stylesText: string | null;
     try {
       [manifestText, mainText, stylesText] = await Promise.all([
@@ -548,11 +566,18 @@ window["${globalKey}"].__done = true;
         stylesAsset ? api().dataFetch(stylesAsset.browser_download_url) : Promise.resolve(null)
       ]);
     } catch (e: any) {
+      console.error(`[PluginManager] Step 2 FAILED:`, e);
       throw new Error(`Failed to download plugin files: ${e.message}`);
     }
     
     // 4. Validate manifest
-    const manifest = JSON.parse(manifestText) as PluginManifest;
+    let manifest: PluginManifest;
+    try {
+      manifest = JSON.parse(manifestText) as PluginManifest;
+    } catch (e: any) {
+      throw new Error(`Downloaded manifest.json is invalid JSON`);
+    }
+
     if (manifest.id !== expectedPluginId) {
       console.warn(`[PluginManager] Warning: Manifest ID (${manifest.id}) does not match expected ID (${expectedPluginId})`);
     }
@@ -560,16 +585,38 @@ window["${globalKey}"].__done = true;
     // 5. Save to disk
     console.log(`[PluginManager] Step 3: Saving to disk...`);
     const pluginDir = `plugins/${manifest.id || expectedPluginId}`;
-    await api().dataWrite(`${pluginDir}/manifest.json`, manifestText);
-    await api().dataWrite(`${pluginDir}/main.js`, mainText);
-    if (stylesText) {
-      await api().dataWrite(`${pluginDir}/styles.css`, stylesText);
+    try {
+      await api().dataWrite(`${pluginDir}/manifest.json`, manifestText);
+      await api().dataWrite(`${pluginDir}/main.js`, mainText);
+      if (stylesText) {
+        await api().dataWrite(`${pluginDir}/styles.css`, stylesText);
+      }
+    } catch (e: any) {
+      console.error(`[PluginManager] Step 3 FAILED:`, e);
+      throw new Error(`Failed to save plugin files to disk: ${e.message}`);
     }
     
-    console.log(`[PluginManager] ✓ Installed ${manifest.name} v${manifest.version}`);
+    console.log(`[PluginManager] ✓ Files saved for ${manifest.name} v${manifest.version}`);
     
-    // 6. Refresh plugins
+    // 6. Refresh plugin registry and auto-enable
     await this.discoverPlugins();
+    
+    // 7. Auto-enable (load + persist)
+    const pluginId = manifest.id || expectedPluginId;
+    console.log(`[PluginManager] Step 4: Auto-enabling ${pluginId}...`);
+    try {
+      const loadSuccess = await this.enablePlugin(pluginId);
+      if (!loadSuccess) {
+        // Plugin was installed but failed to load — still count as installed
+        console.warn(`[PluginManager] Plugin installed but failed to load. It can be enabled manually.`);
+      } else {
+        console.log(`[PluginManager] ✓ Plugin ${manifest.name} installed and enabled`);
+      }
+    } catch (e: any) {
+      console.warn(`[PluginManager] Plugin installed but errored during enable:`, e.message);
+      // Don't throw — install succeeded, load is a separate concern
+    }
+
     return true;
   }
 

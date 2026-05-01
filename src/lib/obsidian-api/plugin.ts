@@ -13,7 +13,8 @@ import type { IComponent } from './components';
 import type { PluginManifest } from '../../types/plugin';
 import { safePluginCall } from '../pluginDevTools';
 
-const api = () => (window as any).electronAPI;
+import { getAPI } from '../../utils/api';
+const api = () => getAPI();
 
 /**
  * Wrap a callback for crash isolation.

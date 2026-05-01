@@ -1697,6 +1697,38 @@ export default function App() {
   // ── Initialize Vault ────────────────────────────────
   useEffect(() => {
     const init = async () => {
+      // Always initialize plugin system (needed for marketplace even without vault)
+      if (!pluginManagerRef.current) {
+        try {
+          const ooApp = new OOApp();
+          ooAppRef.current = ooApp;
+          await ooApp.initialize();
+
+          const pm = new PluginManager(ooApp, {
+            onCommandsChanged: setPluginCommands,
+            onRibbonChanged: setPluginRibbonActions,
+            onStatusBarChanged: setPluginStatusBarItems,
+            onSettingTabsChanged: setPluginSettingTabs,
+            onPluginsChanged: setPluginList,
+            onPermissionRequired: (manifest, permissions) => {
+              return new Promise<boolean>((resolve) => {
+                setPermissionModalData({ manifest, permissions, resolve });
+              });
+            },
+          });
+          pluginManagerRef.current = pm;
+
+          // Wire up file navigation from plugins
+          (window as any).__oo_open_file = (path: string) => {
+            openFile(path);
+          };
+
+          console.log('[PluginSystem] Plugin manager initialized');
+        } catch (pluginErr) {
+          console.warn('[PluginSystem] Initialization failed:', pluginErr);
+        }
+      }
+
       try {
         const savedPath = await api.getVaultPath();
         if (savedPath) {
@@ -1707,38 +1739,18 @@ export default function App() {
           // Trigger background vault initialization
           runVaultInit(tree);
 
-          // Initialize plugin system
           (window as any).__oo_vault_path = savedPath;
-          try {
-            const ooApp = new OOApp();
-            ooAppRef.current = ooApp;
-            await ooApp.initialize();
 
-            const pm = new PluginManager(ooApp, {
-              onCommandsChanged: setPluginCommands,
-              onRibbonChanged: setPluginRibbonActions,
-              onStatusBarChanged: setPluginStatusBarItems,
-              onSettingTabsChanged: setPluginSettingTabs,
-              onPluginsChanged: setPluginList,
-              onPermissionRequired: (manifest, permissions) => {
-                return new Promise<boolean>((resolve) => {
-                  setPermissionModalData({ manifest, permissions, resolve });
-                });
-              },
-            });
-            pluginManagerRef.current = pm;
-
-            // Wire up file navigation from plugins
-            (window as any).__oo_open_file = (path: string) => {
-              openFile(path);
-            };
-
-            // Discover and load enabled plugins
-            await pm.discoverPlugins();
-            await pm.loadEnabledPlugins();
-            console.log('[PluginSystem] Initialized successfully');
-          } catch (pluginErr) {
-            console.warn('[PluginSystem] Initialization failed:', pluginErr);
+          // Discover and load enabled plugins (requires vault)
+          const pm = pluginManagerRef.current;
+          if (pm) {
+            try {
+              await pm.discoverPlugins();
+              await pm.loadEnabledPlugins();
+              console.log('[PluginSystem] Plugins loaded successfully');
+            } catch (pluginErr) {
+              console.warn('[PluginSystem] Plugin loading failed:', pluginErr);
+            }
           }
         }
       } catch (e) {
@@ -4264,8 +4276,18 @@ export default function App() {
             await pluginManagerRef.current?.discoverPlugins();
           }}
           onReloadPlugin={async (id) => { await pluginManagerRef.current?.reloadPlugin(id); }}
-          onInstallPlugin={async (repo, id) => { 
-            return await pluginManagerRef.current?.installFromGithubRepo(repo, id) || false; 
+          onInstallPlugin={async (repo, id) => {
+            const pm = pluginManagerRef.current;
+            if (!pm) {
+              throw new Error('Plugin manager not initialized. Try restarting the app.');
+            }
+            try {
+              const result = await pm.installFromGithubRepo(repo, id);
+              return result;
+            } catch (e: any) {
+              console.error('[App] Plugin install error:', e);
+              throw e;
+            }
           }}
         />
       )}
