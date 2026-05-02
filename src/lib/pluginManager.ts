@@ -12,6 +12,8 @@
 import * as obsidianApi from './obsidian-api';
 import { OOApp } from './obsidian-api/app';
 import { Plugin } from './obsidian-api/plugin';
+import * as cmState from '@codemirror/state';
+import * as cmView from '@codemirror/view';
 import type { IPlugin } from './obsidian-api/plugin';
 import { injectPluginStyles, removePluginStyles, injectPluginBaseCss, getPluginScopeClass } from './pluginStyles';
 import {
@@ -40,7 +42,7 @@ const api = () => getAPI();
 
 // ── Constants ────────────────────────────────────────
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.9.16';
 const LOAD_TIMEOUT_MS = 8000;
 const MAX_PARALLEL_LOADS = 3;
 
@@ -90,6 +92,8 @@ export class PluginManager {
     const win = window as any;
 
     win.__oo_register_command = (cmd: PluginCommand) => {
+      // Deduplicate by command ID
+      this._commands = this._commands.filter(c => c.id !== cmd.id);
       this._commands.push(cmd);
       this._callbacks.onCommandsChanged([...this._commands]);
     };
@@ -100,6 +104,8 @@ export class PluginManager {
     };
 
     win.__oo_register_ribbon = (action: PluginRibbonAction) => {
+      // Deduplicate by pluginId + title
+      this._ribbonActions = this._ribbonActions.filter(a => !(a.pluginId === action.pluginId && a.title === action.title));
       this._ribbonActions.push(action);
       this._callbacks.onRibbonChanged([...this._ribbonActions]);
     };
@@ -110,6 +116,8 @@ export class PluginManager {
     };
 
     win.__oo_register_statusbar = (pluginId: string, el: HTMLElement) => {
+      // Deduplicate by pluginId
+      this._statusBarItems = this._statusBarItems.filter(i => i.pluginId !== pluginId);
       this._statusBarItems.push({ pluginId, el });
       this._callbacks.onStatusBarChanged([...this._statusBarItems]);
     };
@@ -120,6 +128,8 @@ export class PluginManager {
     };
 
     win.__oo_register_setting_tab = (tab: PluginSettingTabRegistration) => {
+      // Deduplicate by pluginId
+      this._settingTabs = this._settingTabs.filter(t => t.pluginId !== tab.pluginId);
       this._settingTabs.push(tab);
       this._callbacks.onSettingTabsChanged([...this._settingTabs]);
     };
@@ -253,14 +263,26 @@ export class PluginManager {
     return true;
   }
 
-  /** Build a permission-guarded require shim for a plugin */
   private _buildRequireShim(manifest: PluginManifest, permissions: PluginPermission[]): (id: string) => any {
     return (id: string): any => {
       if (id === 'obsidian') {
         // Return a permission-filtered API surface
         return this._buildGuardedApi(manifest.id, permissions);
       }
-      if (id === 'electron') return {};
+      
+      // Provide built-in frontend modules
+      if (id === '@codemirror/state') return cmState;
+      if (id === '@codemirror/view') return cmView;
+      
+      // Fallback to real node modules or electron modules if nodeIntegration is enabled
+      if (typeof (window as any).require !== 'undefined') {
+        try {
+          return (window as any).require(id);
+        } catch (e) {
+          // Ignore and fall through to warning
+        }
+      }
+      
       console.warn(`[Plugin:${manifest.id}] Unsupported require('${id}')`);
       return {};
     };
@@ -377,6 +399,8 @@ export class PluginManager {
         require: requireShim,
         module: moduleObj,
         exports: moduleExports,
+        app: this._app,
+        moment: (window as any).moment,
       };
 
       // Wrap the plugin code
@@ -386,6 +410,9 @@ export class PluginManager {
   var require = __ctx.require;
   var module = __ctx.module;
   var exports = __ctx.exports;
+  // Ensure critical globals are available inside the blob
+  window.app = window.app || __ctx.app;
+  window.moment = window.moment || __ctx.moment;
   ${mainJs}
 })();
 window["${globalKey}"].__done = true;

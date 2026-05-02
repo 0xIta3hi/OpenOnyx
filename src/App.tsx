@@ -13,6 +13,8 @@ import React, {
   useRef,
   useMemo,
 } from "react";
+// Patch HTMLElement.prototype with Obsidian DOM helpers (must be before any plugin code)
+import './lib/obsidian-api/dom-extensions';
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/editor/Editor";
@@ -72,6 +74,7 @@ import { getAPI } from "./utils/api";
 import { PluginManager } from "./lib/pluginManager";
 import { OOApp } from "./lib/obsidian-api/app";
 import { PluginPermissionModal } from "./components/PluginPermissionModal";
+import { PluginViewPanel } from "./components/PluginViewPanel";
 import type { PluginPermission, PluginManifest } from "./types/plugin";
 import {
   FTUXState,
@@ -946,6 +949,7 @@ export default function App() {
   const [pluginSettingTabs, setPluginSettingTabs] = useState<PluginSettingTabRegistration[]>([]);
   const pluginManagerRef = useRef<PluginManager | null>(null);
   const ooAppRef = useRef<OOApp | null>(null);
+  const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement }>>([]);
   // Permission modal state
   const [permissionModalData, setPermissionModalData] = useState<{
     manifest: PluginManifest;
@@ -1694,15 +1698,24 @@ export default function App() {
     initializeVault(allNotes, activePath, recentFiles, api);
   }, [collectAllMdPaths, tabs, activeTabId, recentFiles]);
 
+  const initializeRef = useRef(false);
+
   // ── Initialize Vault ────────────────────────────────
   useEffect(() => {
     const init = async () => {
       // Always initialize plugin system (needed for marketplace even without vault)
-      if (!pluginManagerRef.current) {
+      if (!pluginManagerRef.current && !initializeRef.current) {
+        initializeRef.current = true;
         try {
           const ooApp = new OOApp();
           ooAppRef.current = ooApp;
-          await ooApp.initialize();
+          
+          // Try to initialize vault — may fail if no vault path yet, that's OK
+          try {
+            await ooApp.initialize();
+          } catch (initErr) {
+            // Expected when no vault path is set yet — vault will reinit when path is known
+          }
 
           const pm = new PluginManager(ooApp, {
             onCommandsChanged: setPluginCommands,
@@ -1722,6 +1735,17 @@ export default function App() {
           (window as any).__oo_open_file = (path: string) => {
             openFile(path);
           };
+
+          // Listen for plugin view changes from workspace
+          ooApp.workspace.on('plugin-views-changed', () => {
+            const views = ooApp.workspace.getActivePluginViews();
+            setPluginViews(views.map(v => ({
+              viewType: v.viewType,
+              displayText: v.displayText,
+              icon: v.icon,
+              containerEl: v.containerEl,
+            })));
+          });
 
           console.log('[PluginSystem] Plugin manager initialized');
         } catch (pluginErr) {
@@ -1747,6 +1771,9 @@ export default function App() {
             try {
               await pm.discoverPlugins();
               await pm.loadEnabledPlugins();
+              // Trigger view initialization after all plugins are loaded
+              const app = ooAppRef.current;
+              if (app) await app.workspace.initializeViews();
               console.log('[PluginSystem] Plugins loaded successfully');
             } catch (pluginErr) {
               console.warn('[PluginSystem] Plugin loading failed:', pluginErr);
@@ -4216,6 +4243,19 @@ export default function App() {
           <TagPane
             visible={showTags}
             onTagClick={(filePath) => openFile(filePath)}
+          />
+        )}
+
+        {/* Plugin Views (right sidebar) */}
+        {pluginViews.length > 0 && !isFTUXZeroState && (
+          <PluginViewPanel
+            views={pluginViews}
+            onClose={(viewType) => {
+              const app = ooAppRef.current;
+              if (app) {
+                app.workspace.detachLeavesOfType(viewType);
+              }
+            }}
           />
         )}
       </div>

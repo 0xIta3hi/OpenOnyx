@@ -167,6 +167,16 @@ const electronAPI = {
   },
 };
 
-contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+if (process.contextIsolated) {
+  contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+} else {
+  // If contextIsolation is off, attach directly to the window object.
+  // Using globalThis to bypass TS errors since DOM lib is omitted in electron tsconfig.
+  const win = (globalThis as any).window;
+  if (win) {
+    win.electronAPI = electronAPI;
+    win.ipcRenderer = ipcRenderer;
+  }
+}
 
 export type ElectronAPI = typeof electronAPI;

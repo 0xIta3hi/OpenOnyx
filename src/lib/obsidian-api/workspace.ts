@@ -10,6 +10,7 @@ export class WorkspaceLeaf extends Events {
   parent: any = null;
   view: View;
   id: string;
+  pinned: boolean = false;
   hoverPopover: any = null;
 
   constructor(id: string) {
@@ -28,7 +29,15 @@ export class WorkspaceLeaf extends Events {
   }
 
   getViewState(): any { return { type: this.view?.getViewType?.() || '', state: {} }; }
-  async setViewState(viewState: any, eState?: any): Promise<void> { /* compat */ }
+  async setViewState(viewState: any, eState?: any): Promise<void> {
+    // Create the view if a type is specified and we have a creator for it
+    if (viewState?.type) {
+      const workspace = (window as any).__oo_app?.workspace;
+      if (workspace) {
+        await workspace._createViewOnLeaf(this, viewState.type);
+      }
+    }
+  }
   get isDeferred(): boolean { return false; }
   async loadIfDeferred(): Promise<void> { /* compat */ }
   getEphemeralState(): any { return {}; }
@@ -60,8 +69,8 @@ export abstract class View extends Component {
     this.containerEl.className = 'view-content oo-plugin-view';
   }
 
-  protected async onOpen(): Promise<void> { /* override */ }
-  protected async onClose(): Promise<void> { /* override */ }
+  async onOpen(): Promise<void> { /* override */ }
+  async onClose(): Promise<void> { /* override */ }
   abstract getViewType(): string;
   getState(): Record<string, any> { return {}; }
   async setState(state: unknown, result: any): Promise<void> { /* override */ }
@@ -94,18 +103,8 @@ export abstract class ItemView extends View {
   }
 }
 
-// ── MarkdownView (stub) ─────────────────────────────
-export class MarkdownView extends ItemView {
-  editor: any = null;
-  file: TFile | null = null;
-  data = '';
 
-  getViewType(): string { return 'markdown'; }
-  getDisplayText(): string { return this.file?.basename || 'Untitled'; }
-  getMode(): string { return 'source'; }
-}
 
-// ── EditableFileView / TextFileView (stubs) ─────────
 export abstract class FileView extends View {
   file: TFile | null = null;
   allowNoFile = false;
@@ -123,9 +122,31 @@ export abstract class TextFileView extends EditableFileView {
   abstract clear(): void;
 }
 
+// ── MarkdownView (stub) ─────────────────────────────
+export class MarkdownView extends TextFileView {
+  editor: any = null;
+  getViewType(): string { return 'markdown'; }
+  getMode(): string { return 'source'; }
+  getViewData(): string { return this.data; }
+  setViewData(data: string, clear: boolean): void { this.data = data; }
+  clear(): void { this.data = ''; }
+}
+
 // ── OOWorkspace ─────────────────────────────────────
 export class OOWorkspace extends Events {
-  activeLeaf: WorkspaceLeaf | null = null;
+  private _activeLeaf: WorkspaceLeaf | null = null;
+  get activeLeaf(): WorkspaceLeaf {
+    if (!this._activeLeaf) {
+      this._activeLeaf = new WorkspaceLeaf('default-active');
+      this._activeLeaf.view = new MarkdownView(this._activeLeaf);
+      this._leaves.set(this._activeLeaf.id, this._activeLeaf);
+    }
+    return this._activeLeaf;
+  }
+  set activeLeaf(leaf: WorkspaceLeaf | null) {
+    this._activeLeaf = leaf;
+  }
+
   activeEditor: any = null;
   containerEl: HTMLElement;
   layoutReady = false;
@@ -140,6 +161,8 @@ export class OOWorkspace extends Events {
   private _viewCreators: Map<string, (leaf: WorkspaceLeaf) => View> = new Map();
   private _layoutReadyCallbacks: Array<() => any> = [];
   private _leafCounter = 0;
+  /** Active plugin views (viewType → leaf) — exposed for the React UI to render */
+  private _activePluginViews: Map<string, WorkspaceLeaf> = new Map();
 
   constructor() {
     super();
@@ -161,6 +184,11 @@ export class OOWorkspace extends Events {
   onLayoutReady(callback: () => any): void {
     if (this.layoutReady) { callback(); return; }
     this._layoutReadyCallbacks.push(callback);
+  }
+
+  getUnpinnedLeaf(viewType?: string): WorkspaceLeaf {
+    if (this.activeLeaf && !this.activeLeaf.pinned) return this.activeLeaf;
+    return this.getLeaf(true);
   }
 
   getLeaf(newLeaf?: any, direction?: any): WorkspaceLeaf {
@@ -191,8 +219,13 @@ export class OOWorkspace extends Events {
 
   detachLeavesOfType(viewType: string): void {
     for (const leaf of this.getLeavesOfType(viewType)) {
+      if (leaf.view) {
+        try { leaf.view.onClose?.(); } catch { /* */ }
+      }
       this._leaves.delete(leaf.id);
+      this._activePluginViews.delete(viewType);
     }
+    this.trigger('plugin-views-changed');
   }
 
   iterateAllLeaves(callback: (leaf: WorkspaceLeaf) => any): void {
@@ -203,7 +236,15 @@ export class OOWorkspace extends Events {
     this.iterateAllLeaves(callback);
   }
 
-  async revealLeaf(leaf: WorkspaceLeaf): Promise<void> { /* compat */ }
+  async revealLeaf(leaf: WorkspaceLeaf): Promise<void> {
+    // If the leaf already has a view, just make it active
+    if (leaf.view) {
+      this._activePluginViews.set(leaf.view.getViewType(), leaf);
+      this.trigger('plugin-views-changed');
+      return;
+    }
+  }
+
   setActiveLeaf(leaf: WorkspaceLeaf, params?: any): void {
     this.activeLeaf = leaf;
     this.trigger('active-leaf-change', leaf);
@@ -215,9 +256,80 @@ export class OOWorkspace extends Events {
 
   getGroupLeaves(group: string): WorkspaceLeaf[] { return []; }
   getMostRecentLeaf(): WorkspaceLeaf | null { return this.activeLeaf; }
-  getLeftLeaf(split: boolean): WorkspaceLeaf | null { return this.getLeaf(true); }
-  getRightLeaf(split: boolean): WorkspaceLeaf | null { return this.getLeaf(true); }
-  async ensureSideLeaf(type: string, side: string, options?: any): Promise<WorkspaceLeaf> { return this.getLeaf(true); }
+  
+  getLeftLeaf(split: boolean): WorkspaceLeaf | null {
+    return this._createSideLeaf();
+  }
+  
+  getRightLeaf(split: boolean): WorkspaceLeaf | null {
+    return this._createSideLeaf();
+  }
+
+  async ensureSideLeaf(type: string, side: string, options?: any): Promise<WorkspaceLeaf> {
+    // Check if we already have a leaf with this view type
+    const existing = this.getLeavesOfType(type);
+    if (existing.length > 0) return existing[0];
+    
+    // Create leaf + view
+    const leaf = this._createSideLeaf();
+    await this._createViewOnLeaf(leaf, type);
+    return leaf;
+  }
+
+  /** Create a leaf and view, and make it active in the sidebar */
+  private _createSideLeaf(): WorkspaceLeaf {
+    const leaf = new WorkspaceLeaf(`leaf-${++this._leafCounter}`);
+    this._leaves.set(leaf.id, leaf);
+    return leaf;
+  }
+
+  /** Instantiate a view on a leaf using a registered creator */
+  async _createViewOnLeaf(leaf: WorkspaceLeaf, viewType: string): Promise<boolean> {
+    const creator = this._viewCreators.get(viewType);
+    if (!creator) {
+      console.warn(`[Workspace] No view creator for type: ${viewType}`);
+      return false;
+    }
+    
+    try {
+      const view = creator(leaf);
+      leaf.view = view;
+      await view.onOpen?.();
+      this._activePluginViews.set(viewType, leaf);
+      this.trigger('plugin-views-changed');
+      console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()}`);
+      return true;
+    } catch (e) {
+      console.error(`[Workspace] Failed to create view ${viewType}:`, e);
+      return false;
+    }
+  }
+
+  /** Get all active plugin views — used by React UI to render the sidebar */
+  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement }> {
+    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement }> = [];
+    for (const [viewType, leaf] of this._activePluginViews) {
+      if (leaf.view) {
+        views.push({
+          viewType,
+          leaf,
+          displayText: leaf.view.getDisplayText?.() || viewType,
+          icon: leaf.view.getIcon?.() || 'file-text',
+          containerEl: leaf.view.containerEl,
+        });
+      }
+    }
+    return views;
+  }
+
+  /** Initialize all registered views that should auto-open */
+  async initializeViews(): Promise<void> {
+    // Some plugins (like Calendar) call ensureSideLeaf/revealLeaf during load.
+    // Those views are already tracked. This method is called after all plugins load
+    // to trigger the UI update.
+    this.trigger('plugin-views-changed');
+  }
+
   async openLinkText(linktext: string, sourcePath: string, newLeaf?: any): Promise<void> {
     (window as any).__oo_open_file?.(linktext);
   }

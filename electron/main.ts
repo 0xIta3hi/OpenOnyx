@@ -115,8 +115,8 @@ function createWindow(): void {
     frame: process.platform === 'darwin' ? true : false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
+      contextIsolation: false,
+      nodeIntegration: true,
       sandbox: false,
     },
   });

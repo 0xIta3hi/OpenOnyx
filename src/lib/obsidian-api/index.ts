@@ -5,6 +5,9 @@
  * It re-exports all public Obsidian API classes and functions.
  */
 
+// ── DOM Extensions (must be first — patches HTMLElement.prototype) ──
+import './dom-extensions';
+
 // ── File System ─────────────────────────────────────
 export { TAbstractFile, TFile, TFolder } from './files';
 export type { FileStats } from './files';
@@ -134,34 +137,27 @@ export abstract class EditorSuggest<T> extends Component {
   abstract selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void;
 }
 
-// Moment.js stub — many plugins use moment
-export const moment = (window as any).moment || (() => {
-  const m = (input?: any) => {
-    const d = input ? new Date(input) : new Date();
-    return {
-      format: (fmt?: string) => {
-        if (!fmt) return d.toISOString();
-        return fmt
-          .replace('YYYY', String(d.getFullYear()))
-          .replace('MM', String(d.getMonth() + 1).padStart(2, '0'))
-          .replace('DD', String(d.getDate()).padStart(2, '0'))
-          .replace('HH', String(d.getHours()).padStart(2, '0'))
-          .replace('mm', String(d.getMinutes()).padStart(2, '0'))
-          .replace('ss', String(d.getSeconds()).padStart(2, '0'));
-      },
-      toDate: () => d,
-      valueOf: () => d.getTime(),
-      isValid: () => !isNaN(d.getTime()),
-      startOf: () => m(d),
-      endOf: () => m(d),
-      add: () => m(d),
-      subtract: () => m(d),
-      diff: (other: any) => d.getTime() - new Date(other).getTime(),
-      isBefore: (other: any) => d.getTime() < new Date(other).getTime(),
-      isAfter: (other: any) => d.getTime() > new Date(other).getTime(),
-      isSame: (other: any) => d.getTime() === new Date(other).getTime(),
-    };
-  };
-  m.now = () => Date.now();
-  return m;
-})();
+// Moment.js — real library, required by many plugins (Calendar, etc.)
+import momentLib from 'moment';
+
+// Set on window so plugins that use `window.moment` directly work
+if (!(window as any).moment) {
+  (window as any).moment = momentLib;
+}
+
+// Fix for Calendar plugin crash: it reads moment.localeData()._week which can be undefined in some bundler setups
+if (!(window as any)._bundledLocaleWeekSpec) {
+  (window as any)._bundledLocaleWeekSpec = (momentLib.localeData() as any)._week || { dow: 0, doy: 6 };
+}
+
+// Fix for Calendar plugin bug: it tries to find lowercase "sunday" in capitalized moment.weekdays()
+// resulting in dow = -1. This breaks moment math and causes "reading 'isSame'" crashes in Svelte views.
+const origUpdateLocale = momentLib.updateLocale;
+(momentLib as any).updateLocale = function(name: string, config: any) {
+  if (config?.week?.dow === -1) {
+    config.week.dow = 0;
+  }
+  return origUpdateLocale.apply(this, arguments as any);
+};
+
+export const moment = momentLib;

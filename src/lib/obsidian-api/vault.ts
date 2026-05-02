@@ -14,7 +14,13 @@ export class OOVault extends Events {
   configDir = '.openobsidian';
 
   private _files: Map<string, TAbstractFile> = new Map();
-  private _root: TFolder = new TFolder('');
+  private _root: TFolder = new TFolder('/');
+
+  constructor() {
+    super();
+    this._root.vault = this;
+    this._files.set('/', this._root);
+  }
 
   getName(): string {
     // Extract vault name from path
@@ -29,8 +35,9 @@ export class OOVault extends Events {
   /** Rebuild internal file tree from the real filesystem */
   async refreshFiles(): Promise<void> {
     this._files.clear();
-    this._root = new TFolder('');
+    this._root = new TFolder('/');
     this._root.vault = this;
+    this._files.set('/', this._root);
 
     try {
       const tree = await api().getFileTree();

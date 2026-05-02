@@ -3,7 +3,9 @@
  */
 
 export function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+  if (!path || path === '/') return '/';
+  const normalized = path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+  return normalized || '/';
 }
 
 export function parseYaml(yaml: string): any {
