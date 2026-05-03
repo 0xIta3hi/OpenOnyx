@@ -13,6 +13,7 @@ export class OOApp {
   workspace: OOWorkspace;
   metadataCache: OOMetadataCache;
   scope: Scope;
+  containerEl: HTMLElement = document.body;
   keymap: any = {};
   fileManager: any;
   lastEvent: Event | null = null;

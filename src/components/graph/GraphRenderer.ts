@@ -43,6 +43,7 @@ interface RenderNode {
   x: number;
   y: number;
   connections: number;
+  radius: number;
 }
 
 interface RenderEdge {
@@ -252,7 +253,7 @@ export class GraphRenderer {
     // Smooth zoom factor
     const zoomIntensity = 0.1;
     const zoomFactor = e.deltaY > 0 ? 1 - zoomIntensity : 1 + zoomIntensity;
-    const newScale = Math.max(0.1, Math.min(5, this.targetScale * zoomFactor));
+    const newScale = Math.max(0.00001, Math.min(20, this.targetScale * zoomFactor));
 
     // Zoom towards mouse position
     const worldX = (mouseX - this.offsetX) / this.scale;
@@ -476,8 +477,7 @@ export class GraphRenderer {
         if (length > 0.001) {
           const ux = dx / length;
           const uy = dy / length;
-          const targetRadius =
-            this.nodeStyle.size + Math.sqrt(targetNode.connections) * 1.5;
+          const targetRadius = targetNode.radius;
           const tipX = targetNode.x - ux * (targetRadius + 1.2);
           const tipY = targetNode.y - uy * (targetRadius + 1.2);
           const arrowLength = 6;
@@ -522,7 +522,7 @@ export class GraphRenderer {
       else if (isConnectedToSelected || isConnectedToHovered)
         color = this.nodeStyle.connectedColor;
 
-      const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
+      const size = node.radius;
       const alpha = isDimmed ? this.nodeStyle.dimmedAlpha : 1;
 
       ctx.fillStyle = hexToColor(color, alpha);
@@ -539,13 +539,6 @@ export class GraphRenderer {
     const fadeStart = this.labelStyle.threshold;
     const fadeEnd = this.labelStyle.threshold + 0.15;
     
-    if (this.scale < fadeStart) return;
-
-    let textRevealAlpha = 1;
-    if (this.scale < fadeEnd) {
-      textRevealAlpha = (this.scale - fadeStart) / (fadeEnd - fadeStart);
-    }
-
     ctx.font = `${this.labelStyle.size}px Inter, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
@@ -567,17 +560,27 @@ export class GraphRenderer {
         continue;
       }
 
+      // Adaptive reveal: Hubs appear earlier (at lower zoom levels) than peripheral nodes
+      // fadeStart is the threshold for peripheral nodes. Hubs start appearing at fadeStart / 4.
+      const hubFadeStart = fadeStart / 4;
+      const isHub = node.connections > 10;
+      const effectiveFadeStart = isHub ? hubFadeStart : fadeStart;
+      const effectiveFadeEnd = isHub ? fadeStart : fadeEnd;
+
+      if (this.scale < effectiveFadeStart) continue;
+
       let alpha = 1;
+      if (this.scale < effectiveFadeEnd) {
+        alpha = (this.scale - effectiveFadeStart) / (effectiveFadeEnd - effectiveFadeStart);
+      }
+
       if (
         this.hoveredNodeId &&
         node.id !== this.hoveredNodeId &&
         !connectedToHovered?.has(node.id)
       ) {
-        alpha = 0.2;
+        alpha *= 0.2;
       }
-      
-      // Apply the global zoom-based reveal fade
-      alpha *= textRevealAlpha;
 
       // Parse label color
       let r = 127,
@@ -590,7 +593,7 @@ export class GraphRenderer {
       }
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
 
-      const size = this.nodeStyle.size + Math.sqrt(node.connections) * 1.5;
+      const size = node.radius;
       const labelY = screenY + size * this.scale + 4;
 
       ctx.fillText(node.name, Math.round(screenX), Math.round(labelY));
@@ -632,6 +635,9 @@ export class GraphRenderer {
     // Create nodes
     for (const node of nodes) {
       const connections = this.adjacencyMap.get(node.id)?.size || 0;
+      
+      // Obsidian-parity power-law scaling: radius = base * (1 + connections^0.6 * 0.4)
+      const radius = this.nodeStyle.size * (1 + Math.pow(connections, 0.6) * 0.4);
 
       this.nodes.set(node.id, {
         id: node.id,
@@ -640,6 +646,7 @@ export class GraphRenderer {
         x: node.x || 0,
         y: node.y || 0,
         connections,
+        radius,
       });
     }
 

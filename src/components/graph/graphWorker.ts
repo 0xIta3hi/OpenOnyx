@@ -56,12 +56,14 @@ function initSimulation() {
   simulation = d3
     .forceSimulation<WorkerNode>(nodes)
     .force("center", d3.forceCenter(0, 0).strength(forceParams.centerStrength))
+    .force("x", d3.forceX(0).strength(forceParams.centerStrength))
+    .force("y", d3.forceY(0).strength(forceParams.centerStrength))
     .force(
       "charge",
       d3
         .forceManyBody<WorkerNode>()
         .strength(-forceParams.repelStrength)
-        .distanceMax(500),
+        .distanceMax(800),
     )
     .force(
       "link",
@@ -85,11 +87,11 @@ function initSimulation() {
         .forceCollide<WorkerNode>()
         .radius(
           (d) =>
-            forceParams.collisionRadius + Math.sqrt(d.connections || 0) * 2,
+            forceParams.collisionRadius + Math.pow(d.connections || 0, 0.6) * 2,
         ),
     )
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // Obsidian's alpha decay
-    .velocityDecay(0.4)
+    .velocityDecay(0.6) // Match sim.js damping factor
     .on("tick", onTick)
     .on("end", onEnd);
 }
@@ -165,12 +167,14 @@ self.onmessage = (e: MessageEvent) => {
             "center",
             d3.forceCenter(0, 0).strength(forceParams.centerStrength),
           )
+          .force("x", d3.forceX(0).strength(forceParams.centerStrength))
+          .force("y", d3.forceY(0).strength(forceParams.centerStrength))
           .force(
             "charge",
             d3
               .forceManyBody<WorkerNode>()
               .strength(-forceParams.repelStrength)
-              .distanceMax(500),
+              .distanceMax(800),
           )
           .force(
             "link",
@@ -194,7 +198,7 @@ self.onmessage = (e: MessageEvent) => {
               .radius(
                 (d) =>
                   forceParams.collisionRadius +
-                  Math.sqrt(d.connections || 0) * 2,
+                  Math.pow(d.connections || 0, 0.6) * 2,
               ),
           );
       }

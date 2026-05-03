@@ -12,11 +12,14 @@ export class WorkspaceLeaf extends Events {
   id: string;
   pinned: boolean = false;
   hoverPopover: any = null;
+  containerEl: HTMLElement;
 
   constructor(id: string) {
     super();
     this.id = id;
     this.view = null as any;
+    this.containerEl = document.createElement('div');
+    this.containerEl.className = 'workspace-leaf-content oo-plugin-leaf';
   }
 
   async openFile(file: TFile, openState?: any): Promise<void> {
@@ -103,8 +106,6 @@ export abstract class ItemView extends View {
   }
 }
 
-
-
 export abstract class FileView extends View {
   file: TFile | null = null;
   allowNoFile = false;
@@ -125,6 +126,21 @@ export abstract class TextFileView extends EditableFileView {
 // ── MarkdownView (stub) ─────────────────────────────
 export class MarkdownView extends TextFileView {
   editor: any = null;
+  
+  // For MarkdownView, we point containerEl to the real editor host if it exists.
+  // This allows focus/fullscreen plugins to work on the main editor area.
+  get containerEl(): HTMLElement {
+    return document.querySelector('.ftux-editor-host') as HTMLElement || (this as any)._internalContainerEl;
+  }
+  set containerEl(el: HTMLElement) {
+    (this as any)._internalContainerEl = el;
+  }
+
+  constructor(leaf: WorkspaceLeaf) {
+    super(leaf);
+    (this as any)._internalContainerEl = document.createElement('div');
+  }
+
   getViewType(): string { return 'markdown'; }
   getMode(): string { return 'source'; }
   getViewData(): string { return this.data; }
