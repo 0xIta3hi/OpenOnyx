@@ -43,7 +43,6 @@ interface RenderNode {
   x: number;
   y: number;
   connections: number;
-  radius: number;
 }
 
 interface RenderEdge {
@@ -250,10 +249,9 @@ export class GraphRenderer {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Smooth zoom factor
-    const zoomIntensity = 0.1;
-    const zoomFactor = e.deltaY > 0 ? 1 - zoomIntensity : 1 + zoomIntensity;
-    const newScale = Math.max(0.00001, Math.min(20, this.targetScale * zoomFactor));
+    // Smooth zoom factor (Obsidian style)
+    const zoomFactor = Math.pow(1.5, -e.deltaY / 120);
+    const newScale = Math.max(1 / 128, Math.min(8, this.targetScale * zoomFactor));
 
     // Zoom towards mouse position
     const worldX = (mouseX - this.offsetX) / this.scale;
@@ -477,7 +475,9 @@ export class GraphRenderer {
         if (length > 0.001) {
           const ux = dx / length;
           const uy = dy / length;
-          const targetRadius = targetNode.radius;
+          const nodeScale = Math.sqrt(1 / this.scale);
+          const baseRadius = (this.nodeStyle.size / 5) * Math.max(8, Math.min(3 * Math.sqrt(targetNode.connections + 1), 30));
+          const targetRadius = baseRadius * nodeScale;
           const tipX = targetNode.x - ux * (targetRadius + 1.2);
           const tipY = targetNode.y - uy * (targetRadius + 1.2);
           const arrowLength = 6;
@@ -522,7 +522,10 @@ export class GraphRenderer {
       else if (isConnectedToSelected || isConnectedToHovered)
         color = this.nodeStyle.connectedColor;
 
-      const size = node.radius;
+      // Obsidian-parity node sizing: nodeSizeMult * max(8, min(3*sqrt(weight+1), 30)) * nodeScale
+      const nodeScale = Math.sqrt(1 / this.scale);
+      const baseRadius = (this.nodeStyle.size / 5) * Math.max(8, Math.min(3 * Math.sqrt(node.connections + 1), 30));
+      const size = baseRadius * nodeScale;
       const alpha = isDimmed ? this.nodeStyle.dimmedAlpha : 1;
 
       ctx.fillStyle = hexToColor(color, alpha);
@@ -535,9 +538,13 @@ export class GraphRenderer {
   private drawLabels(ctx: CanvasRenderingContext2D): void {
     if (!this.labelStyle.show) return;
 
-    // Fade transition properties
-    const fadeStart = this.labelStyle.threshold;
-    const fadeEnd = this.labelStyle.threshold + 0.15;
+    // Obsidian-parity text fade
+    const n = Math.log(this.scale) / Math.log(2);
+    // threshold here acts like fTextShowMult (typically 0)
+    // we invert threshold logic if needed, but let's map it cleanly
+    const textAlpha = Math.max(0, Math.min(1, n + 1 - (1 - this.labelStyle.threshold)));
+    
+    if (textAlpha <= 0) return;
     
     ctx.font = `${this.labelStyle.size}px Inter, system-ui, sans-serif`;
     ctx.textAlign = "center";
@@ -560,19 +567,7 @@ export class GraphRenderer {
         continue;
       }
 
-      // Adaptive reveal: Hubs appear earlier (at lower zoom levels) than peripheral nodes
-      // fadeStart is the threshold for peripheral nodes. Hubs start appearing at fadeStart / 4.
-      const hubFadeStart = fadeStart / 4;
-      const isHub = node.connections > 10;
-      const effectiveFadeStart = isHub ? hubFadeStart : fadeStart;
-      const effectiveFadeEnd = isHub ? fadeStart : fadeEnd;
-
-      if (this.scale < effectiveFadeStart) continue;
-
-      let alpha = 1;
-      if (this.scale < effectiveFadeEnd) {
-        alpha = (this.scale - effectiveFadeStart) / (effectiveFadeEnd - effectiveFadeStart);
-      }
+      let alpha = textAlpha;
 
       if (
         this.hoveredNodeId &&
@@ -593,7 +588,10 @@ export class GraphRenderer {
       }
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
 
-      const size = node.radius;
+      // Match node scaling for label placement
+      const nodeScale = Math.sqrt(1 / this.scale);
+      const baseRadius = (this.nodeStyle.size / 5) * Math.max(8, Math.min(3 * Math.sqrt(node.connections + 1), 30));
+      const size = baseRadius * nodeScale;
       const labelY = screenY + size * this.scale + 4;
 
       ctx.fillText(node.name, Math.round(screenX), Math.round(labelY));
@@ -636,8 +634,7 @@ export class GraphRenderer {
     for (const node of nodes) {
       const connections = this.adjacencyMap.get(node.id)?.size || 0;
       
-      // Obsidian-parity power-law scaling: radius = base * (1 + connections^0.6 * 0.4)
-      const radius = this.nodeStyle.size * (1 + Math.pow(connections, 0.6) * 0.4);
+      // Radius is now calculated dynamically during render based on zoom
 
       this.nodes.set(node.id, {
         id: node.id,
@@ -646,7 +643,6 @@ export class GraphRenderer {
         x: node.x || 0,
         y: node.y || 0,
         connections,
-        radius,
       });
     }
 

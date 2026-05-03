@@ -8,3 +8,4 @@ thought_model/
 PROMPT.md
 .env.local
 .env
+.gemini

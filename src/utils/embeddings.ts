@@ -30,7 +30,7 @@ if (env.backends) {
     numThreads: 1,
     proxy: false,
     // Point to remote WASM binaries to ensure they can be loaded in Electron
-    wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/'
+    wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
   };
   
   // Explicitly tell transformers to use the web backend even in Electron/Node-like environments

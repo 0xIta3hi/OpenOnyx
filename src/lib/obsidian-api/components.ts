@@ -366,29 +366,23 @@ export class Setting {
 }
 
 // ── SettingTab ───────────────────────────────────────
-export abstract class SettingTab {
-  app: any;
-  containerEl: HTMLElement;
-  icon: string = '';
-
-  constructor(app?: any) {
-    this.app = app;
-    this.containerEl = document.createElement('div');
-    this.containerEl.className = 'oo-plugin-setting-tab';
-  }
-
-  abstract display(): void;
-  hide(): void { this.containerEl.innerHTML = ''; }
+export function SettingTab(this: any, app?: any) {
+  this.app = app;
+  this.containerEl = document.createElement('div');
+  this.containerEl.className = 'oo-plugin-setting-tab';
+  this.icon = '';
 }
+SettingTab.prototype.display = function() {};
+SettingTab.prototype.hide = function() {
+  if (this.containerEl) this.containerEl.innerHTML = '';
+};
 
-export abstract class PluginSettingTab extends SettingTab {
-  plugin: any;
-
-  constructor(app: any, plugin: any) {
-    super(app);
-    this.plugin = plugin;
-  }
+export function PluginSettingTab(this: any, app: any, plugin: any) {
+  SettingTab.call(this, app);
+  this.plugin = plugin;
 }
+PluginSettingTab.prototype = Object.create(SettingTab.prototype);
+PluginSettingTab.prototype.constructor = PluginSettingTab;
 
 // ── Menu ────────────────────────────────────────────
 export class Menu {

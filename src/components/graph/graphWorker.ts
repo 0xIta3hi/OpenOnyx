@@ -55,7 +55,6 @@ function initSimulation() {
   // Create simulation with Obsidian-like parameters
   simulation = d3
     .forceSimulation<WorkerNode>(nodes)
-    .force("center", d3.forceCenter(0, 0).strength(forceParams.centerStrength))
     .force("x", d3.forceX(0).strength(forceParams.centerStrength))
     .force("y", d3.forceY(0).strength(forceParams.centerStrength))
     .force(
@@ -63,7 +62,7 @@ function initSimulation() {
       d3
         .forceManyBody<WorkerNode>()
         .strength(-forceParams.repelStrength)
-        .distanceMax(800),
+        .distanceMin(30),
     )
     .force(
       "link",
@@ -83,12 +82,7 @@ function initSimulation() {
     )
     .force(
       "collision",
-      d3
-        .forceCollide<WorkerNode>()
-        .radius(
-          (d) =>
-            forceParams.collisionRadius + Math.pow(d.connections || 0, 0.6) * 2,
-        ),
+      d3.forceCollide<WorkerNode>().radius(forceParams.collisionRadius)
     )
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // Obsidian's alpha decay
     .velocityDecay(0.6) // Match sim.js damping factor
