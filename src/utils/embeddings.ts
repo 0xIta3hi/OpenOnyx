@@ -19,6 +19,31 @@ import { readData, writeData, listData, deleteData, createDebouncedWriter } from
 // Disable local model loading — always use remote CDN cache
 env.allowLocalModels = false;
 
+// Electron/Browser compatibility fixes
+// Force use of wasm backend and disable node-specific backends
+if (env.backends) {
+  // @ts-ignore
+  if (!env.backends.onnx) env.backends.onnx = {};
+  
+  // @ts-ignore
+  env.backends.onnx.wasm = {
+    numThreads: 1,
+    proxy: false,
+    // Point to remote WASM binaries to ensure they can be loaded in Electron
+    wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/'
+  };
+  
+  // Explicitly tell transformers to use the web backend even in Electron/Node-like environments
+  // @ts-ignore
+  env.backends.onnx.node = false;
+}
+
+// Force environment to 'browser' to avoid node-specific path lookups
+// @ts-ignore
+env.env = 'browser';
+// @ts-ignore
+env.allowRemoteModels = true;
+
 // ── Model singleton ──────────────────────────────────────────────────────────
 
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
@@ -44,14 +69,29 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (_loadingPromise) return _loadingPromise;
 
   _loadingPromise = (async () => {
-    _loadProgress = 10;
-    _onProgress?.(10, "Loading analysis engine...");
-    const p = await pipeline("feature-extraction", MODEL_ID);
-    _loadProgress = 100;
-    _onProgress?.(100, "Model ready");
-    _pipeline = p as FeatureExtractionPipeline;
-    _loadingPromise = null;
-    return _pipeline;
+    try {
+      _loadProgress = 10;
+      _onProgress?.(10, "Loading analysis engine...");
+      
+      // Explicitly catch pipeline errors
+      const p = await pipeline("feature-extraction", MODEL_ID).catch(err => {
+        console.error("[Embeddings] Pipeline creation failed:", err);
+        throw err;
+      });
+
+      if (!p) throw new Error("Pipeline creation returned null");
+
+      _loadProgress = 100;
+      _onProgress?.(100, "Model ready");
+      _pipeline = p as FeatureExtractionPipeline;
+      _loadingPromise = null;
+      return _pipeline;
+    } catch (err) {
+      _loadingPromise = null;
+      _loadProgress = 0;
+      _onProgress?.(0, "Analysis engine failed to load");
+      throw err;
+    }
   })();
 
   return _loadingPromise;

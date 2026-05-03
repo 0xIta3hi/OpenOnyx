@@ -10,8 +10,9 @@ import { normalizePath } from './utils';
 const api = () => (window as any).electronAPI;
 
 export class OOVault extends Events {
-  adapter: any = {};
+  adapter: any;
   configDir = '.openobsidian';
+  private _path: string = '';
 
   private _files: Map<string, TAbstractFile> = new Map();
   private _root: TFolder = new TFolder('/');
@@ -20,12 +21,77 @@ export class OOVault extends Events {
     super();
     this._root.vault = this;
     this._files.set('/', this._root);
+    
+    // Initialize adapter with stubs and real implementations where possible
+    this.adapter = {
+      getBasePath: () => this._path || (window as any).__oo_vault_path || '',
+      getName: () => this.getName(),
+      fs: {
+        exists: (path: string, cb: any) => { cb(true); },
+        stat: (path: string, cb: any) => { cb(null, { isDirectory: () => false }); },
+        readFile: (path: string, enc: any, cb: any) => { cb(null, ''); },
+        writeFile: (path: string, data: any, enc: any, cb: any) => { cb(null); },
+      },
+      // Essential DataAdapter methods
+      read: async (path: string) => {
+        const file = this.getAbstractFileByPath(path);
+        if (file instanceof TFile) return await this.read(file);
+        throw new Error('Not a file');
+      },
+      write: async (path: string, data: string) => {
+        return await this.adapter.writeFile(path, data);
+      },
+      exists: async (path: string) => {
+        return !!this.getAbstractFileByPath(path);
+      },
+      stat: async (path: string) => {
+        const file = this.getAbstractFileByPath(path);
+        if (!file) return null;
+        if (file instanceof TFile) {
+          return {
+            type: 'file',
+            ctime: file.stat.ctime,
+            mtime: file.stat.mtime,
+            size: file.stat.size
+          };
+        }
+        return {
+          type: 'folder',
+          ctime: Date.now(),
+          mtime: Date.now(),
+          size: 0
+        };
+      },
+      getResourcePath: (path: string) => {
+        const base = this.adapter.getBasePath();
+        return `app://local${base}/${path}`;
+      },
+      list: async (path: string) => {
+        const folder = this.getAbstractFileByPath(path);
+        if (folder instanceof TFolder) {
+          return {
+            files: folder.children.filter(f => f instanceof TFile).map(f => f.path),
+            folders: folder.children.filter(f => f instanceof TFolder).map(f => f.path)
+          };
+        }
+        return { files: [], folders: [] };
+      },
+      trashLocal: async () => {},
+      trashSystem: async () => {},
+      mkdir: async (path: string) => {
+        await api().createDirectory(path);
+        await this.refreshFiles();
+      }
+    };
+
+    // Try to recover path from global if available immediately
+    this._path = (window as any).__oo_vault_path || '';
   }
 
   getName(): string {
     // Extract vault name from path
     try {
-      const vp = (window as any).__oo_vault_path || '';
+      const vp = this._path || (window as any).__oo_vault_path || '';
       return vp.split('/').pop() || vp.split('\\').pop() || 'Vault';
     } catch { return 'Vault'; }
   }
@@ -34,10 +100,21 @@ export class OOVault extends Events {
 
   /** Rebuild internal file tree from the real filesystem */
   async refreshFiles(): Promise<void> {
+    const vaultPath = await api().getVaultPath();
+    if (vaultPath) {
+      this._path = vaultPath;
+      (window as any).__oo_vault_path = vaultPath;
+    }
+
     this._files.clear();
     this._root = new TFolder('/');
     this._root.vault = this;
     this._files.set('/', this._root);
+    
+    if (!this._path) {
+      console.warn('[OOVault] Refresh failed: No vault path set');
+      return;
+    }
 
     try {
       const tree = await api().getFileTree();

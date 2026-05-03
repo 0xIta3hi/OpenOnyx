@@ -20,6 +20,14 @@ export function registerIpcHandlers(
   ipcMain.handle('vault:setPath', async (_event, vaultPath: string) => {
     const success = fsManager.setVaultPath(vaultPath);
     if (success) {
+      // Set CWD to vault path so relative paths in plugins work correctly
+      try {
+        process.chdir(vaultPath);
+        console.log(`[IPC] Changed CWD to: ${vaultPath}`);
+      } catch (err) {
+        console.warn(`[IPC] Failed to change CWD to ${vaultPath}:`, err);
+      }
+      
       // Rebuild search index when vault changes
       await searchEngine.buildIndex(fsManager);
     }

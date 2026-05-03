@@ -24,6 +24,20 @@ export class OOApp {
   /** App setting — stores things like daily note folder */
   setting: any;
 
+  // ── Storage API ───────────────────────────────────
+  loadLocalStorage(key: string): any {
+    try {
+      const data = localStorage.getItem(`oo_plugin_${key}`);
+      return data ? JSON.parse(data) : null;
+    } catch { return null; }
+  }
+  
+  saveLocalStorage(key: string, value: any): void {
+    try {
+      localStorage.setItem(`oo_plugin_${key}`, JSON.stringify(value));
+    } catch { /* ignore */ }
+  }
+
   constructor() {
     this.vault = new OOVault();
     this.workspace = new OOWorkspace();

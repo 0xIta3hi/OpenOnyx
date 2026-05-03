@@ -124,6 +124,12 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     return this.classList.contains(cls);
   };
 
+  // ── onClickEvent() — Obsidian specific click helper ─
+  (HTMLElement.prototype as any).onClickEvent = function (callback: (e: MouseEvent) => any, options?: boolean | AddEventListenerOptions) {
+    this.addEventListener("click", callback, options);
+    return this;
+  };
+
   // ── detach() — Remove from DOM ──────────────────────
   (HTMLElement.prototype as any).detach = function () {
     this.remove();
@@ -147,6 +153,21 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
   (HTMLElement.prototype as any).setCssProps = function (props: Record<string, string>) {
     for (const [key, value] of Object.entries(props)) {
       this.style.setProperty(key, value);
+    }
+  };
+
+  // ── setAttr / setAttrs — Attribute manipulation ─────
+  (HTMLElement.prototype as any).setAttr = function (key: string, value: string | number | boolean | null) {
+    if (value === null) {
+      this.removeAttribute(key);
+    } else {
+      this.setAttribute(key, String(value));
+    }
+  };
+
+  (HTMLElement.prototype as any).setAttrs = function (attrs: Record<string, string | number | boolean | null>) {
+    for (const [key, value] of Object.entries(attrs)) {
+      (this as any).setAttr(key, value);
     }
   };
 
@@ -222,6 +243,32 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
   // Mark as patched
   (HTMLElement.prototype as any).__oo_dom_patched = true;
   console.log('[OpenObsidian] DOM extensions patched');
+}
+
+// ── JS Primitive Extensions ─────────────────────────
+// Obsidian patches several JS primitives with helper methods.
+
+if (!(String.prototype as any).contains) {
+  (String.prototype as any).contains = String.prototype.includes;
+}
+
+if (!(Array.prototype as any).contains) {
+  (Array.prototype as any).contains = Array.prototype.includes;
+}
+
+if (!(Array.prototype as any).remove) {
+  (Array.prototype as any).remove = function<T>(this: T[], item: T): void {
+    const index = this.indexOf(item);
+    if (index !== -1) {
+      this.splice(index, 1);
+    }
+  };
+}
+
+if (!(Number.prototype as any).clamp) {
+  (Number.prototype as any).clamp = function (min: number, max: number): number {
+    return Math.min(Math.max(this as any, min), max);
+  };
 }
 
 // Set window.moment early — many plugins reference it at parse time

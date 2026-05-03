@@ -47,6 +47,7 @@ export interface IPlugin extends IComponent {
   registerEditorExtension(extension: any): void;
   registerEditorSuggest(editorSuggest: any): void;
   registerObsidianProtocolHandler(action: string, handler: (params: any) => any): void;
+  registerHoverLinkSource(id: string, info: { display: string, defaultMod: boolean }): void;
   loadData(): Promise<any>;
   saveData(data: any): Promise<void>;
   onUserEnable(): void;
@@ -201,17 +202,19 @@ _Plugin.prototype.registerEditorExtension = function(extension: any): void {
   (window as any).__oo_register_editor_ext?.(this.manifest.id, extension);
 };
 
-_Plugin.prototype.registerEditorSuggest = function(_editorSuggest: any): void {
-  // Editor suggestions — stored for future integration
+_Plugin.prototype.registerEditorSuggest = function(editorSuggest: any) {
+  // Stub for editor suggest
 };
 
-// ── Protocol Handlers ─────────────────────────────
-
-_Plugin.prototype.registerObsidianProtocolHandler = function(_action: string, _handler: (params: any) => any): void {
-  // URL protocol handler — stored for future integration
+_Plugin.prototype.registerObsidianProtocolHandler = function(action: string, handler: (params: any) => any) {
+  // Stub for protocol handler
 };
 
-// ── Data Persistence ──────────────────────────────
+_Plugin.prototype.registerHoverLinkSource = function(id: string, info: { display: string, defaultMod: boolean }) {
+  // Stub for hover link source (used by obsidian-git)
+};
+
+// ── Data Management ───────────────────────────────
 
 _Plugin.prototype.loadData = async function(): Promise<any> {
   try {

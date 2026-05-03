@@ -8,31 +8,33 @@ export interface EventRef {
   _eventName: string;
   _callback: (...args: any[]) => any;
   _ctx?: any;
+  _events?: Events;
 }
 
 // ── Events ──────────────────────────────────────────
 export class Events {
-  private _events: Map<string, Array<{ cb: (...args: any[]) => any; ctx?: any }>> = new Map();
+  private _eventsMap: Map<string, Array<{ cb: (...args: any[]) => any; ctx?: any }>> = new Map();
 
   on(name: string, callback: (...data: any[]) => any, ctx?: any): EventRef {
-    if (!this._events.has(name)) this._events.set(name, []);
-    this._events.get(name)!.push({ cb: callback, ctx });
-    return { _eventName: name, _callback: callback, _ctx: ctx };
+    if (!this._eventsMap.has(name)) this._eventsMap.set(name, []);
+    this._eventsMap.get(name)!.push({ cb: callback, ctx });
+    return { _eventName: name, _callback: callback, _ctx: ctx, _events: this };
   }
 
   off(name: string, callback: (...data: any[]) => any): void {
-    const handlers = this._events.get(name);
+    const handlers = this._eventsMap.get(name);
     if (!handlers) return;
     const idx = handlers.findIndex(h => h.cb === callback);
     if (idx >= 0) handlers.splice(idx, 1);
   }
 
   offref(ref: EventRef): void {
+    if (!ref) return;
     this.off(ref._eventName, ref._callback);
   }
 
   trigger(name: string, ...data: any[]): void {
-    const handlers = this._events.get(name);
+    const handlers = this._eventsMap.get(name);
     if (!handlers) return;
     for (const h of [...handlers]) {
       try { h.cb.apply(h.ctx, data); } catch (e) { console.error(`[Plugin Event Error] ${name}:`, e); }
@@ -71,7 +73,7 @@ export interface IComponent {
 
 /** Component constructor type for TypeScript class extension */
 export interface ComponentConstructor {
-  new (...args: any[]): IComponent;
+  new(...args: any[]): IComponent;
   prototype: IComponent;
 }
 
@@ -83,52 +85,58 @@ function _Component(this: any) {
   this._intervals = [];
 }
 
-_Component.prototype.load = function() {
+_Component.prototype.load = function () {
   this._loaded = true;
   this.onload();
 };
 
-_Component.prototype.onload = function() { /* override */ };
+_Component.prototype.onload = function () { /* override */ };
 
-_Component.prototype.unload = function() {
+_Component.prototype.unload = function () {
   this._loaded = false;
   for (const child of this._children) child.unload();
   this._children = [];
   for (const de of this._domEvents) de.el.removeEventListener(de.type, de.handler);
   this._domEvents = [];
+  for (const evt of this._events) {
+    if (evt && evt._events) {
+      evt._events.offref(evt);
+    }
+  }
+  this._events = [];
   for (const id of this._intervals) window.clearInterval(id);
   this._intervals = [];
   this.onunload();
 };
 
-_Component.prototype.onunload = function() { /* override */ };
+_Component.prototype.onunload = function () { /* override */ };
 
-_Component.prototype.addChild = function(child: any) {
+_Component.prototype.addChild = function (child: any) {
   this._children.push(child);
   if (this._loaded) child.load();
   return child;
 };
 
-_Component.prototype.removeChild = function(child: any) {
+_Component.prototype.removeChild = function (child: any) {
   const idx = this._children.indexOf(child);
   if (idx >= 0) { this._children.splice(idx, 1); child.unload(); }
   return child;
 };
 
-_Component.prototype.register = function(_cb: () => any) { /* no-op compat */ };
+_Component.prototype.register = function (_cb: () => any) { /* no-op compat */ };
 
-_Component.prototype.registerEvent = function(eventRef: EventRef) {
+_Component.prototype.registerEvent = function (eventRef: EventRef) {
   this._events.push(eventRef);
 };
 
-_Component.prototype.registerDomEvent = function(
+_Component.prototype.registerDomEvent = function (
   el: EventTarget, type: string, callback: (evt: any) => any, options?: boolean | AddEventListenerOptions
 ) {
   el.addEventListener(type, callback, options);
   this._domEvents.push({ el, type, handler: callback });
 };
 
-_Component.prototype.registerInterval = function(id: number): number {
+_Component.prototype.registerInterval = function (id: number): number {
   this._intervals.push(id);
   return id;
 };
@@ -186,6 +194,13 @@ export class Modal {
   titleEl: HTMLElement;
   contentEl: HTMLElement;
 
+  private _onGlobalKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this.close();
+    }
+  };
+
   constructor(app: any) {
     this.app = app;
     this.scope = null;
@@ -205,14 +220,19 @@ export class Modal {
     bg.addEventListener('click', () => this.close());
     this.containerEl.appendChild(bg);
     this.containerEl.appendChild(this.modalEl);
+
+    // Prevent clicks inside modal from closing it
+    this.modalEl.addEventListener('click', (e) => e.stopPropagation());
   }
 
   open(): void {
     document.body.appendChild(this.containerEl);
+    window.addEventListener('keydown', this._onGlobalKeyDown);
     this.onOpen();
   }
 
   close(): void {
+    window.removeEventListener('keydown', this._onGlobalKeyDown);
     this.onClose();
     this.containerEl.remove();
   }
@@ -435,7 +455,11 @@ export class MenuItem {
     return this;
   }
 
-  setIcon(icon: string): this { return this; }
+  setIcon(icon: string): this {
+    this.dom.setAttribute('data-icon', icon);
+    // Many plugins use Lucide icons. We can add a helper to render them if needed.
+    return this;
+  }
   setChecked(checked: boolean): this { this.dom.classList.toggle('is-checked', checked); return this; }
   setDisabled(disabled: boolean): this { this.dom.classList.toggle('is-disabled', disabled); return this; }
   setIsLabel(isLabel: boolean): this { this.dom.classList.toggle('is-label', isLabel); return this; }
@@ -460,14 +484,22 @@ export class ButtonComponent {
   setCta(): this { this.buttonEl.classList.add('mod-cta'); return this; }
   setWarning(): this { this.buttonEl.classList.add('mod-warning'); return this; }
   setDisabled(disabled: boolean): this { this.buttonEl.disabled = disabled; return this; }
-  setIcon(icon: string): this { return this; }
+  setIcon(icon: string): this {
+    this.buttonEl.setAttribute('data-icon', icon);
+    this.buttonEl.classList.add('has-icon');
+    return this;
+  }
   setTooltip(tooltip: string): this { this.buttonEl.title = tooltip; return this; }
   removeCta(): this { this.buttonEl.classList.remove('mod-cta'); return this; }
   onClick(callback: (evt: MouseEvent) => any): this {
-    this.buttonEl.addEventListener('click', callback);
+    this.buttonEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      callback(e);
+    });
     return this;
   }
   setClass(cls: string): this { this.buttonEl.classList.add(cls); return this; }
+  then(cb: (component: this) => any): this { cb(this); return this; }
 }
 
 export class TextComponent {
@@ -479,6 +511,12 @@ export class TextComponent {
     this.inputEl.className = 'oo-plugin-text-input';
     containerEl.appendChild(this.inputEl);
     this.inputEl.addEventListener('input', () => this._onChange?.(this.inputEl.value));
+    this.inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        // Many plugins assume Enter submits if there's only one input
+        this.inputEl.blur();
+      }
+    });
   }
   getValue(): string { return this.inputEl.value; }
   setValue(value: string): this { this.inputEl.value = value; return this; }
@@ -486,6 +524,7 @@ export class TextComponent {
   setDisabled(disabled: boolean): this { this.inputEl.disabled = disabled; return this; }
   onChange(callback: (value: string) => any): this { this._onChange = callback; return this; }
   then(cb: (component: this) => any): this { cb(this); return this; }
+  setClass(cls: string): this { this.inputEl.classList.add(cls); return this; }
 }
 
 export class TextAreaComponent {
@@ -638,22 +677,109 @@ export abstract class SuggestModal<T> extends Modal {
   inputEl: HTMLInputElement;
   resultContainerEl: HTMLElement;
 
+  private _suggestions: T[] = [];
+  private _selectedIndex = 0;
+  private _suggestionEls: HTMLElement[] = [];
+
   constructor(app: any) {
     super(app);
     this.inputEl = document.createElement('input');
     this.inputEl.type = 'text';
     this.inputEl.className = 'prompt-input';
     this.contentEl.insertBefore(this.inputEl, this.contentEl.firstChild);
+
     this.resultContainerEl = document.createElement('div');
     this.resultContainerEl.className = 'suggestion-container';
     this.contentEl.appendChild(this.resultContainerEl);
+
+    this.inputEl.addEventListener('input', () => this.updateSuggestions());
+    this.inputEl.addEventListener('keydown', (e) => this._onKeyDown(e));
   }
 
   setPlaceholder(placeholder: string): void { this.inputEl.placeholder = placeholder; }
   setInstructions(instructions: Array<{ command: string; purpose: string }>): void { /* compat */ }
   onNoSuggestion(): void { /* compat */ }
-  selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void { this.onChooseSuggestion(value, evt); this.close(); }
-  selectActiveSuggestion(evt: MouseEvent | KeyboardEvent): void { /* compat */ }
+
+  selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void {
+    this.onChooseSuggestion(value, evt);
+    this.close();
+  }
+
+  selectActiveSuggestion(evt: MouseEvent | KeyboardEvent): void {
+    if (this._suggestions[this._selectedIndex]) {
+      this.selectSuggestion(this._suggestions[this._selectedIndex], evt);
+    }
+  }
+
+  async updateSuggestions() {
+    const query = this.inputEl.value;
+    try {
+      const suggestions = await this.getSuggestions(query);
+      this._suggestions = (suggestions || []).slice(0, this.limit);
+      this._selectedIndex = 0;
+      this._renderSuggestions();
+    } catch (e) {
+      console.error('[SuggestModal] Failed to get suggestions:', e);
+    }
+  }
+
+  private _renderSuggestions() {
+    this.resultContainerEl.empty();
+    this._suggestionEls = [];
+
+    if (this._suggestions.length === 0) {
+      const empty = this.resultContainerEl.createDiv('suggestion-empty');
+      empty.textContent = this.emptyStateText;
+      return;
+    }
+
+    this._suggestions.forEach((value, index) => {
+      const el = this.resultContainerEl.createDiv('suggestion-item');
+      if (index === this._selectedIndex) el.classList.add('is-selected');
+
+      this.renderSuggestion(value, el);
+
+      el.addEventListener('click', (e: MouseEvent) => this.selectSuggestion(value, e));
+      this._suggestionEls.push(el);
+    });
+  }
+
+  private _onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this._selectedIndex = (this._selectedIndex + 1) % this._suggestions.length;
+      this._updateSelection();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this._selectedIndex = (this._selectedIndex - 1 + this._suggestions.length) % this._suggestions.length;
+      this._updateSelection();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (this._suggestions[this._selectedIndex]) {
+        this.selectSuggestion(this._suggestions[this._selectedIndex], e);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.close();
+    }
+  }
+
+  private _updateSelection() {
+    this._suggestionEls.forEach((el, index) => {
+      el.classList.toggle('is-selected', index === this._selectedIndex);
+      if (index === this._selectedIndex) {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  onOpen() {
+    super.onOpen();
+    setTimeout(() => {
+      this.inputEl.focus();
+      this.updateSuggestions();
+    }, 0);
+  }
 
   abstract getSuggestions(query: string): T[] | Promise<T[]>;
   abstract renderSuggestion(value: T, el: HTMLElement): void;

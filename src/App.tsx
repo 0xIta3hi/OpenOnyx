@@ -1700,7 +1700,12 @@ export default function App() {
 
   const initializeRef = useRef(false);
 
-  // ── Initialize Vault ────────────────────────────────
+  // ── Sync global window property for plugin compatibility ─────
+  useEffect(() => {
+    (window as any).__oo_vault_path = vaultPath;
+  }, [vaultPath]);
+
+  // ── Initialize Core Systems ────────────────────────
   useEffect(() => {
     const init = async () => {
       // Always initialize plugin system (needed for marketplace even without vault)
@@ -1710,13 +1715,6 @@ export default function App() {
           const ooApp = new OOApp();
           ooAppRef.current = ooApp;
           
-          // Try to initialize vault — may fail if no vault path yet, that's OK
-          try {
-            await ooApp.initialize();
-          } catch (initErr) {
-            // Expected when no vault path is set yet — vault will reinit when path is known
-          }
-
           const pm = new PluginManager(ooApp, {
             onCommandsChanged: setPluginCommands,
             onRibbonChanged: setPluginRibbonActions,
@@ -1753,39 +1751,63 @@ export default function App() {
         }
       }
 
+      // Check for saved vault path on startup
       try {
         const savedPath = await api.getVaultPath();
         if (savedPath) {
+          // Re-affirm vault path to main process to ensure CWD is set correctly on startup
+          await api.setVaultPath(savedPath);
           setVaultPath(savedPath);
+          (window as any).__oo_vault_path = savedPath;
           setShowSidebar(true);
+        }
+      } catch (e) {
+        console.log("No saved vault path on startup");
+      }
+    };
+    init();
+  }, []);
+
+  // ── Load Plugins when Vault is Active ────────────────
+  useEffect(() => {
+    if (!vaultPath) return;
+
+    const loadPlugins = async () => {
+      const pm = pluginManagerRef.current;
+      const ooApp = ooAppRef.current;
+      
+      if (pm && ooApp) {
+        try {
+          // Initialize ooApp (now that we have a path)
+          try {
+            await ooApp.initialize();
+          } catch (err) {
+            console.error('[OOApp] Initialization failed:', err);
+          }
+
           const tree = await api.getFileTree();
           setFileTree(tree);
           // Trigger background vault initialization
           runVaultInit(tree);
 
-          (window as any).__oo_vault_path = savedPath;
-
           // Discover and load enabled plugins (requires vault)
-          const pm = pluginManagerRef.current;
-          if (pm) {
-            try {
-              await pm.discoverPlugins();
-              await pm.loadEnabledPlugins();
-              // Trigger view initialization after all plugins are loaded
-              const app = ooAppRef.current;
-              if (app) await app.workspace.initializeViews();
-              console.log('[PluginSystem] Plugins loaded successfully');
-            } catch (pluginErr) {
-              console.warn('[PluginSystem] Plugin loading failed:', pluginErr);
-            }
+          try {
+            await pm.discoverPlugins();
+            await pm.loadEnabledPlugins();
+            // Trigger view initialization after all plugins are loaded
+            await ooApp.workspace.initializeViews();
+            console.log('[PluginSystem] Plugins loaded successfully for vault:', vaultPath);
+          } catch (pluginErr) {
+            console.warn('[PluginSystem] Plugin loading failed:', pluginErr);
           }
+        } catch (err) {
+          console.error('[PluginSystem] Error during vault activation:', err);
         }
-      } catch (e) {
-        console.log("No saved vault path");
       }
     };
-    init();
-  }, []);
+
+    loadPlugins();
+  }, [vaultPath]);
 
   // ── Menu Event Handlers ─────────────────────────────
   useEffect(() => {
@@ -1880,6 +1902,7 @@ export default function App() {
       if (path) {
         await api.setVaultPath(path);
         setVaultPath(path);
+        (window as any).__oo_vault_path = path;
         setShowSidebar(true);
         setTabs([]);
         setActiveTabId(null);

@@ -317,6 +317,12 @@ export class PluginManager {
     try {
       const manifest = reg.manifest;
 
+      // ── Vault check (don't load plugins if no vault is active, except maybe internal ones)
+      const vaultPath = await api().getVaultPath();
+      if (!vaultPath) {
+        throw new Error(`Cannot load plugin ${pluginId}: No vault path set. Plugins must be loaded within a vault context.`);
+      }
+
       // ── Version check
       const compat = this._checkVersion(manifest);
       if (!compat.compatible) {
@@ -342,6 +348,9 @@ export class PluginManager {
       // ── Create per-plugin logger
       const logger = new PluginLogger(pluginId);
       this._loggers.set(pluginId, logger);
+
+      // ── Ensure plugin data directory exists (some plugins write files there immediately)
+      await api().createDirectory(`plugins/${pluginId}`).catch(() => {});
 
       // ── Execute via Blob URL (CSP-safe)
       const permissions = manifest.permissions || DEFAULT_PERMISSIONS;

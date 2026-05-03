@@ -87,109 +87,156 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 18px 0;
   border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.04));
-  gap: 16px;
-}
-
-.setting-item:last-child {
-  border-bottom: none;
-}
-
-.setting-item-info {
-  flex: 1;
-  min-width: 0;
+  gap: 24px;
 }
 
 .setting-item-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--text-primary, #e0e0e0);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .setting-item-description {
-  font-size: 12px;
-  color: var(--text-muted, #888);
-  line-height: 1.4;
+  font-size: 13px;
+  color: var(--text-muted, #999);
+  line-height: 1.5;
 }
 
 .setting-item-control {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex-shrink: 0;
 }
 
-.setting-item-heading {
-  border-bottom: 2px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  padding-bottom: 8px;
-  margin-top: 20px;
-}
+/* ── UI Components ──────────────────────────────────── */
 
-.setting-item-heading .setting-item-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-/* ── Setting Controls ───────────────────────────────── */
-
-.setting-item input[type="text"],
-.setting-item input[type="number"],
-.setting-item input[type="password"],
-.setting-item input[type="url"] {
-  background: var(--bg-input, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  padding: 6px 10px;
+.oo-plugin-text-input,
+.oo-plugin-textarea,
+.oo-plugin-dropdown {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  padding: 6px 12px;
   color: var(--text-primary, #e0e0e0);
-  font-size: 13px;
-  min-width: 180px;
-  outline: none;
+  font-size: 14px;
+  transition: border-color 0.2s;
 }
 
-.setting-item input:focus {
+.oo-plugin-text-input:focus,
+.oo-plugin-textarea:focus {
   border-color: var(--accent-primary, #6c63ff);
-}
-
-.setting-item textarea {
-  background: var(--bg-input, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: var(--text-primary, #e0e0e0);
-  font-size: 13px;
-  min-width: 200px;
-  min-height: 60px;
-  resize: vertical;
   outline: none;
 }
 
-.setting-item select {
-  background: var(--bg-input, rgba(255, 255, 255, 0.05));
+.oo-plugin-btn {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: 4px;
+  padding: 6px 16px;
   color: var(--text-primary, #e0e0e0);
-  font-size: 13px;
-  cursor: pointer;
-  outline: none;
-}
-
-.setting-item button {
-  background: var(--accent-primary, #6c63ff);
-  border: none;
-  border-radius: 6px;
-  padding: 6px 14px;
-  color: white;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   font-weight: 500;
-  transition: opacity 0.15s;
+  transition: all 0.2s;
 }
 
-.setting-item button:hover {
-  opacity: 0.85;
+.oo-plugin-btn:hover {
+  background: var(--bg-active, rgba(255, 255, 255, 0.12));
+}
+
+.oo-plugin-btn.mod-cta {
+  background: var(--accent-primary, #6c63ff);
+  border-color: transparent;
+  color: white;
+}
+
+.oo-plugin-btn.mod-warning {
+  background: #dc2626;
+  border-color: transparent;
+  color: white;
+}
+
+/* ── Diff & Git Views ───────────────────────────────── */
+
+.git-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.git-commit-container {
+  padding: 16px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.git-view-diff-container {
+  flex: 1;
+  overflow-y: auto;
+  font-family: var(--font-monospace, 'JetBrains Mono', monospace);
+  font-size: 13px;
+}
+
+.git-diff-added { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.git-diff-removed { background-color: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+/* Status Bar */
+.status-bar-item.plugin-git {
+  color: var(--accent-primary, #6c63ff);
+  cursor: pointer;
+}
+
+/* ── Menus ──────────────────────────────────────────── */
+
+.menu.oo-plugin-menu {
+  background: var(--bg-elevated, #2a2a3e);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  min-width: 200px;
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  z-index: 10000;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.menu-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.menu-item.is-checked::after {
+  content: '✓';
+  margin-left: auto;
+  color: var(--accent-primary, #6c63ff);
+}
+
+.menu-item[data-icon]::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-color: var(--text-muted, #888);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--border-subtle, rgba(255, 255, 255, 0.04));
+  margin: 4px 0;
 }
 
 /* Toggle (checkbox styled as toggle) */
@@ -326,9 +373,17 @@
   color: var(--text-primary, #e0e0e0);
 }
 
-.suggestion-item:hover,
 .suggestion-item.is-selected {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  background: var(--accent-primary, #6c63ff);
+  color: white;
+}
+
+.suggestion-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+  font-style: italic;
 }
 
 /* ── Prompt (input modals) ──────────────────────────── */
