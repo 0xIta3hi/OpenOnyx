@@ -51,8 +51,7 @@ export class FileSystemManager {
     if (!this.vaultPath) throw new Error('No vault path set');
     const resolved = path.resolve(this.vaultPath, relativePath);
     // Security: ensure resolved path is within vault
-    const vaultWithSep = this.vaultPath.endsWith(path.sep) ? this.vaultPath : this.vaultPath + path.sep;
-    if (resolved !== this.vaultPath && !resolved.startsWith(vaultWithSep)) {
+    if (resolved !== this.vaultPath && !resolved.startsWith(this.vaultPath + path.sep)) {
       throw new Error('Path traversal detected');
     }
     return resolved;
@@ -430,8 +429,7 @@ export class FileSystemManager {
     try {
       const dir = this.ensureDataDir();
       const filePath = path.join(dir, relativePath);
-      const dirWithSep = dir.endsWith(path.sep) ? dir : dir + path.sep;
-      if (filePath !== dir && !filePath.startsWith(dirWithSep)) throw new Error('Path traversal detected');
+      if (filePath !== dir && !filePath.startsWith(dir + path.sep)) throw new Error('Path traversal detected');
       if (!fs.existsSync(filePath)) return null;
       return await fs.promises.readFile(filePath, 'utf-8');
     } catch {
@@ -443,8 +441,7 @@ export class FileSystemManager {
   async writeDataFile(relativePath: string, content: string): Promise<void> {
     const dir = this.ensureDataDir();
     const filePath = path.join(dir, relativePath);
-    const dirWithSep = dir.endsWith(path.sep) ? dir : dir + path.sep;
-    if (filePath !== dir && !filePath.startsWith(dirWithSep)) throw new Error('Path traversal detected');
+    if (filePath !== dir && !filePath.startsWith(dir + path.sep)) throw new Error('Path traversal detected');
     const fileDir = path.dirname(filePath);
     if (!fs.existsSync(fileDir)) {
       fs.mkdirSync(fileDir, { recursive: true });
@@ -457,8 +454,7 @@ export class FileSystemManager {
     try {
       const dir = this.ensureDataDir();
       const filePath = path.join(dir, relativePath);
-      const dirWithSep = dir.endsWith(path.sep) ? dir : dir + path.sep;
-      if (filePath !== dir && !filePath.startsWith(dirWithSep)) return;
+      if (filePath !== dir && !filePath.startsWith(dir + path.sep)) return;
       if (fs.existsSync(filePath)) {
         await fs.promises.unlink(filePath);
       }
