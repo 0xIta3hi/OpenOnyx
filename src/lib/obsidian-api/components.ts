@@ -366,23 +366,51 @@ export class Setting {
 }
 
 // ── SettingTab ───────────────────────────────────────
-export function SettingTab(this: any, app?: any) {
+export interface ISettingTab {
+  app: any;
+  containerEl: HTMLElement;
+  icon: string;
+  display(): void;
+  hide(): void;
+}
+
+export interface SettingTabConstructor {
+  new(app?: any): ISettingTab;
+  prototype: ISettingTab;
+}
+
+function _SettingTab(this: any, app?: any) {
   this.app = app;
   this.containerEl = document.createElement('div');
   this.containerEl.className = 'oo-plugin-setting-tab';
   this.icon = '';
 }
-SettingTab.prototype.display = function() {};
-SettingTab.prototype.hide = function() {
+_SettingTab.prototype.display = function() {};
+_SettingTab.prototype.hide = function() {
   if (this.containerEl) this.containerEl.innerHTML = '';
 };
 
-export function PluginSettingTab(this: any, app: any, plugin: any) {
-  SettingTab.call(this, app);
+export type SettingTab = ISettingTab;
+export const SettingTab = _SettingTab as unknown as SettingTabConstructor;
+
+export interface IPluginSettingTab extends ISettingTab {
+  plugin: any;
+}
+
+export interface PluginSettingTabConstructor {
+  new(app: any, plugin: any): IPluginSettingTab;
+  prototype: IPluginSettingTab;
+}
+
+function _PluginSettingTab(this: any, app: any, plugin: any) {
+  _SettingTab.call(this, app);
   this.plugin = plugin;
 }
-PluginSettingTab.prototype = Object.create(SettingTab.prototype);
-PluginSettingTab.prototype.constructor = PluginSettingTab;
+_PluginSettingTab.prototype = Object.create(_SettingTab.prototype);
+_PluginSettingTab.prototype.constructor = _PluginSettingTab;
+
+export type PluginSettingTab = IPluginSettingTab;
+export const PluginSettingTab = _PluginSettingTab as unknown as PluginSettingTabConstructor;
 
 // ── Menu ────────────────────────────────────────────
 export class Menu {

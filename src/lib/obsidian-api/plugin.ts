@@ -55,7 +55,7 @@ export interface IPlugin extends IComponent {
 }
 
 export interface PluginConstructor {
-  new (app: any, manifest: PluginManifest): IPlugin;
+  new(app: any, manifest: PluginManifest): IPlugin;
   prototype: IPlugin;
 }
 
@@ -80,7 +80,7 @@ _Plugin.prototype.constructor = _Plugin;
 
 // ── Commands ──────────────────────────────────────
 
-_Plugin.prototype.addCommand = function(command: {
+_Plugin.prototype.addCommand = function (command: {
   id: string;
   name: string;
   callback?: () => void;
@@ -122,7 +122,7 @@ _Plugin.prototype.addCommand = function(command: {
 
 // ── Ribbon ────────────────────────────────────────
 
-_Plugin.prototype.addRibbonIcon = function(icon: string, title: string, callback: (evt: MouseEvent) => void): HTMLElement {
+_Plugin.prototype.addRibbonIcon = function (icon: string, title: string, callback: (evt: MouseEvent) => void): HTMLElement {
   const guardedCallback = guardCallback(this.manifest.id, callback, `ribbon:${title}`) as (evt: MouseEvent) => void;
 
   const el = document.createElement('div');
@@ -142,15 +142,15 @@ _Plugin.prototype.addRibbonIcon = function(icon: string, title: string, callback
 
 // ── Status Bar ────────────────────────────────────
 
-_Plugin.prototype.addStatusBarItem = function(): HTMLElement {
+_Plugin.prototype.addStatusBarItem = function (): HTMLElement {
   const el = document.createElement('span');
   el.className = 'status-item oo-plugin-status-item';
-  
+
   // Add setText helper for Obsidian compatibility
-  (el as any).setText = function(text: string) {
+  (el as any).setText = function (text: string) {
     this.textContent = text;
   };
-  
+
   this._statusBarItems.push(el);
   (window as any).__oo_register_statusbar?.(this.manifest.id, el);
   return el;
@@ -158,7 +158,7 @@ _Plugin.prototype.addStatusBarItem = function(): HTMLElement {
 
 // ── Settings ──────────────────────────────────────
 
-_Plugin.prototype.addSettingTab = function(settingTab: PluginSettingTab): void {
+_Plugin.prototype.addSettingTab = function (settingTab: PluginSettingTab): void {
   // Wrap display() in crash isolation
   const originalDisplay = settingTab.display.bind(settingTab);
   settingTab.display = guardCallback(
@@ -177,19 +177,19 @@ _Plugin.prototype.addSettingTab = function(settingTab: PluginSettingTab): void {
 
 // ── Views ─────────────────────────────────────────
 
-_Plugin.prototype.registerView = function(type: string, viewCreator: (leaf: any) => any): void {
+_Plugin.prototype.registerView = function (type: string, viewCreator: (leaf: any) => any): void {
   this._registeredViews.push({ type, creator: viewCreator });
   this.app.workspace.registerViewCreator(type, viewCreator);
 };
 
 // ── Markdown Processing ───────────────────────────
 
-_Plugin.prototype.registerMarkdownPostProcessor = function(postProcessor: any, _sortOrder?: number): any {
+_Plugin.prototype.registerMarkdownPostProcessor = function (postProcessor: any, _sortOrder?: number): any {
   this._markdownPostProcessors.push(postProcessor);
   return postProcessor;
 };
 
-_Plugin.prototype.registerMarkdownCodeBlockProcessor = function(language: string, handler: (source: string, el: HTMLElement, ctx: any) => any, _sortOrder?: number): any {
+_Plugin.prototype.registerMarkdownCodeBlockProcessor = function (language: string, handler: (source: string, el: HTMLElement, ctx: any) => any, _sortOrder?: number): any {
   const processor = { language, handler };
   this._markdownPostProcessors.push(processor);
   return processor;
@@ -197,26 +197,26 @@ _Plugin.prototype.registerMarkdownCodeBlockProcessor = function(language: string
 
 // ── Editor Extensions ─────────────────────────────
 
-_Plugin.prototype.registerEditorExtension = function(extension: any): void {
+_Plugin.prototype.registerEditorExtension = function (extension: any): void {
   // CM6 extensions — stored for future integration
   (window as any).__oo_register_editor_ext?.(this.manifest.id, extension);
 };
 
-_Plugin.prototype.registerEditorSuggest = function(editorSuggest: any) {
+_Plugin.prototype.registerEditorSuggest = function (editorSuggest: any) {
   // Stub for editor suggest
 };
 
-_Plugin.prototype.registerObsidianProtocolHandler = function(action: string, handler: (params: any) => any) {
+_Plugin.prototype.registerObsidianProtocolHandler = function (action: string, handler: (params: any) => any) {
   // Stub for protocol handler
 };
 
-_Plugin.prototype.registerHoverLinkSource = function(id: string, info: { display: string, defaultMod: boolean }) {
+_Plugin.prototype.registerHoverLinkSource = function (id: string, info: { display: string, defaultMod: boolean }) {
   // Stub for hover link source (used by obsidian-git)
 };
 
 // ── Data Management ───────────────────────────────
 
-_Plugin.prototype.loadData = async function(): Promise<any> {
+_Plugin.prototype.loadData = async function (): Promise<any> {
   try {
     const data = await api().dataRead(`plugins/${this.manifest.id}/data.json`);
     return data ? JSON.parse(data) : null;
@@ -225,7 +225,7 @@ _Plugin.prototype.loadData = async function(): Promise<any> {
   }
 };
 
-_Plugin.prototype.saveData = async function(data: any): Promise<void> {
+_Plugin.prototype.saveData = async function (data: any): Promise<void> {
   try {
     await api().dataWrite(
       `plugins/${this.manifest.id}/data.json`,
@@ -238,11 +238,11 @@ _Plugin.prototype.saveData = async function(data: any): Promise<void> {
 
 // ── Lifecycle Hooks ───────────────────────────────
 
-_Plugin.prototype.onUserEnable = function(): void { /* override */ };
+_Plugin.prototype.onUserEnable = function (): void { /* override */ };
 
 // ── Cleanup on unload ─────────────────────────────
 
-_Plugin.prototype.onunload = function(): void {
+_Plugin.prototype.onunload = function (): void {
   // Remove commands
   for (const cmd of this._commands) {
     (window as any).__oo_unregister_command?.(cmd.id);

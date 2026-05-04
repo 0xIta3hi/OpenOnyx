@@ -61,15 +61,21 @@ export abstract class View extends Component {
   icon: string = 'file-text';
   navigation = true;
   leaf: WorkspaceLeaf;
-  containerEl: HTMLElement;
+  protected _containerEl: HTMLElement;
+  get containerEl(): HTMLElement {
+    return this._containerEl;
+  }
+  set containerEl(el: HTMLElement) {
+    this._containerEl = el;
+  }
   scope: any = null;
 
   constructor(leaf: WorkspaceLeaf) {
     super();
     this.leaf = leaf;
     this.app = (window as any).__oo_app;
-    this.containerEl = document.createElement('div');
-    this.containerEl.className = 'view-content oo-plugin-view';
+    this._containerEl = document.createElement('div');
+    this._containerEl.className = 'view-content oo-plugin-view';
   }
 
   async onOpen(): Promise<void> { /* override */ }
@@ -130,15 +136,15 @@ export class MarkdownView extends TextFileView {
   // For MarkdownView, we point containerEl to the real editor host if it exists.
   // This allows focus/fullscreen plugins to work on the main editor area.
   get containerEl(): HTMLElement {
-    return document.querySelector('.ftux-editor-host') as HTMLElement || (this as any)._internalContainerEl;
+    return document.querySelector('.ftux-editor-host') as HTMLElement || this._containerEl;
   }
   set containerEl(el: HTMLElement) {
-    (this as any)._internalContainerEl = el;
+    this._containerEl = el;
   }
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
-    (this as any)._internalContainerEl = document.createElement('div');
+    this._containerEl = document.createElement('div');
   }
 
   getViewType(): string { return 'markdown'; }
