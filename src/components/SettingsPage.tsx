@@ -25,7 +25,7 @@ import type { PluginRegistration, PluginSettingTabRegistration } from '../types/
 
 export interface AppSettings {
   // Appearance
-  theme: "dark" | "light" | "oceanic" | "dark-plus" | "system" | "custom";
+  theme: "dark" | "light" | "oceanic" | "dark-plus" | "peach-white" | "system" | "custom";
   accentColor: string;
   fontFamily: string;
 
@@ -190,9 +190,10 @@ export function SettingsPage({
                       className="setting-select"
                     >
                       <option value="dark">Dark</option>
-                      <option value="oceanic">Moon Night</option>
                       <option value="dark-plus">Dark+</option>
-                      <option value="light">Light</option>
+                      <option value="oceanic">Blue Night</option>
+                      <option value="light">Night Light</option>
+                      <option value="peach-white">Peach White</option>
                       <option value="system">System</option>
                       <option value="custom">Custom</option>
                     </select>

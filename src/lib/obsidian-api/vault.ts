@@ -81,7 +81,27 @@ export class OOVault extends Events {
       mkdir: async (path: string) => {
         await api().createDirectory(path);
         await this.refreshFiles();
-      }
+      },
+      append: async (path: string, data: string) => {
+        try {
+          const existing = await api().readFile(path);
+          await api().writeFile(path, (existing || '') + data);
+        } catch {
+          await api().writeFile(path, data);
+        }
+      },
+      readFile: async (path: string, encoding?: string) => {
+        return await api().readFile(path) || '';
+      },
+      writeFile: async (path: string, data: string) => {
+        await api().writeFile(path, data);
+      },
+      remove: async (path: string) => {
+        await api().deleteFile(path);
+      },
+      rename: async (oldPath: string, newPath: string) => {
+        await api().renameFile(oldPath, newPath);
+      },
     };
 
     // Try to recover path from global if available immediately

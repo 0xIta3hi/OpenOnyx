@@ -129,13 +129,38 @@ export type Modifier = 'Mod' | 'Ctrl' | 'Meta' | 'Shift' | 'Alt';
 export interface EditorPosition { line: number; ch: number; }
 export interface EditorRange { from: EditorPosition; to: EditorPosition; }
 
-export abstract class EditorSuggest<T> extends Component {
-  constructor(app: any) { super(); }
-  abstract onTrigger(cursor: EditorPosition, editor: any, file: TFile | null): any;
-  abstract getSuggestions(context: any): T[] | Promise<T[]>;
-  abstract renderSuggestion(value: T, el: HTMLElement): void;
-  abstract selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void;
+// CM6 StateField stubs — plugins like obsidian-git import these
+import { StateField } from '@codemirror/state';
+export const editorInfoField: any = StateField.define({
+  create: () => ({ file: null, editor: null }),
+  update: (value: any) => value,
+});
+export const editorEditorField: any = StateField.define({
+  create: () => null,
+  update: (value: any) => value,
+});
+export const editorViewField: any = editorInfoField;
+export const editorLivePreviewField: any = StateField.define({
+  create: () => false,
+  update: (value: any) => value,
+});
+
+// EditorSuggest — ES5 function constructor for plugin compatibility
+function _EditorSuggest(this: any, app: any) {
+  Component.call(this);
+  this.app = app || (window as any).__oo_app;
+  this.context = null;
+  this.limit = 100;
 }
+_EditorSuggest.prototype = Object.create(Component.prototype);
+_EditorSuggest.prototype.constructor = _EditorSuggest;
+_EditorSuggest.prototype.onTrigger = function(cursor: any, editor: any, file: any) { return null; };
+_EditorSuggest.prototype.getSuggestions = function(context: any) { return []; };
+_EditorSuggest.prototype.renderSuggestion = function(value: any, el: HTMLElement) {};
+_EditorSuggest.prototype.selectSuggestion = function(value: any, evt: any) {};
+_EditorSuggest.prototype.close = function() {};
+
+export const EditorSuggest = _EditorSuggest as any;
 
 // Moment.js — real library, required by many plugins (Calendar, etc.)
 import momentLib from 'moment';

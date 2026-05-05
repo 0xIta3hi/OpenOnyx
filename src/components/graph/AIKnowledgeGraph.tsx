@@ -429,6 +429,7 @@ export function AIKnowledgeGraph({
   let settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-dark`;
   if (theme === "light") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-light`;
   if (theme === "oceanic") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-oceanic`;
+  if (theme === "peach-white") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-peach-white`;
   
   const positionsKey = `openobsidian-ai-graph-positions-v2-${vaultHash}`;
 

@@ -59,18 +59,19 @@ interface GraphSettings {
 export const getDefaultSettings = (theme: Theme): GraphSettings => {
   const isLight = theme === "light";
   const isOceanic = theme === "oceanic";
+  const isPeach = theme === "peach-white";
 
   return {
     searchTerm: "",
     existingFilesOnly: false,
     showOrphans: true,
-    backgroundColor: isOceanic ? "#14161a" : isLight ? "#fff7ed" : "#1f1f1f",
-    nodeColor: isOceanic ? "#ffffff" : isLight ? "#4a4a4a" : "#d5d1d1",
-    connectedColor: isOceanic ? "#7dd3fc" : isLight ? "#3a3a3a" : "#c0c0c0",
-    edgeColor: isOceanic ? "#878787" : isLight ? "#404040" : "#5d5d5d",
-    nodeSize: isLight ? 8 : 6,
-    linkWidth: isOceanic ? 1.5 : (isLight ? 2 : 2.5),
-    textColor: isOceanic ? "#a2aab4" : isLight ? "#606060" : "#a0a0a0",
+    backgroundColor: isOceanic ? "#14161a" : isPeach ? "#fcfbf9" : isLight ? "#fff7ed" : "#1f1f1f",
+    nodeColor: isOceanic ? "#ffffff" : isPeach ? "#b86e5c" : isLight ? "#4a4a4a" : "#d5d1d1",
+    connectedColor: isOceanic ? "#7dd3fc" : isPeach ? "#d88f7b" : isLight ? "#3a3a3a" : "#c0c0c0",
+    edgeColor: isOceanic ? "#878787" : isPeach ? "#d4cdbf" : isLight ? "#404040" : "#5d5d5d",
+    nodeSize: isLight || isPeach ? 8 : 6,
+    linkWidth: isOceanic ? 1.5 : (isLight || isPeach ? 2 : 2.5),
+    textColor: isOceanic ? "#a2aab4" : isPeach ? "#554d42" : isLight ? "#606060" : "#a0a0a0",
     textSize: 18,
     showLabels: true,
     labelThreshold: 0.5,
@@ -303,6 +304,7 @@ export function GraphView({
   let settingsKey = `openobsidian-graph-settings-v7-dark-${vaultHash}`;
   if (theme === "light") settingsKey = `openobsidian-graph-settings-v7-light-${vaultHash}`;
   if (theme === "oceanic") settingsKey = `openobsidian-graph-settings-v7-oceanic-${vaultHash}`;
+  if (theme === "peach-white") settingsKey = `openobsidian-graph-settings-v7-peach-white-${vaultHash}`;
   const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
 
   const [settings, setSettings] = useState<GraphSettings>(() => {

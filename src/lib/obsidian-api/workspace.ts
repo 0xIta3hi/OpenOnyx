@@ -13,13 +13,23 @@ export class WorkspaceLeaf extends Events {
   pinned: boolean = false;
   hoverPopover: any = null;
   containerEl: HTMLElement;
+  activeTime: number = 0;
 
   constructor(id: string) {
     super();
     this.id = id;
     this.view = null as any;
+    this.activeTime = Date.now();
     this.containerEl = document.createElement('div');
     this.containerEl.className = 'workspace-leaf-content oo-plugin-leaf';
+    // Obsidian sets .win on containerEl so plugins can distinguish windows
+    (this.containerEl as any).win = window;
+  }
+
+  getRoot(): any {
+    // Return the workspace rootSplit so that leaf.getRoot() == workspace.rootSplit is true
+    const workspace = (window as any).__oo_app?.workspace;
+    return workspace?.rootSplit || this.parent || this;
   }
 
   async openFile(file: TFile, openState?: any): Promise<void> {
@@ -56,103 +66,150 @@ export class WorkspaceLeaf extends Events {
 }
 
 // ── View ────────────────────────────────────────────
-export abstract class View extends Component {
+export interface View {
   app: any;
-  icon: string = 'file-text';
-  navigation = true;
+  icon: string;
+  navigation: boolean;
   leaf: WorkspaceLeaf;
-  protected _containerEl: HTMLElement;
-  get containerEl(): HTMLElement {
-    return this._containerEl;
-  }
-  set containerEl(el: HTMLElement) {
-    this._containerEl = el;
-  }
-  scope: any = null;
-
-  constructor(leaf: WorkspaceLeaf) {
-    super();
-    this.leaf = leaf;
-    this.app = (window as any).__oo_app;
-    this._containerEl = document.createElement('div');
-    this._containerEl.className = 'view-content oo-plugin-view';
-  }
-
-  async onOpen(): Promise<void> { /* override */ }
-  async onClose(): Promise<void> { /* override */ }
-  abstract getViewType(): string;
-  getState(): Record<string, any> { return {}; }
-  async setState(state: unknown, result: any): Promise<void> { /* override */ }
-  getEphemeralState(): Record<string, any> { return {}; }
-  setEphemeralState(state: unknown): void { /* override */ }
-  getIcon(): string { return this.icon; }
-  onResize(): void { /* override */ }
-  abstract getDisplayText(): string;
-  onPaneMenu(menu: any, source: string): void { /* override */ }
+  containerEl: HTMLElement;
+  scope: any;
+  onOpen(): Promise<void>;
+  onClose(): Promise<void>;
+  getViewType(): string;
+  getState(): Record<string, any>;
+  setState(state: unknown, result: any): Promise<void>;
+  getEphemeralState(): Record<string, any>;
+  setEphemeralState(state: unknown): void;
+  getIcon(): string;
+  onResize(): void;
+  getDisplayText(): string;
+  onPaneMenu(menu: any, source: string): void;
 }
+
+export function View(this: any, leaf: WorkspaceLeaf) {
+  Component.call(this);
+  this.app = (window as any).__oo_app;
+  this.icon = 'file-text';
+  this.navigation = true;
+  this.leaf = leaf;
+  this._containerEl = document.createElement('div');
+  this._containerEl.className = 'view-content oo-plugin-view';
+  (this._containerEl as any).win = window;
+  this.scope = null;
+
+  Object.defineProperty(this, 'containerEl', {
+    get: function() { return this._containerEl; },
+    set: function(el) { this._containerEl = el; },
+    configurable: true
+  });
+}
+View.prototype = Object.create(Component.prototype);
+View.prototype.constructor = View;
+
+View.prototype.onOpen = async function() {};
+View.prototype.onClose = async function() {};
+View.prototype.getViewType = function() { return ''; };
+View.prototype.getState = function() { return {}; };
+View.prototype.setState = async function(state: unknown, result: any) {};
+View.prototype.getEphemeralState = function() { return {}; };
+View.prototype.setEphemeralState = function(state: unknown) {};
+View.prototype.getIcon = function() { return this.icon; };
+View.prototype.onResize = function() {};
+View.prototype.getDisplayText = function() { return ''; };
+View.prototype.onPaneMenu = function(menu: any, source: string) {};
 
 // ── ItemView ────────────────────────────────────────
-export abstract class ItemView extends View {
+export interface ItemView extends View {
   contentEl: HTMLElement;
-
-  constructor(leaf: WorkspaceLeaf) {
-    super(leaf);
-    this.contentEl = document.createElement('div');
-    this.contentEl.className = 'view-content';
-    this.containerEl.appendChild(this.contentEl);
-  }
-
-  addAction(icon: string, title: string, callback: (evt: MouseEvent) => any): HTMLElement {
-    const btn = document.createElement('div');
-    btn.className = 'view-action';
-    btn.title = title;
-    btn.setAttribute('data-icon', icon);
-    btn.addEventListener('click', callback);
-    return btn;
-  }
+  addAction(icon: string, title: string, callback: (evt: MouseEvent) => any): HTMLElement;
 }
-
-export abstract class FileView extends View {
-  file: TFile | null = null;
-  allowNoFile = false;
-  getDisplayText(): string { return this.file?.basename || ''; }
-  canAcceptExtension(extension: string): boolean { return false; }
+export function ItemView(this: any, leaf: WorkspaceLeaf) {
+  View.call(this, leaf);
+  this.contentEl = document.createElement('div');
+  this.contentEl.className = 'view-content';
+  this.containerEl.appendChild(this.contentEl);
 }
+ItemView.prototype = Object.create(View.prototype);
+ItemView.prototype.constructor = ItemView;
 
-export abstract class EditableFileView extends FileView {}
+ItemView.prototype.addAction = function(icon: string, title: string, callback: (evt: MouseEvent) => any) {
+  const btn = document.createElement('div');
+  btn.className = 'view-action';
+  btn.title = title;
+  btn.setAttribute('data-icon', icon);
+  btn.addEventListener('click', callback);
+  return btn;
+};
 
-export abstract class TextFileView extends EditableFileView {
-  data = '';
-  requestSave: () => void = () => {};
-  abstract getViewData(): string;
-  abstract setViewData(data: string, clear: boolean): void;
-  abstract clear(): void;
+// ── FileView ────────────────────────────────────────
+export interface FileView extends View {
+  file: TFile | null;
+  allowNoFile: boolean;
+  canAcceptExtension(extension: string): boolean;
 }
+export function FileView(this: any, leaf: WorkspaceLeaf) {
+  View.call(this, leaf);
+  this.file = null;
+  this.allowNoFile = false;
+}
+FileView.prototype = Object.create(View.prototype);
+FileView.prototype.constructor = FileView;
+FileView.prototype.getDisplayText = function() { return this.file?.basename || ''; };
+FileView.prototype.canAcceptExtension = function(extension: string) { return false; };
+
+// ── EditableFileView ────────────────────────────────
+export interface EditableFileView extends FileView {}
+export function EditableFileView(this: any, leaf: WorkspaceLeaf) {
+  FileView.call(this, leaf);
+}
+EditableFileView.prototype = Object.create(FileView.prototype);
+EditableFileView.prototype.constructor = EditableFileView;
+
+// ── TextFileView ────────────────────────────────────
+export interface TextFileView extends EditableFileView {
+  data: string;
+  requestSave: () => void;
+  getViewData(): string;
+  setViewData(data: string, clear: boolean): void;
+  clear(): void;
+}
+export function TextFileView(this: any, leaf: WorkspaceLeaf) {
+  EditableFileView.call(this, leaf);
+  this.data = '';
+  this.requestSave = () => {};
+}
+TextFileView.prototype = Object.create(EditableFileView.prototype);
+TextFileView.prototype.constructor = TextFileView;
+TextFileView.prototype.getViewData = function() { return ''; };
+TextFileView.prototype.setViewData = function(data: string, clear: boolean) {};
+TextFileView.prototype.clear = function() {};
 
 // ── MarkdownView (stub) ─────────────────────────────
-export class MarkdownView extends TextFileView {
-  editor: any = null;
-  
-  // For MarkdownView, we point containerEl to the real editor host if it exists.
-  // This allows focus/fullscreen plugins to work on the main editor area.
-  get containerEl(): HTMLElement {
-    return document.querySelector('.ftux-editor-host') as HTMLElement || this._containerEl;
-  }
-  set containerEl(el: HTMLElement) {
-    this._containerEl = el;
-  }
+function _MarkdownView(this: any, leaf: WorkspaceLeaf) {
+  TextFileView.call(this, leaf);
+  this.editor = null;
+  this._containerEl = document.createElement('div');
 
-  constructor(leaf: WorkspaceLeaf) {
-    super(leaf);
-    this._containerEl = document.createElement('div');
-  }
-
-  getViewType(): string { return 'markdown'; }
-  getMode(): string { return 'source'; }
-  getViewData(): string { return this.data; }
-  setViewData(data: string, clear: boolean): void { this.data = data; }
-  clear(): void { this.data = ''; }
+  Object.defineProperty(this, 'containerEl', {
+    get: function() { 
+      return document.querySelector('.ftux-editor-host') as HTMLElement || this._containerEl; 
+    },
+    set: function(el) { 
+      this._containerEl = el; 
+    },
+    configurable: true
+  });
 }
+_MarkdownView.prototype = Object.create(TextFileView.prototype);
+_MarkdownView.prototype.constructor = _MarkdownView;
+
+_MarkdownView.prototype.getViewType = function() { return 'markdown'; };
+_MarkdownView.prototype.getMode = function() { return 'source'; };
+_MarkdownView.prototype.getViewData = function() { return this.data; };
+_MarkdownView.prototype.setViewData = function(data: string, clear: boolean) { this.data = data; };
+_MarkdownView.prototype.clear = function() { this.data = ''; };
+
+export const MarkdownView = _MarkdownView as any;
 
 // ── OOWorkspace ─────────────────────────────────────
 export class OOWorkspace extends Events {
@@ -166,17 +223,22 @@ export class OOWorkspace extends Events {
     return this._activeLeaf;
   }
   set activeLeaf(leaf: WorkspaceLeaf | null) {
-    this._activeLeaf = leaf;
+    if (this._activeLeaf !== leaf) {
+      this._activeLeaf = leaf;
+      if (leaf) {
+        this.trigger('active-leaf-change', leaf);
+      }
+    }
   }
 
   activeEditor: any = null;
   containerEl: HTMLElement;
   layoutReady = false;
-  leftSplit: any = {};
-  rightSplit: any = {};
+  leftSplit: any = { expand: () => {}, collapse: () => {}, collapsed: false };
+  rightSplit: any = { expand: () => {}, collapse: () => {}, collapsed: false };
   leftRibbon: any = {};
   rightRibbon: any = {};
-  rootSplit: any = {};
+  rootSplit: any = { _isRootSplit: true };
   requestSaveLayout: any = () => {};
 
   private _leaves: Map<string, WorkspaceLeaf> = new Map();
@@ -196,6 +258,7 @@ export class OOWorkspace extends Events {
         try { cb(); } catch (e) { console.error('[Plugin] layoutReady callback error:', e); }
       }
       this._layoutReadyCallbacks = [];
+      this.trigger('layout-ready');
     }, 100);
   }
 
@@ -217,6 +280,7 @@ export class OOWorkspace extends Events {
     if (!newLeaf && this.activeLeaf) return this.activeLeaf;
     const leaf = new WorkspaceLeaf(`leaf-${++this._leafCounter}`);
     this._leaves.set(leaf.id, leaf);
+    this.trigger('layout-change');
     return leaf;
   }
 
@@ -248,6 +312,7 @@ export class OOWorkspace extends Events {
       this._activePluginViews.delete(viewType);
     }
     this.trigger('plugin-views-changed');
+    this.trigger('layout-change');
   }
 
   iterateAllLeaves(callback: (leaf: WorkspaceLeaf) => any): void {
@@ -268,8 +333,10 @@ export class OOWorkspace extends Events {
   }
 
   setActiveLeaf(leaf: WorkspaceLeaf, params?: any): void {
+    if (leaf) {
+      leaf.activeTime = Date.now();
+    }
     this.activeLeaf = leaf;
-    this.trigger('active-leaf-change', leaf);
   }
 
   getLeafById(id: string): WorkspaceLeaf | null {

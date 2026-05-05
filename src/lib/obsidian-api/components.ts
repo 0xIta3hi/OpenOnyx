@@ -2,6 +2,7 @@
  * Obsidian API Compatibility — Core Components
  * Events, Component, Modal, Notice, Setting, UI widgets
  */
+import { Scope } from './utils';
 
 // ── EventRef ────────────────────────────────────────
 export interface EventRef {
@@ -145,225 +146,253 @@ _Component.prototype.registerInterval = function (id: number): number {
 export const Component = _Component as unknown as ComponentConstructor;
 
 // ── Notice ──────────────────────────────────────────
-export class Notice {
+export interface Notice {
   noticeEl: HTMLElement;
-  private _timeout: number | null = null;
-
-  constructor(message: string | DocumentFragment, duration?: number) {
-    const ms = duration ?? 5000;
-    this.noticeEl = document.createElement('div');
-    this.noticeEl.className = 'oo-notice';
-    if (typeof message === 'string') {
-      this.noticeEl.textContent = message;
-    } else {
-      this.noticeEl.appendChild(message);
-    }
-
-    let container = document.querySelector('.oo-notice-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'oo-notice-container';
-      document.body.appendChild(container);
-    }
-    container.appendChild(this.noticeEl);
-
-    if (ms > 0) {
-      this._timeout = window.setTimeout(() => this.hide(), ms);
-    }
+  setMessage(message: string | DocumentFragment): this;
+  hide(): void;
+}
+export function Notice(this: any, message: string | DocumentFragment, duration?: number) {
+  const ms = duration ?? 5000;
+  this.noticeEl = document.createElement('div');
+  this.noticeEl.className = 'oo-notice';
+  if (typeof message === 'string') {
+    this.noticeEl.textContent = message;
+  } else {
+    this.noticeEl.appendChild(message);
   }
 
-  setMessage(message: string | DocumentFragment): this {
-    this.noticeEl.textContent = '';
-    if (typeof message === 'string') this.noticeEl.textContent = message;
-    else this.noticeEl.appendChild(message);
-    return this;
+  let container = document.querySelector('.oo-notice-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'oo-notice-container';
+    document.body.appendChild(container);
   }
+  container.appendChild(this.noticeEl);
 
-  hide(): void {
-    if (this._timeout) window.clearTimeout(this._timeout);
-    this.noticeEl.remove();
+  if (ms > 0) {
+    this._timeout = window.setTimeout(() => this.hide(), ms);
   }
 }
 
+Notice.prototype.setMessage = function(message: string | DocumentFragment) {
+  this.noticeEl.textContent = '';
+  if (typeof message === 'string') this.noticeEl.textContent = message;
+  else this.noticeEl.appendChild(message);
+  return this;
+};
+
+Notice.prototype.hide = function() {
+  if (this._timeout) window.clearTimeout(this._timeout);
+  this.noticeEl.remove();
+};
+
 // ── Modal ───────────────────────────────────────────
-export class Modal {
+export interface Modal {
   app: any;
   scope: any;
   containerEl: HTMLElement;
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   contentEl: HTMLElement;
+  open(): void;
+  close(): void;
+  onOpen(): void;
+  onClose(): void;
+}
+export function Modal(this: any, app: any) {
+  this.app = app || (window as any).__oo_app;
+  this.scope = new Scope();
+  this.dimBackground = true;
+  this.containerEl = document.createElement('div');
+  this.containerEl.className = 'modal-container oo-plugin-modal-container';
+  this.modalEl = document.createElement('div');
+  this.modalEl.className = 'modal oo-plugin-modal';
+  this.titleEl = document.createElement('div');
+  this.titleEl.className = 'modal-title';
+  this.contentEl = document.createElement('div');
+  this.contentEl.className = 'modal-content';
+  this.modalEl.appendChild(this.titleEl);
+  this.modalEl.appendChild(this.contentEl);
 
-  private _onGlobalKeyDown = (e: KeyboardEvent) => {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.addEventListener('click', () => this.close());
+  this.containerEl.appendChild(bg);
+  this.containerEl.appendChild(this.modalEl);
+
+  // Prevent clicks inside modal from closing it
+  this.modalEl.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+
+  this._onGlobalKeyDown = (e: KeyboardEvent) => {
+    // Dispatch through the modal's scope first (plugins register hotkeys here)
+    if (this.scope && this.scope.handleKey) {
+      if (this.scope.handleKey(e)) return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       this.close();
     }
   };
-
-  constructor(app: any) {
-    this.app = app;
-    this.scope = null;
-    this.containerEl = document.createElement('div');
-    this.containerEl.className = 'modal-container oo-plugin-modal-container';
-    this.modalEl = document.createElement('div');
-    this.modalEl.className = 'modal oo-plugin-modal';
-    this.titleEl = document.createElement('div');
-    this.titleEl.className = 'modal-title';
-    this.contentEl = document.createElement('div');
-    this.contentEl.className = 'modal-content';
-    this.modalEl.appendChild(this.titleEl);
-    this.modalEl.appendChild(this.contentEl);
-
-    const bg = document.createElement('div');
-    bg.className = 'modal-bg';
-    bg.addEventListener('click', () => this.close());
-    this.containerEl.appendChild(bg);
-    this.containerEl.appendChild(this.modalEl);
-
-    // Prevent clicks inside modal from closing it
-    this.modalEl.addEventListener('click', (e) => e.stopPropagation());
-  }
-
-  open(): void {
-    document.body.appendChild(this.containerEl);
-    window.addEventListener('keydown', this._onGlobalKeyDown);
-    this.onOpen();
-  }
-
-  close(): void {
-    window.removeEventListener('keydown', this._onGlobalKeyDown);
-    this.onClose();
-    this.containerEl.remove();
-  }
-
-  onOpen(): void { /* override */ }
-  onClose(): void { /* override */ }
 }
 
+Modal.prototype.open = function() {
+  document.body.appendChild(this.containerEl);
+  window.addEventListener('keydown', this._onGlobalKeyDown);
+  this.onOpen();
+};
+
+Modal.prototype.close = function() {
+  window.removeEventListener('keydown', this._onGlobalKeyDown);
+  this.onClose();
+  this.containerEl.remove();
+};
+
+Modal.prototype.onOpen = function() {};
+Modal.prototype.onClose = function() {};
+
 // ── Setting ─────────────────────────────────────────
-export class Setting {
+export interface Setting {
   settingEl: HTMLElement;
   infoEl: HTMLElement;
   nameEl: HTMLElement;
   descEl: HTMLElement;
   controlEl: HTMLElement;
-  components: any[] = [];
-
-  constructor(containerEl: HTMLElement) {
-    this.settingEl = document.createElement('div');
-    this.settingEl.className = 'setting-item oo-plugin-setting';
-    this.infoEl = document.createElement('div');
-    this.infoEl.className = 'setting-item-info';
-    this.nameEl = document.createElement('div');
-    this.nameEl.className = 'setting-item-name';
-    this.descEl = document.createElement('div');
-    this.descEl.className = 'setting-item-description';
-    this.controlEl = document.createElement('div');
-    this.controlEl.className = 'setting-item-control';
-    this.infoEl.appendChild(this.nameEl);
-    this.infoEl.appendChild(this.descEl);
-    this.settingEl.appendChild(this.infoEl);
-    this.settingEl.appendChild(this.controlEl);
-    containerEl.appendChild(this.settingEl);
-  }
-
-  setName(name: string | DocumentFragment): this {
-    this.nameEl.textContent = '';
-    if (typeof name === 'string') this.nameEl.textContent = name;
-    else this.nameEl.appendChild(name);
-    return this;
-  }
-
-  setDesc(desc: string | DocumentFragment): this {
-    this.descEl.textContent = '';
-    if (typeof desc === 'string') this.descEl.textContent = desc;
-    else this.descEl.appendChild(desc);
-    return this;
-  }
-
-  setClass(cls: string): this { this.settingEl.classList.add(cls); return this; }
-  setHeading(): this { this.settingEl.classList.add('setting-item-heading'); return this; }
-  setDisabled(disabled: boolean): this { this.settingEl.classList.toggle('is-disabled', disabled); return this; }
-  setTooltip(tooltip: string): this { this.settingEl.title = tooltip; return this; }
-
-  addText(cb: (component: TextComponent) => any): this {
-    const comp = new TextComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addTextArea(cb: (component: TextAreaComponent) => any): this {
-    const comp = new TextAreaComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addToggle(cb: (component: ToggleComponent) => any): this {
-    const comp = new ToggleComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addButton(cb: (component: ButtonComponent) => any): this {
-    const comp = new ButtonComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addDropdown(cb: (component: DropdownComponent) => any): this {
-    const comp = new DropdownComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addSlider(cb: (component: SliderComponent) => any): this {
-    const comp = new SliderComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addExtraButton(cb: (component: ExtraButtonComponent) => any): this {
-    const comp = new ExtraButtonComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addColorPicker(cb: (component: ColorComponent) => any): this {
-    const comp = new ColorComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addSearch(cb: (component: SearchComponent) => any): this {
-    const comp = new SearchComponent(this.controlEl);
-    this.components.push(comp);
-    cb(comp);
-    return this;
-  }
-
-  addProgressBar(cb: (component: any) => any): this { return this; }
-  addMomentFormat(cb: (component: any) => any): this { return this; }
-  addComponent<T>(cb: (el: HTMLElement) => T): this { cb(this.controlEl); return this; }
-
-  then(cb: (setting: this) => any): this { cb(this); return this; }
-
-  clear(): this {
-    this.controlEl.innerHTML = '';
-    this.nameEl.textContent = '';
-    this.descEl.textContent = '';
-    this.components = [];
-    return this;
-  }
+  components: any[];
+  setName(name: string | DocumentFragment): this;
+  setDesc(desc: string | DocumentFragment): this;
+  setClass(cls: string): this;
+  setHeading(): this;
+  setDisabled(disabled: boolean): this;
+  setTooltip(tooltip: string): this;
+  addText(cb: (component: TextComponent) => any): this;
+  addTextArea(cb: (component: TextAreaComponent) => any): this;
+  addToggle(cb: (component: ToggleComponent) => any): this;
+  addButton(cb: (component: ButtonComponent) => any): this;
+  addDropdown(cb: (component: DropdownComponent) => any): this;
+  addSlider(cb: (component: SliderComponent) => any): this;
+  addExtraButton(cb: (component: ExtraButtonComponent) => any): this;
+  addColorPicker(cb: (component: ColorComponent) => any): this;
+  addSearch(cb: (component: SearchComponent) => any): this;
+  addProgressBar(cb: (component: any) => any): this;
+  addMomentFormat(cb: (component: any) => any): this;
+  addComponent<T>(cb: (el: HTMLElement) => T): this;
+  then(cb: (setting: this) => any): this;
+  clear(): this;
 }
+export function Setting(this: any, containerEl: HTMLElement) {
+  this.settingEl = document.createElement('div');
+  this.settingEl.className = 'setting-item oo-plugin-setting';
+  this.infoEl = document.createElement('div');
+  this.infoEl.className = 'setting-item-info';
+  this.nameEl = document.createElement('div');
+  this.nameEl.className = 'setting-item-name';
+  this.descEl = document.createElement('div');
+  this.descEl.className = 'setting-item-description';
+  this.controlEl = document.createElement('div');
+  this.controlEl.className = 'setting-item-control';
+  this.infoEl.appendChild(this.nameEl);
+  this.infoEl.appendChild(this.descEl);
+  this.settingEl.appendChild(this.infoEl);
+  this.settingEl.appendChild(this.controlEl);
+  this.components = [];
+  containerEl.appendChild(this.settingEl);
+}
+
+Setting.prototype.setName = function(name: string | DocumentFragment) {
+  this.nameEl.textContent = '';
+  if (typeof name === 'string') this.nameEl.textContent = name;
+  else this.nameEl.appendChild(name);
+  return this;
+};
+
+Setting.prototype.setDesc = function(desc: string | DocumentFragment) {
+  this.descEl.textContent = '';
+  if (typeof desc === 'string') this.descEl.textContent = desc;
+  else this.descEl.appendChild(desc);
+  return this;
+};
+
+Setting.prototype.setClass = function(cls: string) { this.settingEl.classList.add(cls); return this; };
+Setting.prototype.setHeading = function() { this.settingEl.classList.add('setting-item-heading'); return this; };
+Setting.prototype.setDisabled = function(disabled: boolean) { this.settingEl.classList.toggle('is-disabled', disabled); return this; };
+Setting.prototype.setTooltip = function(tooltip: string) { this.settingEl.title = tooltip; return this; };
+
+Setting.prototype.addText = function(cb: (component: TextComponent) => any) {
+  const comp = new TextComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addTextArea = function(cb: (component: TextAreaComponent) => any) {
+  const comp = new TextAreaComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addToggle = function(cb: (component: ToggleComponent) => any) {
+  const comp = new ToggleComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addButton = function(cb: (component: ButtonComponent) => any) {
+  const comp = new ButtonComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addDropdown = function(cb: (component: DropdownComponent) => any) {
+  const comp = new DropdownComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addSlider = function(cb: (component: SliderComponent) => any) {
+  const comp = new SliderComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addExtraButton = function(cb: (component: ExtraButtonComponent) => any) {
+  const comp = new ExtraButtonComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addColorPicker = function(cb: (component: ColorComponent) => any) {
+  const comp = new ColorComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addSearch = function(cb: (component: SearchComponent) => any) {
+  const comp = new SearchComponent(this.controlEl);
+  this.components.push(comp);
+  cb(comp);
+  return this;
+};
+
+Setting.prototype.addProgressBar = function(cb: (component: any) => any) { return this; };
+Setting.prototype.addMomentFormat = function(cb: (component: any) => any) { return this; };
+Setting.prototype.addComponent = function<T>(cb: (el: HTMLElement) => T) { cb(this.controlEl); return this; };
+
+Setting.prototype.then = function(cb: (setting: any) => any) { cb(this); return this; };
+
+Setting.prototype.clear = function() {
+  this.controlEl.innerHTML = '';
+  this.nameEl.textContent = '';
+  this.descEl.textContent = '';
+  this.components = [];
+  return this;
+};
 
 // ── SettingTab ───────────────────────────────────────
 export interface ISettingTab {
@@ -693,126 +722,176 @@ export class ColorComponent {
 }
 
 // ── SuggestModal ────────────────────────────────────
-export abstract class SuggestModal<T> extends Modal {
-  limit = 100;
-  emptyStateText = 'No results found.';
+export interface SuggestModal<T> extends Modal {
+  limit: number;
+  emptyStateText: string;
   inputEl: HTMLInputElement;
   resultContainerEl: HTMLElement;
+  setPlaceholder(placeholder: string): void;
+  setInstructions(instructions: Array<{ command: string; purpose: string }>): void;
+  onNoSuggestion(): void;
+  selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void;
+  selectActiveSuggestion(evt: MouseEvent | KeyboardEvent): void;
+  updateSuggestions(): Promise<void>;
+  getSuggestions(query: string): T[] | Promise<T[]>;
+  renderSuggestion(value: T, el: HTMLElement): void;
+  onChooseSuggestion(item: T, evt: MouseEvent | KeyboardEvent): void;
+}
+export function SuggestModal(this: any, app: any) {
+  Modal.call(this, app);
+  this.limit = 100;
+  this.emptyStateText = 'No results found.';
+  this._suggestions = [];
+  this._selectedIndex = 0;
+  this._suggestionEls = [];
 
-  private _suggestions: T[] = [];
-  private _selectedIndex = 0;
-  private _suggestionEls: HTMLElement[] = [];
+  // Wrap input in prompt-input-container (plugins look for this class)
+  const inputContainer = document.createElement('div');
+  inputContainer.className = 'prompt-input-container';
+  this.inputEl = document.createElement('input');
+  this.inputEl.type = 'text';
+  this.inputEl.className = 'prompt-input';
+  inputContainer.appendChild(this.inputEl);
+  this.contentEl.insertBefore(inputContainer, this.contentEl.firstChild);
 
-  constructor(app: any) {
-    super(app);
-    this.inputEl = document.createElement('input');
-    this.inputEl.type = 'text';
-    this.inputEl.className = 'prompt-input';
-    this.contentEl.insertBefore(this.inputEl, this.contentEl.firstChild);
+  this.resultContainerEl = document.createElement('div');
+  this.resultContainerEl.className = 'suggestion-container';
+  this.contentEl.appendChild(this.resultContainerEl);
 
-    this.resultContainerEl = document.createElement('div');
-    this.resultContainerEl.className = 'suggestion-container';
-    this.contentEl.appendChild(this.resultContainerEl);
+  // Chooser API — many plugins access this.chooser directly
+  const self = this;
+  this.chooser = {
+    selectedItem: 0,
+    setSelectedItem: function(index: number) {
+      const len = self._suggestions.length;
+      if (len === 0) { this.selectedItem = 0; return; }
+      this.selectedItem = ((index % len) + len) % len;
+      self._selectedIndex = this.selectedItem;
+      self._updateSelection();
+    },
+    moveDown: function() { this.setSelectedItem(this.selectedItem + 1); },
+    moveUp: function() { this.setSelectedItem(this.selectedItem - 1); },
+  };
 
-    this.inputEl.addEventListener('input', () => this.updateSuggestions());
-    this.inputEl.addEventListener('keydown', (e) => this._onKeyDown(e));
+  this.inputEl.addEventListener('input', () => this.updateSuggestions());
+  this.inputEl.addEventListener('keydown', (e: KeyboardEvent) => this._onKeyDown(e));
+}
+
+SuggestModal.prototype = Object.create(Modal.prototype);
+SuggestModal.prototype.constructor = SuggestModal;
+
+SuggestModal.prototype.setPlaceholder = function(placeholder: string) { this.inputEl.placeholder = placeholder; };
+SuggestModal.prototype.setInstructions = function(instructions: Array<{ command: string; purpose: string }>) { /* compat */ };
+SuggestModal.prototype.onNoSuggestion = function() { /* compat */ };
+
+SuggestModal.prototype.selectSuggestion = function(value: any, evt: MouseEvent | KeyboardEvent) {
+  this.onChooseSuggestion(value, evt);
+  this.close();
+};
+
+SuggestModal.prototype.selectActiveSuggestion = function(evt: MouseEvent | KeyboardEvent) {
+  if (this._suggestions[this._selectedIndex]) {
+    this.selectSuggestion(this._suggestions[this._selectedIndex], evt);
+  }
+};
+
+SuggestModal.prototype.updateSuggestions = async function() {
+  const query = this.inputEl.value;
+  try {
+    const suggestions = await this.getSuggestions(query);
+    this._suggestions = (suggestions || []).slice(0, this.limit);
+    this._selectedIndex = 0;
+    if (this.chooser) this.chooser.selectedItem = 0;
+    this._renderSuggestions();
+  } catch (e) {
+    console.error('[SuggestModal] Failed to get suggestions:', e);
+  }
+};
+
+SuggestModal.prototype._renderSuggestions = function() {
+  this.resultContainerEl.empty();
+  this._suggestionEls = [];
+
+  if (this._suggestions.length === 0) {
+    const empty = this.resultContainerEl.createDiv('suggestion-empty');
+    empty.textContent = this.emptyStateText;
+    return;
   }
 
-  setPlaceholder(placeholder: string): void { this.inputEl.placeholder = placeholder; }
-  setInstructions(instructions: Array<{ command: string; purpose: string }>): void { /* compat */ }
-  onNoSuggestion(): void { /* compat */ }
+  this._suggestions.forEach((value: any, index: number) => {
+    const el = this.resultContainerEl.createDiv('suggestion-item');
+    if (index === this._selectedIndex) el.classList.add('is-selected');
 
-  selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void {
-    this.onChooseSuggestion(value, evt);
+    this.renderSuggestion(value, el);
+
+    el.addEventListener('click', (e: MouseEvent) => this.selectSuggestion(value, e));
+    this._suggestionEls.push(el);
+  });
+};
+
+SuggestModal.prototype._onKeyDown = function(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    this._selectedIndex = (this._selectedIndex + 1) % this._suggestions.length;
+    this._updateSelection();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    this._selectedIndex = (this._selectedIndex - 1 + this._suggestions.length) % this._suggestions.length;
+    this._updateSelection();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (this._suggestions[this._selectedIndex]) {
+      this.selectSuggestion(this._suggestions[this._selectedIndex], e);
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
     this.close();
   }
+};
 
-  selectActiveSuggestion(evt: MouseEvent | KeyboardEvent): void {
-    if (this._suggestions[this._selectedIndex]) {
-      this.selectSuggestion(this._suggestions[this._selectedIndex], evt);
+SuggestModal.prototype._updateSelection = function() {
+  this._suggestionEls.forEach((el: HTMLElement, index: number) => {
+    el.classList.toggle('is-selected', index === this._selectedIndex);
+    if (index === this._selectedIndex) {
+      el.scrollIntoView({ block: 'nearest' });
     }
-  }
+  });
+};
 
-  async updateSuggestions() {
-    const query = this.inputEl.value;
-    try {
-      const suggestions = await this.getSuggestions(query);
-      this._suggestions = (suggestions || []).slice(0, this.limit);
-      this._selectedIndex = 0;
-      this._renderSuggestions();
-    } catch (e) {
-      console.error('[SuggestModal] Failed to get suggestions:', e);
-    }
-  }
+SuggestModal.prototype.onOpen = function() {
+  Modal.prototype.onOpen.call(this);
+  setTimeout(() => {
+    this.inputEl.focus();
+    this.updateSuggestions();
+  }, 0);
+};
 
-  private _renderSuggestions() {
-    this.resultContainerEl.empty();
-    this._suggestionEls = [];
+SuggestModal.prototype.getSuggestions = function(query: string) { return []; };
+SuggestModal.prototype.renderSuggestion = function(value: any, el: HTMLElement) {};
+SuggestModal.prototype.onChooseSuggestion = function(item: any, evt: MouseEvent | KeyboardEvent) {};
 
-    if (this._suggestions.length === 0) {
-      const empty = this.resultContainerEl.createDiv('suggestion-empty');
-      empty.textContent = this.emptyStateText;
-      return;
-    }
-
-    this._suggestions.forEach((value, index) => {
-      const el = this.resultContainerEl.createDiv('suggestion-item');
-      if (index === this._selectedIndex) el.classList.add('is-selected');
-
-      this.renderSuggestion(value, el);
-
-      el.addEventListener('click', (e: MouseEvent) => this.selectSuggestion(value, e));
-      this._suggestionEls.push(el);
-    });
-  }
-
-  private _onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      this._selectedIndex = (this._selectedIndex + 1) % this._suggestions.length;
-      this._updateSelection();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      this._selectedIndex = (this._selectedIndex - 1 + this._suggestions.length) % this._suggestions.length;
-      this._updateSelection();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (this._suggestions[this._selectedIndex]) {
-        this.selectSuggestion(this._suggestions[this._selectedIndex], e);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      this.close();
-    }
-  }
-
-  private _updateSelection() {
-    this._suggestionEls.forEach((el, index) => {
-      el.classList.toggle('is-selected', index === this._selectedIndex);
-      if (index === this._selectedIndex) {
-        el.scrollIntoView({ block: 'nearest' });
-      }
-    });
-  }
-
-  onOpen() {
-    super.onOpen();
-    setTimeout(() => {
-      this.inputEl.focus();
-      this.updateSuggestions();
-    }, 0);
-  }
-
-  abstract getSuggestions(query: string): T[] | Promise<T[]>;
-  abstract renderSuggestion(value: T, el: HTMLElement): void;
-  abstract onChooseSuggestion(item: T, evt: MouseEvent | KeyboardEvent): void;
+export interface FuzzySuggestModal<T> extends SuggestModal<any> {
+  getItems(): T[];
+  getItemText(item: T): string;
+  onChooseItem(item: T, evt: MouseEvent | KeyboardEvent): void;
+}
+export function FuzzySuggestModal(this: any, app: any) {
+  SuggestModal.call(this, app);
 }
 
-export abstract class FuzzySuggestModal<T> extends SuggestModal<any> {
-  abstract getItems(): T[];
-  abstract getItemText(item: T): string;
-  abstract onChooseItem(item: T, evt: MouseEvent | KeyboardEvent): void;
-  getSuggestions(query: string) { return this.getItems().filter(i => this.getItemText(i).toLowerCase().includes(query.toLowerCase())); }
-  renderSuggestion(value: any, el: HTMLElement) { el.textContent = this.getItemText(value); }
-  onChooseSuggestion(item: any, evt: MouseEvent | KeyboardEvent) { this.onChooseItem(item, evt); }
-}
+FuzzySuggestModal.prototype = Object.create(SuggestModal.prototype);
+FuzzySuggestModal.prototype.constructor = FuzzySuggestModal;
+
+FuzzySuggestModal.prototype.getItems = function() { return []; };
+FuzzySuggestModal.prototype.getItemText = function(item: any) { return ''; };
+FuzzySuggestModal.prototype.onChooseItem = function(item: any, evt: MouseEvent | KeyboardEvent) {};
+
+FuzzySuggestModal.prototype.getSuggestions = function(query: string) {
+  return this.getItems().filter((i: any) => this.getItemText(i).toLowerCase().includes(query.toLowerCase()));
+};
+FuzzySuggestModal.prototype.renderSuggestion = function(value: any, el: HTMLElement) {
+  el.textContent = this.getItemText(value);
+};
+FuzzySuggestModal.prototype.onChooseSuggestion = function(item: any, evt: MouseEvent | KeyboardEvent) {
+  this.onChooseItem(item, evt);
+};

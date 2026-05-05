@@ -135,6 +135,14 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     this.remove();
   };
 
+  // ── find() / findAll() — Obsidian aliases for querySelector ──
+  (HTMLElement.prototype as any).find = function (selector: string): HTMLElement | null {
+    return this.querySelector(selector);
+  };
+  (HTMLElement.prototype as any).findAll = function (selector: string): NodeListOf<HTMLElement> {
+    return this.querySelectorAll(selector);
+  };
+
   // ── show() / hide() — Display control ───────────────
   (HTMLElement.prototype as any).show = function () {
     this.style.display = '';
@@ -296,6 +304,82 @@ if (!(window as any).process) {
 // Calendar plugin (and others) assume .app-container exists for mounting popups
 if (!document.body.classList.contains('app-container')) {
   document.body.classList.add('app-container');
+}
+
+// ── activeWindow — Obsidian global pointing to the currently focused window ──
+if (!(window as any).activeWindow) {
+  (window as any).activeWindow = window;
+}
+
+// ── activeDocument — Obsidian global pointing to the active document ──
+if (!(window as any).activeDocument) {
+  (window as any).activeDocument = document;
+}
+
+// ── Array.prototype.contains / remove — Obsidian extends native Array ──
+if (!(Array.prototype as any).contains) {
+  (Array.prototype as any).contains = function(item: any): boolean {
+    return this.indexOf(item) !== -1;
+  };
+}
+if (!(Array.prototype as any).remove) {
+  (Array.prototype as any).remove = function(item: any): void {
+    const idx = this.indexOf(item);
+    if (idx >= 0) this.splice(idx, 1);
+  };
+}
+if (!(Array.prototype as any).first) {
+  (Array.prototype as any).first = function(): any {
+    return this.length > 0 ? this[0] : undefined;
+  };
+}
+if (!(Array.prototype as any).last) {
+  (Array.prototype as any).last = function(): any {
+    return this.length > 0 ? this[this.length - 1] : undefined;
+  };
+}
+
+// ── DocumentFragment patches — Obsidian adds createEl/createDiv/createSpan ──
+if (!(DocumentFragment.prototype as any).createEl) {
+  (DocumentFragment.prototype as any).createEl = function(tag: string, o?: any, callback?: any): HTMLElement {
+    const el = document.createElement(tag);
+    if (typeof o === 'string') { el.textContent = o; }
+    else if (o) {
+      if (o.text) el.textContent = o.text;
+      if (o.cls) el.className = Array.isArray(o.cls) ? o.cls.join(' ') : o.cls;
+      if (o.attr) for (const [k, v] of Object.entries(o.attr)) el.setAttribute(k, v as string);
+    }
+    this.appendChild(el);
+    if (callback) callback(el);
+    return el;
+  };
+}
+if (!(DocumentFragment.prototype as any).createDiv) {
+  (DocumentFragment.prototype as any).createDiv = function(cls?: string | any, callback?: any): HTMLDivElement {
+    const el = document.createElement('div');
+    if (typeof cls === 'string') el.className = cls;
+    else if (cls?.cls) el.className = cls.cls;
+    this.appendChild(el);
+    if (callback) callback(el);
+    return el;
+  };
+}
+if (!(DocumentFragment.prototype as any).createSpan) {
+  (DocumentFragment.prototype as any).createSpan = function(cls?: string | any, callback?: any): HTMLSpanElement {
+    const el = document.createElement('span');
+    if (typeof cls === 'string') el.className = cls;
+    else if (cls?.cls) el.className = cls.cls;
+    this.appendChild(el);
+    if (callback) callback(el);
+    return el;
+  };
+}
+
+// ── String.prototype.contains — Obsidian extends native String ──
+if (!(String.prototype as any).contains) {
+  (String.prototype as any).contains = function(sub: string): boolean {
+    return this.indexOf(sub) !== -1;
+  };
 }
 
 export {};

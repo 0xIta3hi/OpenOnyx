@@ -182,7 +182,7 @@ export function stripHeadingForLink(heading: string): string {
   return heading.replace(/[[\]|#^]/g, '').trim();
 }
 
-// Scope — hotkey scoping
+// Scope -- hotkey scoping
 export class Scope {
   parent: Scope | null;
   private _keys: any[] = [];
@@ -192,7 +192,7 @@ export class Scope {
   }
 
   register(modifiers: string[] | null, key: string | null, func: (evt: KeyboardEvent) => any): any {
-    const handler = { modifiers, key, func };
+    const handler = { modifiers: modifiers || [], key, func };
     this._keys.push(handler);
     return handler;
   }
@@ -200,5 +200,36 @@ export class Scope {
   unregister(handler: any): void {
     const idx = this._keys.indexOf(handler);
     if (idx >= 0) this._keys.splice(idx, 1);
+  }
+
+  /** Dispatch a keyboard event through registered handlers. Returns true if handled. */
+  handleKey(evt: KeyboardEvent): boolean {
+    for (const handler of this._keys) {
+      // Match key
+      if (handler.key && handler.key !== evt.key && handler.key !== evt.code) continue;
+
+      // Match modifiers
+      const mods = handler.modifiers || [];
+      const requireCtrl = mods.some((m: string) => m === 'Ctrl' || m === 'Mod');
+      const requireShift = mods.some((m: string) => m === 'Shift');
+      const requireAlt = mods.some((m: string) => m === 'Alt');
+      const requireMeta = mods.some((m: string) => m === 'Meta');
+
+      if (requireCtrl && !evt.ctrlKey && !evt.metaKey) continue;
+      if (requireShift && !evt.shiftKey) continue;
+      if (requireAlt && !evt.altKey) continue;
+      if (requireMeta && !evt.metaKey) continue;
+
+      try {
+        const result = handler.func(evt);
+        if (result !== false) return true;
+      } catch (e) {
+        console.error('[Scope] Handler error:', e);
+      }
+    }
+
+    // Delegate to parent scope
+    if (this.parent) return this.parent.handleKey(evt);
+    return false;
   }
 }

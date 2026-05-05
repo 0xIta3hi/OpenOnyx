@@ -24,7 +24,7 @@ function guardCallback(pluginId: string, fn: (...args: any[]) => any, context: s
   return (...args: any[]) => {
     const { result, shouldDisable } = safePluginCall(pluginId, () => fn(...args), context);
     if (shouldDisable) {
-      new Notice(`Plugin "${pluginId}" disabled — too many errors.`);
+      new (Notice as any)(`Plugin "${pluginId}" disabled — too many errors.`);
       (window as any).__oo_auto_disable_plugin?.(pluginId);
     }
     return result;

@@ -365,6 +365,74 @@
   --nav-item-background-selected: rgba(230, 230, 230, 0.12);
 }
 
+/* Peach White Theme Override */
+[data-theme="peach-white"] {
+  --color-base-00: #fcfbf9; /* Editor bg - very light warm white */
+  --color-base-05: #f5f2ec; /* Sidebar/titlebar bg */
+  --color-base-10: #ece8df; /* Hover bg */
+  --color-base-20: #dfd9ce; /* Active/borders */
+  --color-base-25: #d4cdbf;
+  --color-base-30: #c8c0b0;
+  --color-base-35: #baa09b;
+  --color-base-40: #a29888;
+  --color-base-50: #887e6e;
+  --color-base-60: #6d6456;
+  --color-base-70: #554d42;
+  --color-base-100: #332f28; /* Text primary */
+
+  --color-accent: #d88f7b; /* Soft peach/orange accent */
+  --color-accent-1: #c97f6c;
+  --color-accent-2: #b86e5c;
+  --text-on-accent: #ffffff;
+
+  --bg-primary: var(--color-base-00);
+  --bg-secondary: var(--color-base-05); /* Make sidebar distinct */
+  --bg-tertiary: var(--color-base-10);
+  --bg-elevated: var(--color-base-00);
+
+  --bg-hover: rgba(109, 100, 86, 0.06);
+  --bg-active: rgba(109, 100, 86, 0.1);
+  --bg-glass: rgba(245, 242, 236, 0.85);
+
+  --scrollbar-thumb: rgba(109, 100, 86, 0.15);
+  --scrollbar-thumb-hover: rgba(109, 100, 86, 0.25);
+
+  --border-subtle: rgba(109, 100, 86, 0.08);
+  --border-medium: rgba(109, 100, 86, 0.12);
+  --border-strong: rgba(109, 100, 86, 0.18);
+  --divider-color: rgba(109, 100, 86, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(51, 47, 40, 0.04);
+  --shadow-md: 0 4px 12px rgba(51, 47, 40, 0.08);
+  --shadow-lg: 0 8px 32px rgba(51, 47, 40, 0.12);
+
+  --nav-item-background-selected: rgba(109, 100, 86, 0.08);
+
+  --editor-caret: #d88f7b;
+  --editor-selection: rgba(216, 143, 123, 0.2);
+  --editor-selection-focused: rgba(216, 143, 123, 0.3);
+  --editor-active-line: rgba(109, 100, 86, 0.03);
+  --editor-heading: #554d42;
+  --editor-heading-marker: #a29888;
+  --editor-link: #b5705d;
+  --editor-link-hover: #a15d4b;
+  --editor-tag: #d88f7b;
+  --editor-tag-bg: rgba(216, 143, 123, 0.15);
+  --editor-code: #887e6e;
+  --editor-muted-token: #a29888;
+  --editor-emphasis: #332f28;
+  --editor-search-match: rgba(216, 143, 123, 0.25);
+  --editor-search-match-border: rgba(216, 143, 123, 0.5);
+  --editor-search-active: rgba(201, 127, 108, 0.35);
+  --editor-search-active-border: rgba(201, 127, 108, 0.7);
+
+  --titlebar-background: var(--color-base-05);
+  --titlebar-background-focused: var(--color-base-10);
+
+  --graph-edge-color: rgba(162, 152, 136, 0.3);
+  --graph-node-color: #d88f7b;
+}
+
 /* ── Reset & Base Styles ───────────────────────────── */
 *,
 *::before,
