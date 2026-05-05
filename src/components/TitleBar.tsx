@@ -25,6 +25,23 @@ export function TitleBar({
   const isMac = navigator.platform.includes("Mac");
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const titlebarRef = useRef<HTMLDivElement>(null);
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    if (titlebarRef.current) {
+      const bg = window.getComputedStyle(titlebarRef.current).backgroundColor;
+      const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
+      if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        // Simple luminance formula
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        setIsDark(luminance < 0.5);
+      }
+    }
+  }, [theme]);
 
   const categories = Array.from(
     new Set(commands.map((cmd) => cmd.category || "Other")),
@@ -41,11 +58,22 @@ export function TitleBar({
   }, []);
 
   return (
-    <div className="titlebar">
+    <div className="titlebar" ref={titlebarRef}>
       <div
         className="titlebar-left"
         style={{ display: "flex", alignItems: "center" }}
       >
+        <img
+          src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
+          alt="OpenObsidian Logo"
+          style={{
+            width: "20px",
+            height: "20px",
+            marginRight: "8px",
+            objectFit: "contain",
+            WebkitAppRegion: "no-drag",
+          } as any}
+        />
         <div className="titlebar-title" style={{ marginRight: "16px" }}>
           OpenObsidian
         </div>

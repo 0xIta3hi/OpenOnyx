@@ -22,6 +22,22 @@ export function WelcomeScreen({
 }: WelcomeScreenProps) {
   const [pressedAction, setPressedAction] = useState<VaultEntryAction | null>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    if (screenRef.current) {
+      const bg = window.getComputedStyle(screenRef.current).backgroundColor;
+      const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
+      if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        setIsDark(luminance < 0.5);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -49,9 +65,13 @@ export function WelcomeScreen({
   };
 
   return (
-    <div className="welcome-screen" data-transition-phase={transitionPhase}>
+    <div className="welcome-screen" ref={screenRef} data-transition-phase={transitionPhase}>
       <div className="welcome-logo">
-        <Network size={64} strokeWidth={1.5} />
+        <img
+          src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
+          alt="OpenObsidian Logo"
+          style={{ width: "80px", height: "80px", objectFit: "contain" }}
+        />
       </div>
       <h1 className="welcome-title">OpenObsidian</h1>
       <p className="welcome-subtitle">

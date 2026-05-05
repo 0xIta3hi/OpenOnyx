@@ -123,6 +123,22 @@ export function SettingsPage({
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("appearance");
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+  const pageRef = React.useRef<HTMLDivElement>(null);
+  const [isDark, setIsDark] = React.useState(true);
+
+  React.useEffect(() => {
+    if (pageRef.current) {
+      const bg = window.getComputedStyle(pageRef.current).backgroundColor;
+      const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
+      if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        setIsDark(luminance < 0.5);
+      }
+    }
+  }, [localSettings.theme]);
 
   const updateSetting = <K extends keyof AppSettings>(
     key: K,
@@ -149,7 +165,7 @@ export function SettingsPage({
 
   return (
     <div className="settings-overlay">
-      <div className="settings-page">
+      <div className="settings-page" ref={pageRef}>
         <div className="settings-header">
           <h2>Settings</h2>
           <button className="settings-close" onClick={onClose}>
@@ -553,7 +569,13 @@ export function SettingsPage({
                 <h3>About OpenObsidian</h3>
 
                 <div className="about-info">
-                  <div className="about-logo">📝</div>
+                  <div className="about-logo">
+                    <img
+                      src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
+                      alt="OpenObsidian Logo"
+                      style={{ width: "48px", height: "48px", objectFit: "contain" }}
+                    />
+                  </div>
                   <h4>OpenObsidian</h4>
                   <p className="about-version">Version 1.0.0</p>
                   <p className="about-description">
