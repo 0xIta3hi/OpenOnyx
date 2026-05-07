@@ -895,3 +895,164 @@ FuzzySuggestModal.prototype.renderSuggestion = function(value: any, el: HTMLElem
 FuzzySuggestModal.prototype.onChooseSuggestion = function(item: any, evt: MouseEvent | KeyboardEvent) {
   this.onChooseItem(item, evt);
 };
+
+// ── AbstractInputSuggest (ES5 — extended by plugins) ──
+// Unlike SuggestModal (a full-screen modal), AbstractInputSuggest attaches
+// a suggestion dropdown to an existing <input> element within a setting/view.
+
+export interface IAbstractInputSuggest {
+  app: any;
+  inputEl: HTMLInputElement;
+  containerEl: HTMLElement;
+  suggestEl: HTMLElement;
+  limit: number;
+  close(): void;
+  open(): void;
+  getSuggestions(query: string): any[] | Promise<any[]>;
+  renderSuggestion(value: any, el: HTMLElement): void;
+  selectSuggestion(value: any, evt: MouseEvent | KeyboardEvent): void;
+  onSelect(callback: (value: any, evt: MouseEvent | KeyboardEvent) => void): void;
+  setValue(value: string): void;
+}
+
+export interface AbstractInputSuggestConstructor {
+  new(app: any, inputEl: HTMLInputElement): IAbstractInputSuggest;
+  prototype: IAbstractInputSuggest;
+}
+
+function _AbstractInputSuggest(this: any, app: any, inputEl: HTMLInputElement) {
+  this.app = app || (window as any).__oo_app;
+  this.inputEl = inputEl;
+  this.limit = 100;
+  this._selectedIndex = -1;
+  this._suggestions = [] as any[];
+  this._selectCallbacks = [] as any[];
+
+  // Create the suggestion dropdown container
+  this.suggestEl = document.createElement('div');
+  this.suggestEl.className = 'suggestion-container oo-input-suggest';
+  this.suggestEl.style.cssText = 'display:none;position:absolute;z-index:9999;max-height:300px;overflow-y:auto;';
+  document.body.appendChild(this.suggestEl);
+
+  // Create a wrapper for the whole thing
+  this.containerEl = document.createElement('div');
+  this.containerEl.className = 'suggestion-input-container';
+
+  // Wire up input events
+  const self = this;
+  const onInput = async () => {
+    const query = self.inputEl.value;
+    try {
+      const suggestions = await Promise.resolve(self.getSuggestions(query));
+      self._suggestions = suggestions || [];
+      self._renderSuggestions();
+      if (self._suggestions.length > 0) {
+        self.open();
+      } else {
+        self.close();
+      }
+    } catch (e) {
+      console.error('[AbstractInputSuggest] getSuggestions error:', e);
+    }
+  };
+
+  const onFocus = () => onInput();
+  const onBlur = () => {
+    // Delay to allow click on suggestion
+    setTimeout(() => self.close(), 200);
+  };
+  const onKeydown = (evt: KeyboardEvent) => {
+    if (!self.suggestEl || self.suggestEl.style.display === 'none') return;
+    if (evt.key === 'ArrowDown') {
+      evt.preventDefault();
+      self._selectedIndex = Math.min(self._selectedIndex + 1, self._suggestions.length - 1);
+      self._highlightSelected();
+    } else if (evt.key === 'ArrowUp') {
+      evt.preventDefault();
+      self._selectedIndex = Math.max(self._selectedIndex - 1, 0);
+      self._highlightSelected();
+    } else if (evt.key === 'Enter' && self._selectedIndex >= 0) {
+      evt.preventDefault();
+      const item = self._suggestions[self._selectedIndex];
+      if (item !== undefined) self.selectSuggestion(item, evt);
+    } else if (evt.key === 'Escape') {
+      self.close();
+    }
+  };
+
+  inputEl.addEventListener('input', onInput);
+  inputEl.addEventListener('focus', onFocus);
+  inputEl.addEventListener('blur', onBlur);
+  inputEl.addEventListener('keydown', onKeydown);
+
+  this._cleanup = () => {
+    inputEl.removeEventListener('input', onInput);
+    inputEl.removeEventListener('focus', onFocus);
+    inputEl.removeEventListener('blur', onBlur);
+    inputEl.removeEventListener('keydown', onKeydown);
+    self.suggestEl?.remove();
+  };
+}
+
+_AbstractInputSuggest.prototype._renderSuggestions = function() {
+  this.suggestEl.innerHTML = '';
+  const limit = Math.min(this._suggestions.length, this.limit);
+  for (let i = 0; i < limit; i++) {
+    const el = document.createElement('div');
+    el.className = 'suggestion-item';
+    this.renderSuggestion(this._suggestions[i], el);
+    const idx = i;
+    el.addEventListener('mousedown', (evt: MouseEvent) => {
+      evt.preventDefault();
+      this.selectSuggestion(this._suggestions[idx], evt);
+    });
+    el.addEventListener('mouseenter', () => {
+      this._selectedIndex = idx;
+      this._highlightSelected();
+    });
+    this.suggestEl.appendChild(el);
+  }
+  this._selectedIndex = -1;
+};
+
+_AbstractInputSuggest.prototype._highlightSelected = function() {
+  const items = this.suggestEl.querySelectorAll('.suggestion-item');
+  items.forEach((el: HTMLElement, i: number) => {
+    el.classList.toggle('is-selected', i === this._selectedIndex);
+  });
+};
+
+_AbstractInputSuggest.prototype.open = function() {
+  if (!this.inputEl) return;
+  const rect = this.inputEl.getBoundingClientRect();
+  this.suggestEl.style.display = 'block';
+  this.suggestEl.style.top = `${rect.bottom + 2}px`;
+  this.suggestEl.style.left = `${rect.left}px`;
+  this.suggestEl.style.width = `${rect.width}px`;
+};
+
+_AbstractInputSuggest.prototype.close = function() {
+  if (this.suggestEl) this.suggestEl.style.display = 'none';
+  this._selectedIndex = -1;
+};
+
+_AbstractInputSuggest.prototype.getSuggestions = function(_query: string): any[] { return []; };
+_AbstractInputSuggest.prototype.renderSuggestion = function(_value: any, _el: HTMLElement) {};
+_AbstractInputSuggest.prototype.selectSuggestion = function(value: any, evt: MouseEvent | KeyboardEvent) {
+  for (const cb of this._selectCallbacks) {
+    try { cb(value, evt); } catch { /* */ }
+  }
+  this.close();
+};
+
+_AbstractInputSuggest.prototype.onSelect = function(callback: (value: any, evt: MouseEvent | KeyboardEvent) => void) {
+  this._selectCallbacks.push(callback);
+};
+
+_AbstractInputSuggest.prototype.setValue = function(value: string) {
+  if (this.inputEl) this.inputEl.value = value;
+};
+
+export type AbstractInputSuggest = IAbstractInputSuggest;
+export const AbstractInputSuggest = _AbstractInputSuggest as unknown as AbstractInputSuggestConstructor;
+

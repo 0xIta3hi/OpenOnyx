@@ -28,7 +28,7 @@ import { pluginLogStore, pluginErrorTracker, isVersionCompatible } from '../lib/
 import type { PluginLogEntry, PluginErrorRecord } from '../lib/pluginDevTools';
 import { PluginMarketplace } from './PluginMarketplace';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.9.16';
 
 interface PluginSettingsPanelProps {
   plugins: PluginRegistration[];

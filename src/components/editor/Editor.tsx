@@ -42,6 +42,7 @@ import {
   setAvailableNotes,
 } from "../../utils/linkAutocomplete";
 import { headingFold, foldTheme } from "../../utils/headingFold";
+import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { type LinkType } from "../SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 
@@ -322,7 +323,7 @@ class MarkdownImageWidget extends WidgetType {
 
     const img = document.createElement("img");
     img.className = "cm-image-widget-image";
-    img.src = this.image.src;
+    img.src = resolveVaultImageSrc(this.image.src);
     img.alt = this.image.alt || "Image";
     applyWidgetImageStyles(img, this.image);
     stage.appendChild(img);

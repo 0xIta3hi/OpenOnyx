@@ -23,9 +23,23 @@ import React, {
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import DOMPurify from "dompurify";
+import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 
 // Enable math formatting
 marked.use(markedKatex({ throwOnError: false }));
+
+// Intercept all markdown images (including reference links) to resolve local vault paths
+marked.use({
+  renderer: {
+    image(token) {
+      const { href, title, text } = token;
+      const resolvedSrc = resolveVaultImageSrc(href);
+      const safeSrc = String(resolvedSrc).replace(/"/g, "&quot;");
+      const safeAlt = String(text).replace(/"/g, "&quot;");
+      return `<img src="${safeSrc}" alt="${safeAlt}" ${title ? `title="${String(title).replace(/"/g, "&quot;")}"` : ""} />`;
+    }
+  }
+});
 
 // Callout type icons and colors
 const CALLOUT_TYPES: Record<string, { icon: string; color: string }> = {
@@ -184,7 +198,6 @@ export function MarkdownPreview({
       /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
       (match, alt, src, title) => {
         const { width, crop, offsetX, offsetY } = parseImageRenderMeta(title);
-        if (!width && crop === "contain") return match;
 
         const styleParts: string[] = [];
         if (width) {
@@ -200,7 +213,8 @@ export function MarkdownPreview({
         }
 
         const safeAlt = String(alt).replace(/"/g, "&quot;");
-        const safeSrc = String(src).replace(/"/g, "&quot;");
+        const resolvedSrc = resolveVaultImageSrc(String(src));
+        const safeSrc = resolvedSrc.replace(/"/g, "&quot;");
         const styleAttr = styleParts.length
           ? ` style="${styleParts.join(";")}"`
           : "";
@@ -234,6 +248,7 @@ export function MarkdownPreview({
 
     // Sanitize to prevent XSS, but allow our custom attributes and elements
     return DOMPurify.sanitize(html, {
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|vault):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
       ADD_ATTR: [
         "data-link",
         "data-tag",

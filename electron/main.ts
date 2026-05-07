@@ -6,7 +6,7 @@
  * exposed to the renderer via secure IPC channels.
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, protocol, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { FileSystemManager } from './fileSystem';
@@ -251,6 +251,10 @@ function buildMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'vault', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
+]);
+
 app.whenReady().then(() => {
   fsManager = new FileSystemManager();
   searchEngine = new SearchEngine();
@@ -269,6 +273,50 @@ app.whenReady().then(() => {
 
   buildMenu();
   createWindow();
+
+  protocol.handle('vault', async (request) => {
+    if (!fsManager) return new Response('No vault', { status: 404 });
+    const vaultPath = fsManager.getVaultPath();
+    if (!vaultPath) return new Response('No vault', { status: 404 });
+
+    const urlPath = decodeURIComponent(request.url.replace(/^vault:\/\/(?:local\/)?/, ''));
+    if (!urlPath) return new Response('Bad request', { status: 400 });
+
+    const fullPath = path.join(vaultPath, urlPath);
+
+    // 1. Try exact path match
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      return net.fetch('file://' + fullPath);
+    }
+
+    // 2. Obsidian-style fallback: search for filename anywhere in vault
+    const fileName = path.basename(urlPath);
+    const searchVaultForFile = (dir: string, targetName: string): string | null => {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          const entryPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            const found = searchVaultForFile(entryPath, targetName);
+            if (found) return found;
+          } else if (entry.name === targetName) {
+            return entryPath;
+          }
+        }
+      } catch {
+        // ignore errors
+      }
+      return null;
+    };
+
+    const foundPath = searchVaultForFile(vaultPath, fileName);
+    if (foundPath) {
+      return net.fetch('file://' + foundPath);
+    }
+
+    return new Response('Not found', { status: 404 });
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
