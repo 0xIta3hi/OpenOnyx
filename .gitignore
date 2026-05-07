@@ -9,3 +9,4 @@ PROMPT.md
 .env.local
 .env
 .gemini
+.vscode
