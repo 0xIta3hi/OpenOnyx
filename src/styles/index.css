@@ -8770,6 +8770,7 @@ blockquote:has(.callout) {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  touch-action: none;
 }
 
 /* ── Transform layer ── */
@@ -8904,6 +8905,7 @@ blockquote:has(.callout) {
 }
 [data-dragging="true"] .cv-node {
   cursor: grabbing;
+  transition: none;
 }
 
 .cv-node:hover {

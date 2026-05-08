@@ -14,6 +14,7 @@ import React, {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
 } from "react";
 import { HexColorPicker } from "react-colorful";
@@ -741,6 +742,9 @@ export function CanvasView({
   const targetVpRef = useRef<CanvasViewport>(vp);
   const zoomAnimFrameRef = useRef<number | null>(null);
   const panInertiaFrameRef = useRef<number | null>(null);
+  const transformElRef = useRef<HTMLDivElement>(null);
+  const vpSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCullVpRef = useRef<CanvasViewport>({ x: 0, y: 0, zoom: 1 });
   const panVelocityRef = useRef({ x: 0, y: 0 });
   const panSampleRef = useRef<{ x: number; y: number; at: number } | null>(
     null,
@@ -764,7 +768,6 @@ export function CanvasView({
   activeScribbleRef.current = activeScribble;
   selectedScribbleIdsRef.current = selectedScribbleIds;
   lassoPointsRef.current = lassoPoints;
-  vpRef.current = vp;
 
   /* ── history ── */
   const [hist, setHist] = useState<Snap[]>([
@@ -853,59 +856,125 @@ export function CanvasView({
     panSampleRef.current = null;
   }, []);
 
+  /* ── Direct DOM viewport application (bypasses React for 60fps) ── */
+  const applyViewportToDOM = useCallback((viewport: CanvasViewport) => {
+    vpRef.current = viewport;
+    const z = viewport.zoom;
+    const invZ = 1 / z;
+
+    // Set transform on the canvas layer
+    const el = transformElRef.current;
+    if (el) {
+      el.style.transform = `translate(${viewport.x}px,${viewport.y}px) scale(${z})`;
+      el.style.setProperty('--ctz', String(Math.min(3, Math.max(1, 1 + (invZ - 1) * 0.28))));
+    }
+
+    // Set zoom-dependent CSS custom properties on the wrapper
+    const wrap = wrapRef.current;
+    if (wrap) {
+      wrap.style.setProperty('--zoom-mult', String(Math.min(1.35, Math.max(0.85, invZ))));
+      wrap.style.setProperty('--group-label-zoom-mult', String(Math.min(14, Math.max(1, invZ))));
+    }
+
+    // Update dot grid pattern directly via DOM
+    const pattern = document.getElementById("cvDot");
+    if (pattern) {
+      let mult = 1;
+      if (z < 0.15) mult = 8;
+      else if (z < 0.35) mult = 4;
+      else if (z < 0.7) mult = 2;
+      const gap = GRID_SIZE * mult * z;
+      const ox = viewport.x - gap / 2;
+      const oy = viewport.y - gap / 2;
+      pattern.setAttribute("x", String(ox));
+      pattern.setAttribute("y", String(oy));
+      pattern.setAttribute("width", String(gap));
+      pattern.setAttribute("height", String(gap));
+      const circle = pattern.firstElementChild;
+      if (circle) {
+        circle.setAttribute("cx", String(gap / 2));
+        circle.setAttribute("cy", String(gap / 2));
+        const r = Math.max(0.55, Math.min(0.85, 0.65 * Math.sqrt(z)));
+        circle.setAttribute("r", String(r));
+        const baseOp = Math.max(0, Math.min(0.12, (gap - 6) / 20));
+        circle.setAttribute("opacity", String(baseOp));
+      }
+    }
+  }, []);
+
+  const scheduleVpSync = useCallback(() => {
+    if (vpSyncTimerRef.current !== null) return;
+    vpSyncTimerRef.current = setTimeout(() => {
+      vpSyncTimerRef.current = null;
+      const cur = vpRef.current;
+      const last = lastCullVpRef.current;
+      const dx = Math.abs(cur.x - last.x);
+      const dy = Math.abs(cur.y - last.y);
+      const dz = Math.abs(cur.zoom - last.zoom);
+      if (dx > 40 || dy > 40 || dz > 0.03) {
+        lastCullVpRef.current = { ...cur };
+        setVp({ ...cur });
+      }
+    }, 100);
+  }, []);
+
+  const flushVpSync = useCallback(() => {
+    if (vpSyncTimerRef.current !== null) {
+      clearTimeout(vpSyncTimerRef.current);
+      vpSyncTimerRef.current = null;
+    }
+    const cur = vpRef.current;
+    lastCullVpRef.current = { ...cur };
+    setVp({ ...cur });
+  }, []);
+
   const setViewportImmediate = useCallback(
     (nextVp: React.SetStateAction<CanvasViewport>) => {
       stopSmoothZoom();
       stopPanInertia();
-      setVp((prev) => {
-        const next =
-          typeof nextVp === "function"
-            ? (nextVp as (current: CanvasViewport) => CanvasViewport)(prev)
-            : nextVp;
-        vpRef.current = next;
-        targetVpRef.current = next;
-        return next;
-      });
+      const next =
+        typeof nextVp === "function"
+          ? (nextVp as (current: CanvasViewport) => CanvasViewport)(vpRef.current)
+          : nextVp;
+      vpRef.current = next;
+      targetVpRef.current = next;
+      applyViewportToDOM(next);
+      lastCullVpRef.current = { ...next };
+      setVp({ ...next });
     },
-    [stopSmoothZoom, stopPanInertia],
+    [stopSmoothZoom, stopPanInertia, applyViewportToDOM],
   );
 
   const startSmoothZoom = useCallback(() => {
     if (zoomAnimFrameRef.current !== null) return;
 
     const animate = () => {
-      let finished = false;
-      setVp((prev) => {
-        const target = targetVpRef.current;
-        const zoomDiff = Math.abs(target.zoom - prev.zoom);
-        const xDiff = Math.abs(target.x - prev.x);
-        const yDiff = Math.abs(target.y - prev.y);
+      const prev = vpRef.current;
+      const target = targetVpRef.current;
+      const zoomDiff = Math.abs(target.zoom - prev.zoom);
+      const xDiff = Math.abs(target.x - prev.x);
+      const yDiff = Math.abs(target.y - prev.y);
 
-        if (zoomDiff <= 0.001 && xDiff <= 0.5 && yDiff <= 0.5) {
-          const snapped = { ...target };
-          vpRef.current = snapped;
-          finished = true;
-          return snapped;
-        }
-
-        const next = {
-          x: prev.x + (target.x - prev.x) * PAN_LERP,
-          y: prev.y + (target.y - prev.y) * PAN_LERP,
-          zoom: prev.zoom + (target.zoom - prev.zoom) * ZOOM_LERP,
-        };
-        vpRef.current = next;
-        return next;
-      });
-
-      if (finished) {
+      if (zoomDiff <= 0.001 && xDiff <= 0.5 && yDiff <= 0.5) {
+        applyViewportToDOM(target);
+        targetVpRef.current = target;
+        flushVpSync();
         zoomAnimFrameRef.current = null;
         return;
       }
+
+      const next = {
+        x: prev.x + (target.x - prev.x) * PAN_LERP,
+        y: prev.y + (target.y - prev.y) * PAN_LERP,
+        zoom: prev.zoom + (target.zoom - prev.zoom) * ZOOM_LERP,
+      };
+      applyViewportToDOM(next);
+      scheduleVpSync();
       zoomAnimFrameRef.current = requestAnimationFrame(animate);
     };
 
     zoomAnimFrameRef.current = requestAnimationFrame(animate);
-  }, []);
+  }, [applyViewportToDOM, scheduleVpSync, flushVpSync]);
 
   const startPanInertia = useCallback(() => {
     if (panInertiaFrameRef.current !== null) return;
@@ -917,6 +986,7 @@ export function CanvasView({
     if (speed < PAN_INERTIA_MIN_SPEED) {
       panVelocityRef.current = { x: 0, y: 0 };
       panSampleRef.current = null;
+      flushVpSync();
       return;
     }
 
@@ -937,30 +1007,34 @@ export function CanvasView({
         panInertiaFrameRef.current = null;
         panVelocityRef.current = { x: 0, y: 0 };
         panSampleRef.current = null;
+        flushVpSync();
         return;
       }
 
-      setVp((prev) => {
-        const next = {
-          ...prev,
-          x: prev.x + nextV.x * dt,
-          y: prev.y + nextV.y * dt,
-        };
-        vpRef.current = next;
-        targetVpRef.current = next;
-        return next;
-      });
+      const prev = vpRef.current;
+      const next = {
+        ...prev,
+        x: prev.x + nextV.x * dt,
+        y: prev.y + nextV.y * dt,
+      };
+      targetVpRef.current = next;
+      applyViewportToDOM(next);
+      scheduleVpSync();
 
       panInertiaFrameRef.current = requestAnimationFrame(step);
     };
 
     panInertiaFrameRef.current = requestAnimationFrame(step);
-  }, [stopSmoothZoom]);
+  }, [stopSmoothZoom, applyViewportToDOM, scheduleVpSync, flushVpSync]);
 
   useEffect(
     () => () => {
       stopSmoothZoom();
       stopPanInertia();
+      if (vpSyncTimerRef.current !== null) {
+        clearTimeout(vpSyncTimerRef.current);
+        vpSyncTimerRef.current = null;
+      }
     },
     [stopSmoothZoom, stopPanInertia],
   );
@@ -2200,12 +2274,10 @@ export function CanvasView({
           }
 
           panSampleRef.current = { x: nextX, y: nextY, at: now };
-          setVp((prevVp) => {
-            const next = { ...prevVp, x: nextX, y: nextY };
-            vpRef.current = next;
-            targetVpRef.current = next;
-            return next;
-          });
+          const nextPanVp = { ...vpRef.current, x: nextX, y: nextY };
+          targetVpRef.current = nextPanVp;
+          applyViewportToDOM(nextPanVp);
+          scheduleVpSync();
           break;
         }
         case "node": {
@@ -2620,12 +2692,9 @@ export function CanvasView({
           }
         }
 
-        setVp((prevVp) => {
-          const next = { ...prevVp, x: endX, y: endY };
-          vpRef.current = next;
-          targetVpRef.current = next;
-          return next;
-        });
+        const finalPanVp = { ...vpRef.current, x: endX, y: endY };
+        targetVpRef.current = finalPanVp;
+        applyViewportToDOM(finalPanVp);
 
         startPanInertia();
       }
@@ -3061,6 +3130,12 @@ export function CanvasView({
   const groupLabelZoomMult = Math.min(14, Math.max(1, 1 / vp.zoom));
   const invZoom = 1 / vp.zoom;
   const canvasTextZoomMult = Math.min(3, Math.max(1, 1 + (invZoom - 1) * 0.28));
+
+  // Ensure DOM transform + CSS custom properties stay in sync after any React re-render
+  // (prevents stale inline styles from overwriting the ref-based transform)
+  useLayoutEffect(() => {
+    applyViewportToDOM(vpRef.current);
+  }, [vp, applyViewportToDOM]);
   const renderVp = useMemo(() => {
     const dpr =
       typeof window !== "undefined"
@@ -3309,8 +3384,6 @@ export function CanvasView({
       style={
         {
           cursor,
-          "--zoom-mult": uiZoomMult,
-          "--group-label-zoom-mult": groupLabelZoomMult,
           "--cv-custom-bg": canvasBackgroundColor || "var(--cv-bg)",
         } as any
       }
@@ -3336,12 +3409,8 @@ export function CanvasView({
         {/* Transform group */}
         <div
           className="cv-transform"
-          style={
-            {
-              transform: `translate(${renderVp.x}px,${renderVp.y}px) scale(${renderVp.zoom})`,
-              "--ctz": canvasTextZoomMult,
-            } as any
-          }
+          ref={transformElRef}
+          style={undefined}
         >
           {/* SVG edges */}
           <svg className="cv-edges">
