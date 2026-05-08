@@ -1804,19 +1804,28 @@ export function CanvasView({
       if (e.button === 0 && tool === "lasso") {
         const p = s2c(e.clientX, e.clientY);
         const selected = selectedScribbleIdsRef.current;
-        const moveHitId = selected.size
-          ? firstStrokeIdNearPoint(
-              scribblesRef.current,
-              p,
-              10 / Math.max(vpRef.current.zoom, 0.25),
-              selected,
-            )
-          : null;
+        const hitScribbleId = firstStrokeIdNearPoint(
+          scribblesRef.current,
+          p,
+          10 / Math.max(vpRef.current.zoom, 0.25)
+        );
 
-        if (moveHitId) {
+        if (hitScribbleId) {
+          const nextSelected = new Set(selected);
+          if (!nextSelected.has(hitScribbleId)) {
+            nextSelected.clear();
+            nextSelected.add(hitScribbleId);
+          }
+          setSelectedScribbleIds(nextSelected);
+          selectedScribbleIdsRef.current = nextSelected;
+          setSelNodes(new Set());
+          setSelEdges(new Set());
+          setEdgeMenuClickAnchor(null);
+          setColorPickerFor(null);
+
           const origin: Record<string, CanvasScribblePoint[]> = {};
           scribblesRef.current.forEach((stroke) => {
-            if (!selected.has(stroke.id)) return;
+            if (!nextSelected.has(stroke.id)) return;
             origin[stroke.id] = stroke.points.map((pt) => ({
               x: pt.x,
               y: pt.y,
@@ -1867,6 +1876,52 @@ export function CanvasView({
       }
       if (e.button === 0 && tool === "select") {
         const p = s2c(e.clientX, e.clientY);
+        const hitScribbleId = firstStrokeIdNearPoint(
+          scribblesRef.current,
+          p,
+          10 / Math.max(vpRef.current.zoom, 0.25)
+        );
+
+        if (hitScribbleId) {
+          const nextSelected = new Set(selectedScribbleIdsRef.current);
+          if (e.ctrlKey || e.metaKey) {
+            if (nextSelected.has(hitScribbleId)) {
+              nextSelected.delete(hitScribbleId);
+            } else {
+              nextSelected.add(hitScribbleId);
+            }
+          } else {
+            if (!nextSelected.has(hitScribbleId)) {
+              nextSelected.clear();
+              nextSelected.add(hitScribbleId);
+            }
+          }
+          setSelectedScribbleIds(nextSelected);
+          selectedScribbleIdsRef.current = nextSelected;
+          setSelNodes(new Set());
+          setSelEdges(new Set());
+          setEdgeMenuClickAnchor(null);
+          setColorPickerFor(null);
+
+          const origin: Record<string, CanvasScribblePoint[]> = {};
+          scribblesRef.current.forEach((stroke) => {
+            if (!nextSelected.has(stroke.id)) return;
+            origin[stroke.id] = stroke.points.map((pt) => ({
+              x: pt.x,
+              y: pt.y,
+            }));
+          });
+          scribbleMoveOriginRef.current = origin;
+          scribbleMoveChangedRef.current = false;
+          setDrag({
+            type: "scribble-move",
+            startX: e.clientX,
+            startY: e.clientY,
+          });
+          e.preventDefault();
+          return;
+        }
+
         setDrag({ type: "select", startX: p.x, startY: p.y });
         setSelNodes(new Set());
         setSelEdges(new Set());
@@ -1994,6 +2049,34 @@ export function CanvasView({
           originById[node.id] = { x: node.x, y: node.y };
         }
       });
+
+      const scribbleOrigin: Record<string, CanvasScribblePoint[]> = {};
+      const draggedGroupIds = Array.from(movingIds).filter((mid) => {
+        const nd = nodes.find((x) => x.id === mid);
+        return nd && nd.type === "group";
+      });
+
+      scribblesRef.current.forEach((stroke) => {
+        const insideGroup = draggedGroupIds.some((gid) => {
+          const g = nodes.find((x) => x.id === gid);
+          if (!g) return false;
+          return stroke.points.every(
+            (pt) =>
+              pt.x >= g.x &&
+              pt.y >= g.y &&
+              pt.x <= g.x + g.width &&
+              pt.y <= g.y + g.height,
+          );
+        });
+        if (insideGroup) {
+          scribbleOrigin[stroke.id] = stroke.points.map((pt) => ({
+            x: pt.x,
+            y: pt.y,
+          }));
+        }
+      });
+      scribbleMoveOriginRef.current = scribbleOrigin;
+      scribbleMoveChangedRef.current = false;
 
       setDrag({
         type: "node",
@@ -2234,6 +2317,28 @@ export function CanvasView({
               return { ...n, x: orig.x + bestDx, y: orig.y + bestDy };
             }),
           );
+
+          const scribbleOrigin = scribbleMoveOriginRef.current;
+          if (Object.keys(scribbleOrigin).length > 0) {
+            if (
+              !scribbleMoveChangedRef.current &&
+              (Math.abs(bestDx) > 0.02 || Math.abs(bestDy) > 0.02)
+            ) {
+              scribbleMoveChangedRef.current = true;
+            }
+            setScribbles((prev) => {
+              const next = prev.map((stroke) => {
+                const base = scribbleOrigin[stroke.id];
+                if (!base) return stroke;
+                return {
+                  ...stroke,
+                  points: base.map((p) => ({ x: p.x + bestDx, y: p.y + bestDy })),
+                };
+              });
+              scribblesRef.current = next;
+              return next;
+            });
+          }
           break;
         }
         case "edge": {
@@ -2304,6 +2409,7 @@ export function CanvasView({
           const w = Math.abs(cp.x - drag.startX),
             h = Math.abs(cp.y - drag.startY);
           setSelBox({ x, y, w, h });
+          
           const sel = new Set<string>();
           nodesRef.current.forEach((n) => {
             if (
@@ -2315,6 +2421,22 @@ export function CanvasView({
               sel.add(n.id);
           });
           setSelNodes(sel);
+
+          const selScribbles = new Set<string>();
+          scribblesRef.current.forEach((stroke) => {
+            if (
+              stroke.points.every(
+                (pt) =>
+                  pt.x >= x &&
+                  pt.x <= x + w &&
+                  pt.y >= y &&
+                  pt.y <= y + h
+              )
+            ) {
+              selScribbles.add(stroke.id);
+            }
+          });
+          setSelectedScribbleIds(selScribbles);
           break;
         }
         case "resize": {
@@ -2606,7 +2728,7 @@ export function CanvasView({
       }
 
       if (drag.type === "node" || drag.type === "resize")
-        push(nodesRef.current, edgesRef.current);
+        push(nodesRef.current, edgesRef.current, scribblesRef.current);
       setDrag({ type: "none", startX: 0, startY: 0 });
       setAlignLines({ x: [], y: [] });
       setSelBox(null);
