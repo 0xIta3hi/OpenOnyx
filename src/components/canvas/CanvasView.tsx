@@ -3304,6 +3304,7 @@ export function CanvasView({
     <div
       className="cv"
       ref={wrapRef}
+      data-theme={theme}
       data-dragging={drag.type !== "none"}
       style={
         {
@@ -4415,15 +4416,35 @@ function DotGrid({
   color?: string;
   opacityMultiplier: number;
 }) {
-  const gap = GRID_SIZE * zoom;
-  const dotRadius = Math.max(0.1, Math.min(0.5, 0.5 * zoom));
-  const dotOpacity = Math.max(0, Math.min(0.72, (gap - 1.8) / 5.8));
-  const finalOpacity = dotOpacity * clampDotOpacityMultiplier(opacityMultiplier);
-  if (finalOpacity <= 0.01) return null;
-  const ox = ((offX % gap) + gap) % gap;
-  const oy = ((offY % gap) + gap) % gap;
+  // Dynamic grid scaling to avoid Moire patterns and dense grid lines when zooming out
+  let multiplier = 1;
+  if (zoom < 0.15) {
+    multiplier = 8;
+  } else if (zoom < 0.35) {
+    multiplier = 4;
+  } else if (zoom < 0.7) {
+    multiplier = 2;
+  }
+
+  const step = GRID_SIZE * multiplier;
+  const gap = step * zoom;
+
+  // Ultra-calm, subtle, crisp dot radius in screen pixels that matches Obsidian's look
+  const dotRadius = Math.max(0.55, Math.min(0.85, 0.65 * Math.sqrt(zoom)));
+
+  // Calculate dynamic opacity based on screen gap (much lower opacity to look calm and elegant)
+  const baseOpacity = Math.max(0, Math.min(0.12, (gap - 6) / 20));
+  const finalOpacity = baseOpacity * clampDotOpacityMultiplier(opacityMultiplier);
+
+  if (finalOpacity <= 0.005) return null;
+
+  // Use raw offX/offY directly to completely eliminate modulo-rounding jumpiness during panning/zooming.
+  // Center-offsetting by half the gap ensures exact alignment with node grid coordinates (0, 20, 40...)
+  const ox = offX - gap / 2;
+  const oy = offY - gap / 2;
+
   return (
-    <svg className="cv-dots">
+    <svg className="cv-dots" style={{ pointerEvents: "none" }}>
       <defs>
         <pattern
           id="cvDot"
@@ -4437,7 +4458,7 @@ function DotGrid({
             cx={gap / 2}
             cy={gap / 2}
             r={dotRadius}
-            fill={color || "var(--cv-dot)"}
+            fill={color || "var(--cv-dot, var(--cv-theme-dot))"}
             opacity={finalOpacity}
           />
         </pattern>
