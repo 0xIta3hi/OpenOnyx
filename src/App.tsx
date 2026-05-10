@@ -1908,6 +1908,23 @@ export default function App() {
       } else if (ctrl && e.key === "b") {
         e.preventDefault();
         setShowSidebar((s) => !s);
+      } else if (ctrl && e.key === "Tab") {
+        e.preventDefault();
+        if (tabs.length <= 1) return;
+        const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+        if (currentIndex === -1) return;
+        
+        let nextIndex;
+        if (shift) {
+          nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        } else {
+          nextIndex = (currentIndex + 1) % tabs.length;
+        }
+        
+        const nextTab = tabs[nextIndex];
+        if (nextTab) {
+          handleTabSelect(nextTab.id);
+        }
       } else if (ctrl && e.key === "w") {
         e.preventDefault();
         if (activeTabId) closeTab(activeTabId);
@@ -2842,6 +2859,33 @@ export default function App() {
       clearAutoSaveTimer();
     };
   }, [clearAutoSaveTimer]);
+  const handleTabSelect = async (id: string) => {
+    setActiveTabId(id);
+    const tab = tabs.find((t) => t.id === id);
+    if (tab) {
+      if (isCanvasFile(tab.path)) {
+        await openFile(tab.path, "preview");
+        return;
+      }
+      if (tab.path === GRAPH_TAB_PATH) {
+        setCurrentContent("");
+        setBacklinks([]);
+        return;
+      }
+      if (tab.path === SPACES_TAB_PATH) {
+        setCurrentContent("");
+        setBacklinks([]);
+        return;
+      }
+      try {
+        const content = await api.readFile(tab.path);
+        setCurrentContent(content);
+        loadBacklinks(tab.path);
+      } catch (e) {
+        console.error("Failed to read file for tab:", e);
+      }
+    }
+  };
 
   const closeTab = async (tabId: string) => {
     const tab = tabs.find((t) => t.id === tabId);
@@ -3820,29 +3864,7 @@ export default function App() {
         }}
         tabs={tabs}
         activeTabId={activeTabId}
-        onTabSelect={async (id) => {
-          setActiveTabId(id);
-          const tab = tabs.find((t) => t.id === id);
-          if (tab) {
-            if (isCanvasFile(tab.path)) {
-              await openFile(tab.path, "preview");
-              return;
-            }
-            if (tab.path === GRAPH_TAB_PATH) {
-              setCurrentContent("");
-              setBacklinks([]);
-              return;
-            }
-            if (tab.path === SPACES_TAB_PATH) {
-              setCurrentContent("");
-              setBacklinks([]);
-              return;
-            }
-            const content = await api.readFile(tab.path);
-            setCurrentContent(content);
-            loadBacklinks(tab.path);
-          }
-        }}
+        onTabSelect={handleTabSelect}
         onTabClose={closeTab}
         onNewTab={handleNewNote}
         onToggleExplorer={() => setShowSidebar((s) => !s)}

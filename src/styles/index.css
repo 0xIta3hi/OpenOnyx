@@ -741,7 +741,9 @@ body {
 .titlebar-new-tab {
   flex-shrink: 0;
   margin-left: 2px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  width: 28px !important;
+  height: 28px !important;
 }
 
 /* -- Right window controls -- */

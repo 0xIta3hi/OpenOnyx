@@ -57,6 +57,21 @@ export function TitleBar({
   const isMac = navigator.platform.includes("Mac");
   const titlebarRef = useRef<HTMLDivElement>(null);
 
+  React.useEffect(() => {
+    const el = tabScrollRef?.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [tabScrollRef]);
+
   return (
     <div className="titlebar" ref={titlebarRef}>
       {/* Left action icons - spans over ribbon + sidebar */}
@@ -112,7 +127,10 @@ export function TitleBar({
 
       {/* Center: tabs - starts at editor content boundary */}
       <div className="titlebar-tabs">
-        <div className="titlebar-tab-scroll" ref={tabScrollRef}>
+        <div 
+          className="titlebar-tab-scroll" 
+          ref={tabScrollRef}
+        >
           {tabs.map((tab) => (
             <div
               key={tab.id}
@@ -144,7 +162,7 @@ export function TitleBar({
             onClick={onNewTab}
             title="New tab"
           >
-            <Plus size={14} strokeWidth={1.5} />
+            <Plus size={16} strokeWidth={1.5} />
           </button>
         )}
       </div>
