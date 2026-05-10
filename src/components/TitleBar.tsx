@@ -9,6 +9,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Theme, Command } from "../types";
 import { getAPI } from "../utils/api";
 import { Search } from "lucide-react";
+import { isDarkTheme } from "../utils/helpers";
 
 interface TitleBarProps {
   theme: Theme;
@@ -26,22 +27,7 @@ export function TitleBar({
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
-  const [isDark, setIsDark] = useState(true);
-
-  useEffect(() => {
-    if (titlebarRef.current) {
-      const bg = window.getComputedStyle(titlebarRef.current).backgroundColor;
-      const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
-      if (match) {
-        const r = parseInt(match[1]);
-        const g = parseInt(match[2]);
-        const b = parseInt(match[3]);
-        // Simple luminance formula
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        setIsDark(luminance < 0.5);
-      }
-    }
-  }, [theme]);
+  const isDark = isDarkTheme(theme);
 
   const categories = Array.from(
     new Set(commands.map((cmd) => cmd.category || "Other")),
@@ -67,8 +53,8 @@ export function TitleBar({
           src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
           alt="OpenObsidian Logo"
           style={{
-            width: "20px",
-            height: "20px",
+            width: "26px",
+            height: "26px",
             marginRight: "8px",
             objectFit: "contain",
             WebkitAppRegion: "no-drag",

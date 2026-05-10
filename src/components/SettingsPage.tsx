@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { PluginSettingsPanel } from './PluginSettingsPanel';
 import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
+import { isDarkTheme } from "../utils/helpers";
 
 export interface AppSettings {
   // Appearance
@@ -124,21 +125,7 @@ export function SettingsPage({
     useState<SettingsSection>("appearance");
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const pageRef = React.useRef<HTMLDivElement>(null);
-  const [isDark, setIsDark] = React.useState(true);
-
-  React.useEffect(() => {
-    if (pageRef.current) {
-      const bg = window.getComputedStyle(pageRef.current).backgroundColor;
-      const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
-      if (match) {
-        const r = parseInt(match[1]);
-        const g = parseInt(match[2]);
-        const b = parseInt(match[3]);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        setIsDark(luminance < 0.5);
-      }
-    }
-  }, [localSettings.theme]);
+  const isDark = isDarkTheme(localSettings.theme);
 
   const updateSetting = <K extends keyof AppSettings>(
     key: K,

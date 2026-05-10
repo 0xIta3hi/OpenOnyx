@@ -3871,6 +3871,7 @@ export default function App() {
                 <WelcomeScreen
                   onOpenVault={handleWelcomeVaultAction}
                   transitionPhase={vaultEntryTransitionPhase}
+                  theme={theme}
                 />
               </div>
 
@@ -3884,6 +3885,7 @@ export default function App() {
             <WelcomeScreen
               onOpenVault={handleWelcomeVaultAction}
               transitionPhase="idle"
+              theme={theme}
             />
           ) : isFTUXZeroState ? (
             renderFTUXZeroState()

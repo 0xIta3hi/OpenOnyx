@@ -1,3 +1,5 @@
+import { Theme } from "../types";
+
 /**
  * Utility helpers for OpenObsidian
  */
@@ -63,10 +65,21 @@ export function processWikiLinks(content: string): string {
   );
 }
 
+
 /** Process tags in markdown for preview */
 export function processTags(content: string): string {
   return content.replace(
     /(?:^|\s)(#[a-zA-Z][a-zA-Z0-9_-]*)/g,
     ' <span class="tag" data-tag="$1">$1</span>',
   );
+}
+
+/** Determine if a theme is a dark theme */
+export function isDarkTheme(theme: string | Theme): boolean {
+  if (theme === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  // Custom themes are usually dark by default in this app's design system
+  if (theme === "custom") return true; 
+  return ["dark", "oceanic", "dark-plus"].includes(theme as Theme);
 }

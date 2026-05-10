@@ -7,6 +7,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { FolderOpen, Plus, Network } from "lucide-react";
+import { Theme } from "../types";
+import { isDarkTheme } from "../utils/helpers";
 
 export type VaultEntryAction = "open" | "create";
 export type VaultEntryTransitionPhase = "idle" | "transitioning" | "entered";
@@ -14,30 +16,18 @@ export type VaultEntryTransitionPhase = "idle" | "transitioning" | "entered";
 interface WelcomeScreenProps {
   onOpenVault: (action: VaultEntryAction) => void;
   transitionPhase?: VaultEntryTransitionPhase;
+  theme?: Theme;
 }
 
 export function WelcomeScreen({
   onOpenVault,
   transitionPhase = "idle",
+  theme = "dark",
 }: WelcomeScreenProps) {
   const [pressedAction, setPressedAction] = useState<VaultEntryAction | null>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenRef = useRef<HTMLDivElement>(null);
-  const [isDark, setIsDark] = useState(true);
-
-  useEffect(() => {
-    if (screenRef.current) {
-      const bg = window.getComputedStyle(screenRef.current).backgroundColor;
-      const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
-      if (match) {
-        const r = parseInt(match[1]);
-        const g = parseInt(match[2]);
-        const b = parseInt(match[3]);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        setIsDark(luminance < 0.5);
-      }
-    }
-  }, []);
+  const isDark = isDarkTheme(theme);
 
   useEffect(() => {
     return () => {
