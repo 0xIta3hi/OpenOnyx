@@ -569,6 +569,110 @@ body {
   color: var(--text-primary);
 }
 
+/* -- Editor Header (Second Row) -- */
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 16px;
+  background: var(--bg-primary);
+  user-select: none;
+}
+
+.editor-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.editor-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.editor-header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* Let clicks pass through to background if needed */
+}
+
+.editor-header-center > * {
+  pointer-events: auto; /* Re-enable clicks for breadcrumbs */
+}
+
+.editor-header-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  transition: all 150ms ease;
+}
+
+.insight-btn {
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  height: 24px;
+  padding: 0 8px 0 2px;
+}
+
+.insight-btn span {
+  opacity: 0.8;
+}
+
+.insight-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.insight-btn:hover span {
+  opacity: 1;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.breadcrumb-part {
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.breadcrumb-part:hover {
+  color: var(--text-secondary);
+}
+
+.breadcrumb-part.active {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.breadcrumb-separator {
+  margin: 0 4px;
+  opacity: 0.5;
+}
+
 /* -- Center tabs area -- */
 .titlebar-tabs {
   display: flex;
@@ -1160,7 +1264,7 @@ body {
 
 .editor-header {
   padding: 4px 12px;
-  border-bottom: 1px solid var(--divider-color);
+  /* border-bottom removed */
   display: flex;
   align-items: center;
   justify-content: space-between;

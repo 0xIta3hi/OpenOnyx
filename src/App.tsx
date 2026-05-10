@@ -18,6 +18,7 @@ import './lib/obsidian-api/dom-extensions';
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/editor/Editor";
+import { EditorHeader } from "./components/editor/EditorHeader";
 import { AIKnowledgeGraphFTUX } from "./components/graph/AIKnowledgeGraphFTUX";
 import { CanvasView } from "./components/canvas/CanvasView";
 import { SearchModal } from "./components/SearchModal";
@@ -3987,6 +3988,16 @@ export default function App() {
                     <div
                       className={`ftux-editor-host ${ftuxConnectionPulse ? "ftux-connection-highlight-pulse" : ""}`}
                     >
+                      <EditorHeader
+                        filePath={activeTab.path}
+                        viewMode={viewMode}
+                        onViewModeChange={setViewMode}
+                        onThoughtModel={() => {
+                          setShowGraph(false);
+                          setShowCanvas(false);
+                          setShowThoughtModel((t) => !t);
+                        }}
+                      />
                       <Editor
                         tabs={tabs}
                         activeTabId={activeTabId!}

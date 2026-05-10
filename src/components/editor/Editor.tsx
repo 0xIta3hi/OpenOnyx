@@ -3052,17 +3052,6 @@ export function Editor({
     <>
 
 
-      {/* Inline annotation toggle */}
-      {annotation && !showInsight && (
-        <div 
-          className="editor-insight-toggle" 
-          onClick={() => setShowInsight(true)}
-        >
-          <Lightbulb size={12} style={{ marginRight: 4 }} />
-          View insight of note
-        </div>
-      )}
-
       {/* Inline annotation content */}
       {annotation && showInsight && (
         <div className="editor-annotation readable-insight">
@@ -3104,71 +3093,6 @@ export function Editor({
           </div>
         ) : (
           <>
-            {/* View Mode Toggle (Obsidian style) */}
-            <div
-              className="editor-view-actions"
-              style={{
-                position: "absolute",
-                top: "12px",
-                right: "28px",
-                display: "flex",
-                gap: "8px",
-                zIndex: 10,
-              }}
-            >
-              {viewMode === "editor" || viewMode === "split" ? (
-                <button
-                  className="editor-action-btn"
-                  onClick={() => onViewModeChange("preview")}
-                  title="Reading view"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "4px",
-                    borderRadius: "var(--radius-sm)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLElement).style.color = "var(--text-primary)")
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")
-                  }
-                >
-                  <BookOpen size={16} />
-                </button>
-              ) : (
-                <button
-                  className="editor-action-btn"
-                  onClick={() => onViewModeChange("editor")}
-                  title="Editing view"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "4px",
-                    borderRadius: "var(--radius-sm)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLElement).style.color = "var(--text-primary)")
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")
-                  }
-                >
-                  <Pen size={16} />
-                </button>
-              )}
-            </div>
-
             {/* VS Code-style Search/Replace Panel */}
             <SearchReplace
               getView={() => viewRef.current}

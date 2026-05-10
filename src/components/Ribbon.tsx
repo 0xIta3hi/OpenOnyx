@@ -17,8 +17,8 @@ import type { PluginRibbonAction } from '../types/plugin';
 interface RibbonProps {
   onNewNote: () => void;
   onSearch: () => void;
+  onToggleExplorer?: () => void;
   onGraph: () => void;
-  onToggleExplorer: () => void;
   onSettings: () => void;
   onDailyNote?: () => void;
   onToggleTags?: () => void;
