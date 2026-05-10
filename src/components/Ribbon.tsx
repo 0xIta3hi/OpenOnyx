@@ -52,13 +52,6 @@ export function Ribbon({
       <div className="ribbon-top">
         <button
           className="ribbon-btn"
-          onClick={onToggleExplorer}
-          title="File Explorer (Ctrl+B)"
-        >
-          <FolderOpen size={20} strokeWidth={1.5} />
-        </button>
-        <button
-          className="ribbon-btn"
           onClick={handleSearch}
           title="Search inside file (Ctrl+F)"
         >

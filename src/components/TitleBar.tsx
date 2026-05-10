@@ -1,188 +1,155 @@
 /**
- * TitleBar - Custom window title bar
+ * TitleBar - Custom window title bar (Obsidian-style)
  *
- * Provides window controls (minimize, maximize, close) on non-macOS
- * platforms, along with the app branding.
+ * Unified top bar with:
+ *   Left: action icons aligned above the ribbon + sidebar
+ *   Center: editor tabs starting at the editor content boundary
+ *   Right: window controls (minimize, maximize, close)
  */
 
-import React, { useState, useRef, useEffect } from "react";
-import { Theme, Command } from "../types";
+import React, { useRef } from "react";
+import { Tab, Theme } from "../types";
 import { getAPI } from "../utils/api";
-import { Search } from "lucide-react";
-import { isDarkTheme } from "../utils/helpers";
+import {
+  PanelLeft,
+  Search,
+  FilePlus,
+  Plus,
+  FolderOpen,
+} from "lucide-react";
 
 interface TitleBarProps {
   theme: Theme;
-  onCommandPalette?: () => void;
-  commands?: Command[];
+  onToggleSidebar?: () => void;
+  showSidebar?: boolean;
+  onNewNote?: () => void;
+  onSearch?: () => void;
+  onToggleExplorer?: () => void;
+  /** Width of the left section (ribbon + sidebar) so tabs align with editor */
+  leftWidth?: number;
+  /** Tab data */
+  tabs?: Tab[];
+  activeTabId?: string | null;
+  onTabSelect?: (id: string) => void;
+  onTabClose?: (id: string) => void;
+  onNewTab?: () => void;
+  tabScrollRef?: React.RefObject<HTMLDivElement>;
+  children?: React.ReactNode;
 }
 
 export function TitleBar({
   theme,
-  onCommandPalette,
-  commands = [],
+  onToggleSidebar,
+  showSidebar = true,
+  onNewNote,
+  onSearch,
+  onToggleExplorer,
+  leftWidth,
+  tabs = [],
+  activeTabId,
+  onTabSelect,
+  onTabClose,
+  onNewTab,
+  tabScrollRef,
+  children,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
-  const isDark = isDarkTheme(theme);
-
-  const categories = Array.from(
-    new Set(commands.map((cmd) => cmd.category || "Other")),
-  );
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setActiveMenu(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   return (
     <div className="titlebar" ref={titlebarRef}>
+      {/* Left action icons - spans over ribbon + sidebar */}
       <div
         className="titlebar-left"
-        style={{ display: "flex", alignItems: "center" }}
+        style={{
+          width: leftWidth ? `${leftWidth}px` : undefined,
+          minWidth: leftWidth ? `${leftWidth}px` : undefined,
+        }}
       >
-        <img
-          src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
-          alt="OpenObsidian Logo"
-          style={{
-            width: "26px",
-            height: "26px",
-            marginRight: "8px",
-            objectFit: "contain",
-            WebkitAppRegion: "no-drag",
-          } as any}
-        />
-        <div className="titlebar-title" style={{ marginRight: "16px" }}>
-          OpenObsidian
-        </div>
-
-        {commands.length > 0 && (
-          <div
-            className="titlebar-menu"
-            ref={menuRef}
-            style={{ display: "flex", WebkitAppRegion: "no-drag" } as any}
+        {onToggleSidebar && (
+          <button
+            className="titlebar-action-btn titlebar-toggle-btn"
+            onClick={onToggleSidebar}
+            title={showSidebar ? "Close left sidebar" : "Open left sidebar"}
           >
-            {categories.map((category) => (
-              <div key={category} style={{ position: "relative" }}>
+            <PanelLeft size={16} strokeWidth={1.5} />
+          </button>
+        )}
+        
+        {showSidebar && (
+          <div className="titlebar-left-center-group">
+            {onToggleExplorer && (
+              <button
+                className="titlebar-action-btn"
+                onClick={onToggleExplorer}
+                title="File Explorer"
+              >
+                <FolderOpen size={16} strokeWidth={1.5} />
+              </button>
+            )}
+            {onSearch && (
+              <button
+                className="titlebar-action-btn"
+                onClick={onSearch}
+                title="Search (Ctrl+F)"
+              >
+                <Search size={16} strokeWidth={1.5} />
+              </button>
+            )}
+            {onNewNote && (
+              <button
+                className="titlebar-action-btn"
+                onClick={onNewNote}
+                title="New Note (Ctrl+N)"
+              >
+                <FilePlus size={16} strokeWidth={1.5} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Center: tabs - starts at editor content boundary */}
+      <div className="titlebar-tabs">
+        <div className="titlebar-tab-scroll" ref={tabScrollRef}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              data-tab-id={tab.id}
+              className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""}`}
+              onClick={() => onTabSelect?.(tab.id)}
+            >
+              <div className="tab-inner">
+                {tab.isModified && (
+                  <span className="titlebar-tab-dot">{"\u25CF"}</span>
+                )}
+                <span className="titlebar-tab-title">{tab.name}</span>
                 <button
-                  className={`menu-btn ${activeMenu === category ? "active" : ""}`}
-                  onClick={() =>
-                    setActiveMenu(activeMenu === category ? null : category)
-                  }
-                  onMouseEnter={() => {
-                    if (activeMenu && activeMenu !== category) {
-                      setActiveMenu(category);
-                    }
-                  }}
-                  style={{
-                    background:
-                      activeMenu === category
-                        ? "var(--bg-active)"
-                        : "transparent",
-                    border: "none",
-                    color: "var(--text-secondary)",
-                    padding: "6px 10px",
-                    fontSize: "13px",
-                    cursor: "default",
-                    borderRadius: "var(--radius-sm)",
-                    fontFamily: "var(--font-sans)",
+                  className="titlebar-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTabClose?.(tab.id);
                   }}
                 >
-                  {category}
+                  {"\u2715"}
                 </button>
-
-                {activeMenu === category && (
-                  <div
-                    className="menu-dropdown"
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 0,
-                      background: "var(--bg-elevated)",
-                      border: "1px solid var(--border-medium)",
-                      borderRadius: "var(--radius-md)",
-                      minWidth: "200px",
-                      boxShadow: "var(--shadow-md)",
-                      zIndex: 1000,
-                      padding: "4px",
-                    }}
-                  >
-                    {commands
-                      .filter((cmd) => (cmd.category || "Other") === category)
-                      .map((cmd) => (
-                        <button
-                          key={cmd.id}
-                          className="menu-item"
-                          onClick={() => {
-                            cmd.action();
-                            setActiveMenu(null);
-                          }}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            width: "100%",
-                            padding: "6px 12px",
-                            border: "none",
-                            background: "transparent",
-                            color: "var(--text-primary)",
-                            fontSize: "13px",
-                            cursor: "pointer",
-                            borderRadius: "var(--radius-sm)",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) =>
-                            ((e.target as HTMLElement).style.background =
-                              "var(--bg-hover)")
-                          }
-                          onMouseLeave={(e) =>
-                            ((e.target as HTMLElement).style.background =
-                              "transparent")
-                          }
-                        >
-                          <span>{cmd.label}</span>
-                          {cmd.shortcut && (
-                            <span
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "11px",
-                              }}
-                            >
-                              {cmd.shortcut}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                  </div>
-                )}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
+        </div>
+        {onNewTab && (
+          <button
+            className="titlebar-action-btn titlebar-new-tab"
+            onClick={onNewTab}
+            title="New tab"
+          >
+            <Plus size={14} strokeWidth={1.5} />
+          </button>
         )}
       </div>
 
-      <div className="titlebar-center">
-        {onCommandPalette && (
-          <div className="titlebar-command" onClick={onCommandPalette}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Search size={14} />
-              <span>Search or type a command...</span>
-            </div>
-            <div>
-              <kbd>Ctrl</kbd> <kbd>P</kbd>
-            </div>
-          </div>
-        )}
-      </div>
-
+      {/* Right: window controls */}
       {!isMac && (
         <div className="titlebar-controls">
           <button
@@ -190,21 +157,21 @@ export function TitleBar({
             onClick={() => api.minimizeWindow()}
             aria-label="Minimize"
           >
-            ─
+            &#x2500;
           </button>
           <button
             className="titlebar-btn"
             onClick={() => api.maximizeWindow()}
             aria-label="Maximize"
           >
-            □
+            &#x25A1;
           </button>
           <button
             className="titlebar-btn close"
             onClick={() => api.closeWindow()}
             aria-label="Close"
           >
-            ✕
+            &#x2715;
           </button>
         </div>
       )}

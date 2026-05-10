@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
-import { X, Lightbulb } from "lucide-react";
+import { X, Lightbulb, BookOpen, Pen } from "lucide-react";
 import { Compartment, EditorState } from "@codemirror/state";
 import {
   EditorView,
@@ -2188,7 +2188,7 @@ export function Editor({
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const tabScrollRef = useRef<HTMLDivElement>(null);
+
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
   const [showInsight, setShowInsight] = useState(false);
@@ -3046,95 +3046,11 @@ export function Editor({
     };
   }, [isSpecialTab]);
 
-  // Keep the active tab visible when tabs overflow horizontally.
-  useEffect(() => {
-    const scroller = tabScrollRef.current;
-    if (!scroller || !activeTabId) return;
 
-    const activeEl = Array.from(
-      scroller.querySelectorAll<HTMLElement>(".editor-tab"),
-    ).find((el) => el.dataset.tabId === activeTabId);
-
-    if (!activeEl) return;
-
-    const scrollerRect = scroller.getBoundingClientRect();
-    const tabRect = activeEl.getBoundingClientRect();
-    const isOutOfView =
-      tabRect.left < scrollerRect.left || tabRect.right > scrollerRect.right;
-
-    if (isOutOfView) {
-      activeEl.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "center",
-      });
-    }
-  }, [activeTabId, tabs]);
 
   return (
     <>
-      {/* Tab Bar */}
-      <div className={`editor-tab-bar ${!isSpecialTab ? "with-controls" : ""}`}>
-        <div className="editor-tab-scroll" ref={tabScrollRef}>
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              data-tab-id={tab.id}
-              className={`editor-tab ${tab.id === activeTabId ? "active" : ""}`}
-              onClick={() => onTabSelect(tab.id)}
-            >
-              <div className="tab-inner">
-                {tab.isModified && (
-                  <span
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "8px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    ●
-                  </span>
-                )}
-                <span className="tab-title">{tab.name}</span>
-                <button
-                  className="close-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTabClose(tab.id);
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
 
-        {!isSpecialTab && (
-          <div className="editor-tab-controls">
-            <div className="view-mode-toggle">
-              <button
-                className={`view-mode-btn ${viewMode === "editor" ? "active" : ""}`}
-                onClick={() => onViewModeChange("editor")}
-              >
-                Edit
-              </button>
-              <button
-                className={`view-mode-btn ${viewMode === "split" ? "active" : ""}`}
-                onClick={() => onViewModeChange("split")}
-              >
-                Split
-              </button>
-              <button
-                className={`view-mode-btn ${viewMode === "preview" ? "active" : ""}`}
-                onClick={() => onViewModeChange("preview")}
-              >
-                Read
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Inline annotation toggle */}
       {annotation && !showInsight && (
@@ -3188,6 +3104,71 @@ export function Editor({
           </div>
         ) : (
           <>
+            {/* View Mode Toggle (Obsidian style) */}
+            <div
+              className="editor-view-actions"
+              style={{
+                position: "absolute",
+                top: "12px",
+                right: "28px",
+                display: "flex",
+                gap: "8px",
+                zIndex: 10,
+              }}
+            >
+              {viewMode === "editor" || viewMode === "split" ? (
+                <button
+                  className="editor-action-btn"
+                  onClick={() => onViewModeChange("preview")}
+                  title="Reading view"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "4px",
+                    borderRadius: "var(--radius-sm)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  onMouseEnter={(e) =>
+                    ((e.currentTarget as HTMLElement).style.color = "var(--text-primary)")
+                  }
+                  onMouseLeave={(e) =>
+                    ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")
+                  }
+                >
+                  <BookOpen size={16} />
+                </button>
+              ) : (
+                <button
+                  className="editor-action-btn"
+                  onClick={() => onViewModeChange("editor")}
+                  title="Editing view"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "4px",
+                    borderRadius: "var(--radius-sm)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  onMouseEnter={(e) =>
+                    ((e.currentTarget as HTMLElement).style.color = "var(--text-primary)")
+                  }
+                  onMouseLeave={(e) =>
+                    ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")
+                  }
+                >
+                  <Pen size={16} />
+                </button>
+              )}
+            </div>
+
             {/* VS Code-style Search/Replace Panel */}
             <SearchReplace
               getView={() => viewRef.current}

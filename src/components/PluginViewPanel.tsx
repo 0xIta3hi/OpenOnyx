@@ -70,6 +70,7 @@ export function PluginViewPanel({ views, onClose }: PluginViewPanelProps) {
         background: 'var(--bg-secondary, #1a1a2e)',
         overflow: 'hidden',
         flexShrink: 0,
+        paddingTop: 0,
       }}
     >
       {/* Tab bar for multiple views */}

@@ -1074,6 +1074,7 @@ export default function App() {
   // ── File & Editor State ─────────────────────────────
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [currentContent, setCurrentContent] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
@@ -1409,10 +1410,35 @@ export default function App() {
       firstThoughtInputRef.current?.focus();
     }, 80);
 
-    return () => {
-      clearTimeout(focusTimer);
-    };
-  }, [ftuxState.notesCount, vaultEntryTransitionPhase, vaultPath]);
+    return () => clearTimeout(focusTimer);
+  }, [ftuxState.notesCount, vaultPath, vaultEntryTransitionPhase]);
+
+  // Keep the active tab visible when tabs overflow horizontally.
+  useEffect(() => {
+    const scroller = tabScrollRef.current;
+    if (!scroller || !activeTabId) return;
+
+    const activeEl = Array.from(
+      scroller.querySelectorAll<HTMLElement>(".editor-tab"),
+    ).find((el) => el.dataset.tabId === activeTabId);
+
+    if (!activeEl) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const tabRect = activeEl.getBoundingClientRect();
+    const isOutOfView =
+      tabRect.left < scrollerRect.left || tabRect.right > scrollerRect.right;
+
+    if (isOutOfView) {
+      activeEl.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }
+  }, [activeTabId, tabs]);
+
+
 
   useEffect(() => {
     const isZeroState = vaultPath !== null && ftuxState.notesCount === 0;
@@ -3785,8 +3811,42 @@ export default function App() {
     <div className="app">
       <TitleBar
         theme={theme}
-        onCommandPalette={() => setShowCommandPalette(true)}
-        commands={commands}
+        onToggleSidebar={() => setShowSidebar((s) => !s)}
+        showSidebar={showSidebar}
+        leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
+        onNewNote={handleNewNote}
+        onSearch={() => {
+          document.dispatchEvent(new CustomEvent("editor:open-search"));
+        }}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onTabSelect={async (id) => {
+          setActiveTabId(id);
+          const tab = tabs.find((t) => t.id === id);
+          if (tab) {
+            if (isCanvasFile(tab.path)) {
+              await openFile(tab.path, "preview");
+              return;
+            }
+            if (tab.path === GRAPH_TAB_PATH) {
+              setCurrentContent("");
+              setBacklinks([]);
+              return;
+            }
+            if (tab.path === SPACES_TAB_PATH) {
+              setCurrentContent("");
+              setBacklinks([]);
+              return;
+            }
+            const content = await api.readFile(tab.path);
+            setCurrentContent(content);
+            loadBacklinks(tab.path);
+          }
+        }}
+        onTabClose={closeTab}
+        onNewTab={handleNewNote}
+        onToggleExplorer={() => setShowSidebar((s) => !s)}
+        tabScrollRef={tabScrollRef as React.RefObject<HTMLDivElement>}
       />
 
       <div
@@ -3802,7 +3862,6 @@ export default function App() {
             onGraph={() => {
               openGraphAsTab();
             }}
-            onToggleExplorer={() => setShowSidebar((s) => !s)}
             onSettings={() => setShowSettings(true)}
             onDailyNote={handleCreateDailyNote}
             onToggleTags={() => setShowTags((t) => !t)}
