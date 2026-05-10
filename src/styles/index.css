@@ -524,7 +524,7 @@ body {
 .titlebar-left {
   display: flex;
   align-items: center;
-  padding: 0 4px;
+  padding: 0;
   height: 100%;
   flex-shrink: 0;
   pointer-events: auto;
@@ -533,22 +533,6 @@ body {
   transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1),
               min-width 200ms cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
-  position: relative;
-}
-
-.titlebar-toggle-btn {
-  z-index: 2;
-}
-
-.titlebar-left-center-group {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  z-index: 1;
 }
 
 .titlebar-action-btn {
@@ -559,12 +543,25 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-sm);
   transition: background 120ms, color 120ms;
   padding: 0;
   -webkit-app-region: no-drag;
+}
+
+.titlebar-toggle-btn {
+  width: 44px; /* Match ribbon width */
+  height: 100%;
+  border-radius: 0;
+}
+
+.titlebar-vault-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
 }
 
 .titlebar-action-btn:hover {

@@ -73,19 +73,19 @@ export function TitleBar({
             onClick={onToggleSidebar}
             title={showSidebar ? "Close left sidebar" : "Open left sidebar"}
           >
-            <PanelLeft size={16} strokeWidth={1.5} />
+            <PanelLeft size={20} strokeWidth={1.5} />
           </button>
         )}
         
         {showSidebar && (
-          <div className="titlebar-left-center-group">
+          <div className="titlebar-vault-actions">
             {onToggleExplorer && (
               <button
                 className="titlebar-action-btn"
                 onClick={onToggleExplorer}
                 title="File Explorer"
               >
-                <FolderOpen size={16} strokeWidth={1.5} />
+                <FolderOpen size={20} strokeWidth={1.5} />
               </button>
             )}
             {onSearch && (
@@ -94,7 +94,7 @@ export function TitleBar({
                 onClick={onSearch}
                 title="Search (Ctrl+F)"
               >
-                <Search size={16} strokeWidth={1.5} />
+                <Search size={20} strokeWidth={1.5} />
               </button>
             )}
             {onNewNote && (
@@ -103,7 +103,7 @@ export function TitleBar({
                 onClick={onNewNote}
                 title="New Note (Ctrl+N)"
               >
-                <FilePlus size={16} strokeWidth={1.5} />
+                <FilePlus size={20} strokeWidth={1.5} />
               </button>
             )}
           </div>
