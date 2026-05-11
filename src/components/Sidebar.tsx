@@ -58,30 +58,6 @@ type SortMode = "name" | "modified" | "type";
 
 // ── File Type Helpers ────────────────────────────────────────────────────────
 
-function getFileIcon(entry: FileEntry) {
-  if (entry.isDirectory) return null;
-  const ext = entry.extension?.toLowerCase() || "";
-  switch (ext) {
-    case ".canvas":
-      return <LayoutGrid size={14} strokeWidth={1.5} />;
-    case ".png":
-    case ".jpg":
-    case ".jpeg":
-    case ".gif":
-    case ".svg":
-    case ".webp":
-      return <Image size={14} strokeWidth={1.5} />;
-    case ".json":
-    case ".js":
-    case ".ts":
-    case ".css":
-      return <FileCode size={14} strokeWidth={1.5} />;
-    case ".md":
-      return <FileText size={14} strokeWidth={1.5} />;
-    default:
-      return <File size={14} strokeWidth={1.5} />;
-  }
-}
 
 function countChildren(entries: FileEntry[]): number {
   let count = 0;
@@ -377,20 +353,10 @@ export function Sidebar({
           >
             {entry.isDirectory && (
               <span className={`chevron ${isExpanded ? "open" : ""}`}>
-                <ChevronRight size={12} strokeWidth={2} />
+                <ChevronRight size={14} strokeWidth={2} />
               </span>
             )}
-            <span className={`icon ${entry.isDirectory ? "folder-icon" : "file-type-icon"}`}>
-              {entry.isDirectory ? (
-                isExpanded ? (
-                  <FolderOpen size={15} strokeWidth={1.5} />
-                ) : (
-                  <Folder size={15} strokeWidth={1.5} />
-                )
-              ) : (
-                getFileIcon(entry)
-              )}
-            </span>
+
             {isRenaming ? (
               <form onSubmit={handleRenameSubmit} style={{ flex: 1 }}>
                 <input
