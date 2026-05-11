@@ -3925,6 +3925,9 @@ export default function App() {
                   : [...prev, path],
               );
             }}
+            vaultPath={vaultPath}
+            onOpenVault={handleOpenVault}
+            onSettings={() => setShowSettings(true)}
           />
         )}
 

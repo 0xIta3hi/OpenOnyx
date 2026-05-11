@@ -135,11 +135,6 @@ export function Ribbon({
           </button>
         ))}
       </div>
-      <div className="ribbon-bottom">
-        <button className="ribbon-btn" onClick={onSettings} title="Settings">
-          <Settings size={20} strokeWidth={1.5} />
-        </button>
-      </div>
     </div>
   );
 }

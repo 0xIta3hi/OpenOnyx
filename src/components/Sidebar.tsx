@@ -27,6 +27,10 @@ import {
   FileCode,
   File,
   LayoutGrid,
+  ChevronsUpDown,
+  Check,
+  Library,
+  Settings,
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
@@ -45,6 +49,9 @@ interface SidebarProps {
   onRefresh: () => void;
   onToggleStar: (path: string) => void;
   onCollapse: () => void;
+  vaultPath?: string;
+  onOpenVault?: () => void;
+  onSettings?: () => void;
 }
 
 type SortMode = "name" | "modified" | "type";
@@ -143,6 +150,9 @@ export function Sidebar({
   onRefresh,
   onToggleStar,
   onCollapse,
+  vaultPath,
+  onOpenVault,
+  onSettings,
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
@@ -160,6 +170,9 @@ export function Sidebar({
   const [showFilter, setShowFilter] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [showVaultMenu, setShowVaultMenu] = useState(false);
+  const vaultMenuRef = useRef<HTMLDivElement>(null);
+  const vaultButtonRef = useRef<HTMLButtonElement>(null);
   const renameInFlightRef = useRef(false);
   const filterInputRef = useRef<HTMLInputElement>(null);
 
@@ -169,6 +182,25 @@ export function Sidebar({
       filterInputRef.current.focus();
     }
   }, [showFilter]);
+
+  // Click outside handler for vault menu
+  useEffect(() => {
+    if (!showVaultMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        vaultMenuRef.current &&
+        !vaultMenuRef.current.contains(e.target as Node) &&
+        vaultButtonRef.current &&
+        !vaultButtonRef.current.contains(e.target as Node)
+      ) {
+        setShowVaultMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showVaultMenu]);
+
+  const vaultName = vaultPath ? vaultPath.split(/[/\\]/).pop() : "Vault";
 
   // Process file tree: filter then sort
   const processedTree = useMemo(() => {
@@ -565,6 +597,53 @@ export function Sidebar({
             </div>
           )}
         </div>
+
+        {/* Sidebar Footer - Vault Selector & Settings */}
+        {vaultPath && (
+          <div className="sidebar-footer">
+            <button
+              ref={vaultButtonRef}
+              className={`vault-selector-btn ${showVaultMenu ? "active" : ""}`}
+              onClick={() => setShowVaultMenu(!showVaultMenu)}
+              title="Switch Vault"
+            >
+              <ChevronsUpDown size={14} className="vault-selector-icon" />
+              <span className="vault-selector-name">{vaultName}</span>
+            </button>
+            {onSettings && (
+              <button
+                className="sidebar-settings-btn"
+                onClick={onSettings}
+                title="Settings"
+              >
+                <Settings size={14} />
+              </button>
+            )}
+            
+            {showVaultMenu && (
+              <div className="vault-menu" ref={vaultMenuRef}>
+                <div className="vault-menu-header">Current vault</div>
+                <button className="vault-menu-item current">
+                  <span className="vault-name">{vaultName}</span>
+                  <Check size={14} className="check-icon" />
+                </button>
+                <div className="vault-menu-separator" />
+                {onOpenVault && (
+                  <button
+                    className="vault-menu-item action"
+                    onClick={() => {
+                      setShowVaultMenu(false);
+                      onOpenVault();
+                    }}
+                  >
+                    <Library size={14} className="action-icon" />
+                    <span>Manage vaults...</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Context Menu */}
