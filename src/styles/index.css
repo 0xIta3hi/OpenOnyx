@@ -1301,10 +1301,22 @@ body {
 }
 
 /* Tree item children (Obsidian tree-item-children) */
+.file-tree-children-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.file-tree-children-wrapper.open {
+  grid-template-rows: 1fr;
+}
+
 .file-tree-children {
   padding-left: 4px;
   margin-left: 12px;
   border-left: 1px solid var(--border-subtle);
+  min-height: 0; /* Required for grid animation to work */
 }
 
 /* ── Main Editor Area (Obsidian workspace-split.mod-root) ── */

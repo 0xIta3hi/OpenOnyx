@@ -378,9 +378,8 @@ export function Sidebar({
             )}
           </button>
 
-          {entry.isDirectory &&
-            isExpanded &&
-            entry.children && (
+          {entry.isDirectory && entry.children && (
+            <div className={`file-tree-children-wrapper ${isExpanded ? "open" : ""}`}>
               <div className="file-tree-children">
                 {entry.children.length > 0 ? (
                   renderFileTree(sortEntries(entry.children, sortMode), depth + 1)
@@ -388,7 +387,8 @@ export function Sidebar({
                   <div className="empty-folder-hint">Empty</div>
                 )}
               </div>
-            )}
+            </div>
+          )}
         </React.Fragment>
       );
     });
