@@ -72,6 +72,8 @@ interface EditorProps {
   onOpenNote?: (path: string) => void;
   // Inline annotation
   annotation?: string | null;
+  showInsight?: boolean;
+  onToggleInsight?: (show: boolean) => void;
 }
 
 /**
@@ -2184,6 +2186,8 @@ export function Editor({
   onRejectSuggestion,
   onOpenNote,
   annotation,
+  showInsight,
+  onToggleInsight,
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -2191,7 +2195,12 @@ export function Editor({
 
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
-  const [showInsight, setShowInsight] = useState(false);
+  const [internalShowInsight, setInternalShowInsight] = useState(false);
+  const isInsightVisible = showInsight !== undefined ? showInsight : internalShowInsight;
+  const toggleInsight = (val: boolean) => {
+    if (onToggleInsight) onToggleInsight(val);
+    setInternalShowInsight(val);
+  };
   const wheelRemainderRef = useRef(0);
   const suggestionContentCompartmentRef = useRef(new Compartment());
   const typingPauseTimerRef = useRef<number | null>(null);
@@ -3053,14 +3062,14 @@ export function Editor({
 
 
       {/* Inline annotation content */}
-      {annotation && showInsight && (
+      {annotation && isInsightVisible && (
         <div className="editor-annotation readable-insight">
           <div className="editor-annotation-header">
             <span className="editor-annotation-title">
               <Lightbulb size={14} style={{ marginRight: 6 }} />
               Note Insight
             </span>
-            <button className="editor-annotation-close" onClick={() => setShowInsight(false)} title="Close Insight">
+            <button className="editor-annotation-close" onClick={() => toggleInsight(false)} title="Close Insight">
               <X size={14} />
             </button>
           </div>

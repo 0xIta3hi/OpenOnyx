@@ -6,7 +6,7 @@ interface EditorHeaderProps {
   filePath: string;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  onThoughtModel?: () => void;
+  onToggleInsight?: () => void;
   onMoreOptions?: () => void;
 }
 
@@ -14,7 +14,7 @@ export function EditorHeader({
   filePath,
   viewMode,
   onViewModeChange,
-  onThoughtModel,
+  onToggleInsight,
   onMoreOptions,
 }: EditorHeaderProps) {
   // Parse breadcrumbs
@@ -26,7 +26,7 @@ export function EditorHeader({
       <div className="editor-header-left">
         <button
           className="editor-header-btn insight-btn"
-          onClick={onThoughtModel}
+          onClick={onToggleInsight}
           title="Note Insights"
         >
           <Lightbulb size={16} strokeWidth={1.5} />

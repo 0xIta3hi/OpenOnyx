@@ -1075,6 +1075,7 @@ export default function App() {
   // ── File & Editor State ─────────────────────────────
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
+  const [showInlineInsight, setShowInlineInsight] = useState(false);
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [currentContent, setCurrentContent] = useState<string>("");
@@ -3992,11 +3993,7 @@ export default function App() {
                         filePath={activeTab.path}
                         viewMode={viewMode}
                         onViewModeChange={setViewMode}
-                        onThoughtModel={() => {
-                          setShowGraph(false);
-                          setShowCanvas(false);
-                          setShowThoughtModel((t) => !t);
-                        }}
+                        onToggleInsight={() => setShowInlineInsight((s) => !s)}
                       />
                       <Editor
                         tabs={tabs}
@@ -4099,6 +4096,8 @@ export default function App() {
                         onRejectSuggestion={handleInlineReject}
                         onOpenNote={(path) => openFile(path)}
                         annotation={inlineAnnotation}
+                        showInsight={showInlineInsight}
+                        onToggleInsight={setShowInlineInsight}
                       />
 
                       {showFTUXConnectionPrompt && ftuxConnectionSuggestion && (
