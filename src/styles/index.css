@@ -8937,9 +8937,10 @@ blockquote:has(.callout) {
   --cv-ctrl-border: var(--border-medium, rgba(255, 255, 255, 0.1));
   --cv-ctrl-hover: var(--bg-hover, #333);
 }
-[data-theme="light"] {
+[data-theme="light"],
+[data-theme="peach-white"] {
   --cv-bg: var(--bg-primary);
-  --cv-dot: rgba(0, 0, 0, 0.07);
+  --cv-dot: rgba(0, 0, 0, 0.35);
   --cv-edge: rgba(0, 0, 0, 0.3);
   --cv-scribble: rgba(17, 24, 39, 0.78);
   --cv-group-label-text: rgba(17, 24, 39, 0.95);
@@ -8956,7 +8957,7 @@ blockquote:has(.callout) {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  --cv-theme-dot: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --cv-theme-dot: color-mix(in srgb, var(--text-primary) 30%, transparent);
   background: var(--cv-custom-bg, var(--cv-bg, var(--bg-primary)));
   font-family: var(--font-sans);
   user-select: none;

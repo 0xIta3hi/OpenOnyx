@@ -775,6 +775,54 @@ export function CanvasView({
   ]);
   const [histIdx, setHistIdx] = useState(0);
 
+  /* ── Theme-aware scribble color migration ── */
+  const isLightTheme = (t: string) => t === "light" || t === "peach-white";
+  const isDarkTheme = (t: string) => t === "dark" || t === "oceanic" || t === "dark-plus";
+
+  useEffect(() => {
+    if (scribbles.length === 0) return;
+
+    const isLight = isLightTheme(theme);
+    const isDark = isDarkTheme(theme);
+    if (!isLight && !isDark) return; // Skip for 'custom' unless we want a fallback
+
+    let changed = false;
+    const migrated = scribbles.map((stroke) => {
+      if (!stroke.color) return stroke;
+
+      const c = stroke.color.toLowerCase();
+      // If we are in light theme, and the scribble is white-ish, make it dark-ish
+      if (isLight) {
+        if (c === "#ffffff" || c === "#f9fafb" || c === "#fcfbf9" || c === "white") {
+          changed = true;
+          return { ...stroke, color: "#111827" }; // Dark navy/black
+        }
+      } else if (isDark) {
+        // If we are in dark theme, and the scribble is dark-ish, make it white-ish
+        if (c === "#000000" || c === "#111827" || c === "#1a1a1a" || c === "black") {
+          changed = true;
+          return { ...stroke, color: "#f9fafb" }; // Off-white
+        }
+      }
+      return stroke;
+    });
+
+    if (changed) {
+      setScribbles(migrated);
+      scribblesRef.current = migrated;
+    }
+
+    // Also migrate the active tool color if it's an extreme one
+    if (scribbleColor) {
+      const c = scribbleColor.toLowerCase();
+      if (isLight && (c === "#ffffff" || c === "#f9fafb" || c === "#fcfbf9" || c === "white")) {
+        setScribbleColor("#111827");
+      } else if (isDark && (c === "#000000" || c === "#111827" || c === "#1a1a1a" || c === "black")) {
+        setScribbleColor("#f9fafb");
+      }
+    }
+  }, [theme]);
+
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
@@ -3401,7 +3449,7 @@ export function CanvasView({
             zoom={renderVp.zoom}
             offX={renderVp.x}
             offY={renderVp.y}
-            color={canvasDotColor || undefined}
+            color={canvasDotColor || (isLightTheme(theme) ? "rgba(0, 0, 0, 0.5)" : "rgba(255, 255, 255, 0.25)")}
             opacityMultiplier={canvasDotOpacityMultiplier}
           />
         )}
@@ -4499,10 +4547,11 @@ function DotGrid({
   const gap = step * zoom;
 
   // Ultra-calm, subtle, crisp dot radius in screen pixels that matches Obsidian's look
-  const dotRadius = Math.max(0.55, Math.min(0.85, 0.65 * Math.sqrt(zoom)));
+  // Larger dots for better visibility, especially on light themes
+  const dotRadius = Math.max(0.8, Math.min(1.2, 0.9 * Math.sqrt(zoom)));
 
   // Calculate dynamic opacity based on screen gap (much lower opacity to look calm and elegant)
-  const baseOpacity = Math.max(0, Math.min(0.12, (gap - 6) / 20));
+  const baseOpacity = Math.max(0, Math.min(0.4, (gap - 4) / 15));
   const finalOpacity = baseOpacity * clampDotOpacityMultiplier(opacityMultiplier);
 
   if (finalOpacity <= 0.005) return null;
@@ -4527,7 +4576,7 @@ function DotGrid({
             cx={gap / 2}
             cy={gap / 2}
             r={dotRadius}
-            fill={color || "var(--cv-dot, var(--cv-theme-dot))"}
+            fill={color || "var(--cv-theme-dot, var(--cv-dot))"}
             opacity={finalOpacity}
           />
         </pattern>
