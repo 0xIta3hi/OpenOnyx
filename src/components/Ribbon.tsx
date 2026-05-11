@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef } from "react";
 import {
   FilePlus,
   Search,
@@ -47,20 +47,38 @@ export function Ribbon({
     document.dispatchEvent(new CustomEvent("editor:open-search"));
   };
 
+  const [hoveringRibbon, setHoveringRibbon] = useState(false);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveringRibbon(true);
+    }, 400);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveringRibbon(false);
+  };
+
   return (
-    <div className="app-ribbon">
+    <div 
+      className={`app-ribbon ${hoveringRibbon ? "tooltips-ready" : ""}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <div className="ribbon-top">
         <button
           className="ribbon-btn"
           onClick={handleSearch}
-          title="Search inside file (Ctrl+F)"
+          data-tooltip="Search inside file (Ctrl+F)"
         >
           <Search size={20} strokeWidth={1.5} />
         </button>
         <button
           className="ribbon-btn"
           onClick={onNewNote}
-          title="New Note (Ctrl+N)"
+          data-tooltip="New Note (Ctrl+N)"
         >
           <FilePlus size={20} strokeWidth={1.5} />
         </button>
@@ -68,7 +86,7 @@ export function Ribbon({
           <button
             className="ribbon-btn"
             onClick={onDailyNote}
-            title="Daily Note"
+            data-tooltip="Daily Note"
           >
             <Calendar size={20} strokeWidth={1.5} />
           </button>
@@ -76,7 +94,7 @@ export function Ribbon({
         <button
           className="ribbon-btn"
           onClick={onGraph}
-          title="Graph View (Ctrl+G)"
+          data-tooltip="Graph View (Ctrl+G)"
         >
           <Network size={20} strokeWidth={1.5} />
         </button>
@@ -84,7 +102,7 @@ export function Ribbon({
           <button
             className="ribbon-btn"
             onClick={onToggleOutline}
-            title="Toggle Outline"
+            data-tooltip="Toggle Outline"
           >
             <List size={20} strokeWidth={1.5} />
           </button>
@@ -93,7 +111,7 @@ export function Ribbon({
           <button
             className="ribbon-btn"
             onClick={onThoughtModel}
-            title="AI Assistant"
+            data-tooltip="AI Assistant"
           >
             <Sparkles size={20} strokeWidth={1.5} />
           </button>
@@ -102,7 +120,7 @@ export function Ribbon({
           <button
             className="ribbon-btn"
             onClick={onSpaces}
-            title="Spaces"
+            data-tooltip="Spaces"
           >
             <Package size={20} strokeWidth={1.5} />
           </button>
@@ -111,7 +129,7 @@ export function Ribbon({
           <button
             className="ribbon-btn"
             onClick={onCanvas}
-            title="Canvas (Ctrl+Shift+C)"
+            data-tooltip="Canvas (Ctrl+Shift+C)"
           >
             <Layout size={20} strokeWidth={1.5} />
           </button>
@@ -122,7 +140,7 @@ export function Ribbon({
             key={`plugin-ribbon-${action.pluginId}-${i}`}
             className="ribbon-btn oo-plugin-ribbon-btn"
             onClick={(e) => action.callback(e.nativeEvent)}
-            title={action.title}
+            data-tooltip={action.title}
           >
             <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               ref={(el) => {

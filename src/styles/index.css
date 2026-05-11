@@ -924,6 +924,60 @@ body {
   color: var(--text-primary);
 }
 
+/* ── Custom Ribbon Tooltips ───────────────────────── */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  transform: translateY(-50%);
+  background: var(--color-base-10);
+  color: var(--text-primary);
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s 0.4s, visibility 0s 0.4s;
+  box-shadow: none;
+  z-index: 1000;
+}
+
+[data-tooltip]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 6px);
+  transform: translateY(-50%);
+  border-width: 4px 4px 4px 0;
+  border-style: solid;
+  border-color: transparent var(--color-base-10) transparent transparent;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s 0.4s, visibility 0s 0.4s;
+  z-index: 1001;
+}
+
+[data-tooltip]:hover::before,
+[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltips-ready [data-tooltip]::before,
+.tooltips-ready [data-tooltip]::after {
+  transition: opacity 0.1s 0s, visibility 0s 0s;
+}
+
+
 /* ── Sidebar (Obsidian mod-left-split) ─────────────── */
 .sidebar {
   width: var(--sidebar-width);
