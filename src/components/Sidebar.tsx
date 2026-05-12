@@ -416,38 +416,38 @@ export function Sidebar({
               }}
               title="Filter files (Ctrl+Shift+F)"
             >
-              <Search size={14} strokeWidth={1.5} />
+              <Search size={16} strokeWidth={1.5} />
             </button>
             <button
               className="sidebar-btn"
               onClick={onNewNote}
               title="New Note"
             >
-              <FilePlus size={14} strokeWidth={1.5} />
+              <FilePlus size={16} strokeWidth={1.5} />
             </button>
             <button
               className="sidebar-btn"
               onClick={() => onNewFolder("")}
               title="New Folder"
             >
-              <FolderPlus size={14} strokeWidth={1.5} />
+              <FolderPlus size={16} strokeWidth={1.5} />
             </button>
             <button
               className="sidebar-btn"
               onClick={cycleSortMode}
               title={`Sort: ${sortLabel}`}
             >
-              <ArrowUpDown size={14} strokeWidth={1.5} />
+              <ArrowUpDown size={16} strokeWidth={1.5} />
             </button>
             <button className="sidebar-btn" onClick={onRefresh} title="Refresh">
-              <RefreshCw size={14} strokeWidth={1.5} />
+              <RefreshCw size={16} strokeWidth={1.5} />
             </button>
             <button
               className="sidebar-btn"
               onClick={onCollapse}
               title="Collapse Explorer"
             >
-              <ChevronLeft size={14} strokeWidth={1.5} />
+              <ChevronLeft size={16} strokeWidth={1.5} />
             </button>
           </div>
         </div>
@@ -573,7 +573,7 @@ export function Sidebar({
               onClick={() => setShowVaultMenu(!showVaultMenu)}
               title="Switch Vault"
             >
-              <ChevronsUpDown size={14} className="vault-selector-icon" />
+              <ChevronsUpDown size={20} className="vault-selector-icon" />
               <span className="vault-selector-name">{vaultName}</span>
             </button>
             {onSettings && (
@@ -582,7 +582,7 @@ export function Sidebar({
                 onClick={onSettings}
                 title="Settings"
               >
-                <Settings size={14} />
+                <Settings size={16} />
               </button>
             )}
             
