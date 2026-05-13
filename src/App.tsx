@@ -70,7 +70,7 @@ import { generateSynthesis } from "./utils/synthesis";
 import { FileText, Layout } from "lucide-react";
 import { Tab, ViewMode, Theme, Command, FileEntry } from "./types";
 import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
-import { getNoteName, generateId, debounce } from "./utils/helpers";
+import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers";
 import { getAPI } from "./utils/api";
 import { PluginManager } from "./lib/pluginManager";
 import { OOApp } from "./lib/obsidian-api/app";
@@ -1189,6 +1189,10 @@ export default function App() {
   useEffect(() => {
     // Apply theme
     document.documentElement.setAttribute("data-theme", theme);
+    
+    // Determine and apply base theme mode (dark/light) for embeds and components
+    const isDark = isDarkTheme(theme, settings);
+    document.documentElement.setAttribute("data-theme-mode", isDark ? "dark" : "light");
 
     // Apply CSS custom properties from settings
     const root = document.documentElement;

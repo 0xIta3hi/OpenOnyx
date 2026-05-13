@@ -26,7 +26,8 @@ import { isDarkTheme } from "../utils/helpers";
 
 export interface AppSettings {
   // Appearance
-  theme: "dark" | "light" | "oceanic" | "dark-plus" | "peach-white" | "system" | "custom";
+  theme: "dark" | "light" | "oceanic" | "dark-plus" | "blue-night" | "night-light" | "peach-white" | "system" | "custom";
+  customThemeType: "dark" | "light";
   accentColor: string;
   fontFamily: string;
 
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   customBgPrimary: "#151515",
   customTextPrimary: "#e6e6e6",
+  customThemeType: "dark",
 
   fontSize: 15,
   editorFontSize: 15,
@@ -194,8 +196,10 @@ export function SettingsPage({
                     >
                       <option value="dark">Dark</option>
                       <option value="dark-plus">Dark+</option>
-                      <option value="oceanic">Blue Night</option>
-                      <option value="light">Night Light</option>
+                      <option value="blue-night">Blue Night</option>
+                      <option value="oceanic">Oceanic</option>
+                      <option value="light">Light</option>
+                      <option value="night-light">Night Light</option>
                       <option value="peach-white">Peach White</option>
                       <option value="system">System</option>
                       <option value="custom">Custom</option>
@@ -205,6 +209,41 @@ export function SettingsPage({
 
                 {localSettings.theme === "custom" && (
                   <>
+                    <div className="setting-group">
+                      <label className="setting-label">
+                        <span>Base Theme Type</span>
+                        <div className="settings-toggle-group" style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className={`toggle-btn ${localSettings.customThemeType === "light" ? "active" : ""}`}
+                            style={{ 
+                              padding: '4px 12px', 
+                              borderRadius: '4px', 
+                              border: '1px solid var(--border-medium)',
+                              background: localSettings.customThemeType === 'light' ? 'var(--accent-color)' : 'transparent',
+                              color: localSettings.customThemeType === 'light' ? 'white' : 'inherit',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => updateSetting("customThemeType", "light")}
+                          >
+                            Light
+                          </button>
+                          <button
+                            className={`toggle-btn ${localSettings.customThemeType === "dark" ? "active" : ""}`}
+                            style={{ 
+                              padding: '4px 12px', 
+                              borderRadius: '4px', 
+                              border: '1px solid var(--border-medium)',
+                              background: localSettings.customThemeType === 'dark' ? 'var(--accent-color)' : 'transparent',
+                              color: localSettings.customThemeType === 'dark' ? 'white' : 'inherit',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => updateSetting("customThemeType", "dark")}
+                          >
+                            Dark
+                          </button>
+                        </div>
+                      </label>
+                    </div>
                     <div className="setting-group">
                       <label className="setting-label">
                         <span>Custom Background Color</span>

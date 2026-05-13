@@ -163,7 +163,7 @@ export function MarkdownPreview({
     const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?]+)/);
     if (ytMatch) {
       return {
-        src: `https://www.youtube.com/embed/${ytMatch[1]}`,
+        src: `https://www.youtube.com/embed/${ytMatch[1]}?vq=hd1080&rel=0`,
         attrs: `allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen`
       };
     }
@@ -267,7 +267,7 @@ export function MarkdownPreview({
 
     // --- Unified Smart Embed Resolver ---
     // Handle both raw iframes and Twitter blockquotes
-    const themeValue = theme === "dark" ? "dark" : "light";
+    const themeValue = document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light");
     
     // Fix Twitter theme in the HTML string itself
     html = html.replace(/<blockquote class="twitter-tweet"/g, `<blockquote class="twitter-tweet" data-theme="${themeValue}"`);
@@ -276,7 +276,7 @@ export function MarkdownPreview({
     html = html.replace(/<iframe\s+([^>]*src="([^"]+)"[^>]*)><\/iframe>/g, (match, attrs, src) => {
       const config = getSmartEmbed(src, theme || "dark");
       if (config) {
-        return `<iframe src="${config.src}" ${config.attrs} style="height:100%;width:100%; aspect-ratio: 16 / 9; border: none;"></iframe>`;
+        return `<iframe src="${config.src}" ${config.attrs} style="height:100%;width:100%; aspect-ratio: 16 / 9; border: none; border-radius: var(--radius-md);"></iframe>`;
       }
       return match;
     });
@@ -284,8 +284,8 @@ export function MarkdownPreview({
     // Sanitize
     return DOMPurify.sanitize(html, {
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|vault):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src"],
-      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote"],
+      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "data-video-id", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src", "onmouseover", "onmouseout", "onerror"],
+      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path"],
       ADD_DATA_URI_TAGS: ["img"],
     });
   }, [content, onEmbed, theme, getSmartEmbed]);
@@ -423,9 +423,11 @@ export function MarkdownPreview({
   // Use a ref to track the last rendered HTML to avoid unnecessary DOM updates that reload iframes
   const lastHtmlRef = useRef<string>("");
 
-  // Manually update the DOM only when the HTML content actually changes
+  // Manually update the DOM and upgrade iframes injected by plugins
   useEffect(() => {
-    if (previewRef.current && lastHtmlRef.current !== renderedHtml) {
+    if (!previewRef.current) return;
+    
+    if (lastHtmlRef.current !== renderedHtml) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
 
@@ -434,7 +436,7 @@ export function MarkdownPreview({
         // Apply theme to blockquotes before Twitter script processes them
         const tweets = previewRef.current.querySelectorAll("blockquote.twitter-tweet");
         tweets.forEach(tweet => {
-          tweet.setAttribute("data-theme", theme === "dark" ? "dark" : "light");
+          tweet.setAttribute("data-theme", document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light"));
         });
 
         const injectTwitter = () => {
@@ -450,7 +452,64 @@ export function MarkdownPreview({
         injectTwitter();
       }
     }
-  }, [renderedHtml]);
+
+    // Function to upgrade YouTube iframes into HD Posters
+    const upgradeYouTubeIframe = (iframe: HTMLIFrameElement) => {
+      const src = iframe.src || "";
+      if (!src.includes("youtube.com") && !src.includes("youtu.be")) return;
+      if (iframe.dataset.hdPosterApplied) return;
+      
+      const videoId = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?]+)/)?.[1];
+      if (!videoId) return;
+
+      iframe.dataset.hdPosterApplied = "true";
+      
+      const hdThumb = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      const hqThumb = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      
+      const wrapper = document.createElement("div");
+      wrapper.className = "yt-hd-poster";
+      wrapper.style.cssText = "position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; cursor: pointer; margin: 16px 0;";
+      
+      wrapper.innerHTML = `
+        <img src="${hdThumb}" onerror="this.src='${hqThumb}'" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 68px; height: 48px; background: rgba(255, 0, 0, 0.9); border-radius: 12px; display: flex; align-items: center; justify-content: center; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; fill: white;"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      `;
+      
+      wrapper.onmouseover = () => { (wrapper.querySelector('img') as HTMLImageElement).style.opacity = '0.8'; };
+      wrapper.onmouseout = () => { (wrapper.querySelector('img') as HTMLImageElement).style.opacity = '1'; };
+      
+      wrapper.onclick = () => {
+        wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&vq=hd1080" allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen style="width:100%; height:100%; border:none; border-radius: 12px;"></iframe>`;
+      };
+      
+      if (iframe.parentNode) {
+        iframe.parentNode.replaceChild(wrapper, iframe);
+      }
+    };
+
+    // Upgrade existing iframes
+    previewRef.current.querySelectorAll("iframe").forEach((el) => upgradeYouTubeIframe(el as HTMLIFrameElement));
+
+    // Watch for iframes injected asynchronously by plugins (like obsidian-convert-url-to-iframe)
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) { // ELEMENT_NODE
+            const el = node as HTMLElement;
+            const iframes = el.tagName === "IFRAME" ? [el as HTMLIFrameElement] : Array.from(el.querySelectorAll("iframe"));
+            iframes.forEach(upgradeYouTubeIframe);
+          }
+        });
+      });
+    });
+
+    observer.observe(previewRef.current, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, [renderedHtml, theme]);
 
   return (
     <>

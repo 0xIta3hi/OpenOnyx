@@ -75,11 +75,15 @@ export function processTags(content: string): string {
 }
 
 /** Determine if a theme is a dark theme */
-export function isDarkTheme(theme: string | Theme): boolean {
+export function isDarkTheme(theme: string | Theme, settings?: any): boolean {
   if (theme === "system") {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   }
-  // Custom themes are usually dark by default in this app's design system
-  if (theme === "custom") return true; 
-  return ["dark", "oceanic", "dark-plus"].includes(theme as Theme);
+  
+  if (theme === "custom") {
+    return settings?.customThemeType === "dark";
+  }
+
+  const darkThemes = ["dark", "dark-plus", "blue-night", "oceanic"];
+  return darkThemes.includes(theme as string);
 }
