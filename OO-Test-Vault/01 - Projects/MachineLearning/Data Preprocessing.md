@@ -51,4 +51,4 @@ scaler = MinMaxScaler()
 
 
 
-<iframe src="https://www.youtube.com/embed/rjqeWsy-Ths" allow="fullscreen" allowfullscreen="" style="height: 100%; width: 100%; aspect-ratio: 4 / 3; border: none;"></iframe>
+<iframe src="https://www.youtube.com/embed/rjqeWsy-Ths" allow="fullscreen" allowfullscreen="" style="height:100%;width:100%; aspect-ratio: 16 / 9; border: none;"></iframe>
