@@ -1156,6 +1156,27 @@ export default function App() {
     return () => mediaQuery.removeEventListener("change", handler);
   }, []);
 
+  // ── Initial Vault Load ──────────────────────────────
+  useEffect(() => {
+    const checkInitialVault = async () => {
+      try {
+        const path = await api.getVaultPath();
+        if (path) {
+          setVaultPath(path);
+          (window as any).__oo_vault_path = path;
+          setShowSidebar(true);
+          const tree = await api.getFileTree();
+          setFileTree(tree);
+          // Initializing background services for the auto-loaded vault
+          runVaultInit(tree);
+        }
+      } catch (err) {
+        console.error("Failed to auto-load vault:", err);
+      }
+    };
+    void checkInitialVault();
+  }, []);
+
   // Derive theme from settings (handles 'system' preference)
   const theme: Theme =
     settings.theme === "system"

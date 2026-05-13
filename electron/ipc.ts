@@ -13,13 +13,15 @@ export function registerIpcHandlers(
   ipcMain: IpcMain,
   fsManager: FileSystemManager,
   searchEngine: SearchEngine,
-  getMainWindow: () => BrowserWindow | null
+  getMainWindow: () => BrowserWindow | null,
+  onVaultPathChange?: (vaultPath: string) => void
 ): void {
 
   // ── Vault Operations ──────────────────────────────
   ipcMain.handle('vault:setPath', async (_event, vaultPath: string) => {
     const success = fsManager.setVaultPath(vaultPath);
     if (success) {
+      if (onVaultPathChange) onVaultPathChange(vaultPath);
       // Set CWD to vault path so relative paths in plugins work correctly
       try {
         process.chdir(vaultPath);

@@ -19,6 +19,27 @@ let searchEngine: SearchEngine | null = null;
 
 const isDevMode = !app.isPackaged;
 
+const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Failed to load config:', e);
+  }
+  return {};
+}
+
+function saveConfig(config: any) {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  } catch (e) {
+    console.error('Failed to save config:', e);
+  }
+}
+
 function addDisableFeatures(features: string[]): void {
   const existing = app.commandLine.getSwitchValue('disable-features');
   const merged = new Set([
@@ -255,12 +276,24 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'vault', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
 ]);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   fsManager = new FileSystemManager();
   searchEngine = new SearchEngine();
 
+  // Load last used vault if exists
+  const config = loadConfig();
+  if (config.lastVaultPath && fs.existsSync(config.lastVaultPath)) {
+    fsManager.setVaultPath(config.lastVaultPath);
+    // Initial index build for the auto-loaded vault
+    await searchEngine.buildIndex(fsManager);
+  }
+
   // Register all IPC handlers for renderer communication
-  registerIpcHandlers(ipcMain, fsManager, searchEngine, () => mainWindow);
+  registerIpcHandlers(ipcMain, fsManager, searchEngine, () => mainWindow, (vaultPath) => {
+    const config = loadConfig();
+    config.lastVaultPath = vaultPath;
+    saveConfig(config);
+  });
 
   // Handle vault directory selection dialog
   ipcMain.handle('dialog:openDirectory', async () => {
