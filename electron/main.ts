@@ -70,6 +70,9 @@ function configureLinuxFontConfig(): void {
 function configureChromiumRuntime(): void {
   configureLinuxFontConfig();
 
+  // Globally disable web security (CORS) so plugins can fetch anything
+  app.commandLine.appendSwitch('disable-web-security');
+
   if (!isDevMode) return;
   if (process.env.OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS === '1') return;
 
@@ -139,6 +142,7 @@ function createWindow(): void {
       contextIsolation: false,
       nodeIntegration: true,
       sandbox: false,
+      webSecurity: false,
     },
   });
 

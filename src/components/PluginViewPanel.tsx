@@ -19,9 +19,10 @@ interface PluginViewInfo {
 interface PluginViewPanelProps {
   views: PluginViewInfo[];
   onClose: (viewType: string) => void;
+  isMainView?: boolean;
 }
 
-export function PluginViewPanel({ views, onClose }: PluginViewPanelProps) {
+export function PluginViewPanel({ views, onClose, isMainView }: PluginViewPanelProps) {
   const [activeViewType, setActiveViewType] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -65,8 +66,15 @@ export function PluginViewPanel({ views, onClose }: PluginViewPanelProps) {
 
   return (
     <div
-      className="plugin-view-panel"
-      style={{
+      className={`plugin-view-panel ${isMainView ? 'is-main-view' : ''}`}
+      style={isMainView ? {
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: 'var(--bg-primary)',
+      } : {
         width: '300px',
         minWidth: '250px',
         maxWidth: '450px',
@@ -80,8 +88,8 @@ export function PluginViewPanel({ views, onClose }: PluginViewPanelProps) {
         paddingTop: 0,
       }}
     >
-      {/* Tab bar for multiple views */}
-      {views.length > 0 && (
+      {/* Tab bar for multiple views (hidden in main view) */}
+      {!isMainView && views.length > 0 && (
         <div
           style={{
             display: 'flex',

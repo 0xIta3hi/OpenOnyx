@@ -1,4 +1,4 @@
-#  Data Preprocessing
+# Data Preprocessing
 
 ## Pipeline Steps
 

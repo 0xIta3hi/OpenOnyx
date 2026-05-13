@@ -14,6 +14,7 @@ export class WorkspaceLeaf extends Events {
   hoverPopover: any = null;
   containerEl: HTMLElement;
   activeTime: number = 0;
+  side: 'left' | 'right' | 'main' = 'main';
 
   constructor(id: string) {
     super();
@@ -122,12 +123,39 @@ View.prototype.onPaneMenu = function(menu: any, source: string) {};
 // ── ItemView ────────────────────────────────────────
 export interface ItemView extends View {
   contentEl: HTMLElement;
+  headerEl: HTMLElement;
+  iconEl: HTMLElement;
+  titleEl: HTMLElement;
+  actionListEl: HTMLElement;
   addAction(icon: string, title: string, callback: (evt: MouseEvent) => any): HTMLElement;
 }
 export function ItemView(this: any, leaf: WorkspaceLeaf) {
   View.call(this, leaf);
+  
+  this.headerEl = document.createElement('div');
+  this.headerEl.className = 'view-header';
+  
+  this.iconEl = document.createElement('div');
+  this.iconEl.className = 'view-header-icon';
+  
+  const titleContainer = document.createElement('div');
+  titleContainer.className = 'view-header-title-container';
+  
+  this.titleEl = document.createElement('div');
+  this.titleEl.className = 'view-header-title';
+  titleContainer.appendChild(this.titleEl);
+  
+  this.actionListEl = document.createElement('div');
+  this.actionListEl.className = 'view-actions';
+  
+  this.headerEl.appendChild(this.iconEl);
+  this.headerEl.appendChild(titleContainer);
+  this.headerEl.appendChild(this.actionListEl);
+
   this.contentEl = document.createElement('div');
   this.contentEl.className = 'view-content';
+  
+  this.containerEl.appendChild(this.headerEl);
   this.containerEl.appendChild(this.contentEl);
 }
 ItemView.prototype = Object.create(View.prototype);
@@ -135,10 +163,13 @@ ItemView.prototype.constructor = ItemView;
 
 ItemView.prototype.addAction = function(icon: string, title: string, callback: (evt: MouseEvent) => any) {
   const btn = document.createElement('div');
-  btn.className = 'view-action';
+  btn.className = 'view-action clickable-icon';
   btn.title = title;
   btn.setAttribute('data-icon', icon);
   btn.addEventListener('click', callback);
+  if (this.actionListEl) {
+    this.actionListEl.appendChild(btn);
+  }
   return btn;
 };
 
@@ -308,8 +339,9 @@ export class OOWorkspace extends Events {
   }
 
   getLeaf(newLeaf?: any, direction?: any): WorkspaceLeaf {
-    if (!newLeaf && this.activeLeaf) return this.activeLeaf;
+    if (!newLeaf && this.activeLeaf && this.activeLeaf.side === 'main') return this.activeLeaf;
     const leaf = new WorkspaceLeaf(`leaf-${++this._leafCounter}`);
+    leaf.side = 'main';
     this._leaves.set(leaf.id, leaf);
     this.trigger('layout-change');
     return leaf;
@@ -378,11 +410,15 @@ export class OOWorkspace extends Events {
   getMostRecentLeaf(): WorkspaceLeaf | null { return this.activeLeaf; }
   
   getLeftLeaf(split: boolean): WorkspaceLeaf | null {
-    return this._createSideLeaf();
+    const leaf = this._createSideLeaf();
+    leaf.side = 'left';
+    return leaf;
   }
   
   getRightLeaf(split: boolean): WorkspaceLeaf | null {
-    return this._createSideLeaf();
+    const leaf = this._createSideLeaf();
+    leaf.side = 'right';
+    return leaf;
   }
 
   async ensureSideLeaf(type: string, side: string, options?: any): Promise<WorkspaceLeaf> {
@@ -421,14 +457,14 @@ export class OOWorkspace extends Events {
       console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()} (plugin: ${view.pluginId})`);
       return true;
     } catch (e) {
-      console.error(`[Workspace] Failed to create view ${viewType}:`, e);
+      console.error(`[Workspace] Failed to create view ${viewType}:`, e, e instanceof Error ? e.stack : undefined);
       return false;
     }
   }
 
   /** Get all active plugin views — used by React UI to render the sidebar */
-  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }> {
-    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }> = [];
+  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string; side: 'left' | 'right' | 'main' }> {
+    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string; side: 'left' | 'right' | 'main' }> = [];
     for (const [viewType, leaf] of this._activePluginViews) {
       if (leaf.view) {
         views.push({
@@ -438,6 +474,7 @@ export class OOWorkspace extends Events {
           icon: leaf.view.getIcon?.() || 'file-text',
           containerEl: leaf.view.containerEl,
           pluginId: leaf.view.pluginId,
+          side: leaf.side,
         });
       }
     }

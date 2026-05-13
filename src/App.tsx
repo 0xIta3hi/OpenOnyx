@@ -950,7 +950,7 @@ export default function App() {
   const [pluginSettingTabs, setPluginSettingTabs] = useState<PluginSettingTabRegistration[]>([]);
   const pluginManagerRef = useRef<PluginManager | null>(null);
   const ooAppRef = useRef<OOApp | null>(null);
-  const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement }>>([]);
+  const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; side: 'left' | 'right' | 'main' }>>([]);
   // Permission modal state
   const [permissionModalData, setPermissionModalData] = useState<{
     manifest: PluginManifest;
@@ -1795,7 +1795,34 @@ export default function App() {
               displayText: v.displayText,
               icon: v.icon,
               containerEl: v.containerEl,
+              side: v.side,
+              pluginId: v.pluginId,
             })));
+
+            // Sync main plugin views to tabs
+            const mainViews = views.filter(v => v.side === 'main');
+            setTabs((prev) => {
+              let updated = [...prev];
+              let changed = false;
+              mainViews.forEach(v => {
+                const path = `__plugin__.${v.viewType}`;
+                if (!updated.find(t => t.path === path)) {
+                  const id = Math.random().toString(36).substr(2, 9);
+                  updated.push({
+                    id,
+                    path,
+                    name: v.displayText || v.viewType,
+                    isModified: false,
+                  });
+                  changed = true;
+                  setTimeout(() => setActiveTabId(id), 0);
+                }
+              });
+              const currentMainPaths = mainViews.map(v => `__plugin__.${v.viewType}`);
+              updated = updated.filter(t => !t.path.startsWith('__plugin__.') || currentMainPaths.includes(t.path));
+              if (updated.length !== prev.length) changed = true;
+              return changed ? updated : prev;
+            });
           });
 
           console.log('[PluginSystem] Plugin manager initialized');
@@ -2904,6 +2931,11 @@ export default function App() {
         setBacklinks([]);
         return;
       }
+      if (tab.path.startsWith('__plugin__.')) {
+        setCurrentContent("");
+        setBacklinks([]);
+        return;
+      }
       try {
         const content = await api.readFile(tab.path);
         setCurrentContent(content);
@@ -2935,7 +2967,7 @@ export default function App() {
       if (newTabs.length > 0) {
         const lastTab = newTabs[newTabs.length - 1];
         setActiveTabId(lastTab.id);
-        if (isCanvasFile(lastTab.path) || lastTab.path === GRAPH_TAB_PATH) {
+        if (isCanvasFile(lastTab.path) || lastTab.path === GRAPH_TAB_PATH || lastTab.path === SPACES_TAB_PATH || lastTab.path.startsWith('__plugin__.')) {
           setCurrentContent("");
           setBacklinks([]);
         } else {
@@ -3641,6 +3673,7 @@ export default function App() {
   const activeTabIsCanvas = !!activeTab && isCanvasFile(activeTab.path);
   const activeTabIsGraph = !!activeTab && activeTab.path === GRAPH_TAB_PATH;
   const activeTabIsSpaces = !!activeTab && activeTab.path === SPACES_TAB_PATH;
+  const activeTabIsPlugin = !!activeTab && activeTab.path.startsWith('__plugin__.');
 
   // Sync active file path to plugin API
   (window as any).__oo_active_file = activeTab?.path || null;
@@ -3878,6 +3911,10 @@ export default function App() {
     </div>
   );
 
+  const leftPluginViews = pluginViews.filter(v => v.side === 'left');
+  const rightPluginViews = pluginViews.filter(v => v.side === 'right');
+  const mainPluginViews = pluginViews.filter(v => v.side === 'main');
+
   return (
     <div className="app">
       <TitleBar
@@ -3953,6 +3990,11 @@ export default function App() {
             vaultPath={vaultPath}
             onOpenVault={handleOpenVault}
             onSettings={() => setShowSettings(true)}
+            pluginViews={leftPluginViews}
+            onClosePluginView={(viewType) => {
+              const app = ooAppRef.current;
+              if (app) app.workspace.detachLeavesOfType(viewType);
+            }}
           />
         )}
 
@@ -4017,12 +4059,14 @@ export default function App() {
                     <div
                       className={`ftux-editor-host ${ftuxConnectionPulse ? "ftux-connection-highlight-pulse" : ""}`}
                     >
-                      <EditorHeader
-                        filePath={activeTab.path}
-                        viewMode={viewMode}
-                        onViewModeChange={setViewMode}
-                        onToggleInsight={() => setShowInlineInsight((s) => !s)}
-                      />
+                      {!activeTabIsPlugin && (
+                        <EditorHeader
+                          filePath={activeTab.path}
+                          viewMode={viewMode}
+                          onViewModeChange={setViewMode}
+                          onToggleInsight={() => setShowInlineInsight((s) => !s)}
+                        />
+                      )}
                       <Editor
                         tabs={tabs}
                         activeTabId={activeTabId!}
@@ -4090,6 +4134,17 @@ export default function App() {
                                 openFile(path);
                               }}
                             />
+                          ) : activeTabIsPlugin ? (
+                            <div className="main-plugin-view-container" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+                              <PluginViewPanel
+                                views={mainPluginViews.filter(v => `__plugin__.${v.viewType}` === activeTab.path)}
+                                onClose={(viewType) => {
+                                  const app = ooAppRef.current;
+                                  if (app) app.workspace.detachLeavesOfType(viewType);
+                                }}
+                                isMainView={true}
+                              />
+                            </div>
                           ) : undefined
                         }
                         availableNotes={allNoteNames}
@@ -4102,7 +4157,7 @@ export default function App() {
                               await openFile(tab.path, "preview");
                               return;
                             }
-                            if (tab.path === GRAPH_TAB_PATH) {
+                            if (tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH || tab.path.startsWith('__plugin__.')) {
                               setCurrentContent("");
                               setBacklinks([]);
                               return;
@@ -4392,9 +4447,9 @@ export default function App() {
         )}
 
         {/* Plugin Views (right sidebar) */}
-        {pluginViews.length > 0 && !isFTUXZeroState && (
+        {rightPluginViews.length > 0 && !isFTUXZeroState && (
           <PluginViewPanel
-            views={pluginViews}
+            views={rightPluginViews}
             onClose={(viewType) => {
               const app = ooAppRef.current;
               if (app) {

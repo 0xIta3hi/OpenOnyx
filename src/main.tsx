@@ -31,6 +31,7 @@ if (!(Array.prototype as any).contains) {
 
 // ── Global Error Handling for Debugging ──
 window.onerror = (msg, url, line, col, error) => {
+  if (typeof msg === 'string' && msg.includes('ResizeObserver loop completed')) return false;
   console.log(`[FATAL] ${msg} at ${url}:${line}:${col}`, error);
   return false;
 };

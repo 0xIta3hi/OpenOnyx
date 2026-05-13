@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
+import { PluginViewPanel } from "./PluginViewPanel";
 
 interface SidebarProps {
   visible: boolean;
@@ -52,6 +53,8 @@ interface SidebarProps {
   vaultPath?: string;
   onOpenVault?: () => void;
   onSettings?: () => void;
+  pluginViews?: Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }>;
+  onClosePluginView?: (viewType: string) => void;
 }
 
 type SortMode = "name" | "modified" | "type";
@@ -129,6 +132,8 @@ export function Sidebar({
   vaultPath,
   onOpenVault,
   onSettings,
+  pluginViews,
+  onClosePluginView,
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
@@ -563,6 +568,16 @@ export function Sidebar({
             </div>
           )}
         </div>
+        
+        {/* Left Plugin Views */}
+        {pluginViews && pluginViews.length > 0 && (
+          <div className="sidebar-plugin-views" style={{ flex: 1, minHeight: 200, display: 'flex', flexDirection: 'column' }}>
+            <PluginViewPanel 
+              views={pluginViews} 
+              onClose={onClosePluginView || (() => {})} 
+            />
+          </div>
+        )}
 
         {/* Sidebar Footer - Vault Selector & Settings */}
         {vaultPath && (
