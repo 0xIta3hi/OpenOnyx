@@ -155,12 +155,43 @@ export function MarkdownPreview({
       .replace(/<\/blockquote>/g, "</div></div></blockquote>");
   };
 
+  // Universal Embed Registry: Rules for transforming links and applying themes
+  const getSmartEmbed = useCallback((url: string, currentTheme: string) => {
+    const isDark = currentTheme === "dark";
+    
+    // 1. YouTube
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?]+)/);
+    if (ytMatch) {
+      return {
+        src: `https://www.youtube.com/embed/${ytMatch[1]}`,
+        attrs: `allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen`
+      };
+    }
+
+    // 2. Spotify
+    if (url.includes('open.spotify.com/')) {
+      const embedUrl = url.includes('/embed/') ? url : url.replace('open.spotify.com/', 'open.spotify.com/embed/');
+      return {
+        src: embedUrl,
+        attrs: `allow="encrypted-media" style="border-radius:12px"`
+      };
+    }
+
+    // 3. Twitter / X (Handled via blockquote + script)
+    // Note: Twitter's script reads data-theme on the blockquote
+    
+    return null;
+  }, []);
+
   // Configure marked for GFM (GitHub Flavored Markdown) support
   const renderedHtml = useMemo(() => {
     if (!content) return "";
 
     let processed = content;
 
+    // ... (rest of the processing logic) ...
+    // Note: I will only replace the relevant sections below for brevity in the tool call
+    
     // Process embeds ![[note]] before other processing
     processed = processed.replace(
       /!\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g,
@@ -178,7 +209,7 @@ export function MarkdownPreview({
       },
     );
 
-    // Process wiki-links with alias and heading support: [[note|alias]] or [[note#heading]] or [[note#heading|alias]]
+    // Process wiki-links with alias and heading support
     processed = processed.replace(
       /\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g,
       (match, noteName, heading, alias) => {
@@ -195,12 +226,11 @@ export function MarkdownPreview({
       ' <span class="tag" data-tag="$1">$1</span>',
     );
 
-    // Render markdown image metadata controls: ![alt](src "w=420 crop=cover")
+    // Render markdown image metadata controls
     processed = processed.replace(
       /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g,
       (match, alt, src, title) => {
         const { width, crop, offsetX, offsetY } = parseImageRenderMeta(title);
-
         const styleParts: string[] = [];
         if (width) {
           styleParts.push(`max-width:${Math.round(width)}px`);
@@ -209,122 +239,56 @@ export function MarkdownPreview({
         if (crop === "cover") {
           styleParts.push("aspect-ratio:4 / 3");
           styleParts.push("object-fit:cover");
-          styleParts.push(
-            `object-position:calc(50% + ${Math.round(offsetX)}px) calc(50% + ${Math.round(offsetY)}px)`,
-          );
+          styleParts.push(`object-position:calc(50% + ${Math.round(offsetX)}px) calc(50% + ${Math.round(offsetY)}px)`);
         }
-
         const safeAlt = String(alt).replace(/"/g, "&quot;");
         const resolvedSrc = resolveVaultImageSrc(String(src));
         const safeSrc = resolvedSrc.replace(/"/g, "&quot;");
-        const styleAttr = styleParts.length
-          ? ` style="${styleParts.join(";")}"`
-          : "";
-        return `<img src="${safeSrc}" alt="${safeAlt}"${styleAttr} />`;
+        return `<img src="${safeSrc}" alt="${safeAlt}"${styleParts.length ? ` style="${styleParts.join(";")}"` : ""} />`;
       },
     );
 
-    // Process callouts before markdown parsing
+    // Process callouts
     processed = processCallouts(processed);
 
-    // Add line numbers to checkboxes for toggle support
+    // Checkboxes
     let lineNum = 0;
     processed = processed.replace(
       /^(\s*[-*+]\s+)\[([ xX])\]/gm,
       (match, prefix, checked) => {
         const isChecked = checked.toLowerCase() === "x";
-        const result = `${prefix}<input type="checkbox" class="task-checkbox" data-line="${lineNum}" ${isChecked ? "checked" : ""}>`;
-        lineNum++;
-        return result;
+        return `${prefix}<input type="checkbox" class="task-checkbox" data-line="${lineNum++}" ${isChecked ? "checked" : ""}>`;
       },
     );
 
     // Parse markdown to HTML
-    let html = marked.parse(processed, {
-      gfm: true,
-      breaks: true,
-    }) as string;
-
-    // Close callout blocks properly
+    let html = marked.parse(processed, { gfm: true, breaks: true }) as string;
     html = closeCallouts(html);
 
-    // Smart Iframe Resolver: Automatically "upgrade" standard URLs to their embed versions
-    html = html.replace(/<iframe\s+([^>]*src="([^"]+)"[^>]*)><\/iframe>/g, (match, attrs, src) => {
-      let embedUrl = src;
-      
-      // YouTube: Convert watch links to clean embed player
-      if (src.includes('youtube.com/watch')) {
-        const videoIdMatch = src.match(/[?&]v=([^&]+)/);
-        if (videoIdMatch) embedUrl = `https://www.youtube.com/embed/${videoIdMatch[1]}`;
-      } else if (src.includes('youtu.be/')) {
-        const videoIdMatch = src.match(/youtu\.be\/([^?&]+)/);
-        if (videoIdMatch) embedUrl = `https://www.youtube.com/embed/${videoIdMatch[1]}`;
-      }
-      
-      // Spotify: Convert track/album/playlist links to the official mini-player
-      else if (src.includes('open.spotify.com/')) {
-        if (!src.includes('/embed/')) {
-          embedUrl = src.replace('open.spotify.com/', 'open.spotify.com/embed/');
-        }
-      }
+    // --- Unified Smart Embed Resolver ---
+    // Handle both raw iframes and Twitter blockquotes
+    const themeValue = theme === "dark" ? "dark" : "light";
+    
+    // Fix Twitter theme in the HTML string itself
+    html = html.replace(/<blockquote class="twitter-tweet"/g, `<blockquote class="twitter-tweet" data-theme="${themeValue}"`);
 
-      // If we changed the URL, update the attributes in the tag
-      if (embedUrl !== src) {
-        const newAttrs = attrs.replace(`src="${src}"`, `src="${embedUrl}"`);
-        return `<iframe ${newAttrs}></iframe>`;
+    // Handle all other iframes via the registry
+    html = html.replace(/<iframe\s+([^>]*src="([^"]+)"[^>]*)><\/iframe>/g, (match, attrs, src) => {
+      const config = getSmartEmbed(src, theme || "dark");
+      if (config) {
+        return `<iframe src="${config.src}" ${config.attrs} style="height:100%;width:100%; aspect-ratio: 16 / 9; border: none;"></iframe>`;
       }
-      
       return match;
     });
 
-    // Sanitize to prevent XSS, but allow our custom attributes and elements
+    // Sanitize
     return DOMPurify.sanitize(html, {
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|vault):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      ADD_ATTR: [
-        "data-link",
-        "data-tag",
-        "data-line",
-        "data-heading",
-        "data-embed",
-        "data-callout",
-        "data-foldable",
-        "data-collapsed",
-        "checked",
-        "type",
-        "style",
-        "frameborder",
-        "allow",
-        "allowfullscreen",
-        "scrolling",
-        "width",
-        "height",
-        "sandbox",
-        "src",
-      ],
-      ADD_TAGS: [
-        "span",
-        "input",
-        "math",
-        "semantics",
-        "mrow",
-        "mi",
-        "mo",
-        "mn",
-        "msup",
-        "mspace",
-        "msqrt",
-        "mfrac",
-        "table",
-        "tbody",
-        "tr",
-        "mtd",
-        "mtr",
-        "annotation",
-        "iframe",
-      ],
+      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src"],
+      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote"],
       ADD_DATA_URI_TAGS: ["img"],
     });
-  }, [content, onEmbed, theme]);
+  }, [content, onEmbed, theme, getSmartEmbed]);
 
   // Handle clicks on wiki-links, tags, and checkboxes
   useEffect(() => {
