@@ -226,8 +226,8 @@ export function PluginSettingsPanel({
                 }}>
                   {/* Expand arrow */}
                   <div
-                    style={{ width: '16px', cursor: hasSettings && isEnabled ? 'pointer' : 'default', opacity: hasSettings && isEnabled ? 1 : 0.2 }}
-                    onClick={() => hasSettings && isEnabled && handleExpand(plugin.manifest.id)}
+                    style={{ width: '16px', cursor: 'pointer', opacity: isExpanded ? 1 : 0.4 }}
+                    onClick={() => handleExpand(plugin.manifest.id)}
                   >
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </div>

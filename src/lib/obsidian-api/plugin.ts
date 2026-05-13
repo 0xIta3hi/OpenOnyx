@@ -178,6 +178,7 @@ _Plugin.prototype.addSettingTab = function (settingTab: PluginSettingTab): void 
 // ── Views ─────────────────────────────────────────
 
 _Plugin.prototype.registerView = function (type: string, viewCreator: (leaf: any) => any): void {
+  (viewCreator as any).__pluginId = this.manifest.id;
   this._registeredViews.push({ type, creator: viewCreator });
   this.app.workspace.registerViewCreator(type, viewCreator);
 };

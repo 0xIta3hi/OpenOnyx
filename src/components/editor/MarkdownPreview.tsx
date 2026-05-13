@@ -246,6 +246,35 @@ export function MarkdownPreview({
     // Close callout blocks properly
     html = closeCallouts(html);
 
+    // Smart Iframe Resolver: Automatically "upgrade" standard URLs to their embed versions
+    html = html.replace(/<iframe\s+([^>]*src="([^"]+)"[^>]*)><\/iframe>/g, (match, attrs, src) => {
+      let embedUrl = src;
+      
+      // YouTube: Convert watch links to clean embed player
+      if (src.includes('youtube.com/watch')) {
+        const videoIdMatch = src.match(/[?&]v=([^&]+)/);
+        if (videoIdMatch) embedUrl = `https://www.youtube.com/embed/${videoIdMatch[1]}`;
+      } else if (src.includes('youtu.be/')) {
+        const videoIdMatch = src.match(/youtu\.be\/([^?&]+)/);
+        if (videoIdMatch) embedUrl = `https://www.youtube.com/embed/${videoIdMatch[1]}`;
+      }
+      
+      // Spotify: Convert track/album/playlist links to the official mini-player
+      else if (src.includes('open.spotify.com/')) {
+        if (!src.includes('/embed/')) {
+          embedUrl = src.replace('open.spotify.com/', 'open.spotify.com/embed/');
+        }
+      }
+
+      // If we changed the URL, update the attributes in the tag
+      if (embedUrl !== src) {
+        const newAttrs = attrs.replace(`src="${src}"`, `src="${embedUrl}"`);
+        return `<iframe ${newAttrs}></iframe>`;
+      }
+      
+      return match;
+    });
+
     // Sanitize to prevent XSS, but allow our custom attributes and elements
     return DOMPurify.sanitize(html, {
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|vault):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
@@ -261,6 +290,14 @@ export function MarkdownPreview({
         "checked",
         "type",
         "style",
+        "frameborder",
+        "allow",
+        "allowfullscreen",
+        "scrolling",
+        "width",
+        "height",
+        "sandbox",
+        "src",
       ],
       ADD_TAGS: [
         "span",
@@ -281,6 +318,7 @@ export function MarkdownPreview({
         "mtd",
         "mtr",
         "annotation",
+        "iframe",
       ],
       ADD_DATA_URI_TAGS: ["img"],
     });
@@ -416,12 +454,22 @@ export function MarkdownPreview({
     return DOMPurify.sanitize(html);
   }, []);
 
+  // Use a ref to track the last rendered HTML to avoid unnecessary DOM updates that reload iframes
+  const lastHtmlRef = useRef<string>("");
+
+  // Manually update the DOM only when the HTML content actually changes
+  useEffect(() => {
+    if (previewRef.current && lastHtmlRef.current !== renderedHtml) {
+      previewRef.current.innerHTML = renderedHtml;
+      lastHtmlRef.current = renderedHtml;
+    }
+  }, [renderedHtml]);
+
   return (
     <>
       <div
         ref={previewRef}
         className="markdown-preview"
-        dangerouslySetInnerHTML={{ __html: renderedHtml }}
       />
 
       {/* Link Preview Popup */}

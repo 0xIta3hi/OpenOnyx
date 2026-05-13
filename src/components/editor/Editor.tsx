@@ -36,6 +36,7 @@ import { tags as t } from "@lezer/highlight";
 import { Tab, ViewMode } from "../../types";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SearchReplace } from "./SearchReplace";
+import { Menu, TFile } from "../../lib/obsidian-api";
 import {
   linkAutocomplete,
   linkAutocompleteTheme,
@@ -3055,7 +3056,114 @@ export function Editor({
     };
   }, [isSpecialTab]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const app = (window as any).__oo_app;
+    if (!app) return;
 
+    const menu = new Menu();
+
+    const selection = viewRef.current?.state.sliceDoc(
+      viewRef.current.state.selection.main.from,
+      viewRef.current.state.selection.main.to
+    ) || '';
+    const searchTitle = selection 
+      ? `Search for "${selection.length > 20 ? selection.substring(0, 20) + '...' : selection}"`
+      : 'Search for selection';
+
+    menu.addItem((item: any) => item.setTitle('Add link').setIcon('link').onClick(() => {}));
+    menu.addItem((item: any) => item.setTitle('Add external link').setIcon('external-link').onClick(() => {}));
+    menu.addSeparator();
+    menu.addItem((item: any) => item.setTitle(searchTitle).setIcon('search').onClick(() => {}));
+    menu.addItem((item: any) => item.setTitle('Extract current selection...').setIcon('scissors').onClick(() => {}));
+    menu.addSeparator();
+    
+    // Native Obsidian submenus represented directly for now
+    menu.addItem((item: any) => item.setTitle('Format').setIcon('type').onClick(() => {}));
+    menu.addItem((item: any) => item.setTitle('Paragraph').setIcon('align-left').onClick(() => {}));
+    menu.addItem((item: any) => item.setTitle('Insert').setIcon('plus-circle').onClick(() => {}));
+    menu.addSeparator();
+    
+    menu.addItem((item: any) => item.setTitle('Cut').setIcon('scissors').onClick(() => { document.execCommand('cut'); }));
+    menu.addItem((item: any) => item.setTitle('Copy').setIcon('copy').onClick(() => { document.execCommand('copy'); }));
+    menu.addItem((item: any) => item.setTitle('Paste').setIcon('clipboard').onClick(async () => {
+       try {
+         const text = await navigator.clipboard.readText();
+         if (viewRef.current) {
+           const main = viewRef.current.state.selection.main;
+           viewRef.current.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
+         }
+       } catch (err) {}
+    }));
+    menu.addItem((item: any) => item.setTitle('Paste as plain text').setIcon('clipboard-type').onClick(async () => {
+       try {
+         const text = await navigator.clipboard.readText();
+         if (viewRef.current) {
+           const main = viewRef.current.state.selection.main;
+           viewRef.current.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
+         }
+       } catch (err) {}
+    }));
+    menu.addSeparator();
+    menu.addItem((item: any) => item.setTitle('Select all').setIcon('check-square').onClick(() => {
+       if (viewRef.current) {
+         viewRef.current.dispatch({ selection: { anchor: 0, head: viewRef.current.state.doc.length }});
+       }
+    }));
+
+    // Sync real editor state to the API mock before triggering event
+    const activeLeaf = app.workspace.activeLeaf;
+    if (activeLeaf && viewRef.current) {
+      // Ensure this leaf is considered the active one during the event trigger
+      if (activeLeaf.view) {
+        const view = activeLeaf.view;
+        const cmView = viewRef.current;
+        const state = cmView.state;
+        
+        // Sync the file info
+        const activeTab = tabs.find(t => t.id === activeTabId);
+        if (activeTab) {
+          activeLeaf.view.file = new TFile(activeTab.path);
+        }
+
+        // Initialize editor mocks if needed
+        const editor = view.editor || {};
+        view.editor = editor;
+        
+        // Update the mock methods with real data from CodeMirror 6
+        editor.getValue = () => state.doc.toString();
+        editor.getSelection = () => state.sliceDoc(state.selection.main.from, state.selection.main.to);
+        editor.somethingSelected = () => !state.selection.main.empty;
+        editor.getCursor = () => {
+          const pos = state.selection.main.head;
+          const line = state.doc.lineAt(pos);
+          return { line: line.number - 1, ch: pos - line.from };
+        };
+        editor.replaceSelection = (text: string) => {
+          const main = state.selection.main;
+          cmView.dispatch({
+            changes: { from: main.from, to: main.to, insert: text },
+            selection: { anchor: main.from + text.length }
+          });
+        };
+        
+        // Add more standard Obsidian editor methods for compatibility
+        editor.getLine = (n: number) => state.doc.line(n + 1).text;
+        editor.lineCount = () => state.doc.lines;
+        editor.getDoc = () => editor;
+        editor.cm = editor;
+        
+        // Ensure sourceMode shim is present as expected by many plugins
+        view.sourceMode = view.sourceMode || {};
+        view.sourceMode.cmEditor = editor;
+
+        console.log(`[Editor] Triggering editor-menu for ${activeTab?.path}. Selection: "${editor.getSelection()}"`);
+        app.workspace.trigger('editor-menu', menu, editor, view);
+      }
+    }
+
+    menu.showAtMouseEvent(e.nativeEvent);
+  }, [activeTabId, tabs]);
 
   return (
     <>
@@ -3111,6 +3219,7 @@ export function Editor({
 
             <div
               ref={editorRef}
+              onContextMenu={handleContextMenu}
               style={{
                 flex: viewMode === "split" ? `0 0 ${editorWidth}%` : 1,
                 height: "100%",
@@ -3129,6 +3238,7 @@ export function Editor({
 
             <div
               ref={previewRef}
+              onContextMenu={handleContextMenu}
               style={{
                 flex:
                   viewMode === "split"

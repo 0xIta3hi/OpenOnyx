@@ -72,6 +72,7 @@ export interface View {
   navigation: boolean;
   leaf: WorkspaceLeaf;
   containerEl: HTMLElement;
+  pluginId?: string;
   scope: any;
   onOpen(): Promise<void>;
   onClose(): Promise<void>;
@@ -187,7 +188,37 @@ TextFileView.prototype.clear = function() {};
 // ── MarkdownView (stub) ─────────────────────────────
 function _MarkdownView(this: any, leaf: WorkspaceLeaf) {
   TextFileView.call(this, leaf);
-  this.editor = null;
+  const app = (window as any).__oo_app;
+  
+  // Provide a safe inline mock for editor to avoid circular dependencies
+  this.editor = {
+    cm: null,
+    getDoc: function() { return this; },
+    getValue: function() { return ''; },
+    setValue: function() {},
+    getLine: function() { return ''; },
+    setLine: function() {},
+    lineCount: function() { return 0; },
+    lastLine: function() { return 0; },
+    getSelection: function() { return ''; },
+    replaceSelection: function() {},
+    replaceRange: function() {},
+    setCursor: function() {},
+    somethingSelected: function() { return false; },
+    getRange: function() { return ''; },
+    getCursor: function() { return { line: 0, ch: 0 }; },
+    focus: function() {},
+    blur: function() {},
+    hasFocus: function() { return false; },
+    getScrollInfo: function() { return { top: 0, left: 0, clientHeight: 0, clientWidth: 0, height: 0, width: 0 }; },
+    scrollTo: function() {},
+  };
+  this.editor.cm = this.editor;  
+  
+  // Expose sourceMode and previewMode as expected by some older plugins
+  this.sourceMode = { cmEditor: this.editor };
+  this.previewMode = {};
+
   this._containerEl = document.createElement('div');
 
   Object.defineProperty(this, 'containerEl', {
@@ -202,8 +233,8 @@ function _MarkdownView(this: any, leaf: WorkspaceLeaf) {
 }
 _MarkdownView.prototype = Object.create(TextFileView.prototype);
 _MarkdownView.prototype.constructor = _MarkdownView;
-
 _MarkdownView.prototype.getViewType = function() { return 'markdown'; };
+_MarkdownView.prototype.getIcon = function() { return 'file-text'; };
 _MarkdownView.prototype.getMode = function() { return 'source'; };
 _MarkdownView.prototype.getViewData = function() { return this.data; };
 _MarkdownView.prototype.setViewData = function(data: string, clear: boolean) { this.data = data; };
@@ -382,11 +413,12 @@ export class OOWorkspace extends Events {
     
     try {
       const view = creator(leaf);
+      view.pluginId = (creator as any).__pluginId;
       leaf.view = view;
       await view.onOpen?.();
       this._activePluginViews.set(viewType, leaf);
       this.trigger('plugin-views-changed');
-      console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()}`);
+      console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()} (plugin: ${view.pluginId})`);
       return true;
     } catch (e) {
       console.error(`[Workspace] Failed to create view ${viewType}:`, e);
@@ -395,8 +427,8 @@ export class OOWorkspace extends Events {
   }
 
   /** Get all active plugin views — used by React UI to render the sidebar */
-  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement }> {
-    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement }> = [];
+  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }> {
+    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }> = [];
     for (const [viewType, leaf] of this._activePluginViews) {
       if (leaf.view) {
         views.push({
@@ -405,6 +437,7 @@ export class OOWorkspace extends Events {
           displayText: leaf.view.getDisplayText?.() || viewType,
           icon: leaf.view.getIcon?.() || 'file-text',
           containerEl: leaf.view.containerEl,
+          pluginId: leaf.view.pluginId,
         });
       }
     }

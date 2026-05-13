@@ -6,13 +6,14 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getPluginScopeClass } from '../lib/pluginStyles';
 
 interface PluginViewInfo {
   viewType: string;
   displayText: string;
   icon: string;
   containerEl: HTMLElement;
+  pluginId?: string;
 }
 
 interface PluginViewPanelProps {
@@ -41,6 +42,12 @@ export function PluginViewPanel({ views, onClose }: PluginViewPanelProps) {
     // Clear previous content
     while (container.firstChild) {
       container.removeChild(container.firstChild);
+    }
+
+    // Apply plugin CSS scope class
+    if (activeView.pluginId) {
+      const scopeClass = getPluginScopeClass(activeView.pluginId);
+      activeView.containerEl.classList.add(scopeClass);
     }
 
     // Mount the plugin's DOM element
@@ -142,7 +149,6 @@ export function PluginViewPanel({ views, onClose }: PluginViewPanelProps) {
         style={{
           flex: 1,
           overflow: 'auto',
-          padding: '8px',
         }}
       />
     </div>

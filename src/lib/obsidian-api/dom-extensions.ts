@@ -248,138 +248,402 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     return frag;
   };
 
+  // ── toggle() — show/hide based on boolean ───────────
+  (HTMLElement.prototype as any).toggle = function(show: boolean) {
+    this.style.display = show ? '' : 'none';
+  };
+
+  // ── toggleVisibility() — visibility control ─────────
+  (HTMLElement.prototype as any).toggleVisibility = function(visible: boolean) {
+    this.style.visibility = visible ? '' : 'hidden';
+  };
+
+  // ── setCssStyles() — set inline CSS styles ──────────
+  (HTMLElement.prototype as any).setCssStyles = function(styles: Partial<CSSStyleDeclaration>) {
+    Object.assign(this.style, styles);
+  };
+
+  // ── addClasses() — add multiple classes from array ──
+  (HTMLElement.prototype as any).addClasses = function(classes: string[]) {
+    for (const cls of classes) {
+      if (cls) this.classList.add(...cls.split(' ').filter(Boolean));
+    }
+  };
+
+  // ── removeClasses() — remove multiple classes ───────
+  (HTMLElement.prototype as any).removeClasses = function(classes: string[]) {
+    for (const cls of classes) {
+      if (cls) this.classList.remove(...cls.split(' ').filter(Boolean));
+    }
+  };
+
+  // ── findAllSelf() — querySelectorAll including self ─
+  (HTMLElement.prototype as any).findAllSelf = function(selector: string): HTMLElement[] {
+    const results = Array.from(this.querySelectorAll(selector)) as HTMLElement[];
+    if (this.matches(selector)) results.unshift(this);
+    return results;
+  };
+
+  // ── isActiveElement() ───────────────────────────────
+  (HTMLElement.prototype as any).isActiveElement = function(): boolean {
+    return document.activeElement === this;
+  };
+
+  // ── getAttr() ───────────────────────────────────────
+  if (!(HTMLElement.prototype as any).getAttr) {
+    (HTMLElement.prototype as any).getAttr = function(key: string): string | null {
+      return this.getAttribute(key);
+    };
+  }
+
+  // ── Delegated on/off events ─────────────────────────
+  (HTMLElement.prototype as any).on = function(
+    type: string, selector: string,
+    listener: (this: HTMLElement, ev: Event, delegateTarget: HTMLElement) => any,
+    options?: boolean | AddEventListenerOptions
+  ) {
+    const handler = (evt: Event) => {
+      const target = (evt.target as HTMLElement)?.closest?.(selector) as HTMLElement | null;
+      if (target && this.contains(target)) {
+        listener.call(this, evt, target);
+      }
+    };
+    if (!this._EVENTS) this._EVENTS = {};
+    if (!this._EVENTS[type]) this._EVENTS[type] = [];
+    this._EVENTS[type].push({ selector, listener, options, callback: handler });
+    this.addEventListener(type, handler, options);
+  };
+
+  (HTMLElement.prototype as any).off = function(
+    type: string, selector: string,
+    listener: Function,
+    options?: boolean | AddEventListenerOptions
+  ) {
+    const entries = this._EVENTS?.[type];
+    if (!entries) return;
+    const idx = entries.findIndex((e: any) => e.selector === selector && e.listener === listener);
+    if (idx >= 0) {
+      this.removeEventListener(type, entries[idx].callback, options);
+      entries.splice(idx, 1);
+    }
+  };
+
+  // ── trigger() — dispatch custom event ───────────────
+  (HTMLElement.prototype as any).trigger = function(eventType: string) {
+    this.dispatchEvent(new Event(eventType, { bubbles: true }));
+  };
+
+  // ── onNodeInserted() ────────────────────────────────
+  (HTMLElement.prototype as any).onNodeInserted = function(
+    listener: () => any, once?: boolean
+  ): () => void {
+    if (this.isConnected) { listener(); if (once) return () => {}; }
+    const obs = new MutationObserver(() => {
+      if (this.isConnected) { listener(); if (once) { obs.disconnect(); } }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  };
+
+  // ── onWindowMigrated() — stub ───────────────────────
+  (HTMLElement.prototype as any).onWindowMigrated = function(listener: (win: Window) => any): () => void {
+    return () => {};
+  };
+
+  // ── innerWidth / innerHeight (without padding) ──────
+  try {
+    Object.defineProperty(HTMLElement.prototype, 'innerWidth', {
+      get() {
+        const s = getComputedStyle(this);
+        return this.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+      },
+      configurable: true,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'innerHeight', {
+      get() {
+        const s = getComputedStyle(this);
+        return this.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+      },
+      configurable: true,
+    });
+  } catch { /* already defined */ }
+
   // Mark as patched
   (HTMLElement.prototype as any).__oo_dom_patched = true;
   console.log('[OpenObsidian] DOM extensions patched');
 }
 
-// ── JS Primitive Extensions ─────────────────────────
-// Obsidian patches several JS primitives with helper methods.
+// ── Node-level patches ──────────────────────────────
+if (!(Node.prototype as any).detach) {
+  (Node.prototype as any).detach = function() { this.parentNode?.removeChild(this); };
+}
+if (!(Node.prototype as any).empty) {
+  (Node.prototype as any).empty = function() { while (this.firstChild) this.removeChild(this.firstChild); };
+}
+if (!(Node.prototype as any).insertAfter) {
+  (Node.prototype as any).insertAfter = function<T extends Node>(node: T, child: Node | null): T {
+    if (!child) { this.appendChild(node); return node; }
+    if (child.nextSibling) { this.insertBefore(node, child.nextSibling); }
+    else { this.appendChild(node); }
+    return node;
+  };
+}
+if (!(Node.prototype as any).indexOf) {
+  (Node.prototype as any).indexOf = function(other: Node): number {
+    return Array.from(this.childNodes).indexOf(other);
+  };
+}
+if (!(Node.prototype as any).setChildrenInPlace) {
+  (Node.prototype as any).setChildrenInPlace = function(children: Node[]) {
+    (this as any).empty();
+    for (const c of children) this.appendChild(c);
+  };
+}
+if (!(Node.prototype as any).appendText) {
+  (Node.prototype as any).appendText = function(val: string) {
+    this.appendChild(document.createTextNode(val));
+  };
+}
+if (!(Node.prototype as any).instanceOf) {
+  (Node.prototype as any).instanceOf = function<T>(type: { new(): T }): boolean {
+    return this instanceof type;
+  };
+}
+// Node.doc / Node.win
+try {
+  if (!Object.getOwnPropertyDescriptor(Node.prototype, 'doc')) {
+    Object.defineProperty(Node.prototype, 'doc', {
+      get() { return this.ownerDocument || document; },
+      configurable: true,
+    });
+  }
+  if (!Object.getOwnPropertyDescriptor(Node.prototype, 'win')) {
+    Object.defineProperty(Node.prototype, 'win', {
+      get() { return (this.ownerDocument || document).defaultView || window; },
+      configurable: true,
+    });
+  }
+  if (!Object.getOwnPropertyDescriptor(Node.prototype, 'constructorWin')) {
+    Object.defineProperty(Node.prototype, 'constructorWin', {
+      get() { return window; },
+      configurable: true,
+    });
+  }
+} catch { /* skip if already defined */ }
 
-if (!(String.prototype as any).contains) {
-  (String.prototype as any).contains = String.prototype.includes;
+// ── Node.createEl/createDiv/createSpan (official API puts these on Node, not just HTMLElement) ──
+if (!(Node.prototype as any).createEl) {
+  (Node.prototype as any).createEl = (HTMLElement.prototype as any).createEl;
+}
+if (!(Node.prototype as any).createDiv) {
+  (Node.prototype as any).createDiv = (HTMLElement.prototype as any).createDiv;
+}
+if (!(Node.prototype as any).createSpan) {
+  (Node.prototype as any).createSpan = (HTMLElement.prototype as any).createSpan;
 }
 
-if (!(Array.prototype as any).contains) {
-  (Array.prototype as any).contains = Array.prototype.includes;
+// ── SVG patches ─────────────────────────────────────
+if (!(SVGElement.prototype as any).setCssStyles) {
+  (SVGElement.prototype as any).setCssStyles = function(styles: Partial<CSSStyleDeclaration>) {
+    Object.assign(this.style, styles);
+  };
+}
+if (!(SVGElement.prototype as any).setCssProps) {
+  (SVGElement.prototype as any).setCssProps = function(props: Record<string, string>) {
+    for (const [k, v] of Object.entries(props)) this.style.setProperty(k, v);
+  };
 }
 
-if (!(Array.prototype as any).remove) {
-  (Array.prototype as any).remove = function<T>(this: T[], item: T): void {
-    const index = this.indexOf(item);
-    if (index !== -1) {
-      this.splice(index, 1);
+// ── Document delegated events ───────────────────────
+if (!(Document.prototype as any).on) {
+  (Document.prototype as any).on = function(
+    type: string, selector: string,
+    listener: (this: Document, ev: Event, delegateTarget: HTMLElement) => any,
+    options?: boolean | AddEventListenerOptions
+  ) {
+    const handler = (evt: Event) => {
+      const target = (evt.target as HTMLElement)?.closest?.(selector) as HTMLElement | null;
+      if (target) listener.call(this, evt, target);
+    };
+    if (!this._EVENTS) this._EVENTS = {};
+    if (!this._EVENTS[type]) this._EVENTS[type] = [];
+    this._EVENTS[type].push({ selector, listener, options, callback: handler });
+    this.addEventListener(type, handler, options);
+  };
+}
+if (!(Document.prototype as any).off) {
+  (Document.prototype as any).off = function(
+    type: string, selector: string,
+    listener: Function,
+    options?: boolean | AddEventListenerOptions
+  ) {
+    const entries = this._EVENTS?.[type];
+    if (!entries) return;
+    const idx = entries.findIndex((e: any) => e.selector === selector && e.listener === listener);
+    if (idx >= 0) {
+      this.removeEventListener(type, entries[idx].callback, options);
+      entries.splice(idx, 1);
     }
   };
 }
 
-if (!(Number.prototype as any).clamp) {
-  (Number.prototype as any).clamp = function (min: number, max: number): number {
-    return Math.min(Math.max(this as any, min), max);
+// ── UIEvent patches ─────────────────────────────────
+try {
+  if (!Object.getOwnPropertyDescriptor(UIEvent.prototype, 'targetNode')) {
+    Object.defineProperty(UIEvent.prototype, 'targetNode', {
+      get() { return this.target instanceof Node ? this.target : null; },
+      configurable: true,
+    });
+  }
+} catch { /* skip */ }
+
+// ── JS Primitive Extensions ─────────────────────────
+
+// String
+if (!(String.prototype as any).contains) {
+  (String.prototype as any).contains = String.prototype.includes;
+}
+if (!(String.prototype as any).format) {
+  (String.prototype as any).format = function(...args: string[]) {
+    return this.replace(/{(\d+)}/g, (m: string, i: string) => args[parseInt(i)] ?? m);
+  };
+}
+if (!(String as any).isString) {
+  (String as any).isString = (obj: any): obj is string => typeof obj === 'string';
+}
+
+// Number
+if (!(Number as any).isNumber) {
+  (Number as any).isNumber = (obj: any): obj is number => typeof obj === 'number' && !isNaN(obj);
+}
+
+// Array
+if (!(Array.prototype as any).contains) {
+  (Array.prototype as any).contains = Array.prototype.includes;
+}
+if (!(Array.prototype as any).remove) {
+  (Array.prototype as any).remove = function<T>(this: T[], item: T): void {
+    const idx = this.indexOf(item); if (idx >= 0) this.splice(idx, 1);
+  };
+}
+if (!(Array.prototype as any).first) {
+  (Array.prototype as any).first = function() { return this[0]; };
+}
+if (!(Array.prototype as any).last) {
+  (Array.prototype as any).last = function() { return this[this.length - 1]; };
+}
+if (!(Array.prototype as any).shuffle) {
+  (Array.prototype as any).shuffle = function() {
+    for (let i = this.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this[i], this[j]] = [this[j], this[i]];
+    }
+    return this;
+  };
+}
+if (!(Array.prototype as any).unique) {
+  (Array.prototype as any).unique = function() { return [...new Set(this)]; };
+}
+if (!(Array as any).combine) {
+  (Array as any).combine = <T>(arrays: T[][]): T[] => ([] as T[]).concat(...arrays);
+}
+
+// Math
+if (!(Math as any).clamp) {
+  (Math as any).clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+}
+if (!(Math as any).square) {
+  (Math as any).square = (value: number) => value * value;
+}
+
+// Object
+if (!(Object as any).isEmpty) {
+  (Object as any).isEmpty = (obj: Record<string, any>): boolean => {
+    for (const _ in obj) return false;
+    return true;
+  };
+}
+if (!(Object as any).each) {
+  (Object as any).each = <T>(obj: { [key: string]: T }, cb: (value: T, key?: string) => boolean | void, ctx?: any): boolean => {
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        if (cb.call(ctx, obj[key], key) === false) return false;
+      }
+    }
+    return true;
   };
 }
 
-// Set window.moment early — many plugins reference it at parse time
-import momentLib from 'moment';
-if (!(window as any).moment) {
-  (window as any).moment = momentLib;
+// Global functions
+if (typeof (window as any).isBoolean !== 'function') {
+  (window as any).isBoolean = (obj: any): obj is boolean => typeof obj === 'boolean';
+}
+if (typeof (window as any).fish !== 'function') {
+  (window as any).fish = (selector: string): HTMLElement | null => document.querySelector(selector);
+}
+if (typeof (window as any).fishAll !== 'function') {
+  (window as any).fishAll = (selector: string): HTMLElement[] => Array.from(document.querySelectorAll(selector));
+}
+if (typeof (window as any).sleep !== 'function') {
+  (window as any).sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+}
+if (typeof (window as any).nextFrame !== 'function') {
+  (window as any).nextFrame = (): Promise<void> => new Promise(r => requestAnimationFrame(() => r()));
+}
+if (typeof (window as any).ready !== 'function') {
+  (window as any).ready = (fn: () => any) => {
+    if (document.readyState !== 'loading') fn();
+    else document.addEventListener('DOMContentLoaded', fn);
+  };
+}
+if (typeof (window as any).ajax !== 'function') {
+  (window as any).ajax = (options: any) => {
+    const xhr = options.req || new XMLHttpRequest();
+    xhr.open(options.method || 'GET', options.url);
+    if (options.headers) for (const [k, v] of Object.entries(options.headers)) xhr.setRequestHeader(k, v as string);
+    if (options.withCredentials) xhr.withCredentials = true;
+    xhr.onload = () => options.success?.(xhr.response, xhr);
+    xhr.onerror = () => options.error?.(xhr.statusText, xhr);
+    xhr.send(options.data ?? null);
+  };
+}
+if (typeof (window as any).ajaxPromise !== 'function') {
+  (window as any).ajaxPromise = (options: any): Promise<any> =>
+    new Promise((resolve, reject) => {
+      (window as any).ajax({ ...options, success: resolve, error: reject });
+    });
 }
 
-// ── Node.js Environment Shims ───────────────────────
-// Many plugins use libraries that assume Node.js globals (like `process` or `global`)
-if (!(window as any).global) {
-  (window as any).global = window;
-}
+// Set window.moment early
+import momentLib from 'moment';
+if (!(window as any).moment) { (window as any).moment = momentLib; }
+
+// Node.js environment shims
+if (!(window as any).global) { (window as any).global = window; }
 if (!(window as any).process) {
   (window as any).process = {
     env: { NODE_ENV: 'production' },
-    platform: window.navigator.platform?.includes('Win') ? 'win32' : 
-              window.navigator.platform?.includes('Mac') ? 'darwin' : 'linux',
+    platform: navigator.platform?.includes('Win') ? 'win32' : navigator.platform?.includes('Mac') ? 'darwin' : 'linux',
     type: 'renderer',
-    versions: { electron: '20.0.0', node: '16.0.0' }
+    versions: { electron: '20.0.0', node: '16.0.0' },
   };
 }
 
-// ── App Container Shim ──────────────────────────────
-// Calendar plugin (and others) assume .app-container exists for mounting popups
+// App container shim
 if (!document.body.classList.contains('app-container')) {
   document.body.classList.add('app-container');
 }
 
-// ── activeWindow — Obsidian global pointing to the currently focused window ──
-if (!(window as any).activeWindow) {
-  (window as any).activeWindow = window;
-}
+// activeWindow / activeDocument
+if (!(window as any).activeWindow) { (window as any).activeWindow = window; }
+if (!(window as any).activeDocument) { (window as any).activeDocument = document; }
 
-// ── activeDocument — Obsidian global pointing to the active document ──
-if (!(window as any).activeDocument) {
-  (window as any).activeDocument = document;
+// DocumentFragment patches (guard duplicates from the block above)
+if (!(DocumentFragment.prototype as any).find) {
+  (DocumentFragment.prototype as any).find = function(s: string) { return this.querySelector(s); };
 }
-
-// ── Array.prototype.contains / remove — Obsidian extends native Array ──
-if (!(Array.prototype as any).contains) {
-  (Array.prototype as any).contains = function(item: any): boolean {
-    return this.indexOf(item) !== -1;
-  };
-}
-if (!(Array.prototype as any).remove) {
-  (Array.prototype as any).remove = function(item: any): void {
-    const idx = this.indexOf(item);
-    if (idx >= 0) this.splice(idx, 1);
-  };
-}
-if (!(Array.prototype as any).first) {
-  (Array.prototype as any).first = function(): any {
-    return this.length > 0 ? this[0] : undefined;
-  };
-}
-if (!(Array.prototype as any).last) {
-  (Array.prototype as any).last = function(): any {
-    return this.length > 0 ? this[this.length - 1] : undefined;
-  };
-}
-
-// ── DocumentFragment patches — Obsidian adds createEl/createDiv/createSpan ──
-if (!(DocumentFragment.prototype as any).createEl) {
-  (DocumentFragment.prototype as any).createEl = function(tag: string, o?: any, callback?: any): HTMLElement {
-    const el = document.createElement(tag);
-    if (typeof o === 'string') { el.textContent = o; }
-    else if (o) {
-      if (o.text) el.textContent = o.text;
-      if (o.cls) el.className = Array.isArray(o.cls) ? o.cls.join(' ') : o.cls;
-      if (o.attr) for (const [k, v] of Object.entries(o.attr)) el.setAttribute(k, v as string);
-    }
-    this.appendChild(el);
-    if (callback) callback(el);
-    return el;
-  };
-}
-if (!(DocumentFragment.prototype as any).createDiv) {
-  (DocumentFragment.prototype as any).createDiv = function(cls?: string | any, callback?: any): HTMLDivElement {
-    const el = document.createElement('div');
-    if (typeof cls === 'string') el.className = cls;
-    else if (cls?.cls) el.className = cls.cls;
-    this.appendChild(el);
-    if (callback) callback(el);
-    return el;
-  };
-}
-if (!(DocumentFragment.prototype as any).createSpan) {
-  (DocumentFragment.prototype as any).createSpan = function(cls?: string | any, callback?: any): HTMLSpanElement {
-    const el = document.createElement('span');
-    if (typeof cls === 'string') el.className = cls;
-    else if (cls?.cls) el.className = cls.cls;
-    this.appendChild(el);
-    if (callback) callback(el);
-    return el;
-  };
-}
-
-// ── String.prototype.contains — Obsidian extends native String ──
-if (!(String.prototype as any).contains) {
-  (String.prototype as any).contains = function(sub: string): boolean {
-    return this.indexOf(sub) !== -1;
-  };
+if (!(DocumentFragment.prototype as any).findAll) {
+  (DocumentFragment.prototype as any).findAll = function(s: string) { return Array.from(this.querySelectorAll(s)); };
 }
 
 export {};

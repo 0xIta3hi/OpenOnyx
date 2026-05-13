@@ -191,8 +191,35 @@ function createWindow(): void {
     void shell.openExternal(navigationUrl);
   });
 
-  // // Open DevTools by default for debugging
+  // Open DevTools by default for debugging
   // mainWindow.webContents.openDevTools();
+
+  // Allow framing of any site by stripping X-Frame-Options and CSP frame-ancestors headers
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    if (!details.responseHeaders) return callback({ cancel: false, responseHeaders: details.responseHeaders });
+    
+    const responseHeaders = { ...details.responseHeaders };
+    
+    // Remove headers that prevent framing
+    delete responseHeaders['x-frame-options'];
+    delete responseHeaders['X-Frame-Options'];
+    
+    // Also handle Content-Security-Policy if it contains frame-ancestors
+    if (responseHeaders['content-security-policy']) {
+      const csp = responseHeaders['content-security-policy'][0];
+      if (csp.includes('frame-ancestors')) {
+        responseHeaders['content-security-policy'][0] = csp.replace(/frame-ancestors\s+[^;]+(;|$)/, '');
+      }
+    }
+    if (responseHeaders['Content-Security-Policy']) {
+      const csp = responseHeaders['Content-Security-Policy'][0];
+      if (csp.includes('frame-ancestors')) {
+        responseHeaders['Content-Security-Policy'][0] = csp.replace(/frame-ancestors\s+[^;]+(;|$)/, '');
+      }
+    }
+
+    callback({ cancel: false, responseHeaders });
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;

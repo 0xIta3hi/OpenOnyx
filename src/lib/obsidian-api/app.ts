@@ -17,6 +17,12 @@ export class OOApp {
   keymap: any = {};
   fileManager: any;
   lastEvent: Event | null = null;
+  renderContext: any = {};
+  secretStorage: any = {
+    getSecret: async (key: string) => null,
+    setSecret: async (key: string, value: string) => {},
+    deleteSecret: async (key: string) => {},
+  };
 
   /** Plugin registry — stub for community plugins that query other plugins */
   plugins: any;
@@ -37,6 +43,11 @@ export class OOApp {
     try {
       localStorage.setItem(`oo_plugin_${key}`, JSON.stringify(value));
     } catch { /* ignore */ }
+  }
+
+  isDarkMode(): boolean {
+    return document.body.classList.contains('theme-dark') ||
+      window.matchMedia?.('(prefers-color-scheme: dark)')?.matches || false;
   }
 
   constructor() {

@@ -2,7 +2,7 @@
  * Obsidian API Compatibility — Core Components
  * Events, Component, Modal, Notice, Setting, UI widgets
  */
-import { Scope } from './utils';
+import { Scope, setIcon } from './utils';
 
 // ── EventRef ────────────────────────────────────────
 export interface EventRef {
@@ -468,13 +468,35 @@ export class Menu {
 
   showAtMouseEvent(evt: MouseEvent): this {
     this.dom.style.position = 'fixed';
-    this.dom.style.left = `${evt.clientX}px`;
-    this.dom.style.top = `${evt.clientY}px`;
+    this.dom.style.visibility = 'hidden';
     document.body.appendChild(this.dom);
+
+    // Use requestAnimationFrame to ensure the DOM has been updated so we can measure it
+    requestAnimationFrame(() => {
+      const rect = this.dom.getBoundingClientRect();
+      let left = evt.clientX;
+      let top = evt.clientY;
+
+      if (left + rect.width > window.innerWidth) {
+        left = window.innerWidth - rect.width - 10;
+      }
+      if (top + rect.height > window.innerHeight) {
+        top = window.innerHeight - rect.height - 10;
+      }
+
+      this.dom.style.left = `${Math.max(10, left)}px`;
+      this.dom.style.top = `${Math.max(10, top)}px`;
+      this.dom.style.visibility = 'visible';
+    });
+
     const close = (e: MouseEvent) => {
-      if (!this.dom.contains(e.target as Node)) { this.dom.remove(); document.removeEventListener('click', close); }
+      if (!this.dom.contains(e.target as Node)) {
+        this.dom.remove();
+        document.removeEventListener('mousedown', close);
+      }
     };
-    setTimeout(() => document.addEventListener('click', close), 0);
+    // Use mousedown instead of click to prevent issues with other click handlers
+    setTimeout(() => document.addEventListener('mousedown', close), 0);
     return this;
   }
 
@@ -497,18 +519,33 @@ export class MenuItem {
   constructor() {
     this.dom = document.createElement('div');
     this.dom.className = 'menu-item';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'menu-item-title';
+    this.dom.appendChild(titleEl);
     this.dom.addEventListener('click', (e) => this._callback?.(e));
   }
 
   setTitle(title: string | DocumentFragment): this {
-    if (typeof title === 'string') this.dom.textContent = title;
-    else { this.dom.textContent = ''; this.dom.appendChild(title); }
+    const titleEl = this.dom.querySelector('.menu-item-title') as HTMLElement;
+    if (typeof title === 'string') titleEl.textContent = title;
+    else { titleEl.textContent = ''; titleEl.appendChild(title); }
     return this;
   }
 
   setIcon(icon: string): this {
     this.dom.setAttribute('data-icon', icon);
-    // Many plugins use Lucide icons. We can add a helper to render them if needed.
+    
+    // Add an icon container
+    let iconEl = this.dom.querySelector('.menu-item-icon') as HTMLElement;
+    if (!iconEl) {
+      iconEl = document.createElement('div');
+      iconEl.className = 'menu-item-icon';
+      this.dom.prepend(iconEl);
+    }
+    
+    // Use the official setIcon to populate the SVG
+    setIcon(iconEl, icon);
+    
     return this;
   }
   setChecked(checked: boolean): this { this.dom.classList.toggle('is-checked', checked); return this; }
