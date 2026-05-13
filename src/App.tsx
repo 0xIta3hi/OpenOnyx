@@ -4122,6 +4122,7 @@ export default function App() {
                         annotation={inlineAnnotation}
                         showInsight={showInlineInsight}
                         onToggleInsight={setShowInlineInsight}
+                        theme={theme}
                       />
 
                       {showFTUXConnectionPrompt && ftuxConnectionSuggestion && (

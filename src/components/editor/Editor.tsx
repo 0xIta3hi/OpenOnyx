@@ -75,6 +75,7 @@ interface EditorProps {
   annotation?: string | null;
   showInsight?: boolean;
   onToggleInsight?: (show: boolean) => void;
+  theme?: string;
 }
 
 /**
@@ -2189,6 +2190,7 @@ export function Editor({
   annotation,
   showInsight,
   onToggleInsight,
+  theme,
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -3260,6 +3262,7 @@ export function Editor({
                 onEmbed={onGetNoteContent}
                 onGetLinkPreview={onGetNoteContent}
                 onImageClick={handleOpenImageLightbox}
+                theme={theme}
               />
             </div>
           </>

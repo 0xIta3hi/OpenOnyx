@@ -300,20 +300,6 @@ export class PluginManager {
       fullApi.request = fullApi.requestUrl;
     }
 
-    // Wrap workspace to track pluginId for views
-    const originalWorkspace = this._app.workspace;
-    const guardedWorkspace = Object.create(originalWorkspace);
-    
-    guardedWorkspace.registerView = (type: string, creator: any) => {
-      // Tag the creator so workspace knows which plugin owns this view
-      if (typeof creator === 'function') {
-        (creator as any).__pluginId = pluginId;
-      }
-      originalWorkspace.registerView(type, creator);
-    };
-
-    fullApi.workspace = guardedWorkspace;
-
     return fullApi;
   }
 

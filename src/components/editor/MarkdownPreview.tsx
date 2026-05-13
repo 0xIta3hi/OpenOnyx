@@ -78,6 +78,7 @@ interface MarkdownPreviewProps {
   onEmbed?: (noteName: string) => string | null;
   onGetLinkPreview?: (noteName: string) => string | null;
   onImageClick?: (src: string, alt: string) => void;
+  theme?: string;
 }
 
 function parseImageRenderMeta(title?: string): {
@@ -111,6 +112,7 @@ export function MarkdownPreview({
   onEmbed,
   onGetLinkPreview,
   onImageClick,
+  theme,
 }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{
@@ -322,7 +324,7 @@ export function MarkdownPreview({
       ],
       ADD_DATA_URI_TAGS: ["img"],
     });
-  }, [content, onEmbed]);
+  }, [content, onEmbed, theme]);
 
   // Handle clicks on wiki-links, tags, and checkboxes
   useEffect(() => {
@@ -462,6 +464,27 @@ export function MarkdownPreview({
     if (previewRef.current && lastHtmlRef.current !== renderedHtml) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
+
+      // Handle Twitter embeds: if twit-blockquote exists, ensure widgets script is loaded and triggered
+      if (renderedHtml.includes("twitter-tweet")) {
+        // Apply theme to blockquotes before Twitter script processes them
+        const tweets = previewRef.current.querySelectorAll("blockquote.twitter-tweet");
+        tweets.forEach(tweet => {
+          tweet.setAttribute("data-theme", theme === "dark" ? "dark" : "light");
+        });
+
+        const injectTwitter = () => {
+          if (!(window as any).twttr) {
+            const script = document.createElement("script");
+            script.src = "https://platform.twitter.com/widgets.js";
+            script.async = true;
+            document.head.appendChild(script);
+          } else if ((window as any).twttr.widgets) {
+            (window as any).twttr.widgets.load(previewRef.current);
+          }
+        };
+        injectTwitter();
+      }
     }
   }, [renderedHtml]);
 
