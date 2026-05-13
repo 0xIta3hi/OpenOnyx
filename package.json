@@ -41,6 +41,7 @@
     "jszip": "^3.10.1",
     "katex": "^0.16.44",
     "kill-port": "^2.0.1",
+    "lucide": "^1.14.0",
     "lucide-react": "^1.8.0",
     "marked": "^15.0.8",
     "marked-katex-extension": "^5.1.7",
