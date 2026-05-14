@@ -9252,6 +9252,8 @@ blockquote:has(.callout) {
   width: 0;
   height: 0;
   transform-origin: 0 0;
+  will-change: transform;
+  contain: layout style;
 }
 
 /* ═══ Dot-pattern SVG background ═══ */

@@ -730,6 +730,7 @@ export function CanvasView({
   const edgesRef = useRef(edges);
   const scribblesRef = useRef(scribbles);
   const activeScribbleRef = useRef<CanvasScribbleStroke | null>(null);
+  const activeScribblePathRef = useRef<SVGPathElement | null>(null);
   const selectedScribbleIdsRef = useRef<Set<string>>(new Set());
   const lassoPointsRef = useRef<CanvasScribblePoint[]>([]);
   const scribbleMoveOriginRef = useRef<Record<string, CanvasScribblePoint[]>>(
@@ -2652,9 +2653,13 @@ export function CanvasView({
             MIN_SCRIBBLE_POINT_DIST / Math.max(vpRef.current.zoom, 0.25);
           if (last && Math.hypot(point.x - last.x, point.y - last.y) < minDist)
             break;
-          const nextStroke = { ...active, points: [...active.points, point] };
-          activeScribbleRef.current = nextStroke;
-          setActiveScribble(nextStroke);
+          // Mutate in-place for performance (no React re-render)
+          active.points.push(point);
+          // Direct SVG DOM update -- bypass React entirely
+          const pathEl = activeScribblePathRef.current;
+          if (pathEl) {
+            pathEl.setAttribute('d', pointsToStrokePath(active.points));
+          }
           break;
         }
         case "erase": {
@@ -3584,6 +3589,7 @@ export function CanvasView({
             })}
             {activeScribble ? (
               <path
+                ref={activeScribblePathRef}
                 d={pointsToStrokePath(activeScribble.points)}
                 fill="none"
                 stroke={activeScribble.color || "var(--cv-scribble)"}
