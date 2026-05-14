@@ -11035,3 +11035,72 @@ blockquote:has(.callout) {
   border-color: transparent transparent #000 transparent;
   z-index: 1000;
 }
+
+/* ── New Tab View ──────────────────────────────────── */
+.new-tab-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.new-tab-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  max-width: 400px;
+  width: 100%;
+}
+
+.new-tab-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.new-tab-link {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: all 150ms ease;
+  font-size: 14px;
+}
+
+.new-tab-link:hover {
+  background: var(--bg-secondary);
+  border-color: var(--divider-color);
+  color: var(--accent-primary);
+}
+
+.link-icon {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+  opacity: 0.7;
+}
+
+.link-text {
+  flex: 1;
+  text-align: left;
+}
+
+.link-shortcut {
+  font-size: 11px;
+  opacity: 0.5;
+  font-family: var(--font-mono);
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color);
+}

@@ -19,7 +19,7 @@ export function EditorHeader({
 }: EditorHeaderProps) {
   // Parse breadcrumbs
   const pathParts = filePath.split("/").filter(Boolean);
-  const fileName = pathParts.pop()?.replace(/\.md$/, "") || "";
+  const fileName = filePath === "__new_tab__" ? "New tab" : (pathParts.pop()?.replace(/\.md$/, "") || "");
 
   return (
     <div className="editor-header">

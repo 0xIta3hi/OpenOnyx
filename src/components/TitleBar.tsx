@@ -40,7 +40,7 @@ interface TitleBarProps {
   onTabClose?: (id: string) => void;
   onNewTab?: () => void;
   onTabReorder?: (draggedId: string, targetId: string, insertBefore: boolean) => void;
-  tabScrollRef?: React.RefObject<HTMLDivElement>;
+  tabScrollRef?: React.RefObject<HTMLDivElement | null>;
   children?: React.ReactNode;
 }
 

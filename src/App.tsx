@@ -1159,6 +1159,20 @@ export default function App() {
   // ── File & Editor State ─────────────────────────────
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
+
+  const handleOpenNewTab = useCallback(() => {
+    const newTab: Tab = {
+      id: generateId(),
+      path: "__new_tab__",
+      name: "New tab",
+      isModified: false,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    setCurrentContent("");
+    setBacklinks([]);
+  }, [generateId]);
+
   const [showInlineInsight, setShowInlineInsight] = useState(false);
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -1257,7 +1271,7 @@ export default function App() {
     // Load content for the selected tab
     const tab = tabs.find((t) => t.id === tabId);
     if (tab) {
-      if (tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH || tab.path.startsWith('__plugin__.')) {
+      if (tab.path === "__new_tab__" || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH || tab.path.startsWith('__plugin__.')) {
         setCurrentContent("");
         setBacklinks([]);
         return;
@@ -1378,6 +1392,9 @@ export default function App() {
           setFileTree(tree);
           // Initializing background services for the auto-loaded vault
           runVaultInit(tree);
+          
+          // Open a new tab if no tabs are restored (tab persistence not implemented yet)
+          handleOpenNewTab();
         }
       } catch (err) {
         console.error("Failed to auto-load vault:", err);
@@ -2159,6 +2176,9 @@ export default function App() {
       } else if (ctrl && e.key === "n") {
         e.preventDefault();
         handleNewNote();
+      } else if (ctrl && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent("editor:open-search"));
       } else if (ctrl && e.key === "s") {
         e.preventDefault();
         handleSave();
@@ -2210,13 +2230,14 @@ export default function App() {
         setVaultPath(path);
         (window as any).__oo_vault_path = path;
         setShowSidebar(true);
-        setTabs([]);
-        setActiveTabId(null);
-        setCurrentContent("");
         const tree = await api.getFileTree();
         setFileTree(tree);
         // Trigger background vault initialization for new vault
         runVaultInit(tree);
+        
+        // Open a new tab immediately
+        handleOpenNewTab();
+        
         return true;
       }
       return false;
@@ -2343,6 +2364,14 @@ export default function App() {
       return [filePath, ...filtered].slice(0, 20);
     });
 
+    // Determine starting tabs for this operation (filter out active "New tab" if we're replacing it)
+    let baseTabs = tabs;
+    let replacingNewTabId: string | null = null;
+    if (activeTab?.path === "__new_tab__") {
+      replacingNewTabId = activeTabId;
+      baseTabs = tabs.filter(t => t.id !== activeTabId);
+    }
+
     if (isCanvasFile(filePath)) {
       setRecentCanvasFiles((prev) => {
         const filtered = prev.filter((p) => p !== filePath);
@@ -2353,8 +2382,10 @@ export default function App() {
       setShowCanvas(false);
       setCanvasFullScreen(false);
       setCanvasFilePath(filePath);
-      const existingCanvasTab = tabs.find((t) => t.path === filePath);
+      
+      const existingCanvasTab = baseTabs.find((t) => t.path === filePath);
       if (existingCanvasTab) {
+        setTabs(baseTabs); // Apply the removal of New Tab if it happened
         setActiveTabId(existingCanvasTab.id);
       } else {
         const canvasTab: Tab = {
@@ -2363,7 +2394,7 @@ export default function App() {
           name: getNoteName(filePath),
           isModified: false,
         };
-        setTabs((prev) => [...prev, canvasTab]);
+        setTabs([...baseTabs, canvasTab]);
         setActiveTabId(canvasTab.id);
       }
       setCurrentContent("");
@@ -2371,9 +2402,10 @@ export default function App() {
       return;
     }
 
-    // Check if tab already exists
-    const existingTab = tabs.find((t) => t.path === filePath);
+    // Check if tab already exists in our base set
+    const existingTab = baseTabs.find((t) => t.path === filePath);
     if (existingTab) {
+      setTabs(baseTabs); // Apply removal of New Tab if it happened
       setActiveTabId(existingTab.id);
       const content = await readOrCreateMissingMarkdown(filePath);
       setCurrentContent(content);
@@ -2393,7 +2425,7 @@ export default function App() {
       isModified: false,
     };
 
-    setTabs((prev) => [...prev, newTab]);
+    setTabs([...baseTabs, newTab]);
     setActiveTabId(newTab.id);
     setCurrentContent(content);
     if (mode) {
@@ -2401,6 +2433,7 @@ export default function App() {
     }
     loadBacklinks(filePath);
   };
+
 
   const openGraphAsTab = (mode: GraphMode = "manual") => {
     setGraphMode(mode);
@@ -3199,6 +3232,11 @@ export default function App() {
         setBacklinks([]);
         return;
       }
+      if (tab.path === "__new_tab__") {
+        setCurrentContent("");
+        setBacklinks([]);
+        return;
+      }
       try {
         const content = await api.readFile(tab.path);
         setCurrentContent(content);
@@ -3230,18 +3268,27 @@ export default function App() {
       if (newTabs.length > 0) {
         const lastTab = newTabs[newTabs.length - 1];
         setActiveTabId(lastTab.id);
-        if (isCanvasFile(lastTab.path) || lastTab.path === GRAPH_TAB_PATH || lastTab.path === SPACES_TAB_PATH || lastTab.path.startsWith('__plugin__.')) {
+        if (
+          lastTab.path === "__new_tab__" ||
+          isCanvasFile(lastTab.path) || 
+          lastTab.path === GRAPH_TAB_PATH || 
+          lastTab.path === SPACES_TAB_PATH || 
+          lastTab.path.startsWith('__plugin__.')
+        ) {
           setCurrentContent("");
           setBacklinks([]);
         } else {
-          const content = await api.readFile(lastTab.path);
-          setCurrentContent(content);
-          loadBacklinks(lastTab.path);
+          try {
+            const content = await api.readFile(lastTab.path);
+            setCurrentContent(content);
+            loadBacklinks(lastTab.path);
+          } catch {
+            setCurrentContent("");
+          }
         }
       } else {
-        setActiveTabId(null);
-        setCurrentContent("");
-        setBacklinks([]);
+        // Automatically open a new tab if everything is closed
+        handleOpenNewTab();
       }
     }
   };
@@ -4315,7 +4362,7 @@ export default function App() {
           activeTabId={activeTabId}
           onTabSelect={handleTabSelect}
           onTabClose={closeTab}
-          onNewTab={handleNewNote}
+          onNewTab={handleOpenNewTab}
           onTabReorder={handleTabReorder}
           tabScrollRef={tabScrollRef}
         />

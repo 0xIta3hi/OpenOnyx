@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Editor } from "./editor/Editor";
 import { EditorHeader } from "./editor/EditorHeader";
 import { Tab, ViewMode, Theme, PaneLeaf } from "../types";
+import { NewTabView } from "./NewTabView";
 import { getAPI } from "../utils/api";
 import { type LinkType } from "./SuggestionBanner";
 import type { EnrichedSuggestion } from "../utils/suggestion-enrichment";
@@ -58,7 +59,7 @@ export function LeafPaneEditor({
   onContentChangeGlobal,
 }: LeafPaneEditorProps) {
   const [content, setContent] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(activeTab.path !== "__new_tab__");
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -69,6 +70,12 @@ export function LeafPaneEditor({
     // Set loading state to prevent Editor from mounting with old content
     setIsLoading(true); 
 
+    if (activeTab.path === "__new_tab__") {
+      setContent("");
+      setIsLoading(false);
+      return;
+    }
+    
     api.readFile(activeTab.path)
       .then((c: string) => {
         if (isActive) {
@@ -132,6 +139,17 @@ export function LeafPaneEditor({
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
           Loading...
         </div>
+      ) : activeTab.path === "__new_tab__" ? (
+        <NewTabView
+          onNewNote={() => {
+            // Use the global handler if possible, or trigger event
+            document.dispatchEvent(new CustomEvent("menu:new-note"));
+          }}
+          onSearch={() => {
+            document.dispatchEvent(new CustomEvent("editor:open-search"));
+          }}
+          onClose={() => onTabClose(activeTab.id)}
+        />
       ) : (
         <Editor
           tabs={leaf.tabs}
