@@ -1024,87 +1024,122 @@ export default function App() {
     [handlePaneDrag, stopPaneDrag],
   );
 
-  // Sidebar drag resizer
+  // ── Sidebar drag resizer (Obsidian-style: CSS-only during drag, no React re-renders) ──
   const [sidebarWidth, setSidebarWidth] = useState(260);
+  const sidebarWidthRef = useRef(260);
+  const appBodyRef = useRef<HTMLDivElement>(null);
 
-  const handleSidebarDrag = useCallback((e: MouseEvent) => {
-    const newWidth = e.clientX - 48; // minus ribbon width
-    if (newWidth > 150 && newWidth < 600) setSidebarWidth(newWidth);
+  // Keep ref in sync with state (for non-drag updates)
+  useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
+
+  const startSidebarDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    document.body.style.cursor = "ew-resize";
+    // Disable pointer events on iframes/embeds during drag to prevent stealing mouse
+    document.body.classList.add("is-dragging");
+
+    const onMove = (ev: MouseEvent) => {
+      const newWidth = ev.clientX - 48;
+      if (newWidth > 150 && newWidth < 600) {
+        sidebarWidthRef.current = newWidth;
+        // Direct DOM mutation -- zero React re-renders
+        const root = appBodyRef.current || document.querySelector('.app-body');
+        if (root) (root as HTMLElement).style.setProperty('--sidebar-width', `${newWidth}px`);
+        // Also update titlebar-left width directly
+        const tbLeft = document.querySelector('.titlebar-left') as HTMLElement;
+        if (tbLeft) {
+          const w = 44 + newWidth;
+          tbLeft.style.width = `${w}px`;
+          tbLeft.style.minWidth = `${w}px`;
+        }
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "default";
+      document.body.classList.remove("is-dragging");
+      // Commit final value to React state (single re-render)
+      setSidebarWidth(sidebarWidthRef.current);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }, []);
 
-  const stopSidebarDrag = useCallback(() => {
-    document.removeEventListener("mousemove", handleSidebarDrag);
-    document.removeEventListener("mouseup", stopSidebarDrag);
-    document.body.style.cursor = "default";
-  }, [handleSidebarDrag]);
-
-  const startSidebarDrag = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      document.addEventListener("mousemove", handleSidebarDrag);
-      document.addEventListener("mouseup", stopSidebarDrag);
-      document.body.style.cursor = "ew-resize";
-    },
-    [handleSidebarDrag, stopSidebarDrag],
-  );
-
-  // Right Sidebar drag resizer
+  // ── Right Sidebar drag resizer ──
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
+  const rightSidebarWidthRef = useRef(300);
 
-  const handleRightSidebarDrag = useCallback((e: MouseEvent) => {
-    const ribbonWidth = 48;
-    const currentLeftSidebarWidth = showSidebar ? sidebarWidth : 0;
-    const minCenterWidth = 40; // Leave a tiny sliver for the center editor, matching Obsidian
-    const maxRightWidth = window.innerWidth - ribbonWidth - currentLeftSidebarWidth - minCenterWidth;
+  useEffect(() => { rightSidebarWidthRef.current = rightSidebarWidth; }, [rightSidebarWidth]);
 
-    const newWidth = window.innerWidth - e.clientX;
-    if (newWidth > 200 && newWidth <= maxRightWidth) {
-      setRightSidebarWidth(newWidth);
-    } else if (newWidth > maxRightWidth) {
-      setRightSidebarWidth(maxRightWidth);
-    }
-  }, [showSidebar, sidebarWidth]);
+  const startRightSidebarDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    document.body.style.cursor = "ew-resize";
+    document.body.classList.add("is-dragging");
 
-  const stopRightSidebarDrag = useCallback(() => {
-    document.removeEventListener("mousemove", handleRightSidebarDrag);
-    document.removeEventListener("mouseup", stopRightSidebarDrag);
-    document.body.style.cursor = "default";
-  }, [handleRightSidebarDrag]);
+    const onMove = (ev: MouseEvent) => {
+      const ribbonWidth = 48;
+      const curLeftWidth = sidebarWidthRef.current;
+      const leftUsed = document.querySelector('.sidebar.collapsed') ? 0 : curLeftWidth;
+      const minCenterWidth = 40;
+      const maxRightWidth = window.innerWidth - ribbonWidth - leftUsed - minCenterWidth;
 
-  const startRightSidebarDrag = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      document.addEventListener("mousemove", handleRightSidebarDrag);
-      document.addEventListener("mouseup", stopRightSidebarDrag);
-      document.body.style.cursor = "ew-resize";
-    },
-    [handleRightSidebarDrag, stopRightSidebarDrag],
-  );
+      let newWidth = window.innerWidth - ev.clientX;
+      if (newWidth < 200) newWidth = 200;
+      if (newWidth > maxRightWidth) newWidth = maxRightWidth;
 
-  // Thought Model panel drag resizer
-  const [thoughtModelWidth, setThoughtModelWidth] = useState(400);
+      rightSidebarWidthRef.current = newWidth;
+      // Direct DOM mutation
+      const panel = document.querySelector('.plugin-view-panel:not(.is-main-view)') as HTMLElement;
+      if (panel) panel.style.width = `${newWidth}px`;
+    };
 
-  const handleThoughtModelDrag = useCallback((e: MouseEvent) => {
-    const appWidth = window.innerWidth - 48; // minus ribbon
-    const newWidth = appWidth - e.clientX;
-    if (newWidth > 300 && newWidth < 800) setThoughtModelWidth(newWidth);
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "default";
+      document.body.classList.remove("is-dragging");
+      setRightSidebarWidth(rightSidebarWidthRef.current);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }, []);
 
-  const stopThoughtModelDrag = useCallback(() => {
-    document.removeEventListener("mousemove", handleThoughtModelDrag);
-    document.removeEventListener("mouseup", stopThoughtModelDrag);
-    document.body.style.cursor = "default";
-  }, [handleThoughtModelDrag]);
+  // ── Thought Model panel drag resizer ──
+  const [thoughtModelWidth, setThoughtModelWidth] = useState(400);
+  const thoughtModelWidthRef = useRef(400);
 
-  const startThoughtModelDrag = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      document.addEventListener("mousemove", handleThoughtModelDrag);
-      document.addEventListener("mouseup", stopThoughtModelDrag);
-      document.body.style.cursor = "ew-resize";
-    },
-    [handleThoughtModelDrag, stopThoughtModelDrag],
-  );
+  useEffect(() => { thoughtModelWidthRef.current = thoughtModelWidth; }, [thoughtModelWidth]);
+
+  const startThoughtModelDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    document.body.style.cursor = "ew-resize";
+    document.body.classList.add("is-dragging");
+
+    const onMove = (ev: MouseEvent) => {
+      const appWidth = window.innerWidth - 48;
+      const newWidth = appWidth - ev.clientX;
+      if (newWidth > 300 && newWidth < 800) {
+        thoughtModelWidthRef.current = newWidth;
+        const panel = document.querySelector('.thought-model-panel') as HTMLElement;
+        if (panel) panel.style.width = `${newWidth}px`;
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "default";
+      document.body.classList.remove("is-dragging");
+      setThoughtModelWidth(thoughtModelWidthRef.current);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
 
   // ── File & Editor State ─────────────────────────────
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
@@ -3973,6 +4008,7 @@ export default function App() {
 
       <div
         className="app-body"
+        ref={appBodyRef}
         style={{ "--sidebar-width": `${sidebarWidth}px` } as any}
       >
         {vaultPath && !isFTUXZeroState && (

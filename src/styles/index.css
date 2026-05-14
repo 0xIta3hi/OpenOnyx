@@ -510,6 +510,16 @@ body {
   overflow: hidden;
 }
 
+/* During sidebar drag: prevent iframes/embeds/editors from stealing mouse events */
+body.is-dragging * {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+body.is-dragging .resizer,
+body.is-dragging .resizer * {
+  pointer-events: auto !important;
+}
+
 /* ── Custom Title Bar (Obsidian-style unified top bar) ── */
 .titlebar {
   display: flex;
@@ -537,8 +547,6 @@ body {
   pointer-events: auto;
   -webkit-app-region: no-drag;
   background: var(--bg-secondary);
-  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1),
-    min-width 200ms cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
 }
 
@@ -997,7 +1005,6 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   position: relative;
   will-change: width;
@@ -1898,15 +1905,19 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  overflow-x: auto;
   margin-bottom: var(--space-4);
   font-size: 0.9em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-x: hidden;
 }
 
 .markdown-preview pre code {
   background: none;
   padding: 0;
   color: var(--text-primary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .markdown-preview blockquote {
