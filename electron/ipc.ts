@@ -182,6 +182,44 @@ export function registerIpcHandlers(
     }
   });
 
+  ipcMain.handle('network:request', async (_event, params: any) => {
+    try {
+      const url = params.url;
+      const options: RequestInit = {
+        method: params.method || 'GET',
+        headers: {
+          'User-Agent': 'OpenObsidian/1.0',
+          ...params.headers,
+        },
+        body: params.body,
+      };
+
+      const res = await fetch(url, options);
+      const arrayBuffer = await res.arrayBuffer();
+      
+      // IPC can clone ArrayBuffer or Uint8Array
+      const buffer = new Uint8Array(arrayBuffer);
+      
+      const text = new TextDecoder().decode(buffer);
+      let json = null;
+      try { json = JSON.parse(text); } catch { }
+
+      const responseHeaders: Record<string, string> = {};
+      res.headers.forEach((val, key) => { responseHeaders[key] = val; });
+
+      return {
+        status: res.status,
+        headers: responseHeaders,
+        text,
+        json,
+        arrayBuffer: buffer.buffer // send back the raw ArrayBuffer
+      };
+    } catch (err: any) {
+      console.error('[network:request] Failed:', err.message);
+      throw err;
+    }
+  });
+
   // ── Thought Model ─────────────────────────────────
   const THOUGHT_MODEL_URL = 'http://127.0.0.1:8765';
 

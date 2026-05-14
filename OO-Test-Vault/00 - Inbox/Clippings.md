@@ -14,7 +14,9 @@ Key points:
 
 ### "The Art of Focus"
 Source: Medium
-Key points:
+Key points:Integrate Git version control with automatic backup and other advanced features.
+
+
 - Environment design
 - Single-tasking
 - Deep work blocks

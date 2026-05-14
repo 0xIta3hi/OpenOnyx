@@ -16,12 +16,16 @@ import {
   FilePlus,
   Plus,
   FolderOpen,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 
 interface TitleBarProps {
   theme: Theme;
   onToggleSidebar?: () => void;
   showSidebar?: boolean;
+  onToggleRightSidebar?: () => void;
+  showRightSidebar?: boolean;
   onNewNote?: () => void;
   onSearch?: () => void;
   onToggleExplorer?: () => void;
@@ -41,6 +45,8 @@ export function TitleBar({
   theme,
   onToggleSidebar,
   showSidebar = true,
+  onToggleRightSidebar,
+  showRightSidebar = true,
   onNewNote,
   onSearch,
   onToggleExplorer,
@@ -168,8 +174,23 @@ export function TitleBar({
       </div>
 
       {/* Right: window controls */}
-      {!isMac && (
-        <div className="titlebar-controls">
+      <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center' }}>
+        {onToggleRightSidebar && (
+          <button
+            className="titlebar-action-btn"
+            style={{ marginRight: '8px' }}
+            onClick={onToggleRightSidebar}
+            title={showRightSidebar ? "Close right sidebar" : "Open right sidebar"}
+          >
+            {showRightSidebar ? (
+              <PanelRightClose size={20} strokeWidth={1.5} />
+            ) : (
+              <PanelRightOpen size={20} strokeWidth={1.5} />
+            )}
+          </button>
+        )}
+        {!isMac && (
+          <div className="titlebar-controls">
           <button
             className="titlebar-btn"
             onClick={() => api.minimizeWindow()}
@@ -193,6 +214,7 @@ export function TitleBar({
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

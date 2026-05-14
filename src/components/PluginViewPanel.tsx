@@ -20,9 +20,10 @@ interface PluginViewPanelProps {
   views: PluginViewInfo[];
   onClose: (viewType: string) => void;
   isMainView?: boolean;
+  width?: number;
 }
 
-export function PluginViewPanel({ views, onClose, isMainView }: PluginViewPanelProps) {
+export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: PluginViewPanelProps) {
   const [activeViewType, setActiveViewType] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -75,9 +76,8 @@ export function PluginViewPanel({ views, onClose, isMainView }: PluginViewPanelP
         overflow: 'hidden',
         background: 'var(--bg-primary)',
       } : {
-        width: '300px',
-        minWidth: '250px',
-        maxWidth: '450px',
+        width: `${width}px`,
+        minWidth: '200px',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',

@@ -115,6 +115,33 @@ export class OOApp {
       openTabById: (id: string) => {},
     };
 
+    // Commands registry stub
+    (this as any).commands = {
+      executeCommand: (cmd: any) => false,
+      commands: {},
+      addCommand: (cmd: any) => {},
+      removeCommand: (id: string) => {},
+    };
+
+    // Embed registry stub (used by Kanban plugin to extract MarkdownEditor constructor)
+    class MockGrandparent {}
+    class MockParent extends MockGrandparent {}
+    class MockEditMode extends MockParent {}
+
+    (this as any).embedRegistry = {
+      embedByExtension: {
+        md: (ctx: any, file: any, subpath: string) => {
+          return {
+            load: () => {},
+            unload: () => {},
+            showEditor: () => {},
+            editable: false,
+            editMode: new MockEditMode()
+          };
+        }
+      }
+    };
+
     // Make the app globally accessible for plugins
     (window as any).__oo_app = this;
     (window as any).app = this;

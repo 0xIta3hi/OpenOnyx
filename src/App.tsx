@@ -905,6 +905,7 @@ export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [showGraph, setShowGraph] = useState(false);
   const [graphMode, setGraphMode] = useState<GraphMode>("manual");
   const [graphFullScreen, setGraphFullScreen] = useState(false);
@@ -1045,6 +1046,39 @@ export default function App() {
       document.body.style.cursor = "ew-resize";
     },
     [handleSidebarDrag, stopSidebarDrag],
+  );
+
+  // Right Sidebar drag resizer
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
+
+  const handleRightSidebarDrag = useCallback((e: MouseEvent) => {
+    const ribbonWidth = 48;
+    const currentLeftSidebarWidth = showSidebar ? sidebarWidth : 0;
+    const minCenterWidth = 40; // Leave a tiny sliver for the center editor, matching Obsidian
+    const maxRightWidth = window.innerWidth - ribbonWidth - currentLeftSidebarWidth - minCenterWidth;
+
+    const newWidth = window.innerWidth - e.clientX;
+    if (newWidth > 200 && newWidth <= maxRightWidth) {
+      setRightSidebarWidth(newWidth);
+    } else if (newWidth > maxRightWidth) {
+      setRightSidebarWidth(maxRightWidth);
+    }
+  }, [showSidebar, sidebarWidth]);
+
+  const stopRightSidebarDrag = useCallback(() => {
+    document.removeEventListener("mousemove", handleRightSidebarDrag);
+    document.removeEventListener("mouseup", stopRightSidebarDrag);
+    document.body.style.cursor = "default";
+  }, [handleRightSidebarDrag]);
+
+  const startRightSidebarDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      document.addEventListener("mousemove", handleRightSidebarDrag);
+      document.addEventListener("mouseup", stopRightSidebarDrag);
+      document.body.style.cursor = "ew-resize";
+    },
+    [handleRightSidebarDrag, stopRightSidebarDrag],
   );
 
   // Thought Model panel drag resizer
@@ -3921,6 +3955,8 @@ export default function App() {
         theme={theme}
         onToggleSidebar={() => setShowSidebar((s) => !s)}
         showSidebar={showSidebar}
+        onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
+        showRightSidebar={showRightSidebar}
         leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
         onNewNote={handleNewNote}
         onSearch={() => {
@@ -4447,16 +4483,24 @@ export default function App() {
         )}
 
         {/* Plugin Views (right sidebar) */}
-        {rightPluginViews.length > 0 && !isFTUXZeroState && (
-          <PluginViewPanel
-            views={rightPluginViews}
-            onClose={(viewType) => {
-              const app = ooAppRef.current;
-              if (app) {
-                app.workspace.detachLeavesOfType(viewType);
-              }
-            }}
-          />
+        {showRightSidebar && rightPluginViews.length > 0 && !isFTUXZeroState && (
+          <>
+            <div
+              className="resizer right"
+              onMouseDown={startRightSidebarDrag}
+              style={{ zIndex: 100 }}
+            />
+            <PluginViewPanel
+              views={rightPluginViews}
+              width={rightSidebarWidth}
+              onClose={(viewType) => {
+                const app = ooAppRef.current;
+                if (app) {
+                  app.workspace.detachLeavesOfType(viewType);
+                }
+              }}
+            />
+          </>
         )}
       </div>
 

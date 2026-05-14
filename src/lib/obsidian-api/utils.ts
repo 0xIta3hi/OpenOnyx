@@ -108,8 +108,19 @@ export const Platform = {
   isAndroidApp: false,
 };
 
-export function requestUrl(request: any): Promise<any> {
+export async function requestUrl(request: any): Promise<any> {
   const params = typeof request === 'string' ? { url: request } : request;
+  
+  if ((window as any).electronAPI?.networkRequest) {
+    try {
+      const result = await (window as any).electronAPI.networkRequest(params);
+      return result;
+    } catch (e) {
+      console.error("[requestUrl] IPC networkRequest failed, falling back to fetch:", e);
+    }
+  }
+
+  // Fallback to standard fetch if IPC fails or is missing
   return fetch(params.url, {
     method: params.method || 'GET',
     headers: params.headers || {},
