@@ -12,7 +12,7 @@
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { X, Lightbulb, BookOpen, Pen } from "lucide-react";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -2987,13 +2987,13 @@ export function Editor({
     if (viewRef.current) {
       const currentDoc = viewRef.current.state.doc.toString();
       if (currentDoc !== content) {
+        console.log(`[Editor] Dispatching content update. currentDoc length: ${currentDoc.length}, new content length: ${content?.length}`);
         viewRef.current.dispatch({
-          changes: {
-            from: 0,
-            to: currentDoc.length,
-            insert: content,
-          },
+          changes: { from: 0, to: currentDoc.length, insert: content || "" },
+          annotations: Transaction.userEvent.of('setContent'),
         });
+      } else {
+        console.log(`[Editor] Content is already up to date. Length: ${content?.length}`);
       }
     }
   }, [content, isSpecialTab]);

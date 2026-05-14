@@ -19,6 +19,7 @@ import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/editor/Editor";
 import { EditorHeader } from "./components/editor/EditorHeader";
+import { LeafPaneEditor } from "./components/LeafPaneEditor";
 import { AIKnowledgeGraphFTUX } from "./components/graph/AIKnowledgeGraphFTUX";
 import { CanvasView } from "./components/canvas/CanvasView";
 import { SearchModal } from "./components/SearchModal";
@@ -68,7 +69,19 @@ import { type LinkType } from "./components/SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-enrichment";
 import { generateSynthesis } from "./utils/synthesis";
 import { FileText, Layout } from "lucide-react";
-import { Tab, ViewMode, Theme, Command, FileEntry } from "./types";
+import { Tab, ViewMode, Theme, Command, FileEntry, PaneNode, PaneLeaf } from "./types";
+import {
+  SplitPaneContainer,
+  createLeaf,
+  findLeafWithTab,
+  findFirstLeaf,
+  findLeafById,
+  collectAllTabs,
+  insertTabIntoLeaf,
+  removeTabFromTree,
+  setActiveTabInLeaf,
+  moveTabInTree,
+} from "./components/SplitPaneContainer";
 import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
 import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers";
 import { getAPI } from "./utils/api";
@@ -86,6 +99,7 @@ import {
   saveFTUXNotNowSuppression,
   saveFTUXState,
 } from "./utils/ftux";
+import { DragCtx, DragContextData } from "./context/DragContext";
 
 const api = getAPI();
 const MIN_EDITOR_FONT_SIZE = 12;
@@ -1026,6 +1040,7 @@ export default function App() {
 
   // ── Sidebar drag resizer (Obsidian-style: CSS-only during drag, no React re-renders) ──
   const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [dragCtx, setDragCtx] = useState<DragContextData | null>(null);
   const sidebarWidthRef = useRef(260);
   const appBodyRef = useRef<HTMLDivElement>(null);
 
@@ -1092,8 +1107,8 @@ export default function App() {
 
       rightSidebarWidthRef.current = newWidth;
       // Direct DOM mutation
-      const panel = document.querySelector('.plugin-view-panel:not(.is-main-view)') as HTMLElement;
-      if (panel) panel.style.width = `${newWidth}px`;
+      const root = appBodyRef.current || document.querySelector('.app-body');
+      if (root) (root as HTMLElement).style.setProperty('--right-sidebar-width', `${newWidth}px`);
     };
 
     const onUp = () => {
@@ -1150,6 +1165,131 @@ export default function App() {
   const [currentContent, setCurrentContent] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [backlinks, setBacklinks] = useState<string[]>([]);
+
+  // ── Split Pane Tree ──
+  const [initialLeaf] = useState(() => createLeaf([]));
+  const [paneTree, setPaneTree] = useState<PaneNode>(initialLeaf);
+  const [focusedLeafId, setFocusedLeafId] = useState<string>(initialLeaf.id);
+
+  // Sync flat tabs -> pane tree (bridge legacy state to new split system)
+  const prevTabsRef = useRef<Tab[]>([]);
+  useEffect(() => {
+    const prevTabs = prevTabsRef.current;
+    prevTabsRef.current = tabs;
+
+    // Find tabs that were added
+    const prevIds = new Set(prevTabs.map((t) => t.id));
+    const addedTabs = tabs.filter((t) => !prevIds.has(t.id));
+
+    // Find tabs that were removed
+    const currentIds = new Set(tabs.map((t) => t.id));
+    const removedIds = prevTabs.filter((t) => !currentIds.has(t.id)).map((t) => t.id);
+
+    if (addedTabs.length === 0 && removedIds.length === 0) return;
+
+    setPaneTree((prev) => {
+      let tree = prev;
+
+      // Remove tabs that were closed
+      for (const id of removedIds) {
+        const result = removeTabFromTree(tree, id);
+        if (!result) {
+          tree = createLeaf([]);
+          setFocusedLeafId(tree.id);
+          return tree;
+        }
+        tree = result;
+      }
+
+      // Add new tabs to the focused leaf
+      for (const tab of addedTabs) {
+        const targetLeaf = findLeafById(tree, focusedLeafId) || findFirstLeaf(tree);
+        tree = insertTabIntoLeaf(tree, targetLeaf.id, tab);
+      }
+
+      return tree;
+    });
+  }, [tabs, focusedLeafId]);
+
+  // Sync activeTabId -> focused leaf's activeTabId
+  useEffect(() => {
+    if (!activeTabId) return;
+    setPaneTree((prev) => {
+      // Find which leaf has this tab and make it active there
+      const leaf = findLeafWithTab(prev, activeTabId);
+      if (!leaf) return prev;
+      if (leaf.activeTabId === activeTabId) return prev;
+      return setActiveTabInLeaf(prev, leaf.id, activeTabId);
+    });
+  }, [activeTabId]);
+
+  // Pane tree change handler (when user drags tabs between panes)
+  const handlePaneTreeChange = useCallback((newTree: PaneNode) => {
+    setPaneTree(newTree);
+    // Sync the flat tabs list from the pane tree
+    const allTabs = collectAllTabs(newTree);
+    setTabs(allTabs);
+
+    // Sync plugin sides — if a plugin is now in the main pane tree, set its side to 'main'
+    const app = ooAppRef.current;
+    if (app) {
+      let changed = false;
+      allTabs.forEach(t => {
+        if (t.path.startsWith('__plugin__.')) {
+          const viewType = t.path.replace('__plugin__.', '');
+          const leaves = app.workspace.getLeavesOfType(viewType);
+          leaves.forEach(l => {
+            if (l.side !== 'main') {
+              l.side = 'main';
+              changed = true;
+            }
+          });
+        }
+      });
+      if (changed) app.workspace.trigger('plugin-views-changed');
+    }
+  }, []);
+
+  // Handle tab selection within a specific leaf pane
+  const handlePaneTabSelect = useCallback(async (leafId: string, tabId: string) => {
+    setFocusedLeafId(leafId);
+    setActiveTabId(tabId);
+    // Load content for the selected tab
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab) {
+      if (tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH || tab.path.startsWith('__plugin__.')) {
+        setCurrentContent("");
+        setBacklinks([]);
+        return;
+      }
+      if (isCanvasFile(tab.path)) {
+        setCanvasFilePath(tab.path);
+        setCurrentContent("");
+        setBacklinks([]);
+        return;
+      }
+      try {
+        const content = await api.readFile(tab.path);
+        setCurrentContent(content);
+        loadBacklinks(tab.path);
+      } catch {
+        // File may not exist
+      }
+    }
+  }, [tabs, api]);
+
+  // Handle focus change to a leaf pane
+  const handleFocusLeaf = useCallback((leafId: string) => {
+    setFocusedLeafId(leafId);
+    // Set the active tab to the focused leaf's active tab
+    setPaneTree((prev) => {
+      const leaf = findLeafById(prev, leafId);
+      if (leaf && leaf.activeTabId) {
+        setActiveTabId(leaf.activeTabId);
+      }
+      return prev;
+    });
+  }, []);
 
   const adjustEditorFontSize = useCallback(
     (delta: number, scope: FontZoomScope = "both") => {
@@ -1515,7 +1655,7 @@ export default function App() {
     if (!scroller || !activeTabId) return;
 
     const activeEl = Array.from(
-      scroller.querySelectorAll<HTMLElement>(".editor-tab"),
+      scroller.querySelectorAll<HTMLElement>(".titlebar-tab, .editor-tab"),
     ).find((el) => el.dataset.tabId === activeTabId);
 
     if (!activeEl) return;
@@ -2902,6 +3042,42 @@ export default function App() {
     await refreshFileTree();
   };
 
+  const handleContentChangeGlobal = useCallback(
+    (path: string, content: string) => {
+      // If the edited note is the globally focused one, update the global content state
+      if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
+        setCurrentContent(content);
+      }
+
+      if (
+        !isCanvasFile(path) &&
+        path !== GRAPH_TAB_PATH &&
+        path.toLowerCase().endsWith(".md")
+      ) {
+        window.dispatchEvent(
+          new CustomEvent("notework:note-content-changed", {
+            detail: { path, content },
+          }),
+        );
+      }
+
+      // Mark tab as modified
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.path === path ? { ...t, isModified: true } : t,
+        ),
+      );
+
+      // Auto-embed in background when typing stops
+      clearAutoSaveTimer();
+      autoSaveTimer.current = setTimeout(() => {
+        autoSaveTimer.current = null;
+        autoEmbedNote(path, content);
+      }, 2000);
+    },
+    [activeTabId, tabs],
+  );
+
   // Auto-save with debounce
   const handleContentChange = useCallback(
     (content: string) => {
@@ -2982,8 +3158,26 @@ export default function App() {
       clearAutoSaveTimer();
     };
   }, [clearAutoSaveTimer]);
+
+  const handleTabReorder = useCallback((draggedId: string, targetId: string, insertBefore: boolean) => {
+    setPaneTree((prev) => {
+      const newTree = moveTabInTree(prev, draggedId, targetId, insertBefore);
+      // Synchronize flat tabs state
+      const allTabs = collectAllTabs(newTree);
+      setTabs(allTabs);
+      return newTree;
+    });
+  }, []);
+
   const handleTabSelect = async (id: string) => {
     setActiveTabId(id);
+    
+    // Sync with pane tree
+    const targetLeaf = findLeafWithTab(paneTree, id);
+    if (targetLeaf) {
+      setFocusedLeafId(targetLeaf.id);
+      setPaneTree((prev) => setActiveTabInLeaf(prev, targetLeaf.id, id));
+    }
     const tab = tabs.find((t) => t.id === id);
     if (tab) {
       if (isCanvasFile(tab.path)) {
@@ -3984,32 +4178,155 @@ export default function App() {
   const rightPluginViews = pluginViews.filter(v => v.side === 'right');
   const mainPluginViews = pluginViews.filter(v => v.side === 'main');
 
-  return (
-    <div className="app">
-      <TitleBar
+  // Render content for a single leaf pane in the split system
+  const renderPaneContent = useCallback((leaf: PaneLeaf): React.ReactNode => {
+    const leafActiveTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
+    if (!leafActiveTab) {
+      return (
+        <div className="empty-state">
+          <div className="empty-icon">
+            <FileText size={48} strokeWidth={1} color="var(--text-muted)" />
+          </div>
+          <div className="empty-text">Select a note or create a new one</div>
+        </div>
+      );
+    }
+
+    const isThisFocused = leaf.id === focusedLeafId;
+    const tabIsCanvas = isCanvasFile(leafActiveTab.path);
+    const tabIsGraph = leafActiveTab.path === GRAPH_TAB_PATH;
+    const tabIsSpaces = leafActiveTab.path === SPACES_TAB_PATH;
+    const tabIsPlugin = leafActiveTab.path.startsWith('__plugin__.');
+
+    if (tabIsCanvas) {
+      return (
+        <CanvasView
+          onClose={() => closeTab(leafActiveTab.id)}
+          isFullScreen={false}
+          onToggleFullScreen={() => setCanvasFullScreen((f) => !f)}
+          theme={theme}
+          vaultPath={vaultPath!}
+          fileTree={fileTree}
+          canvasFilePath={leafActiveTab.path}
+          onOpenFile={(path) => openFile(path)}
+          onNewCanvas={() => { void handleToggleCanvas(); }}
+          onDuplicateCanvas={() => { void handleDuplicateCanvas(); }}
+          onSaveCanvasAs={() => { void handleSaveCanvasAs(); }}
+          recentCanvasFiles={recentCanvasFiles}
+          onOpenRecentCanvas={(path) => { void openFile(path, "preview"); }}
+        />
+      );
+    }
+
+    if (tabIsGraph) {
+      return (
+        <AIKnowledgeGraphFTUX
+          onNodeClick={async (linkName: string, heading?: string, notePath?: string) => {
+            setViewMode("preview");
+            if (notePath) { await openFile(notePath, "preview"); return; }
+            await handleLinkClick(linkName, heading);
+          }}
+          onClose={() => closeTab(leafActiveTab.id)}
+          isFullScreen={false}
+          onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
+          theme={theme}
+          vaultPath={vaultPath!}
+          localNodePath={undefined}
+          initialAIView={graphMode === "ai"}
+          onAIViewChange={(enabled: boolean) => setGraphMode(enabled ? "ai" : "manual")}
+        />
+      );
+    }
+
+    if (tabIsSpaces) {
+      return (
+        <SpacesPage
+          onClose={() => closeTab(leafActiveTab.id)}
+          fileTree={fileTree}
+          onOpenNote={(path) => { openFile(path); }}
+        />
+      );
+    }
+
+    if (tabIsPlugin) {
+      return (
+        <div className="main-plugin-view-container" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+          <PluginViewPanel
+            views={pluginViews.filter(v => `__plugin__.${v.viewType}` === leafActiveTab.path)}
+            onClose={(viewType) => {
+              const app = ooAppRef.current;
+              if (app) app.workspace.detachLeavesOfType(viewType);
+            }}
+            isMainView={true}
+          />
+        </div>
+      );
+    }
+
+    // Regular markdown note
+    return (
+      <LeafPaneEditor
+        leaf={leaf}
+        activeTab={leafActiveTab}
         theme={theme}
-        onToggleSidebar={() => setShowSidebar((s) => !s)}
-        showSidebar={showSidebar}
-        onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
-        showRightSidebar={showRightSidebar}
-        leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
-        onNewNote={handleNewNote}
-        onSearch={() => {
-          document.dispatchEvent(new CustomEvent("editor:open-search"));
-        }}
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onTabSelect={handleTabSelect}
+        allNoteNames={allNoteNames}
+        editorSuggestions={editorSuggestions}
+        editorNextStepSuggestions={editorNextStepSuggestions}
+        inlineAnnotation={inlineAnnotation}
+        showInlineInsight={showInlineInsight}
+        ftuxConnectionPulse={ftuxConnectionPulse}
+        isFocused={isThisFocused}
+        onTabSelect={(leafId, tabId) => handlePaneTabSelect(leafId, tabId)}
         onTabClose={closeTab}
-        onNewTab={handleNewNote}
-        onToggleExplorer={() => setShowSidebar((s) => !s)}
-        tabScrollRef={tabScrollRef as React.RefObject<HTMLDivElement>}
+        onLinkClick={handleLinkClick}
+        onImagePaste={handleImagePaste}
+        getNoteContent={getNoteContent}
+        onAdjustFontSize={adjustEditorFontSize}
+        onAcceptSuggestion={handleInlineAccept}
+        onRejectSuggestion={handleInlineReject}
+        onOpenNote={(path) => openFile(path)}
+        onToggleInsight={setShowInlineInsight}
+        onContentChangeGlobal={handleContentChangeGlobal}
       />
+    );
+  }, [
+    focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
+    editorSuggestions, editorNextStepSuggestions, inlineAnnotation,
+    showInlineInsight, ftuxConnectionPulse, mainPluginViews, graphMode,
+    recentCanvasFiles, allNoteNames, handlePaneTabSelect,
+  ]);
+
+  return (
+    <DragCtx.Provider value={{ dragCtx, setDragCtx }}>
+      <div className="app">
+        <TitleBar
+          theme={theme}
+          onToggleSidebar={() => setShowSidebar((s) => !s)}
+          showSidebar={showSidebar}
+          onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
+          showRightSidebar={showRightSidebar}
+          leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
+          onNewNote={handleNewNote}
+          onSearch={() => {
+            document.dispatchEvent(new CustomEvent("editor:open-search"));
+          }}
+          onToggleExplorer={() => setShowSidebar((s) => !s)}
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onTabSelect={handleTabSelect}
+          onTabClose={closeTab}
+          onNewTab={handleNewNote}
+          onTabReorder={handleTabReorder}
+          tabScrollRef={tabScrollRef}
+        />
 
       <div
         className="app-body"
         ref={appBodyRef}
-        style={{ "--sidebar-width": `${sidebarWidth}px` } as any}
+        style={{ 
+          "--sidebar-width": `${sidebarWidth}px`,
+          "--right-sidebar-width": `${rightSidebarWidth}px`
+        } as any}
       >
         {vaultPath && !isFTUXZeroState && (
           <Ribbon
@@ -4116,7 +4433,7 @@ export default function App() {
             renderFTUXZeroState()
           ) : (
             <>
-              {/* Editor pane - hidden when graph/canvas is fullscreen, or when no note is open and an auxiliary pane is visible */}
+              {/* Split Pane System -- replaces the single editor pane */}
               {shouldShowEditorPane && (
                 <div
                   style={{
@@ -4127,215 +4444,16 @@ export default function App() {
                     flexDirection: "column",
                   }}
                 >
-                  {activeTab ? (
-                    <div
-                      className={`ftux-editor-host ${ftuxConnectionPulse ? "ftux-connection-highlight-pulse" : ""}`}
-                    >
-                      {!activeTabIsPlugin && (
-                        <EditorHeader
-                          filePath={activeTab.path}
-                          viewMode={viewMode}
-                          onViewModeChange={setViewMode}
-                          onToggleInsight={() => setShowInlineInsight((s) => !s)}
-                        />
-                      )}
-                      <Editor
-                        tabs={tabs}
-                        activeTabId={activeTabId!}
-                        content={currentContent}
-                        viewMode={viewMode}
-                        specialContent={
-                          activeTabIsCanvas ? (
-                            <CanvasView
-                              onClose={() => closeTab(activeTab.id)}
-                              isFullScreen={false}
-                              onToggleFullScreen={() =>
-                                setCanvasFullScreen((f) => !f)
-                              }
-                              theme={theme}
-                              vaultPath={vaultPath}
-                              fileTree={fileTree}
-                              canvasFilePath={activeTab.path}
-                              onOpenFile={(path) => openFile(path)}
-                              onNewCanvas={() => {
-                                void handleToggleCanvas();
-                              }}
-                              onDuplicateCanvas={() => {
-                                void handleDuplicateCanvas();
-                              }}
-                              onSaveCanvasAs={() => {
-                                void handleSaveCanvasAs();
-                              }}
-                              recentCanvasFiles={recentCanvasFiles}
-                              onOpenRecentCanvas={(path) => {
-                                void openFile(path, "preview");
-                              }}
-                            />
-                          ) : activeTabIsGraph ? (
-                            <AIKnowledgeGraphFTUX
-                              onNodeClick={async (
-                                linkName: string,
-                                heading?: string,
-                                notePath?: string,
-                              ) => {
-                                setViewMode("preview");
-                                if (notePath) {
-                                  await openFile(notePath, "preview");
-                                  return;
-                                }
-                                await handleLinkClick(linkName, heading);
-                              }}
-                              onClose={() => closeTab(activeTab.id)}
-                              isFullScreen={false}
-                              onToggleFullScreen={() =>
-                                setGraphFullScreen((f) => !f)
-                              }
-                              theme={theme}
-                              vaultPath={vaultPath}
-                              localNodePath={undefined}
-                              initialAIView={graphMode === "ai"}
-                              onAIViewChange={(enabled: boolean) =>
-                                setGraphMode(enabled ? "ai" : "manual")
-                              }
-                            />
-                          ) : activeTabIsSpaces ? (
-                            <SpacesPage
-                              onClose={() => closeTab(activeTab.id)}
-                              fileTree={fileTree}
-                              onOpenNote={(path) => {
-                                openFile(path);
-                              }}
-                            />
-                          ) : activeTabIsPlugin ? (
-                            <div className="main-plugin-view-container" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
-                              <PluginViewPanel
-                                views={mainPluginViews.filter(v => `__plugin__.${v.viewType}` === activeTab.path)}
-                                onClose={(viewType) => {
-                                  const app = ooAppRef.current;
-                                  if (app) app.workspace.detachLeavesOfType(viewType);
-                                }}
-                                isMainView={true}
-                              />
-                            </div>
-                          ) : undefined
-                        }
-                        availableNotes={allNoteNames}
-                        onAdjustFontSize={adjustEditorFontSize}
-                        onTabSelect={async (id) => {
-                          setActiveTabId(id);
-                          const tab = tabs.find((t) => t.id === id);
-                          if (tab) {
-                            if (isCanvasFile(tab.path)) {
-                              await openFile(tab.path, "preview");
-                              return;
-                            }
-                            if (tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH || tab.path.startsWith('__plugin__.')) {
-                              setCurrentContent("");
-                              setBacklinks([]);
-                              return;
-                            }
-                            const content = await api.readFile(tab.path);
-                            setCurrentContent(content);
-                            loadBacklinks(tab.path);
-                          }
-                        }}
-                        onTabClose={closeTab}
-                        onContentChange={handleContentChange}
-                        onViewModeChange={setViewMode}
-                        onLinkClick={handleLinkClick}
-                        onImagePaste={handleImagePaste}
-                        onGetNoteContent={getNoteContent}
-                        suggestions={editorSuggestions}
-                        nextStepSuggestions={editorNextStepSuggestions}
-                        onAcceptSuggestion={handleInlineAccept}
-                        onRejectSuggestion={handleInlineReject}
-                        onOpenNote={(path) => openFile(path)}
-                        annotation={inlineAnnotation}
-                        showInsight={showInlineInsight}
-                        onToggleInsight={setShowInlineInsight}
-                        theme={theme}
-                      />
-
-                      {showFTUXConnectionPrompt && ftuxConnectionSuggestion && (
-                        <div className="ftux-inline-card ftux-suggestion-fade-in">
-                          <div className="ftux-inline-card-text">
-                            This might connect to your previous idea
-                          </div>
-                          <div className="ftux-inline-card-actions">
-                            <button
-                              type="button"
-                              className="ftux-action-btn ftux-action-btn-primary"
-                              onClick={() =>
-                                void handleInlineAccept(ftuxConnectionSuggestion.path, "related")
-                              }
-                            >
-                              Link
-                            </button>
-                            <button
-                              type="button"
-                              className="ftux-action-btn"
-                              onClick={() => handleInlineReject(ftuxConnectionSuggestion.path)}
-                            >
-                              Not now
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {showFTUXInsightPrompt && ftuxInsightText && (
-                        <div className="ftux-insight-card ftux-insight-fade-in">
-                          <div className="ftux-insight-title">
-                            Something interesting is emerging...
-                          </div>
-                          <div className="ftux-insight-text">{ftuxInsightText}</div>
-                          <div className="ftux-inline-card-actions">
-                            <button
-                              type="button"
-                              className="ftux-action-btn ftux-action-btn-primary"
-                              onClick={() => {
-                                void handleSaveInsight();
-                              }}
-                            >
-                              Save insight
-                            </button>
-                            <button
-                              type="button"
-                              className="ftux-action-btn"
-                              onClick={handleIgnoreInsight}
-                            >
-                              Ignore
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {showFTUXGraphPrompt && (
-                        <div className="ftux-graph-prompt ftux-suggestion-fade-in">
-                          <span>See how your ideas connect</span>
-                          <button
-                            type="button"
-                            className="ftux-action-btn ftux-action-btn-primary"
-                            onClick={handleOpenGraphFromPrompt}
-                          >
-                            Open graph
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <div className="empty-icon">
-                        <FileText
-                          size={48}
-                          strokeWidth={1}
-                          color="var(--text-muted)"
-                        />
-                      </div>
-                      <div className="empty-text">
-                        Select a note or create a new one
-                      </div>
-                    </div>
-                  )}
+                  <SplitPaneContainer
+                    paneTree={paneTree}
+                    onPaneTreeChange={handlePaneTreeChange}
+                    renderContent={renderPaneContent}
+                    onNewTab={handleNewNote}
+                    onTabClose={closeTab}
+                    onTabSelect={handlePaneTabSelect}
+                    focusedLeafId={focusedLeafId}
+                    onFocusLeaf={handleFocusLeaf}
+                  />
                 </div>
               )}
 
@@ -4648,5 +4766,6 @@ export default function App() {
         />
       )}
     </div>
+    </DragCtx.Provider>
   );
 }

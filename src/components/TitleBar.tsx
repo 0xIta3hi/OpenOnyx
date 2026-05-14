@@ -10,6 +10,7 @@
 import React, { useRef } from "react";
 import { Tab, Theme } from "../types";
 import { getAPI } from "../utils/api";
+import { DragCtx } from "../context/DragContext";
 import {
   PanelLeft,
   Search,
@@ -18,6 +19,7 @@ import {
   FolderOpen,
   PanelRightClose,
   PanelRightOpen,
+  X,
 } from "lucide-react";
 
 interface TitleBarProps {
@@ -37,6 +39,7 @@ interface TitleBarProps {
   onTabSelect?: (id: string) => void;
   onTabClose?: (id: string) => void;
   onNewTab?: () => void;
+  onTabReorder?: (draggedId: string, targetId: string, insertBefore: boolean) => void;
   tabScrollRef?: React.RefObject<HTMLDivElement>;
   children?: React.ReactNode;
 }
@@ -56,12 +59,63 @@ export function TitleBar({
   onTabSelect,
   onTabClose,
   onNewTab,
+  onTabReorder,
   tabScrollRef,
   children,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
   const titlebarRef = useRef<HTMLDivElement>(null);
+  const { setDragCtx } = React.useContext(DragCtx);
+
+  const [dragOverTabId, setDragOverTabId] = React.useState<string | null>(null);
+  const [dragDirection, setDragDirection] = React.useState<'left' | 'right' | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, tabId: string) => {
+    e.dataTransfer.setData("text/plain", tabId);
+    e.dataTransfer.effectAllowed = "move";
+    const tabObj = tabs.find(t => t.id === tabId);
+    if (tabObj) {
+      setDragCtx({
+        type: 'tab',
+        tab: tabObj
+      });
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDragCtx(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, tabId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const isRightHalf = x > rect.width / 2;
+    
+    setDragOverTabId(tabId);
+    setDragDirection(isRightHalf ? 'right' : 'left');
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTabId(null);
+    setDragDirection(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetTabId: string) => {
+    e.preventDefault();
+    const draggedTabId = e.dataTransfer.getData("text/plain");
+    
+    setDragOverTabId(null);
+    setDragDirection(null);
+    
+    if (draggedTabId && draggedTabId !== targetTabId) {
+      const isRightHalf = dragDirection === 'right';
+      onTabReorder?.(draggedTabId, targetTabId, !isRightHalf);
+    }
+  };
 
   React.useEffect(() => {
     const el = tabScrollRef?.current;
@@ -141,8 +195,17 @@ export function TitleBar({
             <div
               key={tab.id}
               data-tab-id={tab.id}
-              className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""}`}
+              data-tooltip={tab.name}
+              className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""} ${
+                dragOverTabId === tab.id ? `drop-target-${dragDirection}` : ""
+              }`}
               onClick={() => onTabSelect?.(tab.id)}
+              draggable
+              onDragStart={(e) => handleDragStart(e, tab.id)}
+              onDragOver={(e) => handleDragOver(e, tab.id)}
+              onDragLeave={handleDragLeave}
+              onDragEnd={handleDragEnd}
+              onDrop={(e) => handleDrop(e, tab.id)}
             >
               <div className="tab-inner">
                 {tab.isModified && (
@@ -156,25 +219,25 @@ export function TitleBar({
                     onTabClose?.(tab.id);
                   }}
                 >
-                  {"\u2715"}
+                  <X size={14} />
                 </button>
               </div>
             </div>
           ))}
+          {onNewTab && (
+            <button
+              className="titlebar-new-tab titlebar-btn"
+              onClick={onNewTab}
+              title="New tab"
+            >
+              <Plus size={16} strokeWidth={1.5} />
+            </button>
+          )}
         </div>
-        {onNewTab && (
-          <button
-            className="titlebar-action-btn titlebar-new-tab"
-            onClick={onNewTab}
-            title="New tab"
-          >
-            <Plus size={16} strokeWidth={1.5} />
-          </button>
-        )}
       </div>
 
       {/* Right: window controls */}
-      <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center' }}>
+      <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingRight: '4px' }}>
         {onToggleRightSidebar && (
           <button
             className="titlebar-action-btn"

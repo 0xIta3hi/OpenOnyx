@@ -516,8 +516,11 @@ body.is-dragging * {
   user-select: none !important;
 }
 body.is-dragging .resizer,
-body.is-dragging .resizer * {
+body.is-dragging .resizer *,
+body.is-dragging .sidebar,
+body.is-dragging .plugin-view-panel {
   pointer-events: auto !important;
+  transition: none !important;
 }
 
 /* ── Custom Title Bar (Obsidian-style unified top bar) ── */
@@ -525,16 +528,16 @@ body.is-dragging .resizer * {
   display: flex;
   align-items: center;
   height: var(--titlebar-height);
-  background: var(--tab-container-background);
-  border-bottom: 1px solid var(--divider-color);
+  min-height: var(--titlebar-height);
+  background: var(--bg-secondary);
+  border-bottom: none;
   -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
   font-size: var(--font-ui-small);
-  position: relative;
-  z-index: 3200;
   width: 100%;
-  overflow: hidden;
+  z-index: 3200;
+  position: relative;
 }
 
 /* -- Left action icons (spans over ribbon + sidebar) -- */
@@ -545,8 +548,8 @@ body.is-dragging .resizer * {
   height: 100%;
   flex-shrink: 0;
   pointer-events: auto;
-  -webkit-app-region: no-drag;
-  background: var(--bg-secondary);
+  -webkit-app-region: drag;
+  background: transparent;
   box-sizing: border-box;
 }
 
@@ -587,6 +590,7 @@ body.is-dragging .resizer * {
 
 /* -- Editor Header (Second Row) -- */
 .editor-header {
+  border-top: 1px solid var(--divider-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -600,31 +604,53 @@ body.is-dragging .resizer * {
 .editor-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .editor-header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex: 0 0 auto;
   justify-content: flex-end;
 }
 
 .editor-header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: center;
-  pointer-events: none;
-  /* Let clicks pass through to background if needed */
+  padding: 0 12px;
+  overflow: hidden;
 }
 
-.editor-header-center>* {
-  pointer-events: auto;
-  /* Re-enable clicks for breadcrumbs */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.breadcrumb-part {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.breadcrumb-part.active {
+  color: var(--text-normal);
+  font-weight: 500;
+  max-width: 250px;
+}
+
+.breadcrumb-separator {
+  margin: 0 4px;
+  opacity: 0.5;
+  flex-shrink: 0;
 }
 
 .editor-header-btn {
@@ -698,10 +724,11 @@ body.is-dragging .resizer * {
   flex: 1;
   min-width: 0;
   height: 100%;
-  pointer-events: auto;
+  pointer-events: none;
   -webkit-app-region: no-drag;
   overflow: hidden;
   padding-left: 4px;
+  padding-right: 12px;
 }
 
 .titlebar-tab-scroll {
@@ -714,6 +741,7 @@ body.is-dragging .resizer * {
   -ms-overflow-style: none;
   height: 100%;
   padding: 0 4px;
+  pointer-events: auto;
 }
 
 .titlebar-tab-scroll::-webkit-scrollbar {
@@ -724,7 +752,7 @@ body.is-dragging .resizer * {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 4px 3.5px;
+  padding: 1px 8px 3.5px;
   background: transparent;
   border: none;
   color: var(--tab-text-color);
@@ -738,7 +766,9 @@ body.is-dragging .resizer * {
   border-radius: var(--tab-radius-active);
   scroll-margin-inline-start: 6px;
   -webkit-app-region: no-drag;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 40px;
+  max-width: 200px;
 }
 
 .titlebar-tab .tab-inner {
@@ -791,44 +821,28 @@ body.is-dragging .resizer * {
 }
 
 /* Obsidian curved tab connectors */
-.titlebar-tab::before,
-.titlebar-tab::after {
+.titlebar-tab.active::before,
+.titlebar-tab.active::after {
   position: absolute;
   bottom: 0;
   content: '';
   width: calc(var(--tab-curve) * 2);
   height: calc(var(--tab-curve) * 2);
   border-radius: 100%;
-  box-shadow: 0 0 0 calc(var(--tab-curve) * 3) transparent;
-}
-
-.titlebar-tab::before {
-  left: calc(var(--tab-curve) * -2);
-  clip-path: inset(50% calc(var(--tab-curve) * -1) 0 50%);
-}
-
-.titlebar-tab::after {
-  right: calc(var(--tab-curve) * -2);
-  clip-path: inset(50% 50% 0 calc(var(--tab-curve) * -1));
+  box-shadow: 0 0 0 calc(var(--tab-curve) * 3) var(--tab-background-active);
+  z-index: -1;
 }
 
 .titlebar-tab.active::before {
-  display: none;
+  left: calc(var(--tab-curve) * -2);
+  clip-path: inset(50% calc(var(--tab-curve) * -1) 0 50%);
+  display: block;
 }
 
 .titlebar-tab.active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: auto;
-  height: calc(var(--tab-outline-width) + 1px);
-  border-radius: 0;
-  clip-path: none;
-  box-shadow: none;
-  background: var(--tab-background-active);
-  z-index: 6;
+  right: calc(var(--tab-curve) * -2);
+  clip-path: inset(50% 50% 0 calc(var(--tab-curve) * -1));
+  display: block;
 }
 
 .titlebar-tab-close {
@@ -890,6 +904,36 @@ body.is-dragging .resizer * {
   transition: background 100ms;
   font-size: var(--font-ui-small);
   border-radius: 0;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 120ms ease;
+  pointer-events: auto;
+}
+
+.titlebar-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  pointer-events: auto;
 }
 
 .titlebar-btn:hover {
@@ -913,6 +957,7 @@ body.is-dragging .resizer * {
   border-right: 1px solid var(--divider-color);
   padding: 8px 4px 12px;
   flex-shrink: 0;
+  border-top: 1px solid var(--divider-color);
 }
 
 .ribbon-top,
@@ -1009,6 +1054,7 @@ body.is-dragging .resizer * {
   position: relative;
   will-change: width;
   padding-top: 0;
+  border-top: 1px solid var(--divider-color);
 }
 
 .sidebar.collapsed {
@@ -2331,12 +2377,12 @@ blockquote:has(.callout) {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding-top: 15vh;
-  z-index: 100;
+  z-index: 9999;
   animation: fadeIn var(--transition-fast) ease-out;
 }
 
@@ -3867,12 +3913,12 @@ blockquote:has(.callout) {
 .editor-image-lightbox-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2400;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   background: color-mix(in srgb, var(--bg-primary) 45%, transparent);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(3px);
 }
 
 .editor-image-lightbox-modal {
@@ -6165,12 +6211,12 @@ blockquote:has(.callout) {
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .settings-page {
@@ -10625,4 +10671,367 @@ blockquote:has(.callout) {
   fill: color-mix(in srgb, var(--cv-sel) 16%, transparent);
   stroke: color-mix(in srgb, var(--cv-sel) 75%, transparent);
   stroke-width: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SPLIT PANE SYSTEM
+   ═══════════════════════════════════════════════════════════ */
+
+.split-pane-root {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Split container (branch node) ── */
+.split-container {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.split-pane-child {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── Split divider (resizer between panes) ── */
+.split-divider {
+  flex-shrink: 0;
+  background: var(--divider-color, rgba(255, 255, 255, 0.06));
+  z-index: 10;
+  position: relative;
+}
+
+.split-divider::after {
+  content: '';
+  position: absolute;
+  z-index: 11;
+}
+
+.split-divider-horizontal {
+  width: 1px;
+  cursor: col-resize;
+}
+
+.split-divider-horizontal::after {
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.split-divider-vertical {
+  height: 1px;
+  cursor: row-resize;
+}
+
+.split-divider-vertical::after {
+  left: 0;
+  right: 0;
+  top: -3px;
+  bottom: -3px;
+}
+
+.split-divider:hover {
+  background: var(--accent-primary, #7c6ef6);
+}
+
+/* ── Leaf pane (tab group) ── */
+.split-leaf-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+
+
+.plugin-view-tabs {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--divider-color);
+  min-height: 36px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.plugin-view-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--divider-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+  min-width: 0;
+  position: relative;
+}
+
+.plugin-view-tab:last-child {
+  border-right: none;
+}
+
+.plugin-view-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.plugin-view-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.plugin-view-tab.active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-color, #7c6ef6);
+}
+
+.plugin-view-tab-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-view-tab-close {
+  opacity: 0.3;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+  transition: opacity 120ms ease;
+}
+
+.plugin-view-tab:hover .plugin-view-tab-close {
+  opacity: 0.8;
+}
+
+.plugin-view-tab-close:hover {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.plugin-view-panel {
+  border-left: 1px solid var(--border-subtle) !important;
+}
+
+.split-leaf-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-leaf-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color, #7c6ef6);
+  flex-shrink: 0;
+}
+
+.split-leaf-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 80ms, background 80ms;
+  -webkit-app-region: no-drag;
+}
+
+.split-leaf-tab:hover .split-leaf-tab-close {
+  opacity: 1;
+}
+
+.split-leaf-tab-close:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary, #eee);
+}
+
+.split-leaf-tab-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-left: 2px;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.split-leaf-tab-new:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary, #eee);
+}
+
+/* ── Leaf content area ── */
+.split-leaf-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Drop zone overlay ── */
+.split-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* Each drop zone covers a quadrant of the pane */
+.split-drop-zone {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.split-drop-zone-left {
+  left: 0;
+  top: 0;
+  width: 25%;
+  height: 100%;
+}
+
+.split-drop-zone-right {
+  right: 0;
+  top: 0;
+  width: 25%;
+  height: 100%;
+}
+
+.split-drop-zone-top {
+  left: 25%;
+  top: 0;
+  width: 50%;
+  height: 25%;
+}
+
+.split-drop-zone-bottom {
+  left: 25%;
+  bottom: 0;
+  width: 50%;
+  height: 25%;
+}
+
+.split-drop-zone-center {
+  left: 25%;
+  top: 25%;
+  width: 50%;
+  height: 50%;
+}
+
+/* ── Drop indicator (the colored highlight showing where tab will land) ── */
+.split-drop-indicator {
+  position: absolute;
+  background: var(--accent-color, #7c6ef6);
+  opacity: 0.18;
+  border-radius: 4px;
+  border: 2px solid var(--accent-color, #7c6ef6);
+  pointer-events: none;
+  transition: all 80ms ease-out;
+}
+
+.split-drop-indicator-left {
+  left: 4px;
+  top: 4px;
+  width: calc(50% - 8px);
+  height: calc(100% - 8px);
+}
+
+.split-drop-indicator-right {
+  right: 4px;
+  top: 4px;
+  width: calc(50% - 8px);
+  height: calc(100% - 8px);
+}
+
+.split-drop-indicator-top {
+  left: 4px;
+  top: 4px;
+  width: calc(100% - 8px);
+  height: calc(50% - 8px);
+}
+
+.split-drop-indicator-bottom {
+  left: 4px;
+  bottom: 4px;
+  width: calc(100% - 8px);
+  height: calc(50% - 8px);
+}
+
+.split-drop-indicator-center {
+  left: 4px;
+  top: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+}
+/* Tab drag and drop indicators */
+.titlebar-tab.drop-target-left {
+  box-shadow: inset 2px 0 0 var(--accent-color, #7c6ef6);
+}
+
+.titlebar-tab.drop-target-right {
+  box-shadow: inset -2px 0 0 var(--accent-color, #7c6ef6);
+}
+
+.titlebar-tab[draggable="true"] {
+  cursor: grab;
+}
+
+.titlebar-tab[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* Custom tooltip positioning for tabs (bottom) */
+.titlebar-tab[data-tooltip]::before {
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+
+.titlebar-tab[data-tooltip]::after {
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 4px 4px 4px;
+  border-color: transparent transparent #000 transparent;
+  z-index: 1000;
 }

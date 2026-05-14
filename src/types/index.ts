@@ -52,6 +52,27 @@ export interface Tab {
   isModified: boolean;
 }
 
+// ── Split Pane Types ─────────────────────────────────
+
+export interface PaneLeaf {
+  type: 'leaf';
+  id: string;
+  tabs: Tab[];
+  activeTabId: string | null;
+}
+
+export interface PaneSplit {
+  type: 'split';
+  id: string;
+  direction: 'horizontal' | 'vertical';
+  ratio: number; // 0.0 - 1.0
+  children: [PaneNode, PaneNode];
+}
+
+export type PaneNode = PaneLeaf | PaneSplit;
+
+export type DropZone = 'left' | 'right' | 'top' | 'bottom' | 'center';
+
 export interface Command {
   id: string;
   label: string;

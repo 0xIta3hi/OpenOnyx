@@ -22,48 +22,34 @@ export function EditorHeader({
   const fileName = pathParts.pop()?.replace(/\.md$/, "") || "";
 
   return (
-    <div className="editor-header" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between' }}>
-      <div className="editor-header-left" style={{ flexShrink: 0, flexGrow: 0 }}>
+    <div className="editor-header">
+      <div className="editor-header-left">
         <button
           className="editor-header-btn insight-btn"
           onClick={onToggleInsight}
           title="Note Insights"
-          style={{ width: '32px', height: '32px', justifyContent: 'center', padding: 0 }}
         >
           <Lightbulb size={16} strokeWidth={1.5} />
         </button>
       </div>
 
-      <div 
-        className="editor-header-center" 
-        style={{ 
-          position: 'static', 
-          transform: 'none', 
-          flex: 1, 
-          minWidth: 0, 
-          pointerEvents: 'auto',
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '0 12px'
-        }}
-      >
-        <div className="breadcrumbs" style={{ display: 'flex', minWidth: 0, overflow: 'hidden' }}>
+      <div className="editor-header-center">
+        <div className="breadcrumbs">
           {pathParts.map((part, index) => (
             <React.Fragment key={index}>
-              <span className="breadcrumb-part" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>{part}</span>
-              <ChevronRight size={14} className="breadcrumb-separator" style={{ flexShrink: 0, minWidth: '14px' }} />
+              <span className="breadcrumb-part">{part}</span>
+              <ChevronRight size={14} className="breadcrumb-separator" />
             </React.Fragment>
           ))}
-          <span className="breadcrumb-part active" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, fontWeight: 600 }}>{fileName}</span>
+          <span className="breadcrumb-part active">{fileName}</span>
         </div>
       </div>
 
-      <div className="editor-header-right" style={{ flexShrink: 0, flexGrow: 0 }}>
+      <div className="editor-header-right">
         <button
           className="editor-header-btn"
           onClick={() => onViewModeChange(viewMode === "editor" ? "preview" : "editor")}
           title={viewMode === "editor" ? "Reading view" : "Editing view"}
-          style={{ width: '32px', height: '32px', justifyContent: 'center', padding: 0 }}
         >
           {viewMode === "editor" ? (
             <BookOpen size={16} strokeWidth={1.5} />
@@ -75,7 +61,6 @@ export function EditorHeader({
           className="editor-header-btn"
           onClick={onMoreOptions}
           title="More options"
-          style={{ width: '32px', height: '32px', justifyContent: 'center', padding: 0 }}
         >
           <MoreVertical size={16} strokeWidth={1.5} />
         </button>

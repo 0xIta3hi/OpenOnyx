@@ -500,6 +500,32 @@ export function createMockAPI(): ElectronAPI {
       return res.text();
     },
 
+    networkRequest: async (params: any): Promise<any> => {
+      const res = await fetch(params.url, {
+        method: params.method || 'GET',
+        headers: params.headers,
+        body: params.body
+      });
+      
+      const responseHeaders: Record<string, string> = {};
+      res.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      
+      let data;
+      if (params.responseType === 'json') {
+        data = await res.json();
+      } else {
+        data = await res.text();
+      }
+      
+      return {
+        status: res.status,
+        headers: responseHeaders,
+        data
+      };
+    },
+
     // Thought Model (mock implementation for browser)
     thoughtModel: {
       build: async (_vaultPath: string, _numClusters?: number) => {

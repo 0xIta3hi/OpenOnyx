@@ -2191,7 +2191,7 @@ export function CanvasView({
               pt.y <= g.y + g.height,
           );
         });
-        if (insideGroup) {
+        if (insideGroup || selectedScribbleIdsRef.current.has(stroke.id)) {
           scribbleOrigin[stroke.id] = stroke.points.map((pt) => ({
             x: pt.x,
             y: pt.y,
