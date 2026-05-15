@@ -13,36 +13,19 @@
  */
 
 // @ts-ignore — Transformers.js types
-import { pipeline, env, type FeatureExtractionPipeline } from "@huggingface/transformers";
+import { pipeline, env, type FeatureExtractionPipeline } from "@xenova/transformers";
 import { readData, writeData, listData, deleteData, createDebouncedWriter } from "./disk-store";
 
 // Disable local model loading — always use remote CDN cache
 env.allowLocalModels = false;
-
-// Electron/Browser compatibility fixes
-// Force use of wasm backend and disable node-specific backends
-if (env.backends) {
-  // @ts-ignore
-  if (!env.backends.onnx) env.backends.onnx = {};
-  
-  // @ts-ignore
-  env.backends.onnx.wasm = {
-    numThreads: 1,
-    proxy: false,
-    // Point to remote WASM binaries to ensure they can be loaded in Electron
-    wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'
-  };
-  
-  // Explicitly tell transformers to use the web backend even in Electron/Node-like environments
-  // @ts-ignore
-  env.backends.onnx.node = false;
-}
-
-// Force environment to 'browser' to avoid node-specific path lookups
-// @ts-ignore
-env.env = 'browser';
-// @ts-ignore
 env.allowRemoteModels = true;
+
+// Electron/Browser compatibility fixes for @xenova/transformers v2.
+// Force the WASM backend and disable Node.js-specific backends.
+if (env.backends?.onnx?.wasm) {
+  // @ts-ignore
+  env.backends.onnx.wasm.proxy = false;
+}
 
 // ── Model singleton ──────────────────────────────────────────────────────────
 

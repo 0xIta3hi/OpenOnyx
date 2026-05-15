@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // @xenova/transformers imports onnxruntime-node in Electron's renderer (Node-like env).
+      // Redirect to onnxruntime-web (WASM) which works correctly in the browser context.
       'onnxruntime-node': 'onnxruntime-web',
     },
   },
@@ -20,3 +22,4 @@ export default defineConfig({
     strictPort: true,
   },
 });
+
