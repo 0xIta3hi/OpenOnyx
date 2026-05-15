@@ -708,15 +708,19 @@ textarea.space-form-input {
 /* ── Index Progress ───────────────────────────────────────────────────────── */
 
 .space-index-bar {
+  position: sticky;
+  top: -24px;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  backdrop-filter: blur(6px);
   font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 16px;
+  margin: -24px -24px 20px -24px;
 }
 
 .space-index-progress {
