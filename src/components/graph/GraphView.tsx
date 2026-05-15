@@ -75,10 +75,10 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
     textSize: 18,
     showLabels: true,
     labelThreshold: 0.5,
-    centerForce: 50,
-    repelForce: 10,
-    linkForce: 100,
-    linkDistance: 20,
+    centerForce: 10,
+    repelForce: 100,
+    linkForce: 50,
+    linkDistance: 100,
   };
 };
 
@@ -300,11 +300,11 @@ export function GraphView({
     [vaultPath],
   );
 
-  // Separate settings keys for different themes
-  let settingsKey = `openobsidian-graph-settings-v7-dark-${vaultHash}`;
-  if (theme === "light") settingsKey = `openobsidian-graph-settings-v7-light-${vaultHash}`;
-  if (theme === "oceanic") settingsKey = `openobsidian-graph-settings-v7-oceanic-${vaultHash}`;
-  if (theme === "peach-white") settingsKey = `openobsidian-graph-settings-v7-peach-white-${vaultHash}`;
+  // Separate settings keys for different themes (v8: fixed force defaults to match Obsidian)
+  let settingsKey = `openobsidian-graph-settings-v8-dark-${vaultHash}`;
+  if (theme === "light") settingsKey = `openobsidian-graph-settings-v8-light-${vaultHash}`;
+  if (theme === "oceanic") settingsKey = `openobsidian-graph-settings-v8-oceanic-${vaultHash}`;
+  if (theme === "peach-white") settingsKey = `openobsidian-graph-settings-v8-peach-white-${vaultHash}`;
   const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
 
   const [settings, setSettings] = useState<GraphSettings>(() => {
@@ -703,6 +703,8 @@ export function GraphView({
     const worker = workerRef.current;
     if (!worker) return;
 
+    // Send force parameter updates -- the worker updates forces in-place
+    // without recreating them, preventing state loss and scatter
     worker.postMessage({
       type: "forces",
       data: {
@@ -713,7 +715,8 @@ export function GraphView({
       },
     });
 
-    // Reheat simulation for live updates
+    // Gently reheat so nodes settle into new equilibrium
+    // The worker uses alpha(0.5) not alpha(1), preventing violent scatter
     setSimulating(true);
     worker.postMessage({ type: "reheat" });
   }, [
@@ -915,16 +918,16 @@ export function GraphView({
                 value={settings.centerForce}
                 onChange={(v) => setSettings((s) => ({ ...s, centerForce: v }))}
                 min={0}
-                max={50}
-                info="Pulls nodes toward center"
+                max={100}
+                info="Pulls nodes toward center (Obsidian default: 10)"
               />
               <Slider
                 label="Repel force"
                 value={settings.repelForce}
                 onChange={(v) => setSettings((s) => ({ ...s, repelForce: v }))}
-                min={10}
-                max={200}
-                info="Pushes nodes apart"
+                min={0}
+                max={500}
+                info="Pushes nodes apart (Obsidian default: 100)"
               />
               <Slider
                 label="Link force"
@@ -932,7 +935,7 @@ export function GraphView({
                 onChange={(v) => setSettings((s) => ({ ...s, linkForce: v }))}
                 min={0}
                 max={100}
-                info="Link spring strength"
+                info="Link spring strength (Obsidian default: 50)"
               />
               <Slider
                 label="Link distance"
@@ -940,9 +943,9 @@ export function GraphView({
                 onChange={(v) =>
                   setSettings((s) => ({ ...s, linkDistance: v }))
                 }
-                min={20}
-                max={200}
-                info="Target distance between linked nodes"
+                min={10}
+                max={500}
+                info="Target distance between linked nodes (Obsidian default: 100)"
               />
             </Section>
 

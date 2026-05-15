@@ -1,7 +1,15 @@
 /**
  * Graph Physics Worker
- * Runs d3-force simulation in a Web Worker for smooth UI
- * Uses Obsidian-like force parameters
+ * Runs d3-force simulation in a Web Worker
+ * Physics tuned to match Obsidian's graph behavior (from sim.js)
+ *
+ * Key Obsidian behaviors replicated:
+ * - velocityDecay(0.6) for heavy damping
+ * - alphaDecay = 1 - Math.pow(0.001, 1/300) for gradual cooldown
+ * - forceX/forceY centering (NOT forceCenter, which shifts all nodes)
+ * - forceManyBody with distanceMin(30) to prevent extreme repulsion at close range
+ * - forceCollide with radius(60) and strength(0.5)
+ * - On drag: alphaTarget(0.3); on release: alphaTarget(0) -- gentle reheat, not alpha(1)
  */
 
 import * as d3 from "d3-force";
@@ -36,14 +44,17 @@ let edges: WorkerEdge[] = [];
 let isRunning = false;
 let nodeMap = new Map<string, WorkerNode>();
 
-// Default Obsidian-like parameters
+// Default parameters matching Obsidian's sim.js defaults
 let forceParams: ForceParams = {
-  centerStrength: 0.1,
-  repelStrength: 1000,
-  linkStrength: 1,
-  linkDistance: 250,
-  collisionRadius: 60,
+  centerStrength: 0.1,   // c in sim.js, default 0.1
+  repelStrength: 1000,   // x in sim.js, default -1000 (we store positive)
+  linkStrength: 1,       // E in sim.js, default 1
+  linkDistance: 250,      // v in sim.js, default 250
+  collisionRadius: 60,   // collision radius in sim.js
 };
+
+// Store the default link strength function result for scaling
+let defaultLinkStrengthFn: ((link: WorkerEdge, i: number, links: WorkerEdge[]) => number) | null = null;
 
 function initSimulation() {
   if (nodes.length === 0) return;
@@ -52,42 +63,43 @@ function initSimulation() {
   nodeMap.clear();
   nodes.forEach((n) => nodeMap.set(n.id, n));
 
-  // Create simulation with Obsidian-like parameters
+  // Create link force first so we can capture its default strength function
+  const linkForce = d3
+    .forceLink<WorkerNode, WorkerEdge>(edges)
+    .id((d) => d.id)
+    .distance(forceParams.linkDistance);
+
+  // Create simulation matching Obsidian's sim.js exactly:
+  // alphaDecay = 1 - Math.pow(0.001, 1/300) -- Obsidian's B constant
+  // velocityDecay = 0.6 -- Obsidian applies `vx *= 0.6` and `vy *= 0.6` each tick
   simulation = d3
     .forceSimulation<WorkerNode>(nodes)
-    .force("x", d3.forceX(0).strength(forceParams.centerStrength))
-    .force("y", d3.forceY(0).strength(forceParams.centerStrength))
+    .alphaDecay(1 - Math.pow(0.001, 1 / 300))
+    .velocityDecay(0.6)
+    // Obsidian uses forceX/forceY for centering (NOT forceCenter which shifts nodes each tick)
+    .force("x", d3.forceX<WorkerNode>(0).strength(forceParams.centerStrength))
+    .force("y", d3.forceY<WorkerNode>(0).strength(forceParams.centerStrength))
+    // ManyBody with distanceMin(30) to prevent extreme forces at close range
     .force(
       "charge",
       d3
         .forceManyBody<WorkerNode>()
         .strength(-forceParams.repelStrength)
-        .distanceMin(30),
+        .distanceMin(30)
     )
-    .force(
-      "link",
-      d3
-        .forceLink<WorkerNode, WorkerEdge>(edges)
-        .id((d) => d.id)
-        .distance(forceParams.linkDistance)
-        .strength((d) => {
-          // Obsidian-style: weaker links between highly connected nodes
-          const source = d.source as WorkerNode;
-          const target = d.target as WorkerNode;
-          return (
-            forceParams.linkStrength /
-            Math.min(source.connections || 1, target.connections || 1)
-          );
-        }),
-    )
+    // Link force
+    .force("link", linkForce)
+    // Collision force matching Obsidian's: radius(60), strength(0.5)
     .force(
       "collision",
-      d3.forceCollide<WorkerNode>().radius(forceParams.collisionRadius)
+      d3.forceCollide<WorkerNode>().radius(forceParams.collisionRadius).strength(0.5)
     )
-    .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // Obsidian's alpha decay
-    .velocityDecay(0.6) // Match sim.js damping factor
     .on("tick", onTick)
     .on("end", onEnd);
+
+  // Capture the default link strength function for scaling later
+  // d3's default link strength is 1/min(degree(source), degree(target))
+  defaultLinkStrengthFn = linkForce.strength() as any;
 }
 
 function onTick() {
@@ -115,6 +127,47 @@ function onTick() {
 function onEnd() {
   isRunning = false;
   self.postMessage({ type: "end" });
+}
+
+/**
+ * Update force parameters without destroying and recreating the simulation.
+ * This matches Obsidian's approach: just update the existing force objects.
+ */
+function updateForces() {
+  if (!simulation) return;
+
+  // Update centering forces
+  const xForce = simulation.force("x") as d3.ForceX<WorkerNode> | undefined;
+  const yForce = simulation.force("y") as d3.ForceY<WorkerNode> | undefined;
+  if (xForce) xForce.strength(forceParams.centerStrength);
+  if (yForce) yForce.strength(forceParams.centerStrength);
+
+  // Update charge force
+  const chargeForce = simulation.force("charge") as d3.ForceManyBody<WorkerNode> | undefined;
+  if (chargeForce) {
+    chargeForce.strength(-forceParams.repelStrength);
+    // Keep distanceMin(30) as Obsidian does
+  }
+
+  // Update link force distance and strength multiplier
+  const linkForce = simulation.force("link") as d3.ForceLink<WorkerNode, WorkerEdge> | undefined;
+  if (linkForce) {
+    linkForce.distance(forceParams.linkDistance);
+    // Obsidian scales the default strength by E (linkStrength multiplier)
+    // In sim.js: q.strength(function(A, t, n) { return E * J(A, t, n) })
+    // where J is the original default strength function
+    if (defaultLinkStrengthFn && forceParams.linkStrength !== 1) {
+      const baseFn = defaultLinkStrengthFn;
+      const mult = forceParams.linkStrength;
+      linkForce.strength((link, i, links) => mult * baseFn(link, i, links));
+    }
+  }
+
+  // Update collision force
+  const collisionForce = simulation.force("collision") as d3.ForceCollide<WorkerNode> | undefined;
+  if (collisionForce) {
+    collisionForce.radius(forceParams.collisionRadius);
+  }
 }
 
 self.onmessage = (e: MessageEvent) => {
@@ -155,54 +208,18 @@ self.onmessage = (e: MessageEvent) => {
 
     case "forces": {
       forceParams = { ...forceParams, ...data };
-      if (simulation) {
-        simulation
-          .force(
-            "center",
-            d3.forceCenter(0, 0).strength(forceParams.centerStrength),
-          )
-          .force("x", d3.forceX(0).strength(forceParams.centerStrength))
-          .force("y", d3.forceY(0).strength(forceParams.centerStrength))
-          .force(
-            "charge",
-            d3
-              .forceManyBody<WorkerNode>()
-              .strength(-forceParams.repelStrength)
-              .distanceMax(800),
-          )
-          .force(
-            "link",
-            d3
-              .forceLink<WorkerNode, WorkerEdge>(edges)
-              .id((d) => d.id)
-              .distance(forceParams.linkDistance)
-              .strength((d) => {
-                const source = d.source as WorkerNode;
-                const target = d.target as WorkerNode;
-                return (
-                  forceParams.linkStrength /
-                  Math.min(source.connections || 1, target.connections || 1)
-                );
-              }),
-          )
-          .force(
-            "collision",
-            d3
-              .forceCollide<WorkerNode>()
-              .radius(
-                (d) =>
-                  forceParams.collisionRadius +
-                  Math.pow(d.connections || 0, 0.6) * 2,
-              ),
-          );
-      }
+      // Update forces in-place instead of recreating (prevents jitter/scatter)
+      updateForces();
       break;
     }
 
     case "reheat": {
       if (simulation) {
         isRunning = true;
-        simulation.alpha(1).restart();
+        // Use a moderate alpha for reheating, not 1.0 which causes violent scatter
+        // Obsidian uses alphaTarget adjustments, never hard alpha(1) resets
+        // except on initial layout. For user-triggered reheat, use 0.5.
+        simulation.alpha(0.5).restart();
       }
       break;
     }
@@ -212,16 +229,23 @@ self.onmessage = (e: MessageEvent) => {
       const node = nodeMap.get(id);
       if (node) {
         if (active) {
+          // Pin node to cursor
           node.fx = x;
           node.fy = y;
-          if (simulation && !isRunning) {
-            isRunning = true;
+          if (simulation) {
+            // Obsidian uses alphaTarget(0.3) during drag -- gentle continuous heat
+            // This prevents the simulation from cooling to a halt while dragging
+            if (!isRunning) {
+              isRunning = true;
+            }
             simulation.alphaTarget(0.3).restart();
           }
         } else {
+          // Release node
           node.fx = null;
           node.fy = null;
           if (simulation) {
+            // Obsidian resets alphaTarget to 0 on release, letting it cool naturally
             simulation.alphaTarget(0);
           }
         }
