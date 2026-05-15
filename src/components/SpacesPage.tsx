@@ -346,9 +346,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     }
   };
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages (guard: only when there are actual messages
+  // to prevent scrollIntoView from propagating to ancestor containers on mount)
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatMessages.length > 0 || streamingText) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   }, [chatMessages, streamingText]);
 
   // ── Tag input ────────────────────────────────────────
@@ -666,84 +669,83 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         <ArrowLeft size={14} /> Back to Spaces
       </button>
 
-      <div className="space-view-scroll">
-        {/* Header */}
-        <div className="space-view-header">
-          <div className="space-view-title-row">
-            <div>
-              <h1 className="space-view-title">{activeSpace.title}</h1>
-              {activeSpace.description && (
-                <p className="space-view-desc">{activeSpace.description}</p>
-              )}
-              <div className={`visibility-badge ${activeSpace.visibility}`} style={{ marginTop: 8 }}>
-                {getVisibilityLabel(activeSpace.visibility)}
-              </div>
-            </div>
-            <div className="space-view-actions">
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={handleBuildIndex}
-                disabled={isIndexing}
-                title="Re-index vault notes"
-              >
-                <RefreshCw size={13} className={isIndexing ? "spinner" : ""} /> Re-index
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => handleFork(activeSpace.id)}>
-                <Copy size={13} /> Remix
-              </button>
-            </div>
+        {/* Index Progress — always rendered but hidden when not indexing to avoid layout shifts */}
+        <div className={`space-index-bar${isIndexing ? " is-active" : ""}`}>
+          <Loader2 size={14} className="spinner" />
+          <span>Indexing vault notes...</span>
+          <div className="space-index-progress">
+            <div
+              className="space-index-progress-fill"
+              style={{ width: `${indexProgress.total > 0 ? (indexProgress.done / indexProgress.total) * 100 : 0}%` }}
+            />
           </div>
-          {(activeSpace.helpsWith || []).length > 0 && (
-            <div className="space-view-tags">
-              {(activeSpace.helpsWith || []).map((tag) => (
-                <span key={tag} className="space-view-tag">{tag}</span>
-              ))}
-            </div>
-          )}
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-            {activeSpace.noteCount || vaultNoteCount} vault notes indexed
-          </div>
+          <span>{indexProgress.done}/{indexProgress.total}</span>
         </div>
 
-        {/* Index Progress */}
-        {isIndexing && (
-          <div className="space-index-bar">
-            <Loader2 size={14} className="spinner" />
-            <span>Indexing vault notes...</span>
-            <div className="space-index-progress">
-              <div
-                className="space-index-progress-fill"
-                style={{ width: `${indexProgress.total > 0 ? (indexProgress.done / indexProgress.total) * 100 : 0}%` }}
-              />
-            </div>
-            <span>{indexProgress.done}/{indexProgress.total}</span>
-          </div>
-        )}
-
-        {/* Vault Preview — recent notes */}
-        {previewNotes.length > 0 && (
-          <div className="space-preview-section">
-            <div className="space-section-label">Recent Vault Notes</div>
-            <div className="space-preview-grid">
-              {previewNotes.map((note) => (
-                <div
-                  key={note.path}
-                  className="space-preview-card"
-                  onClick={() => onOpenNote?.(note.path)}
-                  style={{ cursor: onOpenNote ? "pointer" : "default" }}
-                >
-                  <h4>
-                    <FileText size={12} style={{ opacity: 0.4, marginRight: 6 }} />
-                    {note.title}
-                  </h4>
-                  <p style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                    Click to open in editor
-                  </p>
+        <div className="space-view-scroll">
+          {/* Header */}
+          <div className="space-view-header">
+            <div className="space-view-title-row">
+              <div>
+                <h1 className="space-view-title">{activeSpace.title}</h1>
+                {activeSpace.description && (
+                  <p className="space-view-desc">{activeSpace.description}</p>
+                )}
+                <div className={`visibility-badge ${activeSpace.visibility}`} style={{ marginTop: 8 }}>
+                  {getVisibilityLabel(activeSpace.visibility)}
                 </div>
-              ))}
+              </div>
+              <div className="space-view-actions">
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleBuildIndex}
+                  disabled={isIndexing}
+                  title="Re-index vault notes"
+                >
+                  <RefreshCw size={13} className={isIndexing ? "spinner" : ""} /> Re-index
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleFork(activeSpace.id)}>
+                  <Copy size={13} /> Remix
+                </button>
+              </div>
+            </div>
+            {(activeSpace.helpsWith || []).length > 0 && (
+              <div className="space-view-tags">
+                {(activeSpace.helpsWith || []).map((tag) => (
+                  <span key={tag} className="space-view-tag">{tag}</span>
+                ))}
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+              {activeSpace.noteCount || vaultNoteCount} vault notes indexed
             </div>
           </div>
-        )}
+
+          {/* Vault Preview — recent notes */}
+          {previewNotes.length > 0 && (
+            <div className="space-preview-section">
+              <div className="space-section-label">Recent Vault Notes</div>
+              <div className="space-preview-grid">
+                {previewNotes.map((note) => (
+                  <div
+                    key={note.path}
+                    className="space-preview-card"
+                    onClick={() => onOpenNote?.(note.path)}
+                    style={{ cursor: onOpenNote ? "pointer" : "default" }}
+                  >
+                    <h4>
+                      <FileText size={12} style={{ opacity: 0.4, marginRight: 6 }} />
+                      {note.title}
+                    </h4>
+                    <p style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                      Click to open in editor
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
 
         {/* Chat Section */}
         <div className="space-chat-section">
