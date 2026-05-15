@@ -70,7 +70,7 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
     connectedColor: isOceanic ? "#7dd3fc" : isPeach ? "#d88f7b" : isLight ? "#3a3a3a" : "#c0c0c0",
     edgeColor: isOceanic ? "#878787" : isPeach ? "#d4cdbf" : isLight ? "#404040" : "#5d5d5d",
     nodeSize: isLight || isPeach ? 8 : 6,
-    linkWidth: isOceanic ? 1.5 : (isLight || isPeach ? 2 : 2.5),
+    linkWidth: 1,
     textColor: isOceanic ? "#a2aab4" : isPeach ? "#554d42" : isLight ? "#606060" : "#a0a0a0",
     textSize: 18,
     showLabels: true,
