@@ -81,29 +81,19 @@ export class OOApp {
 
     // Stub for core/internal plugins (daily-notes, etc.)
     this.internalPlugins = {
-      plugins: {} as Record<string, any>,
+      plugins: {
+        'daily-notes': { instance: { options: {} }, enabled: true },
+        'templates': { instance: { options: {} }, enabled: true },
+        'command-palette': { instance: { options: {} }, enabled: true },
+      } as Record<string, any>,
       getPluginById: (id: string) => {
-        // Return a stub for daily-notes that provides default settings
-        if (id === 'daily-notes') {
-          return {
-            enabled: true,
-            instance: {
-              options: {
-                folder: '',
-                format: 'YYYY-MM-DD',
-                template: '',
-              },
-            },
-          };
-        }
-        return {
-          enabled: false,
-          instance: { options: {} },
-        };
+        const p = this.internalPlugins.plugins[id];
+        if (p) return p;
+        return { enabled: false, instance: { options: {} } };
       },
       getEnabledPluginById: (id: string) => {
-        const plugin = this.internalPlugins.getPluginById(id);
-        return plugin?.enabled ? plugin : null;
+        const p = this.internalPlugins.plugins[id];
+        return p?.enabled ? p : null;
       },
     };
 

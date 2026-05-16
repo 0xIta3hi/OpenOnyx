@@ -23,7 +23,9 @@ export interface LocalNote {
   title: string;
   content: string;
   pinned: boolean;
+  created_at: string;
   updated_at: string;
+  deleted: boolean;
 }
 
 export interface LocalNoteChunk {
@@ -32,6 +34,7 @@ export interface LocalNoteChunk {
   content: string;
   embedding: any;
   created_at: string;
+  updated_at: string;
 }
 
 export interface SyncQueueItem {

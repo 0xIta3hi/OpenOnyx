@@ -15,6 +15,7 @@
 import { embedText } from "./embeddings";
 import { loadVectorIndex } from "./spaces-store";
 import { loadAIConfig, getBaseUrl, getProviderHeaders } from "./ai-settings";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import type { SpaceChunk } from "../types/spaces";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -139,22 +140,58 @@ export async function retrieveChunks(
   query: string,
   topK: number = TOP_K,
 ): Promise<RetrievedChunk[]> {
-  const index = await loadVectorIndex(spaceId);
-  if (!index || index.chunks.length === 0) return [];
-
   const queryVector = await embedText(query);
   const results: RetrievedChunk[] = [];
 
-  for (const chunk of index.chunks) {
-    if (chunk.vector.length !== queryVector.length) continue;
-    const sim = cosineSimilarity(queryVector, chunk.vector);
-    if (sim > MIN_SIMILARITY) {
-      results.push({ chunk, similarity: sim });
+  // 1. If cloud is available, try it first
+  if (isSupabaseConfigured) {
+    try {
+      const { data: cloudChunks, error } = await supabase.rpc("match_note_chunks", {
+        filter_space_id: spaceId,
+        query_embedding: `[${queryVector.join(",")}]`,
+        match_threshold: MIN_SIMILARITY,
+        match_count: topK,
+      });
+
+      if (error) throw error;
+
+      if (cloudChunks && cloudChunks.length > 0) {
+        for (const rc of cloudChunks) {
+          results.push({
+            chunk: {
+              id: rc.id,
+              spaceId,
+              notePath: "", // Cloud notes don't have local paths
+              noteTitle: rc.note_title || "Unknown Note",
+              chunkText: rc.content,
+              vector: [],
+              startOffset: 0,
+              endOffset: 0,
+            },
+            similarity: rc.similarity,
+          });
+        }
+        // If we got cloud results, we return them (they are more authoritative for shared spaces)
+        if (results.length > 0) return results;
+      }
+    } catch (err) {
+      console.warn("[SpacesRAG] Cloud retrieval failed, falling back to local:", err);
     }
   }
 
-  results.sort((a, b) => b.similarity - a.similarity);
-  return results.slice(0, topK);
+  // 2. Local Fallback (for local spaces or when offline)
+  const index = await loadVectorIndex(spaceId);
+  if (index && index.chunks.length > 0) {
+    for (const chunk of index.chunks) {
+      if (chunk.vector.length !== queryVector.length) continue;
+      const sim = cosineSimilarity(queryVector, chunk.vector);
+      if (sim > MIN_SIMILARITY) {
+        results.push({ chunk, similarity: sim });
+      }
+    }
+  }
+
+  return results.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
 }
 
 // ── Prompt Construction ──────────────────────────────────────────────────────

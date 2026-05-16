@@ -15,7 +15,7 @@
  */
 
 import { embedText } from "./embeddings";
-import { saveVectorIndex, updateSpace } from "./spaces-store";
+import { saveVectorIndex, updateSpace, pushSpaceNotes, pushSpaceChunks, getSpace } from "./spaces-store";
 import { getAPI } from "./api";
 import type { SpaceChunk, SpaceVectorIndex } from "../types/spaces";
 import type { FileEntry } from "../types/index";
@@ -251,7 +251,25 @@ export async function buildVectorIndex(
 
   await saveVectorIndex(index);
 
-  // 4. Update space noteCount
+  // 4. Push notes to Supabase if this space is cloud-synced
+  const spaceData = await getSpace(spaceId);
+  if (spaceData && spaceData.visibility !== "local") {
+    const notesForCloud = vaultNotes
+      .filter((n) => !n.isCanvas)
+      .map((n) => ({
+        path: n.path,
+        title: n.title,
+        content: n.content,
+      }));
+    try {
+      await pushSpaceNotes(spaceId, notesForCloud);
+      await pushSpaceChunks(spaceId, allChunks);
+    } catch (err) {
+      console.error("[SpacesProcessing] Failed to push data to cloud:", err);
+    }
+  }
+
+  // 5. Update space noteCount
   await updateSpace(spaceId, { noteCount: totalNotes });
 
   return index;

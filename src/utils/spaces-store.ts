@@ -16,11 +16,13 @@
 import { readData, writeData, deleteData, createDebouncedWriter } from "./disk-store";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { getAPI } from "./api";
 import type {
   Space,
   SpaceIndexEntry,
   SpaceVectorIndex,
   SpaceVisibility,
+  SpaceChunk,
 } from "../types/spaces";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,7 +65,7 @@ type RemoteSpaceRow = {
   updated_at: string;
 };
 
-function mapRemoteToSpace(remote: RemoteSpaceRow): Space {
+function mapRemoteToSpace(remote: RemoteSpaceRow, noteCount: number = 0): Space {
   const visibility = normalizeVisibility(remote.visibility) === "local"
     ? (remote.is_public ? "public" : "private")
     : normalizeVisibility(remote.visibility);
@@ -75,7 +77,7 @@ function mapRemoteToSpace(remote: RemoteSpaceRow): Space {
     helpsWith: remote.helps_with || [],
     visibility,
     ownerId: remote.owner_id,
-    noteCount: 0,
+    noteCount,
     createdAt: remote.created_at,
     updatedAt: remote.updated_at,
     forkedFrom: remote.forked_from || undefined,
@@ -108,24 +110,168 @@ async function upsertCloudSpace(space: Space): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Push all vault notes for a space into Supabase's `notes` table.
+ * Called after indexing when the space is not local.
+ * Each vault note becomes a row in the cloud notes table.
+ */
+export async function pushSpaceNotes(
+  spaceId: string,
+  vaultNotes: { path: string; title: string; content: string }[],
+): Promise<void> {
+  if (!isSupabaseConfigured || !authManager.isLoggedIn()) return;
+
+  const now = new Date().toISOString();
+
+  // Batch upsert in groups of 50 to avoid payload limits
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < vaultNotes.length; i += BATCH_SIZE) {
+    const batch = vaultNotes.slice(i, i + BATCH_SIZE).map((note) => ({
+      // Deterministic ID from space + path so re-indexing upserts cleanly
+      id: generateDeterministicId(spaceId, note.path),
+      space_id: spaceId,
+      title: note.title,
+      content: note.content,
+      pinned: false,
+      created_at: now,
+      updated_at: now,
+      deleted: false,
+    }));
+
+    const { error } = await supabase
+      .from("notes")
+      .upsert(batch, { onConflict: "id" });
+
+    if (error) {
+      console.error(`[SpacesStore] Failed to push notes batch ${i}: ${JSON.stringify(error)}`);
+    }
+  }
+}
+
+/**
+ * Pushes vector chunks to the cloud note_chunks table.
+ */
+export async function pushSpaceChunks(
+  spaceId: string,
+  chunks: SpaceChunk[],
+): Promise<void> {
+  if (!isSupabaseConfigured || !authManager.isLoggedIn()) return;
+
+  // 1. Delete old chunks for this space to avoid duplicates
+  await supabase
+    .from("note_chunks")
+    .delete()
+    .eq("space_id", spaceId);
+
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE).map((chunk) => ({
+      space_id: spaceId,
+      note_id: generateDeterministicId(spaceId, chunk.notePath),
+      content: chunk.chunkText,
+      embedding: `[${chunk.vector.join(",")}]`,
+    }));
+
+    const { error } = await supabase
+      .from("note_chunks")
+      .insert(batch);
+
+    if (error) {
+      console.error(`[SpacesStore] Failed to push chunks batch ${i}: ${JSON.stringify(error)}`);
+    }
+  }
+}
+
+/**
+ * Generate a deterministic UUID v5-style ID from space ID + note path.
+ * This ensures re-indexing upserts the same rows rather than creating duplicates.
+ */
+function generateDeterministicId(spaceId: string, notePath: string): string {
+  const input = `${spaceId}:${notePath}`;
+  // Simple hash-based UUID generation (not cryptographic, just deterministic)
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  // Convert to a UUID-like format using the hash, ensuring exact segment lengths
+  const h1 = Math.abs(hash).toString(16).padStart(8, '0').slice(0, 8);
+  const h2 = Math.abs(hash * 31).toString(16).padStart(8, '0').slice(0, 8);
+  const h3 = Math.abs(hash * 37).toString(16).padStart(8, '0').slice(0, 8);
+  const h4 = Math.abs(hash * 41).toString(16).padStart(8, '0').slice(0, 8);
+
+  // Format: 8-4-4-4-12
+  return `${h1}-${h2.slice(0, 4)}-4${h2.slice(5, 8)}-${h3.slice(0, 4)}-${h4}${h1.slice(0, 4)}`;
+}
+
 async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
-  if (!isSupabaseConfigured || !authManager.isLoggedIn()) return [];
+  if (!isSupabaseConfigured) return [];
 
-  const userId = authManager.getUserId();
-  if (!userId) return [];
+  const rawSpaces: RemoteSpaceRow[] = [];
 
-  const { data, error } = await supabase
+  // 1. Fetch public spaces
+  const { data: publicSpaces, error: publicErr } = await supabase
     .from("spaces")
     .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
-    .eq("owner_id", userId)
+    .eq("visibility", "public")
     .order("updated_at", { ascending: false });
 
-  if (error) {
-    console.error("[SpacesStore] Failed to fetch remote spaces:", error);
-    return [];
+  if (publicErr) {
+    console.error("[SpacesStore] Failed to fetch public spaces:", publicErr);
+  } else if (publicSpaces) {
+    rawSpaces.push(...(publicSpaces as RemoteSpaceRow[]));
   }
 
-  return (data || []).map((row) => toIndexEntry(mapRemoteToSpace(row as RemoteSpaceRow)));
+  // 2. Fetch private spaces if logged in
+  if (authManager.isLoggedIn()) {
+    const userId = authManager.getUserId();
+    if (userId) {
+      const { data: ownSpaces, error: ownErr } = await supabase
+        .from("spaces")
+        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
+        .eq("owner_id", userId)
+        .eq("visibility", "private")
+        .order("updated_at", { ascending: false });
+
+      if (ownErr) {
+        console.error("[SpacesStore] Failed to fetch own spaces:", ownErr);
+      } else if (ownSpaces) {
+        for (const s of ownSpaces) {
+          if (!rawSpaces.find(rs => rs.id === s.id)) {
+            rawSpaces.push(s as RemoteSpaceRow);
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Fetch accurate counts for each space in parallel
+  const results: SpaceIndexEntry[] = [];
+  await Promise.all(rawSpaces.map(async (row) => {
+    try {
+      const { count, error: countErr } = await supabase
+        .from("notes")
+        .select("*", { count: "exact", head: true })
+        .eq("space_id", row.id)
+        .eq("deleted", false);
+      
+      if (countErr) throw countErr;
+      results.push(toIndexEntry(mapRemoteToSpace(row, count || 0)));
+    } catch (err) {
+      console.warn(`[SpacesStore] Failed to fetch count for space ${row.id}:`, err);
+      results.push(toIndexEntry(mapRemoteToSpace(row, 0)));
+    }
+  }));
+
+  // Re-sort because Promise.all might have scrambled them
+  const finalResults = results.sort((a, b) => 
+    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+
+  console.log(`[SpacesStore] Fetched ${finalResults.length} remote spaces. Sample count for ${finalResults[0]?.title}: ${finalResults[0]?.noteCount}`);
+
+  return finalResults;
 }
 
 // ── In-memory cache ──────────────────────────────────────────────────────────
@@ -173,9 +319,10 @@ export async function listSpaces(): Promise<SpaceIndexEntry[]> {
   const remoteEntries = await fetchRemoteSpaces();
   for (const remote of remoteEntries) {
     const existing = merged.get(remote.id);
+    // For remote spaces, the cloud note count is the source of truth
     merged.set(remote.id, {
       ...remote,
-      noteCount: existing?.noteCount ?? remote.noteCount,
+      noteCount: remote.noteCount > 0 ? remote.noteCount : (existing?.noteCount ?? 0),
     });
   }
 
@@ -191,8 +338,10 @@ export async function getSpace(id: string): Promise<Space | null> {
   if (cached) return cached;
 
   const localSpace = await readData<Space>(`spaces/${id}.json`);
+  let space: Space | null = null;
+
   if (localSpace) {
-    const normalized: Space = {
+    space = {
       ...localSpace,
       description: localSpace.description || "",
       helpsWith: localSpace.helpsWith || [],
@@ -200,27 +349,42 @@ export async function getSpace(id: string): Promise<Space | null> {
       ownerId: (localSpace as any).ownerId || "local",
       noteCount: localSpace.noteCount || 0,
     };
-    _spaceCache.set(id, normalized);
-    return normalized;
   }
 
-  if (!isSupabaseConfigured || !authManager.isLoggedIn()) return null;
+  // If it's potentially a cloud space, fetch fresh metadata
+  if (isSupabaseConfigured && (!space || space.visibility !== "local")) {
+    try {
+      const { data: remote } = await supabase
+        .from("spaces")
+        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
+        .eq("id", id)
+        .single();
 
-  const { data, error } = await supabase
-    .from("spaces")
-    .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
-    .eq("id", id)
-    .maybeSingle();
+      if (remote) {
+        // Fetch accurate count
+        const { count } = await supabase
+          .from("notes")
+          .select("*", { count: "exact", head: true })
+          .eq("space_id", id)
+          .eq("deleted", false);
 
-  if (error) throw error;
-  if (!data) return null;
+        const remoteSpace = mapRemoteToSpace(remote as RemoteSpaceRow, count || 0);
+        
+        if (space) {
+          space = { ...space, ...remoteSpace };
+        } else {
+          space = remoteSpace;
+        }
+      }
+    } catch (err) {
+      console.warn(`[SpacesStore] Failed to fetch remote metadata for ${id}:`, err);
+    }
+  }
 
-  const remoteSpace = mapRemoteToSpace(data as RemoteSpaceRow);
-  _spaceCache.set(id, remoteSpace);
-  await writeData(`spaces/${id}.json`, remoteSpace);
-  await upsertIndexEntry(toIndexEntry(remoteSpace));
-
-  return remoteSpace;
+  if (space) {
+    _spaceCache.set(id, space);
+  }
+  return space;
 }
 
 export async function createSpace(data: {
@@ -367,7 +531,31 @@ export async function forkSpace(
     forkedFrom: source.id,
   });
 
-  // Copy the source's vector index if available locally
+  // 1. Download notes from Supabase if the source is not local
+  if (source.visibility !== "local" && isSupabaseConfigured) {
+    try {
+      const { data: cloudNotes } = await supabase
+        .from("notes")
+        .select("title, content, created_at")
+        .eq("space_id", source.id)
+        .eq("deleted", false);
+
+      if (cloudNotes && cloudNotes.length > 0) {
+        const api = getAPI();
+        const spaceFolder = `Spaces/${forkedSpace.title.replace(/[\\/:*?"<>|]/g, "")}`;
+        await api.createDirectory(spaceFolder);
+
+        for (const note of cloudNotes) {
+          const fileName = `${note.title.replace(/[\\/:*?"<>|]/g, "")}.md`;
+          await api.writeFile(`${spaceFolder}/${fileName}`, note.content);
+        }
+      }
+    } catch (err) {
+      console.error("[SpacesStore] Failed to download notes for remix:", err);
+    }
+  }
+
+  // 2. Copy the source's vector index if available locally
   try {
     const sourceIndex = await loadVectorIndex(sourceId);
     if (sourceIndex && sourceIndex.chunks.length > 0) {
@@ -383,7 +571,7 @@ export async function forkSpace(
       await saveVectorIndex(forkedIndex);
     }
   } catch {
-    // Source vector index not available (e.g. forking from Explore) — expected
+    // Source vector index not available — expected for fresh cloud remixes
   }
 
   return forkedSpace;

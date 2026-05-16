@@ -20,21 +20,27 @@ export type Database = {
           created_at: string
           embedding: string | null
           id: string
+          space_id: string
           note_id: string
+          updated_at: string
         }
         Insert: {
           content: string
           created_at?: string
           embedding?: string | null
           id?: string
+          space_id: string
           note_id: string
+          updated_at?: string
         }
         Update: {
           content?: string
           created_at?: string
           embedding?: string | null
           id?: string
+          space_id?: string
           note_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -49,6 +55,8 @@ export type Database = {
       notes: {
         Row: {
           content: string
+          created_at: string
+          deleted: boolean
           id: string
           pinned: boolean
           space_id: string
@@ -57,6 +65,8 @@ export type Database = {
         }
         Insert: {
           content: string
+          created_at?: string
+          deleted?: boolean
           id?: string
           pinned?: boolean
           space_id: string
@@ -65,6 +75,8 @@ export type Database = {
         }
         Update: {
           content?: string
+          created_at?: string
+          deleted?: boolean
           id?: string
           pinned?: boolean
           space_id?: string
@@ -195,7 +207,7 @@ export type Database = {
           owner_id: string
           title: string
           updated_at: string
-          visibility: string | null
+          visibility: string
         }
         Insert: {
           created_at?: string
@@ -207,7 +219,7 @@ export type Database = {
           owner_id: string
           title: string
           updated_at?: string
-          visibility?: string | null
+          visibility?: string
         }
         Update: {
           created_at?: string
@@ -219,7 +231,7 @@ export type Database = {
           owner_id?: string
           title?: string
           updated_at?: string
-          visibility?: string | null
+          visibility?: string
         }
         Relationships: [
           {
@@ -277,6 +289,7 @@ export type Database = {
           content: string
           id: string
           note_id: string
+          note_title: string
           similarity: number
         }[]
       }
