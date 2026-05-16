@@ -537,7 +537,7 @@ export async function forkSpace(
     try {
       const { data: cloudNotes } = await supabase
         .from("notes")
-        .select("title, content, created_at")
+        .select("title, content, created_at, is_canvas")
         .eq("space_id", source.id)
         .eq("deleted", false);
 
@@ -547,7 +547,8 @@ export async function forkSpace(
         await api.createDirectory(spaceFolder);
 
         for (const note of cloudNotes) {
-          const fileName = `${note.title.replace(/[\\/:*?"<>|]/g, "")}.md`;
+          const extension = (note as any).is_canvas ? ".canvas" : ".md";
+          const fileName = `${note.title.replace(/[\\/:*?"<>|]/g, "")}${extension}`;
           await api.writeFile(`${spaceFolder}/${fileName}`, note.content);
         }
       }
