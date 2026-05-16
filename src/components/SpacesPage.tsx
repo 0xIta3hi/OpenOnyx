@@ -20,6 +20,7 @@ import {
 import { buildVectorIndex } from "../utils/spaces-processing";
 import { querySpaceStreaming, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
+import { getAPI } from "../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
 import type { FileEntry } from "../types/index";
 import { MarkdownPreview } from "./editor/MarkdownPreview";
@@ -276,13 +277,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   // ── Build index (auto-indexes entire vault) ──────────
   const handleBuildIndex = useCallback(async () => {
-    if (!activeSpaceId || fileTree.length === 0) return;
+    if (!activeSpaceId) return;
     setIsIndexing(true);
-    setIndexProgress({ done: 0, total: vaultNoteCount });
+    
     try {
-      await buildVectorIndex(activeSpaceId, fileTree, (done, total) => {
+      // Fetch a FRESH file tree from the API to avoid stale props (especially after remix)
+      const api = getAPI();
+      const freshTree = await api.getFileTree();
+      
+      await buildVectorIndex(activeSpaceId, freshTree, (done, total) => {
         setIndexProgress({ done, total });
       });
+      
       setIsIndexed(true);
       // Refresh space to get updated noteCount
       const updated = await getSpace(activeSpaceId);
@@ -290,9 +296,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       await refreshSpaces();
     } catch (err) {
       console.error("[Spaces] Index build failed:", err);
+      showToast("Indexing failed. Check logs for details.", "error");
     }
     setIsIndexing(false);
-  }, [activeSpaceId, fileTree, vaultNoteCount, refreshSpaces]);
+  }, [activeSpaceId, refreshSpaces, showToast]);
 
   useEffect(() => {
     if (activeSpaceId && fileTree.length > 0 && view === "space" && !isIndexed && !isIndexing && !isRemote) {
