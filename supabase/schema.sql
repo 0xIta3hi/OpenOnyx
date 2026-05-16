@@ -247,38 +247,29 @@ END $$;
 
 -- Note chunks
 DO $$ BEGIN
-  CREATE POLICY "Chunks viewable if space public or owned"
-    ON public.note_chunks FOR SELECT USING (
-      EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-        WHERE notes.id = note_chunks.note_id
-          AND (spaces.visibility = 'public' OR spaces.owner_id = auth.uid()))
-    );
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$ BEGIN
   CREATE POLICY "Users can insert chunks to their own notes"
     ON public.note_chunks FOR INSERT WITH CHECK (
-      EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-        WHERE notes.id = note_chunks.note_id AND spaces.owner_id = auth.uid())
+      EXISTS (SELECT 1 FROM public.spaces
+        WHERE spaces.id = note_chunks.space_id AND spaces.owner_id = auth.uid())
     );
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
 
-DO $$ BEGIN
   CREATE POLICY "Users can update chunks in their own notes"
     ON public.note_chunks FOR UPDATE USING (
-      EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-        WHERE notes.id = note_chunks.note_id AND spaces.owner_id = auth.uid())
+      EXISTS (SELECT 1 FROM public.spaces
+        WHERE spaces.id = note_chunks.space_id AND spaces.owner_id = auth.uid())
     );
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
 
-DO $$ BEGIN
   CREATE POLICY "Users can delete chunks in their own notes"
     ON public.note_chunks FOR DELETE USING (
-      EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-        WHERE notes.id = note_chunks.note_id AND spaces.owner_id = auth.uid())
+      EXISTS (SELECT 1 FROM public.spaces
+        WHERE spaces.id = note_chunks.space_id AND spaces.owner_id = auth.uid())
+    );
+
+  CREATE POLICY "Chunks viewable if space public or owned"
+    ON public.note_chunks FOR SELECT USING (
+      EXISTS (SELECT 1 FROM public.spaces
+        WHERE spaces.id = note_chunks.space_id 
+        AND (spaces.visibility = 'public' OR spaces.owner_id = auth.uid()))
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;

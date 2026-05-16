@@ -104,6 +104,8 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   // Space view state
   const [activeSpace, setActiveSpace] = useState<Space | null>(null);
+  const currentUserId = authManager.getUserId();
+  const isRemote = activeSpace?.visibility !== "local" && activeSpace?.ownerId !== currentUserId;
 
   // Create form
   const [createTitle, setCreateTitle] = useState("");
@@ -182,12 +184,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setChatMessages([]);
       setStreamingText("");
       setChatInput("");
-      
       const currentUserId = authManager.getUserId();
-      const isRemote = space.visibility !== "local" && space.ownerId !== currentUserId;
+      const remoteStatus = space.visibility !== "local" && space.ownerId !== currentUserId;
       
       // If it's a remote space, we don't index the local vault
-      setIsIndexed(isRemote);
+      setIsIndexed(remoteStatus);
     }
   }, []);
 
@@ -293,15 +294,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     setIsIndexing(false);
   }, [activeSpaceId, fileTree, vaultNoteCount, refreshSpaces]);
 
-  // Auto-index when entering a local space
   useEffect(() => {
-    const currentUserId = authManager.getUserId();
-    const isRemote = activeSpace?.visibility !== "local" && activeSpace?.ownerId !== currentUserId;
-
     if (activeSpaceId && fileTree.length > 0 && view === "space" && !isIndexed && !isIndexing && !isRemote) {
       handleBuildIndex();
     }
-  }, [activeSpaceId, activeSpace]);
+  }, [activeSpaceId, activeSpace, isRemote, isIndexed, isIndexing, view, fileTree.length, handleBuildIndex]);
 
   // Fetch remote notes for preview when entering a cloud space
   useEffect(() => {
@@ -735,14 +732,16 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 </div>
               </div>
               <div className="space-view-actions">
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={handleBuildIndex}
-                  disabled={isIndexing}
-                  title="Re-index vault notes"
-                >
-                  <RefreshCw size={13} className={isIndexing ? "spinner" : ""} /> Re-index
-                </button>
+                {!isRemote && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={handleBuildIndex}
+                    disabled={isIndexing}
+                    title="Re-index vault notes"
+                  >
+                    <RefreshCw size={13} className={isIndexing ? "spinner" : ""} /> Re-index
+                  </button>
+                )}
                 <button className="btn btn-ghost btn-sm" onClick={() => handleFork(activeSpace.id)}>
                   <Copy size={13} /> Remix
                 </button>
