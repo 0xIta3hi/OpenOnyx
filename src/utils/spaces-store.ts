@@ -117,7 +117,7 @@ async function upsertCloudSpace(space: Space): Promise<void> {
  */
 export async function pushSpaceNotes(
   spaceId: string,
-  vaultNotes: { path: string; title: string; content: string }[],
+  vaultNotes: { path: string; title: string; content: string; is_canvas?: boolean }[],
 ): Promise<void> {
   if (!isSupabaseConfigured || !authManager.isLoggedIn()) return;
 
@@ -136,6 +136,7 @@ export async function pushSpaceNotes(
       created_at: now,
       updated_at: now,
       deleted: false,
+      is_canvas: note.is_canvas || false,
     }));
 
     const { error } = await supabase

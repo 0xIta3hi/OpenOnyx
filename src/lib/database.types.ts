@@ -62,6 +62,7 @@ export type Database = {
           space_id: string
           title: string
           updated_at: string
+          is_canvas: boolean
         }
         Insert: {
           content: string
@@ -72,6 +73,7 @@ export type Database = {
           space_id: string
           title: string
           updated_at?: string
+          is_canvas?: boolean
         }
         Update: {
           content?: string
@@ -82,6 +84,7 @@ export type Database = {
           space_id?: string
           title?: string
           updated_at?: string
+          is_canvas?: boolean
         }
         Relationships: [
           {

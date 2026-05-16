@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS public.notes (
   pinned boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  deleted boolean NOT NULL DEFAULT false
+  deleted boolean NOT NULL DEFAULT false,
+  is_canvas boolean NOT NULL DEFAULT false
 );
 ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
 

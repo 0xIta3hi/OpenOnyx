@@ -255,11 +255,11 @@ export async function buildVectorIndex(
   const spaceData = await getSpace(spaceId);
   if (spaceData && spaceData.visibility !== "local") {
     const notesForCloud = vaultNotes
-      .filter((n) => !n.isCanvas)
       .map((n) => ({
         path: n.path,
         title: n.title,
         content: n.content,
+        is_canvas: n.isCanvas,
       }));
     try {
       await pushSpaceNotes(spaceId, notesForCloud);
