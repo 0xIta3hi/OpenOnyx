@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { localDB, type LocalSpace } from './localdb';
+import { localDB, type LocalSpace, type SyncQueueItem } from './localdb';
 import { authManager } from './auth';
 import { getUserSupabaseClient } from './userDatabase';
 
@@ -45,6 +45,7 @@ export class SyncEngine {
   private isSyncing = false;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private listeners: Set<(status: SyncStatus) => void> = new Set();
+  private authUnsubscribe: (() => void) | null = null;
 
   constructor() {
     this.startAutoSync();
@@ -62,6 +63,18 @@ export class SyncEngine {
         this.sync();
       });
     }
+
+    // Trigger sync on login
+    this.authUnsubscribe = authManager.subscribe((state) => {
+      if (state.user && !state.isLoading) {
+        this.sync();
+      }
+    });
+    
+    // Initial sync on startup
+    setTimeout(() => {
+      this.sync();
+    }, 1000);
   }
 
   /**
@@ -82,6 +95,7 @@ export class SyncEngine {
   async sync(): Promise<{ pushed: number; pulled: number }> {
     if (this.isSyncing) return { pushed: 0, pulled: 0 };
     if (!authManager.isLoggedIn()) return { pushed: 0, pulled: 0 };
+    if (typeof window !== 'undefined' && !navigator.onLine) return { pushed: 0, pulled: 0 };
 
     this.isSyncing = true;
     this.notifyStatus({ state: 'syncing' });
@@ -89,6 +103,7 @@ export class SyncEngine {
     let pushed = 0;
     let pulled = 0;
     try {
+      await this.dedupeQueue();
       pushed = await this.pushChanges();
       pulled = await this.pullChanges();
       this.notifyStatus({ state: 'idle', lastSync: new Date().toISOString(), pushed, pulled });
@@ -102,6 +117,36 @@ export class SyncEngine {
   }
 
   /**
+   * Helper utility to dedupe the sync queue.
+   * Note: Our enqueueChange automatically dedupes by overriding the ID,
+   * but this method ensures no stale updates exist for deleted items.
+   */
+  private async dedupeQueue(): Promise<void> {
+    const queue = await localDB.getSyncQueue();
+    const toDelete = new Set<string>();
+
+    // If an item is marked for delete, drop any prior inserts or updates for it
+    const deletedIds = new Set(queue.filter(i => i.operation === 'delete').map(i => i.id));
+    for (const item of queue) {
+      if ((item.operation === 'insert' || item.operation === 'update') && deletedIds.has(item.id.replace(/_(insert|update)$/, '_delete'))) {
+        toDelete.add(item.id);
+      }
+    }
+
+    for (const id of toDelete) {
+      await localDB.removeSyncItem(id);
+    }
+  }
+
+  /**
+   * Helper utility for Last-Write-Wins logic
+   */
+  private applyRemoteChanges(localRecord: any | undefined, remoteRecord: any): boolean {
+    if (!localRecord) return true;
+    return remoteRecord.updated_at >= localRecord.updated_at;
+  }
+
+  /**
    * Push local queue to Supabase.
    * Only pushes items for spaces with visibility !== 'local'.
    */
@@ -109,66 +154,100 @@ export class SyncEngine {
     const client = getActiveClient();
     const queue = await localDB.getSyncQueue();
     if (queue.length === 0) return 0;
+    if (typeof window !== 'undefined' && !navigator.onLine) return 0;
 
     let count = 0;
+    
+    const itemsToDeleteFromQueue: string[] = [];
+    const itemsToRetry: SyncQueueItem[] = [];
+
+    const batches = {
+      spaces: { insert: [] as SyncQueueItem[], update: [] as SyncQueueItem[], delete: [] as SyncQueueItem[] },
+      notes: { insert: [] as SyncQueueItem[], update: [] as SyncQueueItem[], delete: [] as SyncQueueItem[] },
+      note_chunks: { insert: [] as SyncQueueItem[], update: [] as SyncQueueItem[], delete: [] as SyncQueueItem[] }
+    };
 
     for (const item of queue) {
-      try {
-        const { type, action, payload } = item;
-
-        // Skip syncing local-only spaces and their children
-        if (type === 'space' && payload.visibility === 'local') {
-          await localDB.removeSyncItem(item.id);
-          continue;
-        }
-
-        if (type === 'note' || type === 'chunk') {
-          // Check if the parent space is local-only
-          const spaceId = payload.space_id || (type === 'chunk' ? null : null);
-          if (spaceId) {
-            const space = await localDB.getSpace(spaceId);
-            if (space && space.visibility === 'local') {
-              await localDB.removeSyncItem(item.id);
-              continue;
-            }
-          }
-        }
-
-        if (action === 'upsert') {
-          if (type === 'space') {
-            const { error } = await client.from('spaces').upsert(payload);
-            if (error) throw error;
-          } else if (type === 'note') {
-            const { error } = await client.from('notes').upsert(payload);
-            if (error) throw error;
-          } else if (type === 'chunk') {
-            const { error } = await client.from('note_chunks').upsert(payload);
-            if (error) throw error;
-          }
-        } else if (action === 'delete') {
-          if (type === 'space') {
-            const { error } = await client.from('spaces').delete().eq('id', payload.id);
-            if (error) throw error;
-          } else if (type === 'note') {
-            // Soft-delete: mark as deleted rather than physically removing
-            const { error } = await client.from('notes').update({
-              deleted: true,
-              updated_at: new Date().toISOString(),
-            }).eq('id', payload.id);
-            if (error) throw error;
-          } else if (type === 'chunk') {
-            const { error } = await client.from('note_chunks').delete().eq('id', payload.id);
-            if (error) throw error;
-          }
-        }
-
-        await localDB.removeSyncItem(item.id);
-        count++;
-      } catch (err) {
-        console.error(`[SyncEngine] Failed to sync item ${item.id}`, err);
-        // Leave in queue for retry
+      if (item.table === 'spaces' && item.payload.visibility === 'local') {
+        itemsToDeleteFromQueue.push(item.id);
+        continue;
       }
+      
+      if (item.table === 'notes' || item.table === 'note_chunks') {
+        let spaceIdToCheck = item.payload.space_id;
+        if (item.table === 'note_chunks' && item.payload.note_id) {
+           const note = await localDB.getNote(item.payload.note_id);
+           if (note) spaceIdToCheck = note.space_id;
+        }
+        if (spaceIdToCheck) {
+           const space = await localDB.getSpace(spaceIdToCheck);
+           if (space && space.visibility === 'local') {
+             itemsToDeleteFromQueue.push(item.id);
+             continue;
+           }
+        }
+      }
+      
+      batches[item.table][item.operation].push(item);
     }
+
+    const processBatch = async (table: 'spaces' | 'notes' | 'note_chunks', operation: 'insert' | 'update' | 'delete', items: SyncQueueItem[]) => {
+      if (items.length === 0) return;
+      
+      try {
+        if (operation === 'insert' || operation === 'update') {
+          // Remove local-only properties before pushing to Supabase
+          const payloads = items.map(i => {
+            const p = { ...i.payload };
+            if (table === 'spaces') {
+              delete p.visibility; // Remove local visibility flag
+            }
+            return p;
+          });
+          const { error } = await client.from(table).upsert(payloads);
+          if (error) throw error;
+        } else if (operation === 'delete') {
+          if (table === 'notes') {
+            const payloads = items.map(i => i.payload);
+            const { error } = await client.from(table).upsert(payloads);
+            if (error) throw error;
+          } else {
+             const ids = items.map(i => i.record_id);
+             const { error } = await client.from(table).delete().in('id', ids);
+             if (error) throw error;
+          }
+        }
+        
+        items.forEach(i => itemsToDeleteFromQueue.push(i.id));
+        count += items.length;
+      } catch (err) {
+        console.error(`[SyncEngine] Batch ${operation} failed for ${table}:`, err);
+        for (const item of items) {
+          if (item.retry_count < 3) {
+            itemsToRetry.push({ ...item, retry_count: item.retry_count + 1 });
+          } else {
+            console.error(`[SyncEngine] Max retries reached for item ${item.id}, dropping.`);
+            itemsToDeleteFromQueue.push(item.id);
+          }
+        }
+      }
+    };
+
+    for (const table of ['spaces', 'notes', 'note_chunks'] as const) {
+       await processBatch(table, 'insert', batches[table].insert);
+       await processBatch(table, 'update', batches[table].update);
+       await processBatch(table, 'delete', batches[table].delete);
+    }
+    
+    // Process queue updates in parallel
+    const queueUpdates: Promise<void>[] = [];
+    for (const id of itemsToDeleteFromQueue) {
+      queueUpdates.push(localDB.removeSyncItem(id));
+    }
+    for (const item of itemsToRetry) {
+      queueUpdates.push(localDB.putSyncItem(item));
+    }
+    await Promise.all(queueUpdates);
 
     return count;
   }
@@ -182,6 +261,7 @@ export class SyncEngine {
     const client = getActiveClient();
     const user = authManager.getUser();
     if (!user) return 0;
+    if (typeof window !== 'undefined' && !navigator.onLine) return 0;
 
     const lastSyncTime = await localDB.getLastSyncTime() || new Date(0).toISOString();
     const now = new Date().toISOString();
@@ -199,8 +279,7 @@ export class SyncEngine {
       for (const remoteSpace of spaces) {
         const localSpace = await localDB.getSpace(remoteSpace.id);
 
-        // Last-Write-Wins: only overwrite if remote is newer or local doesn't exist
-        if (!localSpace || remoteSpace.updated_at >= localSpace.updated_at) {
+        if (this.applyRemoteChanges(localSpace, remoteSpace)) {
           await localDB.putSpace(toLocalSpace(remoteSpace), false);
           count++;
         }
@@ -242,8 +321,7 @@ export class SyncEngine {
             continue;
           }
 
-          // Last-Write-Wins
-          if (!localNote || remoteNote.updated_at >= localNote.updated_at) {
+          if (this.applyRemoteChanges(localNote, remoteNote)) {
             await localDB.putNote(remoteNote, false);
             count++;
           }
@@ -276,6 +354,7 @@ export class SyncEngine {
     const client = getActiveClient();
     const user = authManager.getUser();
     if (!user) return 0;
+    if (typeof window !== 'undefined' && !navigator.onLine) return 0;
 
     this.notifyStatus({ state: 'syncing' });
     let count = 0;
@@ -370,8 +449,11 @@ export class SyncEngine {
     const space = await localDB.getSpace(spaceId);
     if (!space || space.visibility === 'local') return;
 
+    const payload = { ...space };
+    delete (payload as any).visibility;
+
     // Push space
-    const { error: spaceErr } = await client.from('spaces').upsert(space as any);
+    const { error: spaceErr } = await client.from('spaces').upsert(payload as any);
     if (spaceErr) throw spaceErr;
 
     // Push all notes
@@ -394,6 +476,9 @@ export class SyncEngine {
   dispose() {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
+    }
+    if (this.authUnsubscribe) {
+      this.authUnsubscribe();
     }
   }
 }

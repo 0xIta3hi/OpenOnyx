@@ -143,10 +143,16 @@ export async function makeSpaceLocal(spaceId: string): Promise<any> {
       { ...space, visibility: 'local', is_public: false, updated_at: new Date().toISOString() } as any,
       false
     );
-    // Explicitly delete from cloud
-    if (authManager.isLoggedIn()) {
-      await supabase.from('spaces').delete().eq('id', spaceId);
-    }
+    // Explicitly enqueue delete for the cloud record
+    await localDB.putSyncItem({
+      id: `spaces_${spaceId}_delete`, // unique ID to not overlap with any pending updates
+      operation: 'delete',
+      table: 'spaces',
+      record_id: spaceId,
+      payload: { id: spaceId },
+      created_at: Date.now(),
+      retry_count: 0
+    });
   } else {
     await localDB.putSpace(
       { ...space, visibility: 'local', is_public: false, updated_at: new Date().toISOString() } as any,

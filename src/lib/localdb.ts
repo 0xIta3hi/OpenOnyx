@@ -39,10 +39,12 @@ export interface LocalNoteChunk {
 
 export interface SyncQueueItem {
   id: string;
-  type: 'space' | 'note' | 'chunk';
-  action: 'upsert' | 'delete';
+  operation: 'insert' | 'update' | 'delete';
+  table: 'spaces' | 'notes' | 'note_chunks';
+  record_id: string;
   payload: any;
-  timestamp: number;
+  created_at: number;
+  retry_count: number;
 }
 
 interface NoteworkDB extends DBSchema {
@@ -64,7 +66,7 @@ interface NoteworkDB extends DBSchema {
   sync_queue: {
     key: string;
     value: SyncQueueItem;
-    indexes: { 'by-timestamp': number };
+    indexes: { 'by-created-at': number };
   };
   metadata: {
     key: string;
@@ -76,7 +78,7 @@ let dbPromise: Promise<IDBPDatabase<NoteworkDB>>;
 
 export function getLocalDB() {
   if (!dbPromise) {
-    dbPromise = openDB<NoteworkDB>('notework-local', 2, {
+    dbPromise = openDB<NoteworkDB>('notework-local', 3, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const spaceStore = db.createObjectStore('spaces', { keyPath: 'id' });
@@ -90,7 +92,7 @@ export function getLocalDB() {
           chunkStore.createIndex('by-note', 'note_id');
 
           const syncStore = db.createObjectStore('sync_queue', { keyPath: 'id' });
-          syncStore.createIndex('by-timestamp', 'timestamp');
+          syncStore.createIndex('by-created-at', 'created_at');
 
           db.createObjectStore('metadata');
         }
@@ -105,6 +107,13 @@ export function getLocalDB() {
               }
             }
           }
+        }
+        if (oldVersion < 3) {
+          if (db.objectStoreNames.contains('sync_queue')) {
+            db.deleteObjectStore('sync_queue');
+          }
+          const syncStore = db.createObjectStore('sync_queue', { keyPath: 'id' });
+          syncStore.createIndex('by-created-at', 'created_at');
         }
       },
     });
@@ -136,15 +145,10 @@ export const localDB = {
     if (!space.visibility) {
       space.visibility = space.is_public ? 'public' : 'local';
     }
+    const isExisting = await db.get('spaces', space.id);
     await db.put('spaces', space);
     if (enqueueSync && space.visibility !== 'local') {
-      await db.put('sync_queue', {
-        id: `space_upsert_${space.id}`,
-        type: 'space',
-        action: 'upsert',
-        payload: space,
-        timestamp: Date.now()
-      });
+      await this.enqueueChange('spaces', isExisting ? 'update' : 'insert', space.id, space);
     }
   },
 
@@ -153,13 +157,7 @@ export const localDB = {
     const space = await db.get('spaces', id);
     await db.delete('spaces', id);
     if (enqueueSync && space && space.visibility !== 'local') {
-      await db.put('sync_queue', {
-        id: `space_delete_${id}`,
-        type: 'space',
-        action: 'delete',
-        payload: { id },
-        timestamp: Date.now()
-      });
+      await this.enqueueChange('spaces', 'delete', id, { id });
     }
   },
 
@@ -177,29 +175,25 @@ export const localDB = {
 
   async putNote(note: LocalNote, enqueueSync = true): Promise<void> {
     const db = await getLocalDB();
+    const isExisting = await db.get('notes', note.id);
     await db.put('notes', note);
     if (enqueueSync) {
-      await db.put('sync_queue', {
-        id: `note_upsert_${note.id}`,
-        type: 'note',
-        action: 'upsert',
-        payload: note,
-        timestamp: Date.now()
-      });
+      await this.enqueueChange('notes', isExisting ? 'update' : 'insert', note.id, note);
     }
   },
 
   async deleteNote(id: string, enqueueSync = true): Promise<void> {
     const db = await getLocalDB();
-    await db.delete('notes', id);
-    if (enqueueSync) {
-      await db.put('sync_queue', {
-        id: `note_delete_${id}`,
-        type: 'note',
-        action: 'delete',
-        payload: { id },
-        timestamp: Date.now()
-      });
+    const note = await db.get('notes', id);
+    if (note) {
+      // Soft delete: update the note's deleted flag instead of physical delete
+      note.deleted = true;
+      note.updated_at = new Date().toISOString();
+      await db.put('notes', note);
+      
+      if (enqueueSync) {
+        await this.enqueueChange('notes', 'delete', id, note);
+      }
     }
   },
 
@@ -212,15 +206,10 @@ export const localDB = {
 
   async putChunk(chunk: LocalNoteChunk, enqueueSync = true): Promise<void> {
     const db = await getLocalDB();
+    const isExisting = await db.get('note_chunks', chunk.id);
     await db.put('note_chunks', chunk);
     if (enqueueSync) {
-      await db.put('sync_queue', {
-        id: `chunk_upsert_${chunk.id}`,
-        type: 'chunk',
-        action: 'upsert',
-        payload: chunk,
-        timestamp: Date.now()
-      });
+      await this.enqueueChange('note_chunks', isExisting ? 'update' : 'insert', chunk.id, chunk);
     }
   },
 
@@ -229,6 +218,8 @@ export const localDB = {
     const chunks = await db.getAllFromIndex('note_chunks', 'by-note', noteId);
     for (const chunk of chunks) {
       await db.delete('note_chunks', chunk.id);
+      // We'll queue the delete as well
+      await this.enqueueChange('note_chunks', 'delete', chunk.id, { id: chunk.id });
     }
   },
 
@@ -256,9 +247,27 @@ export const localDB = {
 
   // ── Sync Queue ─────────────────────────────────────────
 
+  async enqueueChange(table: 'spaces' | 'notes' | 'note_chunks', operation: 'insert' | 'update' | 'delete', record_id: string, payload: any): Promise<void> {
+    const db = await getLocalDB();
+    await db.put('sync_queue', {
+      id: `${table}_${record_id}`,
+      operation,
+      table,
+      record_id,
+      payload,
+      created_at: Date.now(),
+      retry_count: 0
+    });
+  },
+
   async getSyncQueue(): Promise<SyncQueueItem[]> {
     const db = await getLocalDB();
-    return db.getAllFromIndex('sync_queue', 'by-timestamp');
+    return db.getAllFromIndex('sync_queue', 'by-created-at');
+  },
+
+  async putSyncItem(item: SyncQueueItem): Promise<void> {
+    const db = await getLocalDB();
+    await db.put('sync_queue', item);
   },
 
   async removeSyncItem(id: string): Promise<void> {
