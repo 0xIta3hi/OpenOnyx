@@ -609,10 +609,6 @@ export function SplitPaneContainer({
       <PaneRenderer
         node={paneTree}
         renderContent={renderContent}
-        onTabSelect={handleTabSelect}
-        onTabClose={handleTabClose}
-        onNewTab={onNewTab}
-        onTabReorder={handleTabReorder}
         onDrop={handleDrop}
         onRatioChange={handleRatioChange}
         focusedLeafId={focusedLeafId}

@@ -99,6 +99,7 @@ import {
   saveFTUXNotNowSuppression,
   saveFTUXState,
 } from "./utils/ftux";
+import { readData, writeData } from "./utils/disk-store";
 import { DragCtx, DragContextData } from "./context/DragContext";
 
 const api = getAPI();
@@ -1393,8 +1394,19 @@ export default function App() {
           // Initializing background services for the auto-loaded vault
           runVaultInit(tree);
           
-          // Open a new tab if no tabs are restored (tab persistence not implemented yet)
-          handleOpenNewTab();
+          try {
+            const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
+            if (workspaceData && workspaceData.paneTree) {
+              setPaneTree(workspaceData.paneTree);
+              setTabs(collectAllTabs(workspaceData.paneTree));
+              if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
+              if (workspaceData.focusedLeafId) setFocusedLeafId(workspaceData.focusedLeafId);
+            } else {
+              handleOpenNewTab();
+            }
+          } catch (err) {
+            handleOpenNewTab();
+          }
         }
       } catch (err) {
         console.error("Failed to auto-load vault:", err);
@@ -1402,6 +1414,21 @@ export default function App() {
     };
     void checkInitialVault();
   }, []);
+
+  // ── Workspace State Persistence ─────────────────────
+  useEffect(() => {
+    if (!vaultPath) return;
+
+    const saveTimer = setTimeout(() => {
+      writeData("workspace.json", {
+        paneTree,
+        activeTabId,
+        focusedLeafId,
+      }).catch((err) => console.error("Failed to save workspace:", err));
+    }, 1000);
+
+    return () => clearTimeout(saveTimer);
+  }, [paneTree, activeTabId, focusedLeafId, vaultPath]);
 
   // Derive theme from settings (handles 'system' preference)
   const theme: Theme =
@@ -2235,8 +2262,19 @@ export default function App() {
         // Trigger background vault initialization for new vault
         runVaultInit(tree);
         
-        // Open a new tab immediately
-        handleOpenNewTab();
+        try {
+          const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
+          if (workspaceData && workspaceData.paneTree) {
+            setPaneTree(workspaceData.paneTree);
+            setTabs(collectAllTabs(workspaceData.paneTree));
+            if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
+            if (workspaceData.focusedLeafId) setFocusedLeafId(workspaceData.focusedLeafId);
+          } else {
+            handleOpenNewTab();
+          }
+        } catch (err) {
+          handleOpenNewTab();
+        }
         
         return true;
       }
