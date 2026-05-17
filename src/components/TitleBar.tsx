@@ -219,7 +219,7 @@ export function TitleBar({
                     onTabClose?.(tab.id);
                   }}
                 >
-                  <X size={14} />
+                  <X size={16} />
                 </button>
               </div>
             </div>

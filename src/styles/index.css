@@ -753,7 +753,8 @@ body.is-dragging .plugin-view-panel {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 8px 3.5px;
+  height: 30px;
+  padding: 0 4px;
   background: transparent;
   border: none;
   color: var(--tab-text-color);
@@ -794,6 +795,7 @@ body.is-dragging .plugin-view-panel {
   white-space: nowrap;
   text-align: left;
   font-weight: inherit;
+  line-height: 1;
 }
 
 .titlebar-tab-dot {
@@ -847,8 +849,8 @@ body.is-dragging .plugin-view-panel {
 }
 
 .titlebar-tab-close {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -860,7 +862,7 @@ body.is-dragging .plugin-view-panel {
   justify-content: center;
   opacity: 0;
   transition: var(--transition-fast);
-  padding: 2px;
+  padding: 0;
   flex-shrink: 0;
 }
 
@@ -1500,7 +1502,8 @@ body.is-dragging .plugin-view-panel {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 4px 3.5px;
+  height: 30px;
+  padding: 0 4px;
   background: transparent;
   border: none;
   color: var(--tab-text-color);
@@ -1538,6 +1541,7 @@ body.is-dragging .plugin-view-panel {
   white-space: nowrap;
   text-align: left;
   font-weight: inherit;
+  line-height: 1;
 }
 
 .editor-tab.active {
@@ -1601,8 +1605,8 @@ body.is-dragging .plugin-view-panel {
 }
 
 .editor-tab .close-btn {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -1614,7 +1618,7 @@ body.is-dragging .plugin-view-panel {
   justify-content: center;
   opacity: 0;
   transition: var(--transition-fast);
-  padding: 2px;
+  padding: 0;
 }
 
 .editor-tab:hover .close-btn,
