@@ -21,11 +21,13 @@ export interface LocalNote {
   id: string;
   space_id: string;
   title: string;
+  path: string;
   content: string;
   pinned: boolean;
   created_at: string;
   updated_at: string;
   deleted: boolean;
+  is_canvas?: boolean;
 }
 
 export interface LocalNoteChunk {

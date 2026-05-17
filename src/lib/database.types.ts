@@ -63,6 +63,7 @@ export type Database = {
           title: string
           updated_at: string
           is_canvas: boolean
+          path: string
         }
         Insert: {
           content: string
@@ -74,6 +75,7 @@ export type Database = {
           title: string
           updated_at?: string
           is_canvas?: boolean
+          path?: string
         }
         Update: {
           content?: string
@@ -85,6 +87,7 @@ export type Database = {
           title?: string
           updated_at?: string
           is_canvas?: boolean
+          path?: string
         }
         Relationships: [
           {

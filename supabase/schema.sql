@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
   title text NOT NULL,
+  path text NOT NULL DEFAULT '',
   content text NOT NULL DEFAULT '',
   pinned boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),

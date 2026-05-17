@@ -1,10 +1,11 @@
 import { supabase } from './supabase';
-import { localDB } from './localdb';
+import { localDB, LocalNote } from './localdb';
 import { authManager, AuthRequiredError } from './auth';
 import { syncEngine } from './syncEngine';
 import { indexSpaceMetadata } from './explore';
 import { v4 as uuidv4 } from 'uuid';
 import { indexNote } from './vector';
+import { getAPI } from '../utils/api';
 
 export type SpaceVisibility = 'local' | 'private' | 'public';
 
@@ -206,16 +207,62 @@ export async function forkSpace(originalSpaceId: string): Promise<string> {
   await supabase.rpc('increment_space_forks', { space_id: originalSpaceId });
 
   // 4. Copy notes and trigger re-indexing
+  const newSpaceFolder = `Spaces/${newSpace.title.replace(/[\\/:*?"<>|]/g, '')}`;
+
+  const stripSpacePrefix = (path: string, spaceTitle: string): string => {
+    const exactPrefix = `Spaces/${spaceTitle.replace(/[\\/:*?"<>|]/g, '')}/`;
+    if (path.startsWith(exactPrefix)) {
+      return path.slice(exactPrefix.length);
+    }
+    if (path.startsWith('Spaces/')) {
+      const parts = path.split('/');
+      if (parts.length > 2) {
+        return parts.slice(2).join('/');
+      }
+    }
+    return path;
+  };
+
   for (const originalNote of (originalNotes || [])) {
+    const fallbackPath = originalNote.is_canvas ? `${originalNote.title}.canvas` : `${originalNote.title}.md`;
+    const subPath = originalNote.path && originalNote.path.trim() !== '' ? stripSpacePrefix(originalNote.path, originalSpace.title) : fallbackPath;
+    const notePath = `${newSpaceFolder}/${subPath}`;
+
     const newNoteId = uuidv4();
-    const newNote = {
-      ...originalNote,
+    const newNote: LocalNote = {
       id: newNoteId,
       space_id: newSpaceId,
+      title: originalNote.title,
+      path: notePath,
+      content: originalNote.content,
+      pinned: originalNote.pinned,
+      created_at: originalNote.created_at,
       updated_at: new Date().toISOString(),
+      deleted: originalNote.deleted,
+      is_canvas: originalNote.is_canvas,
     };
 
-    await localDB.putNote(newNote as any, true);
+    await localDB.putNote(newNote, true);
+
+    // Also write to file system so it actually exists in the local vault with the correct path
+    try {
+      if (subPath.includes('/')) {
+         const parts = subPath.split('/');
+         parts.pop(); // remove file name
+         let currentPath = newSpaceFolder;
+         for (const part of parts) {
+            currentPath = `${currentPath}/${part}`;
+            try {
+              await getAPI().createDirectory(currentPath);
+            } catch (e) {
+              // Ignore if already exists
+            }
+         }
+      }
+      await getAPI().createFile(notePath, originalNote.content);
+    } catch (err) {
+       console.error(`[Spaces] Failed to write forked note to filesystem: ${notePath}`, err);
+    }
 
     // Non-blocking re-index
     indexNote(newNoteId, newNote.content).catch(err => {

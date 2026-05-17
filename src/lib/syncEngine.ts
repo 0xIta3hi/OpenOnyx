@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { localDB, type LocalSpace, type SyncQueueItem } from './localdb';
+import { localDB, type LocalSpace, type LocalNote, type SyncQueueItem } from './localdb';
 import { authManager } from './auth';
 import { getUserSupabaseClient } from './userDatabase';
 
@@ -26,6 +26,21 @@ function toLocalSpace(
     ...space,
     visibility,
   } as LocalSpace;
+}
+
+function toLocalNote(note: any): LocalNote {
+  return {
+    id: note.id,
+    space_id: note.space_id,
+    title: note.title,
+    path: note.path || '',
+    content: note.content || '',
+    pinned: !!note.pinned,
+    created_at: note.created_at,
+    updated_at: note.updated_at,
+    deleted: !!note.deleted,
+    is_canvas: !!note.is_canvas,
+  };
 }
 
 /**
@@ -322,7 +337,7 @@ export class SyncEngine {
           }
 
           if (this.applyRemoteChanges(localNote, remoteNote)) {
-            await localDB.putNote(remoteNote, false);
+            await localDB.putNote(toLocalNote(remoteNote), false);
             count++;
           }
         }
@@ -381,7 +396,7 @@ export class SyncEngine {
           .eq('deleted', false);
 
         if (notes && notes.length > 0) {
-          await Promise.all(notes.map(note => localDB.putNote(note, false)));
+          await Promise.all(notes.map(note => localDB.putNote(toLocalNote(note), false)));
           count += notes.length;
         }
 

@@ -131,6 +131,7 @@ export async function pushSpaceNotes(
       id: generateDeterministicId(spaceId, note.path),
       space_id: spaceId,
       title: note.title,
+      path: note.path,
       content: note.content,
       pinned: false,
       created_at: now,
@@ -537,19 +538,57 @@ export async function forkSpace(
     try {
       const { data: cloudNotes } = await supabase
         .from("notes")
-        .select("title, content, created_at, is_canvas")
+        .select("path, title, content, created_at, is_canvas")
         .eq("space_id", source.id)
         .eq("deleted", false);
 
       if (cloudNotes && cloudNotes.length > 0) {
         const api = getAPI();
-        const spaceFolder = `Spaces/${forkedSpace.title.replace(/[\\/:*?"<>|]/g, "")}`;
-        await api.createDirectory(spaceFolder);
+        const originalSpaceFolder = `Spaces/${source.title.replace(/[\\/:*?"<>|]/g, "")}`;
+        const newSpaceFolder = `Spaces/${forkedSpace.title.replace(/[\\/:*?"<>|]/g, "")}`;
+        await api.createDirectory(newSpaceFolder);
+
+        const stripSpacePrefix = (path: string, spaceTitle: string): string => {
+          const exactPrefix = `Spaces/${spaceTitle.replace(/[\\/:*?"<>|]/g, "")}/`;
+          if (path.startsWith(exactPrefix)) {
+            return path.slice(exactPrefix.length);
+          }
+          if (path.startsWith("Spaces/")) {
+            const parts = path.split("/");
+            if (parts.length > 2) {
+              return parts.slice(2).join("/");
+            }
+          }
+          return path;
+        };
 
         for (const note of cloudNotes) {
-          const extension = (note as any).is_canvas ? ".canvas" : ".md";
-          const fileName = `${note.title.replace(/[\\/:*?"<>|]/g, "")}${extension}`;
-          await api.writeFile(`${spaceFolder}/${fileName}`, note.content);
+          let subPath = "";
+          if (note.path && note.path.trim() !== "") {
+            subPath = stripSpacePrefix(note.path, source.title);
+          } else {
+            const extension = (note as any).is_canvas ? ".canvas" : ".md";
+            subPath = `${note.title.replace(/[\\/:*?"<>|]/g, "")}${extension}`;
+          }
+
+          const targetNotePath = `${newSpaceFolder}/${subPath}`;
+
+          // Create necessary subdirectories via the API before creating file
+          if (subPath.includes("/")) {
+            const parts = subPath.split("/");
+            parts.pop(); // remove file name
+            let currentPath = newSpaceFolder;
+            for (const part of parts) {
+              currentPath = `${currentPath}/${part}`;
+              try {
+                await api.createDirectory(currentPath);
+              } catch (e) {
+                // Ignore if directory already exists
+              }
+            }
+          }
+
+          await api.writeFile(targetNotePath, note.content);
         }
       }
     } catch (err) {
