@@ -27,7 +27,7 @@ const OVERLAP_TOKENS = 50;
 
 // ── Vault Note Collection ────────────────────────────────────────────────────
 
-interface VaultNote {
+export interface VaultNote {
   path: string;
   title: string;
   content: string;
@@ -208,9 +208,10 @@ export async function buildVectorIndex(
   spaceId: string,
   fileTree: FileEntry[],
   onProgress?: (processed: number, total: number) => void,
+  customNotes?: VaultNote[],
 ): Promise<SpaceVectorIndex> {
   // 1. Collect all vault notes
-  const vaultNotes = await collectVaultNotes(fileTree);
+  const vaultNotes = customNotes || await collectVaultNotes(fileTree);
   const totalNotes = vaultNotes.length;
   const allChunks: SpaceChunk[] = [];
   let processed = 0;

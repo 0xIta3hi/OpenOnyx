@@ -17,7 +17,7 @@ import {
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
 } from "../utils/spaces-store";
-import { buildVectorIndex } from "../utils/spaces-processing";
+import { buildVectorIndex, type VaultNote } from "../utils/spaces-processing";
 import { querySpaceStreaming, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
@@ -185,10 +185,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setChatMessages([]);
       setStreamingText("");
       setChatInput("");
-      const currentUserId = authManager.getUserId();
-      const remoteStatus = space.visibility !== "local" && space.ownerId !== currentUserId;
+      const remoteStatus = space.visibility !== "local";
       
-      // If it's a remote space, we don't index the local vault
+      // If it's a cloud space, we don't auto-index the local vault on open
       setIsIndexed(remoteStatus);
     }
   }, []);
@@ -281,13 +280,35 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     setIsIndexing(true);
     
     try {
+      let customNotes: VaultNote[] | undefined = undefined;
+      
+      if (activeSpace && activeSpace.visibility !== "local" && isSupabaseConfigured) {
+        // Cloud space: Fetch notes directly from Supabase to index them on the cloud
+        const { data: cloudNotes, error: fetchErr } = await supabase
+          .from("notes")
+          .select("path, title, content, is_canvas")
+          .eq("space_id", activeSpaceId)
+          .eq("deleted", false);
+          
+        if (fetchErr) throw fetchErr;
+        
+        if (cloudNotes) {
+          customNotes = cloudNotes.map(n => ({
+            path: n.path,
+            title: n.title,
+            content: n.content || "",
+            isCanvas: n.is_canvas || false,
+          }));
+        }
+      }
+
       // Fetch a FRESH file tree from the API to avoid stale props (especially after remix)
       const api = getAPI();
       const freshTree = await api.getFileTree();
       
       await buildVectorIndex(activeSpaceId, freshTree, (done, total) => {
         setIndexProgress({ done, total });
-      });
+      }, customNotes);
       
       setIsIndexed(true);
       // Refresh space to get updated noteCount
@@ -299,7 +320,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       showToast("Indexing failed. Check logs for details.", "error");
     }
     setIsIndexing(false);
-  }, [activeSpaceId, refreshSpaces, showToast]);
+  }, [activeSpaceId, activeSpace, refreshSpaces, showToast]);
 
   useEffect(() => {
     if (activeSpaceId && fileTree.length > 0 && view === "space" && !isIndexed && !isIndexing && !isRemote) {
@@ -762,29 +783,31 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               </div>
             )}
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-              {activeSpace.noteCount || vaultNoteCount} vault notes indexed
+              {activeSpace.visibility === "local" 
+                ? `${activeSpace.noteCount || vaultNoteCount} vault notes indexed` 
+                : `${activeSpace.noteCount ?? 0} notes indexed`}
             </div>
           </div>
 
           {/* Vault Preview — recent notes */}
-          {((activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()) ? previewNotes : remoteNotes).length > 0 && (
+          {(activeSpace.visibility === "local" ? previewNotes : remoteNotes).length > 0 && (
             <div className="space-preview-section">
               <div className="space-section-label">
-                {activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId() 
+                {activeSpace.visibility === "local" 
                   ? "Recent Vault Notes" 
                   : "Recent Cloud Notes"}
               </div>
               <div className="space-preview-grid">
-                {((activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()) ? previewNotes : remoteNotes).map((note) => (
+                {(activeSpace.visibility === "local" ? previewNotes : remoteNotes).map((note) => (
                   <div
                     key={note.path}
                     className="space-preview-card"
                     onClick={() => {
-                      if (activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()) {
-                        onOpenNote?.(note.path);
+                      if (note.path && onOpenNote) {
+                        onOpenNote(note.path);
                       }
                     }}
-                    style={{ cursor: (activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()) && onOpenNote ? "pointer" : "default" }}
+                    style={{ cursor: onOpenNote ? "pointer" : "default" }}
                   >
                     <h4>
                       <FileText size={12} style={{ opacity: 0.4, marginRight: 6 }} />
