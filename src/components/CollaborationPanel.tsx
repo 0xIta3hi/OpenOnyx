@@ -444,7 +444,7 @@ export function CollaborationPanel({ vaultPath, onVaultReconstructed, isSettings
                   <div className="collab-collab-list">
                     {collaborators.map(c => (
                       <div key={c.id} className="collab-collab-item">
-                        <div className="collab-avatar" style={{ background: c.role === 'owner' ? 'var(--accent-primary, #7c3aed)' : 'var(--bg-active)' }}>
+                        <div className="collab-avatar" style={{ background: c.role === 'owner' ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--bg-active)' }}>
                           {(c.email || c.user_id || '?')[0].toUpperCase()}
                         </div>
                         <div className="collab-collab-info">

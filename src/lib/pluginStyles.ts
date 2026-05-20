@@ -249,7 +249,7 @@ export function injectPluginBaseCss(): void {
 .oo-plugin-text-input:focus,
 .oo-plugin-textarea:focus,
 .oo-plugin-search-input:focus {
-  border-color: var(--accent-primary, #7c3aed);
+  border-color: var(--accent-primary, var(--color-accent, #3b82f6));
 }
 
 .oo-plugin-textarea { min-height: 60px; resize: vertical; }
@@ -267,7 +267,7 @@ export function injectPluginBaseCss(): void {
 
 .oo-plugin-btn:hover { background: var(--bg-active, rgba(255,255,255,0.1)); }
 .oo-plugin-btn.mod-cta {
-  background: var(--accent-primary, #7c3aed);
+  background: var(--accent-primary, var(--color-accent, #3b82f6));
   color: white;
   border-color: transparent;
 }
@@ -297,11 +297,11 @@ export function injectPluginBaseCss(): void {
 }
 
 .oo-plugin-toggle.is-enabled {
-  background: var(--accent-primary, #7c3aed);
+  background: var(--accent-primary, var(--color-accent, #3b82f6));
 }
 
 .oo-plugin-toggle.is-enabled::after {
-  background: white;
+  background: var(--text-on-accent, white);
   left: 19px;
 }
 

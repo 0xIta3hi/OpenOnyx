@@ -119,8 +119,8 @@ function normalizePath(p: string): string {
 }
 
 const COLLABORATOR_COLORS = [
-  '#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626',
-  '#8b5cf6', '#0891b2', '#65a30d', '#ea580c', '#e11d48',
+  '#3b82f6', '#2563eb', '#059669', '#d97706', '#dc2626',
+  '#0ea5e9', '#0891b2', '#65a30d', '#ea580c', '#e11d48',
 ];
 
 function getColorForUser(userId: string): string {

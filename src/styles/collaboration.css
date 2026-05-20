@@ -206,14 +206,14 @@
 }
 
 .collab-btn-primary {
-  background: var(--accent-primary, var(--color-accent, #7c3aed));
+  background: var(--accent-primary, var(--color-accent, #3b82f6));
   color: var(--text-on-accent, #fff);
   border-color: transparent;
 }
 
 .collab-btn-primary:hover:not(:disabled) {
   opacity: 0.9;
-  background: var(--accent-primary, var(--color-accent, #7c3aed));
+  background: var(--accent-primary, var(--color-accent, #3b82f6));
   color: var(--text-on-accent, #fff);
   border-color: transparent;
 }
@@ -470,7 +470,7 @@
 .collab-spinner {
   animation: collab-spin 1s linear infinite;
   flex-shrink: 0;
-  color: var(--accent-primary, var(--color-accent, #7c3aed));
+  color: var(--accent-primary, var(--color-accent, #3b82f6));
   margin-top: 2px;
 }
 
@@ -508,7 +508,7 @@
 
 .collab-progress-fill {
   height: 100%;
-  background: var(--accent-primary, var(--color-accent, #7c3aed));
+  background: var(--accent-primary, var(--color-accent, #3b82f6));
   border-radius: 2px;
   transition: width 0.3s ease;
 }

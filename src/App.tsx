@@ -5071,8 +5071,8 @@ export default function App() {
               width: '48px',
               height: '48px',
               borderRadius: '50%',
-              border: '3px solid rgba(124, 58, 237, 0.2)',
-              borderTopColor: '#7c3aed',
+              border: '3px solid color-mix(in srgb, var(--color-accent, var(--accent-primary, #3b82f6)) 20%, transparent)',
+              borderTopColor: 'var(--color-accent, var(--accent-primary, #3b82f6))',
               animation: 'spin 1s linear infinite',
               marginBottom: '24px'
             }} />
@@ -5090,7 +5090,7 @@ export default function App() {
             }}>
               <div style={{
                 height: '100%',
-                background: 'linear-gradient(90deg, #7c3aed, #4f46e5)',
+                background: 'var(--color-accent, var(--accent-primary, #3b82f6))',
                 width: `${collabStatus.progress.total > 0 ? Math.round((collabStatus.progress.current / collabStatus.progress.total) * 100) : 0}%`,
                 transition: 'width 0.2s ease-out',
                 borderRadius: '3px'

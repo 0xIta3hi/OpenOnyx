@@ -141,7 +141,7 @@ export function PluginSettingsPanel({
             onClick={() => setShowMarketplace(true)}
             title="Browse and install community plugins"
             style={{
-              background: 'var(--accent-primary, #7c3aed)',
+              background: 'var(--accent-primary, var(--color-accent, #3b82f6))',
               border: 'none',
               borderRadius: '6px',
               padding: '6px 12px',
@@ -329,11 +329,11 @@ export function PluginSettingsPanel({
                       onClick={() => handleDebugToggle(plugin.manifest.id)}
                       title="Debug"
                       style={{
-                        background: isDebugging ? 'rgba(124,58,237,0.15)' : 'transparent',
+                        background: isDebugging ? 'color-mix(in srgb, var(--accent-primary, var(--color-accent, #3b82f6)) 15%, transparent)' : 'transparent',
                         border: 'none',
                         borderRadius: '4px',
                         padding: '4px',
-                        color: isDebugging ? 'var(--accent-primary, #7c3aed)' : 'var(--text-muted)',
+                        color: isDebugging ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--text-muted)',
                         cursor: 'pointer',
                         opacity: 0.7,
                         transition: 'opacity 0.15s',
@@ -369,7 +369,7 @@ export function PluginSettingsPanel({
                         width: '40px',
                         height: '22px',
                         borderRadius: '11px',
-                        background: isEnabled ? 'var(--accent-primary, #7c3aed)' : 'var(--bg-hover, rgba(255,255,255,0.1))',
+                        background: isEnabled ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--bg-hover, rgba(255,255,255,0.1))',
                         cursor: isLoading || !versionOk ? 'not-allowed' : 'pointer',
                         position: 'relative',
                         transition: 'background 0.2s',

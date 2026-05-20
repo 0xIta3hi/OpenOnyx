@@ -103,7 +103,7 @@ export function PluginPermissionModal({
               borderRadius: '12px',
               background: hasHighRisk
                 ? 'rgba(239, 68, 68, 0.15)'
-                : 'rgba(124, 58, 237, 0.15)',
+                : 'color-mix(in srgb, var(--accent-primary, var(--color-accent, #3b82f6)) 15%, transparent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -113,7 +113,7 @@ export function PluginPermissionModal({
             {hasHighRisk ? (
               <ShieldAlert size={22} color="#ef4444" />
             ) : (
-              <Shield size={22} color="var(--accent-primary, #7c3aed)" />
+              <Shield size={22} color="var(--accent-primary, var(--color-accent, #3b82f6))" />
             )}
           </div>
           <div>
@@ -225,7 +225,7 @@ export function PluginPermissionModal({
           <button
             onClick={onApprove}
             style={{
-              background: hasHighRisk ? '#ef4444' : 'var(--accent-primary, #7c3aed)',
+              background: hasHighRisk ? '#ef4444' : 'var(--accent-primary, var(--color-accent, #3b82f6))',
               border: 'none',
               borderRadius: '8px',
               padding: '8px 20px',
