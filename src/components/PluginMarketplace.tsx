@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Download, ExternalLink, X, Loader2 } from 'lucide-react';
 import type { PluginRegistryEntry } from '../types/plugin';
 import { getAPI } from '../utils/api';
@@ -58,7 +59,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
     p.author.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center'
     }}>
@@ -174,6 +175,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }
