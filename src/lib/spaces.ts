@@ -76,10 +76,9 @@ export async function publishSpace(spaceId: string): Promise<any> {
     console.error('[Spaces] Failed to index space metadata:', err);
   }
 
-  // Force-push the space and ALL its notes/chunks to cloud.
-  // Cannot rely on syncEngine.sync() here because notes created while
-  // the space was 'local' were never added to the sync queue.
-  await syncEngine.pushSpace(spaceId);
+  // For space sync logic, since `pushSpace` was removed, we trigger a normal push loop.
+  // We can just rely on the syncEngine queue or trigger a push manually.
+  syncEngine.triggerPush();
 
   return updatedSpace;
 }
@@ -125,7 +124,7 @@ export async function makeSpacePrivate(spaceId: string): Promise<any> {
 
   // If previously local, notes were never enqueued -- force-push everything
   if (wasLocal) {
-    await syncEngine.pushSpace(spaceId);
+    syncEngine.triggerPush();
   }
 
   return updatedSpace;
@@ -232,6 +231,8 @@ export async function forkSpace(originalSpaceId: string): Promise<string> {
     const newNote: LocalNote = {
       id: newNoteId,
       space_id: newSpaceId,
+      vault_id: null,
+      last_client_id: null,
       title: originalNote.title,
       path: notePath,
       content: originalNote.content,

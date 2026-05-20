@@ -1,8 +1,37 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { v4 as uuidv4 } from 'uuid';
 
-// We define local types instead of importing from database.types to keep
-// the local layer decoupled. These match the Supabase schema but the local
-// store may contain extra fields like `visibility`.
+export interface LocalVault {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LocalVaultCollaborator {
+  id: string;
+  vault_id: string;
+  user_id: string;
+  role: 'owner' | 'editor';
+  created_at: string;
+}
+
+export interface LocalVaultInvite {
+  id: string;
+  vault_id: string;
+  invited_user_email: string;
+  invited_by: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
+export interface LocalVaultPresence {
+  user_id: string;
+  vault_id: string;
+  active_note_id: string | null;
+  last_seen: string;
+}
 
 export interface LocalSpace {
   id: string;
@@ -19,7 +48,9 @@ export interface LocalSpace {
 
 export interface LocalNote {
   id: string;
-  space_id: string;
+  space_id: string | null;
+  vault_id: string | null;
+  last_client_id: string | null;
   title: string;
   path: string;
   content: string;
@@ -42,7 +73,7 @@ export interface LocalNoteChunk {
 export interface SyncQueueItem {
   id: string;
   operation: 'insert' | 'update' | 'delete';
-  table: 'spaces' | 'notes' | 'note_chunks';
+  table: 'spaces' | 'notes' | 'note_chunks' | 'vaults' | 'vault_collaborators' | 'vault_invites' | 'vault_presence';
   record_id: string;
   payload: any;
   created_at: number;
@@ -50,6 +81,25 @@ export interface SyncQueueItem {
 }
 
 interface NoteworkDB extends DBSchema {
+  vaults: {
+    key: string;
+    value: LocalVault;
+  };
+  vault_collaborators: {
+    key: string;
+    value: LocalVaultCollaborator;
+    indexes: { 'by-vault': string };
+  };
+  vault_invites: {
+    key: string;
+    value: LocalVaultInvite;
+    indexes: { 'by-vault': string };
+  };
+  vault_presence: {
+    key: string; // "user_id:vault_id"
+    value: LocalVaultPresence;
+    indexes: { 'by-vault': string };
+  };
   spaces: {
     key: string;
     value: LocalSpace;
@@ -58,7 +108,7 @@ interface NoteworkDB extends DBSchema {
   notes: {
     key: string;
     value: LocalNote;
-    indexes: { 'by-space': string; 'by-updated': string };
+    indexes: { 'by-space': string; 'by-updated': string; 'by-vault': string };
   };
   note_chunks: {
     key: string;
@@ -80,8 +130,8 @@ let dbPromise: Promise<IDBPDatabase<NoteworkDB>>;
 
 export function getLocalDB() {
   if (!dbPromise) {
-    dbPromise = openDB<NoteworkDB>('notework-local', 3, {
-      upgrade(db, oldVersion) {
+    dbPromise = openDB<NoteworkDB>('notework-local', 4, {
+      upgrade(db, oldVersion, newVersion, transaction) {
         if (oldVersion < 1) {
           const spaceStore = db.createObjectStore('spaces', { keyPath: 'id' });
           spaceStore.createIndex('by-owner', 'owner_id');
@@ -101,12 +151,9 @@ export function getLocalDB() {
         if (oldVersion < 2) {
           // Add visibility index if upgrading from v1
           if (db.objectStoreNames.contains('spaces')) {
-            const tx = (db as any).transaction?.('spaces', 'readwrite');
-            if (tx) {
-              const store = tx.objectStore('spaces');
-              if (!store.indexNames.contains('by-visibility')) {
-                store.createIndex('by-visibility', 'visibility');
-              }
+            const store = transaction.objectStore('spaces');
+            if (!store.indexNames.contains('by-visibility')) {
+              store.createIndex('by-visibility', 'visibility');
             }
           }
         }
@@ -117,6 +164,35 @@ export function getLocalDB() {
           const syncStore = db.createObjectStore('sync_queue', { keyPath: 'id' });
           syncStore.createIndex('by-created-at', 'created_at');
         }
+        if (oldVersion < 4) {
+          // Add vault support
+          if (!db.objectStoreNames.contains('vaults')) {
+            db.createObjectStore('vaults', { keyPath: 'id' });
+          }
+          
+          if (!db.objectStoreNames.contains('vault_collaborators')) {
+            const collabStore = db.createObjectStore('vault_collaborators', { keyPath: 'id' });
+            collabStore.createIndex('by-vault', 'vault_id');
+          }
+          
+          if (!db.objectStoreNames.contains('vault_invites')) {
+            const invitesStore = db.createObjectStore('vault_invites', { keyPath: 'id' });
+            invitesStore.createIndex('by-vault', 'vault_id');
+          }
+
+          // Composite key: "user_id:vault_id"
+          if (!db.objectStoreNames.contains('vault_presence')) {
+            const presenceStore = db.createObjectStore('vault_presence', { keyPath: 'id' });
+            presenceStore.createIndex('by-vault', 'vault_id');
+          }
+
+          if (db.objectStoreNames.contains('notes')) {
+            const store = transaction.objectStore('notes');
+            if (!store.indexNames.contains('by-vault')) {
+              store.createIndex('by-vault', 'vault_id');
+            }
+          }
+        }
       },
     });
   }
@@ -124,8 +200,122 @@ export function getLocalDB() {
 }
 
 export const localDB = {
-  // ── Spaces ──────────────────────────────────────────────
+  // ── Client Identity ─────────────────────────────────────
+  async getClientId(): Promise<string> {
+    const db = await getLocalDB();
+    let clientId = await db.get('metadata', 'client_id');
+    if (!clientId) {
+      clientId = uuidv4();
+      await db.put('metadata', clientId, 'client_id');
+    }
+    return clientId;
+  },
 
+  // ── Vaults ──────────────────────────────────────────────
+  async getVault(id: string): Promise<LocalVault | undefined> {
+    const db = await getLocalDB();
+    return db.get('vaults', id);
+  },
+
+  async putVault(vault: LocalVault, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    const isExisting = await db.get('vaults', vault.id);
+    await db.put('vaults', vault);
+    if (enqueueSync) {
+      await this.enqueueChange('vaults', isExisting ? 'update' : 'insert', vault.id, vault);
+    }
+  },
+
+  async deleteVault(id: string, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    await db.delete('vaults', id);
+    if (enqueueSync) {
+      await this.enqueueChange('vaults', 'delete', id, { id });
+    }
+  },
+
+  // ── Vault Collaborators ─────────────────────────────────
+  async getVaultCollaborators(vaultId: string): Promise<LocalVaultCollaborator[]> {
+    const db = await getLocalDB();
+    return db.getAllFromIndex('vault_collaborators', 'by-vault', vaultId);
+  },
+
+  async putVaultCollaborator(collab: LocalVaultCollaborator, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    const isExisting = await db.get('vault_collaborators', collab.id);
+    await db.put('vault_collaborators', collab);
+    if (enqueueSync) {
+      await this.enqueueChange('vault_collaborators', isExisting ? 'update' : 'insert', collab.id, collab);
+    }
+  },
+
+  async deleteVaultCollaborator(id: string, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    await db.delete('vault_collaborators', id);
+    if (enqueueSync) {
+      await this.enqueueChange('vault_collaborators', 'delete', id, { id });
+    }
+  },
+
+  // ── Vault Invites ───────────────────────────────────────
+  async getVaultInvites(vaultId: string): Promise<LocalVaultInvite[]> {
+    const db = await getLocalDB();
+    return db.getAllFromIndex('vault_invites', 'by-vault', vaultId);
+  },
+
+  async getAllVaultInvites(): Promise<LocalVaultInvite[]> {
+    const db = await getLocalDB();
+    return db.getAll('vault_invites');
+  },
+
+  async putVaultInvite(invite: LocalVaultInvite, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    const isExisting = await db.get('vault_invites', invite.id);
+    await db.put('vault_invites', invite);
+    if (enqueueSync) {
+      await this.enqueueChange('vault_invites', isExisting ? 'update' : 'insert', invite.id, invite);
+    }
+  },
+
+  async deleteVaultInvite(id: string, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    await db.delete('vault_invites', id);
+    if (enqueueSync) {
+      await this.enqueueChange('vault_invites', 'delete', id, { id });
+    }
+  },
+
+  // ── Vault Presence ──────────────────────────────────────
+  async getVaultPresence(vaultId: string): Promise<LocalVaultPresence[]> {
+    const db = await getLocalDB();
+    const records = await db.getAllFromIndex('vault_presence', 'by-vault', vaultId);
+    // Return records without the internal 'id' key if we added it
+    return records.map(r => {
+      const { ...rest } = r as any;
+      delete rest.id;
+      return rest;
+    });
+  },
+
+  async putVaultPresence(presence: LocalVaultPresence, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    const id = `${presence.user_id}:${presence.vault_id}`;
+    await db.put('vault_presence', { ...presence, id } as any);
+    if (enqueueSync) {
+      await this.enqueueChange('vault_presence', 'update', id, presence);
+    }
+  },
+
+  async deleteVaultPresence(userId: string, vaultId: string, enqueueSync = true): Promise<void> {
+    const db = await getLocalDB();
+    const id = `${userId}:${vaultId}`;
+    await db.delete('vault_presence', id);
+    if (enqueueSync) {
+      await this.enqueueChange('vault_presence', 'delete', id, { user_id: userId, vault_id: vaultId });
+    }
+  },
+
+  // ── Spaces ──────────────────────────────────────────────
   async getSpaces(): Promise<LocalSpace[]> {
     const db = await getLocalDB();
     return db.getAll('spaces');
@@ -143,7 +333,6 @@ export const localDB = {
 
   async putSpace(space: LocalSpace, enqueueSync = true): Promise<void> {
     const db = await getLocalDB();
-    // Ensure visibility defaults
     if (!space.visibility) {
       space.visibility = space.is_public ? 'public' : 'local';
     }
@@ -164,10 +353,14 @@ export const localDB = {
   },
 
   // ── Notes ───────────────────────────────────────────────
-
   async getNotes(spaceId: string): Promise<LocalNote[]> {
     const db = await getLocalDB();
     return db.getAllFromIndex('notes', 'by-space', spaceId);
+  },
+
+  async getNotesByVault(vaultId: string): Promise<LocalNote[]> {
+    const db = await getLocalDB();
+    return db.getAllFromIndex('notes', 'by-vault', vaultId);
   },
 
   async getNote(id: string): Promise<LocalNote | undefined> {
@@ -175,9 +368,24 @@ export const localDB = {
     return db.get('notes', id);
   },
 
+  /**
+   * Find a note by its file path within a given space.
+   * Scans all notes for the space and returns the first match.
+   */
+  async getNoteByPath(spaceId: string, path: string): Promise<LocalNote | undefined> {
+    const notes = await this.getNotes(spaceId);
+    return notes.find(n => n.path === path && !n.deleted);
+  },
+
   async putNote(note: LocalNote, enqueueSync = true): Promise<void> {
     const db = await getLocalDB();
     const isExisting = await db.get('notes', note.id);
+    
+    if (enqueueSync) {
+      const clientId = await this.getClientId();
+      note.last_client_id = clientId;
+    }
+
     await db.put('notes', note);
     if (enqueueSync) {
       await this.enqueueChange('notes', isExisting ? 'update' : 'insert', note.id, note);
@@ -188,9 +396,11 @@ export const localDB = {
     const db = await getLocalDB();
     const note = await db.get('notes', id);
     if (note) {
-      // Soft delete: update the note's deleted flag instead of physical delete
       note.deleted = true;
       note.updated_at = new Date().toISOString();
+      if (enqueueSync) {
+        note.last_client_id = await this.getClientId();
+      }
       await db.put('notes', note);
       
       if (enqueueSync) {
@@ -200,7 +410,6 @@ export const localDB = {
   },
 
   // ── Chunks ──────────────────────────────────────────────
-
   async getChunks(noteId: string): Promise<LocalNoteChunk[]> {
     const db = await getLocalDB();
     return db.getAllFromIndex('note_chunks', 'by-note', noteId);
@@ -220,13 +429,11 @@ export const localDB = {
     const chunks = await db.getAllFromIndex('note_chunks', 'by-note', noteId);
     for (const chunk of chunks) {
       await db.delete('note_chunks', chunk.id);
-      // We'll queue the delete as well
       await this.enqueueChange('note_chunks', 'delete', chunk.id, { id: chunk.id });
     }
   },
 
   // ── Metadata & Sync State ──────────────────────────────
-
   async setLastSyncTime(time: string): Promise<void> {
     const db = await getLocalDB();
     await db.put('metadata', time, 'last_sync_time');
@@ -248,13 +455,12 @@ export const localDB = {
   },
 
   // ── Sync Queue ─────────────────────────────────────────
-
-  async enqueueChange(table: 'spaces' | 'notes' | 'note_chunks', operation: 'insert' | 'update' | 'delete', record_id: string, payload: any): Promise<void> {
+  async enqueueChange(table: string, operation: 'insert' | 'update' | 'delete', record_id: string, payload: any): Promise<void> {
     const db = await getLocalDB();
     await db.put('sync_queue', {
       id: `${table}_${record_id}`,
       operation,
-      table,
+      table: table as any,
       record_id,
       payload,
       created_at: Date.now(),

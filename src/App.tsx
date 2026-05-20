@@ -916,9 +916,16 @@ function getTransitionLikelihood(
   return best;
 }
 
+import { syncEngine } from "./lib/syncEngine";
+import { collaborationEngine, type CollabStatus } from "./lib/collaborationEngine";
+import { localDB } from "./lib/localdb";
+import { authManager } from "./lib/auth";
+import { v4 as uuidv4 } from "uuid";
+
 export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
+  const [collabStatus, setCollabStatus] = useState<CollabStatus>({ state: 'idle' });
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [showGraph, setShowGraph] = useState(false);
@@ -4018,6 +4025,146 @@ export default function App() {
 
   // Get active tab info
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // ── Collaboration State ────────────────────────────────
+  const [activeUsers, setActiveUsers] = useState<any[]>([]);
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [invitesSent, setInvitesSent] = useState<any[]>([]);
+  const [invitesReceived, setInvitesReceived] = useState<any[]>([]);
+
+  const [currentUser, setCurrentUser] = useState(authManager.getUser());
+  const [authLoading, setAuthLoading] = useState(authManager.getState().isLoading);
+
+  useEffect(() => {
+    const unsub = authManager.subscribe((state) => {
+      setCurrentUser(state.user);
+      setAuthLoading(state.isLoading);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!vaultPath) return;
+
+    // Connect sync engine to vault
+    syncEngine.setActiveVault(vaultPath);
+
+    const loadCollabState = async () => {
+      try {
+        // Use collaborationEngine to get the space for this vault
+        const space = await collaborationEngine.getSpaceForVault(vaultPath);
+        if (space) {
+          // Get collaborators for the TitleBar avatars
+          const collabs = await collaborationEngine.getCollaborators(space.id);
+          setCollaborators(collabs);
+
+          const sent = await collaborationEngine.getSentInvites(space.id);
+          setInvitesSent(sent);
+
+          // Subscribe to realtime changes + presence
+          collaborationEngine.subscribeToSpace(space.id);
+        } else {
+          setCollaborators([]);
+          setActiveUsers([]);
+          setInvitesSent([]);
+        }
+      } catch (err) {
+        console.error('[App] Failed to load collab state:', err);
+      }
+
+      // Load incoming invites regardless of space
+      try {
+        const incoming = await collaborationEngine.getIncomingInvites();
+        setInvitesReceived(incoming);
+      } catch { /* ignore */ }
+    };
+
+    // Listen for realtime presence updates from CollaborationEngine
+    const unsubActiveUsers = collaborationEngine.onActiveUsersChange((users) => {
+      setActiveUsers(users);
+    });
+
+    loadCollabState();
+    const interval = setInterval(loadCollabState, 15000);
+
+    return () => {
+      clearInterval(interval);
+      unsubActiveUsers();
+      collaborationEngine.unsubscribeFromSpace();
+      syncEngine.setActiveVault(null);
+    };
+  }, [vaultPath, currentUser, authLoading]);
+
+  // Listen to collaboration bootstrapping status globally
+  useEffect(() => {
+    const unsub = collaborationEngine.onStatusChange((status) => {
+      setCollabStatus(status);
+      if (status.state === 'bootstrapping') {
+        setShowSettings(false); // Close Settings modal instantly so the user can see the progress!
+      }
+      if (status.state === 'syncing' || status.state === 'ready') {
+        if (vaultPath) {
+          syncEngine.setActiveVault(vaultPath);
+        }
+        (async () => {
+          const tree = await api.getFileTree();
+          setFileTree(tree);
+          runVaultInit(tree);
+        })();
+      }
+    });
+    return unsub;
+  }, [vaultPath]);
+
+  // Update presence when active note changes
+  useEffect(() => {
+    collaborationEngine.updatePresenceNote(activeTab?.path || null);
+  }, [activeTab?.path]);
+
+  // Combine collaborators for the SettingsPage display
+  const displayCollaborators = React.useMemo(() => {
+    return [...collaborators].sort((a, b) => {
+      if (a.role === 'owner') return -1;
+      if (b.role === 'owner') return 1;
+      return 0;
+    });
+  }, [collaborators]);
+
+  const handleInviteUser = async (email: string) => {
+    const space = await collaborationEngine.getSpaceForVault(vaultPath || '');
+    if (!space) return;
+    try {
+      await collaborationEngine.sendInvite(space.id, email);
+      const sent = await collaborationEngine.getSentInvites(space.id);
+      setInvitesSent(sent);
+    } catch (err: any) {
+      console.error('[App] Failed to send invite:', err);
+    }
+  };
+
+  const handleRemoveCollaborator = async (id: string) => {
+    setCollaborators((prev: any[]) => prev.filter((c: any) => c.id !== id));
+  };
+
+  const handleAcceptInvite = async (id: string) => {
+    try {
+      await collaborationEngine.acceptInvite(id);
+      setInvitesReceived((prev: any[]) => prev.filter((i: any) => i.id !== id));
+    } catch (err: any) {
+      console.error('[App] Failed to accept invite:', err);
+    }
+  };
+
+  const handleRejectInvite = async (id: string) => {
+    try {
+      await collaborationEngine.rejectInvite(id);
+      setInvitesReceived((prev: any[]) => prev.filter((i: any) => i.id !== id));
+    } catch (err: any) {
+      console.error('[App] Failed to reject invite:', err);
+    }
+  };
+
   const activeTabIsCanvas = !!activeTab && isCanvasFile(activeTab.path);
   const activeTabIsGraph = !!activeTab && activeTab.path === GRAPH_TAB_PATH;
   const activeTabIsSpaces = !!activeTab && activeTab.path === SPACES_TAB_PATH;
@@ -4372,13 +4519,14 @@ export default function App() {
         onOpenNote={(path) => openFile(path)}
         onToggleInsight={setShowInlineInsight}
         onContentChangeGlobal={handleContentChangeGlobal}
+        activeUsers={activeUsers}
       />
     );
   }, [
     focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
     editorSuggestions, editorNextStepSuggestions, inlineAnnotation,
     showInlineInsight, ftuxConnectionPulse, mainPluginViews, graphMode,
-    recentCanvasFiles, allNoteNames, handlePaneTabSelect,
+    recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
   ]);
 
   return (
@@ -4403,6 +4551,8 @@ export default function App() {
           onNewTab={handleOpenNewTab}
           onTabReorder={handleTabReorder}
           tabScrollRef={tabScrollRef}
+          activeUsers={activeUsers}
+          onInvite={() => setShowSettings(true)}
         />
 
       <div
@@ -4812,6 +4962,41 @@ export default function App() {
               throw e;
             }
           }}
+          collaborators={displayCollaborators}
+          invitesSent={invitesSent}
+          invitesReceived={invitesReceived}
+          onInviteUser={handleInviteUser}
+          onRemoveCollaborator={handleRemoveCollaborator}
+          onAcceptInvite={handleAcceptInvite}
+          onRejectInvite={handleRejectInvite}
+          currentUserEmail={authManager.getUser()?.email}
+          vaultPath={vaultPath || undefined}
+          onVaultReconstructed={async (newPath) => {
+            await api.setVaultPath(newPath);
+            setVaultPath(newPath);
+            (window as any).__oo_vault_path = newPath;
+            setShowSidebar(true);
+            const tree = await api.getFileTree();
+            setFileTree(tree);
+            runVaultInit(tree);
+
+            try {
+              const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
+              if (workspaceData && workspaceData.paneTree) {
+                setPaneTree(workspaceData.paneTree);
+                setTabs(collectAllTabs(workspaceData.paneTree));
+                if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
+                if (workspaceData.focusedLeafId) setFocusedLeafId(workspaceData.focusedLeafId);
+              } else {
+                handleOpenNewTab();
+              }
+            } catch (err) {
+              handleOpenNewTab();
+            }
+
+            setShowSettings(false); // Close settings
+          }}
+
         />
       )}
 
@@ -4849,6 +5034,79 @@ export default function App() {
             modal.onConfirm?.(result);
           }}
         />
+      )}
+
+      {collabStatus.state === 'bootstrapping' && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(10, 10, 12, 0.75)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          color: '#ffffff',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          <div style={{
+            background: 'rgba(25, 25, 30, 0.85)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '16px',
+            padding: '40px',
+            width: '450px',
+            maxWidth: '90%',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              border: '3px solid rgba(124, 58, 237, 0.2)',
+              borderTopColor: '#7c3aed',
+              animation: 'spin 1s linear infinite',
+              marginBottom: '24px'
+            }} />
+            <h2 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 600 }}>Reconstructing Vault</h2>
+            <p style={{ margin: '0 0 24px 0', fontSize: '14px', color: 'rgba(255, 255, 255, 0.6)', minHeight: '20px' }}>
+              {collabStatus.progress.message}
+            </p>
+            <div style={{
+              width: '100%',
+              height: '6px',
+              background: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '3px',
+              overflow: 'hidden',
+              marginBottom: '12px'
+            }}>
+              <div style={{
+                height: '100%',
+                background: 'linear-gradient(90deg, #7c3aed, #4f46e5)',
+                width: `${collabStatus.progress.total > 0 ? Math.round((collabStatus.progress.current / collabStatus.progress.total) * 100) : 0}%`,
+                transition: 'width 0.2s ease-out',
+                borderRadius: '3px'
+              }} />
+            </div>
+            <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.4)', fontWeight: 500 }}>
+              {collabStatus.progress.current} of {collabStatus.progress.total} files
+            </div>
+          </div>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
       )}
     </div>
     </DragCtx.Provider>

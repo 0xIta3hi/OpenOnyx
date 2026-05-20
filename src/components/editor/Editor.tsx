@@ -60,7 +60,7 @@ interface EditorProps {
   ) => void;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
-  onContentChange: (content: string) => void;
+  onContentChange: (content: string, isUserEdit?: boolean) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onLinkClick: (linkName: string, heading?: string) => void;
   onGetNoteContent?: (noteName: string) => string | null;
@@ -2815,7 +2815,6 @@ export function Editor({
         }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            onContentChange(update.state.doc.toString());
             const isUserEdit = update.transactions.some(
               (tr) =>
                 tr.isUserEvent("input") ||
@@ -2823,6 +2822,7 @@ export function Editor({
                 tr.isUserEvent("paste") ||
                 tr.isUserEvent("move"),
             );
+            onContentChange(update.state.doc.toString(), isUserEdit);
             if (isUserEdit) {
               markActiveTyping();
               markSectionPauseReady();
@@ -2981,19 +2981,24 @@ export function Editor({
     showEndSuggestionContent,
   ]);
 
-  // Update content when it changes externally (tab switch)
+  // Update content when it changes externally (tab switch or remote broadcast)
   useEffect(() => {
     if (isSpecialTab) return;
     if (viewRef.current) {
       const currentDoc = viewRef.current.state.doc.toString();
       if (currentDoc !== content) {
-        console.log(`[Editor] Dispatching content update. currentDoc length: ${currentDoc.length}, new content length: ${content?.length}`);
+        const newContent = content || "";
+        // Preserve cursor position: clamp to new document length
+        const oldSel = viewRef.current.state.selection;
+        const maxPos = newContent.length;
+        const clampedAnchor = Math.min(oldSel.main.anchor, maxPos);
+        const clampedHead = Math.min(oldSel.main.head, maxPos);
+
         viewRef.current.dispatch({
-          changes: { from: 0, to: currentDoc.length, insert: content || "" },
+          changes: { from: 0, to: currentDoc.length, insert: newContent },
+          selection: { anchor: clampedAnchor, head: clampedHead },
           annotations: Transaction.userEvent.of('setContent'),
         });
-      } else {
-        console.log(`[Editor] Content is already up to date. Length: ${content?.length}`);
       }
     }
   }, [content, isSpecialTab]);

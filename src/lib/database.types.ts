@@ -14,14 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      linked_vaults: {
+        Row: {
+          created_at: string
+          id: string
+          is_bootstrapping: boolean
+          local_vault_path: string
+          space_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_bootstrapping?: boolean
+          local_vault_path: string
+          space_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_bootstrapping?: boolean
+          local_vault_path?: string
+          space_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linked_vaults_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linked_vaults_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       note_chunks: {
         Row: {
           content: string
           created_at: string
           embedding: string | null
           id: string
-          space_id: string
           note_id: string
+          space_id: string | null
           updated_at: string
         }
         Insert: {
@@ -29,8 +71,8 @@ export type Database = {
           created_at?: string
           embedding?: string | null
           id?: string
-          space_id: string
           note_id: string
+          space_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -38,8 +80,8 @@ export type Database = {
           created_at?: string
           embedding?: string | null
           id?: string
-          space_id?: string
           note_id?: string
+          space_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -50,6 +92,13 @@ export type Database = {
             referencedRelation: "notes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "note_chunks_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "spaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       notes: {
@@ -58,36 +107,42 @@ export type Database = {
           created_at: string
           deleted: boolean
           id: string
+          is_canvas: boolean
+          last_client_id: string | null
+          path: string
           pinned: boolean
-          space_id: string
+          space_id: string | null
           title: string
           updated_at: string
-          is_canvas: boolean
-          path: string
+          vault_id: string | null
         }
         Insert: {
           content: string
           created_at?: string
           deleted?: boolean
           id?: string
+          is_canvas?: boolean
+          last_client_id?: string | null
+          path?: string
           pinned?: boolean
-          space_id: string
+          space_id?: string | null
           title: string
           updated_at?: string
-          is_canvas?: boolean
-          path?: string
+          vault_id?: string | null
         }
         Update: {
           content?: string
           created_at?: string
           deleted?: boolean
           id?: string
+          is_canvas?: boolean
+          last_client_id?: string | null
+          path?: string
           pinned?: boolean
-          space_id?: string
+          space_id?: string | null
           title?: string
           updated_at?: string
-          is_canvas?: boolean
-          path?: string
+          vault_id?: string | null
         }
         Relationships: [
           {
@@ -95,6 +150,52 @@ export type Database = {
             columns: ["space_id"]
             isOneToOne: false
             referencedRelation: "spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notes_vault_id_fkey"
+            columns: ["vault_id"]
+            isOneToOne: false
+            referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      space_collaborators: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          space_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: string
+          space_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          space_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "space_collaborators_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "space_collaborators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -126,6 +227,61 @@ export type Database = {
             foreignKeyName: "space_embeddings_space_id_fkey"
             columns: ["space_id"]
             isOneToOne: true
+            referencedRelation: "spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      space_invites: {
+        Row: {
+          created_at: string
+          id: string
+          receiver_email: string
+          receiver_id: string | null
+          role: string
+          sender_id: string
+          space_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          receiver_email: string
+          receiver_id?: string | null
+          role?: string
+          sender_id: string
+          space_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          receiver_email?: string
+          receiver_id?: string | null
+          role?: string
+          sender_id?: string
+          space_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "space_invites_receiver_id_fkey"
+            columns: ["receiver_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "space_invites_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "space_invites_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
             referencedRelation: "spaces"
             referencedColumns: ["id"]
           },
@@ -211,6 +367,7 @@ export type Database = {
           id: string
           is_public: boolean
           owner_id: string
+          status: string
           title: string
           updated_at: string
           visibility: string
@@ -223,6 +380,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           owner_id: string
+          status?: string
           title: string
           updated_at?: string
           visibility?: string
@@ -235,6 +393,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           owner_id?: string
+          status?: string
           title?: string
           updated_at?: string
           visibility?: string
@@ -274,11 +433,162 @@ export type Database = {
         }
         Relationships: []
       }
+      vault_collaborators: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+          vault_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: string
+          user_id: string
+          vault_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+          vault_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_collaborators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vault_collaborators_vault_id_fkey"
+            columns: ["vault_id"]
+            isOneToOne: false
+            referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vault_invites: {
+        Row: {
+          created_at: string
+          id: string
+          invited_by: string
+          invited_user_email: string
+          status: string
+          vault_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_by: string
+          invited_user_email: string
+          status: string
+          vault_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_by?: string
+          invited_user_email?: string
+          status?: string
+          vault_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vault_invites_vault_id_fkey"
+            columns: ["vault_id"]
+            isOneToOne: false
+            referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vault_presence: {
+        Row: {
+          active_note_id: string | null
+          last_seen: string
+          user_id: string
+          vault_id: string
+        }
+        Insert: {
+          active_note_id?: string | null
+          last_seen?: string
+          user_id: string
+          vault_id: string
+        }
+        Update: {
+          active_note_id?: string | null
+          last_seen?: string
+          user_id?: string
+          vault_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_presence_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vault_presence_vault_id_fkey"
+            columns: ["vault_id"]
+            isOneToOne: false
+            referencedRelation: "vaults"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vaults: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vaults_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      accept_space_invite: { Args: { p_invite_id: string }; Returns: undefined }
+      get_space_snapshot: { Args: { p_space_id: string }; Returns: Json }
       increment_space_forks: { Args: { space_id: string }; Returns: undefined }
       increment_space_views: {
         Args: { p_space_id: string }
@@ -312,6 +622,7 @@ export type Database = {
           title: string
         }[]
       }
+      reject_space_invite: { Args: { p_invite_id: string }; Returns: undefined }
       vote_on_space: {
         Args: { p_space_id: string; p_value: number }
         Returns: undefined

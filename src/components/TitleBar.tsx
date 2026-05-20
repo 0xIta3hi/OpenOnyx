@@ -42,6 +42,8 @@ interface TitleBarProps {
   onTabReorder?: (draggedId: string, targetId: string, insertBefore: boolean) => void;
   tabScrollRef?: React.RefObject<HTMLDivElement | null>;
   children?: React.ReactNode;
+  activeUsers?: { id: string, name: string, email: string, color?: string, isEditing?: boolean }[];
+  onInvite?: () => void;
 }
 
 export function TitleBar({
@@ -62,6 +64,8 @@ export function TitleBar({
   onTabReorder,
   tabScrollRef,
   children,
+  activeUsers = [],
+  onInvite,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
@@ -238,6 +242,52 @@ export function TitleBar({
 
       {/* Right: window controls */}
       <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingRight: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginRight: '16px', gap: '4px' }}>
+          {activeUsers.slice(0, 3).map((u, i) => (
+            <div 
+              key={u.id}
+              title={`${u.name || u.email} - ${u.isEditing ? 'Editing' : 'Viewing'}`}
+              style={{
+                width: '24px', height: '24px', borderRadius: '50%',
+                backgroundColor: u.color || 'var(--interactive-accent)',
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '12px', fontWeight: 'bold', zIndex: 3 - i,
+                marginLeft: i > 0 ? '-8px' : 0, border: '2px solid var(--background-primary)',
+                position: 'relative'
+              }}
+            >
+              {(u.name || u.email || '?')[0].toUpperCase()}
+              {u.isEditing && (
+                <div style={{
+                  position: 'absolute', bottom: '-2px', right: '-2px',
+                  width: '8px', height: '8px', borderRadius: '50%',
+                  background: '#10b981', border: '1px solid var(--background-primary)'
+                }} title="Editing" />
+              )}
+            </div>
+          ))}
+          {activeUsers.length > 3 && (
+            <div style={{
+              width: '24px', height: '24px', borderRadius: '50%',
+              backgroundColor: 'var(--background-modifier-border)',
+              color: 'var(--text-normal)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '10px', fontWeight: 'bold', marginLeft: '-8px', border: '2px solid var(--background-primary)'
+            }}>
+              +{activeUsers.length - 3}
+            </div>
+          )}
+          {onInvite && (
+            <button
+              className="titlebar-action-btn"
+              style={{ marginLeft: '4px', width: '24px', height: '24px', padding: 0 }}
+              onClick={onInvite}
+              title="Invite collaborators"
+            >
+              <Plus size={16} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+        
         {onToggleRightSidebar && (
           <button
             className="titlebar-action-btn"

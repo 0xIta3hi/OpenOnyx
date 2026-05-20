@@ -22,6 +22,7 @@ export interface Space {
   createdAt: string;
   updatedAt: string;
   forkedFrom?: string;
+  status?: string;
 }
 
 // ── Vector Store Types ───────────────────────────────────────────────────────
@@ -57,6 +58,7 @@ export interface SpaceIndexEntry {
   noteCount: number;
   createdAt: string;
   updatedAt: string;
+  status?: string;
 }
 
 // ── Chat Types ───────────────────────────────────────────────────────────────

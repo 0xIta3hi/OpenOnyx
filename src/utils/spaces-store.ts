@@ -16,6 +16,7 @@
 import { readData, writeData, deleteData, createDebouncedWriter } from "./disk-store";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { getUserSupabaseClient } from "../lib/userDatabase";
 import { getAPI } from "./api";
 import type {
   Space,
@@ -31,6 +32,10 @@ import { v4 as uuidv4 } from "uuid";
 
 function generateId(): string {
   return uuidv4();
+}
+
+function getClient() {
+  return getUserSupabaseClient() || supabase;
 }
 
 function normalizeVisibility(value: string | null | undefined): SpaceVisibility {
@@ -49,6 +54,7 @@ function toIndexEntry(space: Space): SpaceIndexEntry {
     noteCount: space.noteCount || 0,
     createdAt: space.createdAt,
     updatedAt: space.updatedAt,
+    status: space.status,
   };
 }
 
@@ -63,6 +69,7 @@ type RemoteSpaceRow = {
   forked_from: string | null;
   created_at: string;
   updated_at: string;
+  status: string | null;
 };
 
 function mapRemoteToSpace(remote: RemoteSpaceRow, noteCount: number = 0): Space {
@@ -81,6 +88,7 @@ function mapRemoteToSpace(remote: RemoteSpaceRow, noteCount: number = 0): Space 
     createdAt: remote.created_at,
     updatedAt: remote.updated_at,
     forkedFrom: remote.forked_from || undefined,
+    status: remote.status || 'ready',
   };
 }
 
@@ -89,7 +97,7 @@ async function upsertCloudSpace(space: Space): Promise<void> {
     throw new Error("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.");
   }
 
-  const { error } = await supabase
+  const { error } = await getClient()
     .from("spaces")
     .upsert(
       {
@@ -119,12 +127,18 @@ export async function pushSpaceNotes(
   spaceId: string,
   vaultNotes: { path: string; title: string; content: string; is_canvas?: boolean }[],
 ): Promise<void> {
-  if (!isSupabaseConfigured || !authManager.isLoggedIn()) return;
+  if (!isSupabaseConfigured || !authManager.isLoggedIn()) {
+    console.warn('[SpacesStore] pushSpaceNotes skipped: Supabase not configured or not logged in');
+    return;
+  }
 
+  console.log(`[SpacesStore] Pushing ${vaultNotes.length} notes to space ${spaceId}`);
   const now = new Date().toISOString();
 
   // Batch upsert in groups of 50 to avoid payload limits
   const BATCH_SIZE = 50;
+  let totalInserted = 0;
+
   for (let i = 0; i < vaultNotes.length; i += BATCH_SIZE) {
     const batch = vaultNotes.slice(i, i + BATCH_SIZE).map((note) => ({
       // Deterministic ID from space + path so re-indexing upserts cleanly
@@ -140,14 +154,26 @@ export async function pushSpaceNotes(
       is_canvas: note.is_canvas || false,
     }));
 
-    const { error } = await supabase
+    const { error } = await getClient()
       .from("notes")
       .upsert(batch, { onConflict: "id" });
 
     if (error) {
-      console.error(`[SpacesStore] Failed to push notes batch ${i}: ${JSON.stringify(error)}`);
+      console.error(`[SpacesStore] Batch ${i / BATCH_SIZE + 1} failed:`, error.message || error.code || error.hint || JSON.stringify(error));
+      // Try individual inserts as fallback
+      let singles = 0;
+      for (const row of batch) {
+        const { error: singleErr } = await getClient().from("notes").upsert(row, { onConflict: "id" });
+        if (!singleErr) singles++;
+        else console.error(`[SpacesStore] Single insert failed for ${row.path}:`, singleErr.message || JSON.stringify(singleErr));
+      }
+      totalInserted += singles;
+    } else {
+      totalInserted += batch.length;
     }
   }
+
+  console.log(`[SpacesStore] Push complete: ${totalInserted}/${vaultNotes.length} notes`);
 }
 
 /**
@@ -160,7 +186,7 @@ export async function pushSpaceChunks(
   if (!isSupabaseConfigured || !authManager.isLoggedIn()) return;
 
   // 1. Delete old chunks for this space to avoid duplicates
-  await supabase
+  await getClient()
     .from("note_chunks")
     .delete()
     .eq("space_id", spaceId);
@@ -174,7 +200,7 @@ export async function pushSpaceChunks(
       embedding: `[${chunk.vector.join(",")}]`,
     }));
 
-    const { error } = await supabase
+    const { error } = await getClient()
       .from("note_chunks")
       .insert(batch);
 
@@ -213,9 +239,9 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
   const rawSpaces: RemoteSpaceRow[] = [];
 
   // 1. Fetch public spaces
-  const { data: publicSpaces, error: publicErr } = await supabase
+  const { data: publicSpaces, error: publicErr } = await getClient()
     .from("spaces")
-    .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
+    .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status")
     .eq("visibility", "public")
     .order("updated_at", { ascending: false });
 
@@ -229,9 +255,9 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
   if (authManager.isLoggedIn()) {
     const userId = authManager.getUserId();
     if (userId) {
-      const { data: ownSpaces, error: ownErr } = await supabase
+      const { data: ownSpaces, error: ownErr } = await getClient()
         .from("spaces")
-        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
+        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status")
         .eq("owner_id", userId)
         .eq("visibility", "private")
         .order("updated_at", { ascending: false });
@@ -245,33 +271,65 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
           }
         }
       }
+
+      // 2b. Fetch spaces where user is a collaborator
+      const { data: collabRelations, error: collabRelationsErr } = await getClient()
+        .from("space_collaborators")
+        .select("space_id")
+        .eq("user_id", userId);
+
+      if (collabRelationsErr) {
+        console.error("[SpacesStore] Failed to fetch collaborator spaces:", collabRelationsErr);
+      } else if (collabRelations && collabRelations.length > 0) {
+        const collabSpaceIds = collabRelations.map(cr => cr.space_id);
+        const { data: collabSpaces, error: collabSpacesErr } = await getClient()
+          .from("spaces")
+          .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status")
+          .in("id", collabSpaceIds);
+
+        if (collabSpacesErr) {
+          console.error("[SpacesStore] Failed to fetch collaborator spaces details:", collabSpacesErr);
+        } else if (collabSpaces) {
+          for (const s of collabSpaces) {
+            if (!rawSpaces.find(rs => rs.id === s.id)) {
+              rawSpaces.push(s as RemoteSpaceRow);
+            }
+          }
+        }
+      }
     }
   }
 
-  // 3. Fetch accurate counts for each space in parallel
-  const results: SpaceIndexEntry[] = [];
+  // 3. Fetch note counts for each space
+  const countMap: Record<string, number> = {};
   await Promise.all(rawSpaces.map(async (row) => {
     try {
-      const { count, error: countErr } = await supabase
+      const { count, error: countErr } = await getClient()
         .from("notes")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("space_id", row.id)
         .eq("deleted", false);
       
-      if (countErr) throw countErr;
-      results.push(toIndexEntry(mapRemoteToSpace(row, count || 0)));
-    } catch (err) {
-      console.warn(`[SpacesStore] Failed to fetch count for space ${row.id}:`, err);
-      results.push(toIndexEntry(mapRemoteToSpace(row, 0)));
+      if (!countErr && count !== null) {
+        countMap[row.id] = count;
+      }
+    } catch {
+      // Silent fallback to 0
     }
   }));
 
-  // Re-sort because Promise.all might have scrambled them
+  const results: SpaceIndexEntry[] = rawSpaces.map(row =>
+    toIndexEntry(mapRemoteToSpace(row, countMap[row.id] || 0))
+  );
+
+  // Sort by most recently updated
   const finalResults = results.sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
-  console.log(`[SpacesStore] Fetched ${finalResults.length} remote spaces. Sample count for ${finalResults[0]?.title}: ${finalResults[0]?.noteCount}`);
+  if (finalResults.length > 0) {
+    console.log(`[SpacesStore] Fetched ${finalResults.length} remote spaces.`);
+  }
 
   return finalResults;
 }
@@ -356,7 +414,7 @@ export async function getSpace(id: string): Promise<Space | null> {
   // If it's potentially a cloud space, fetch fresh metadata
   if (isSupabaseConfigured && (!space || space.visibility !== "local")) {
     try {
-      const { data: remote } = await supabase
+      const { data: remote } = await getClient()
         .from("spaces")
         .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
         .eq("id", id)
@@ -364,7 +422,7 @@ export async function getSpace(id: string): Promise<Space | null> {
 
       if (remote) {
         // Fetch accurate count
-        const { count } = await supabase
+        const { count } = await getClient()
           .from("notes")
           .select("*", { count: "exact", head: true })
           .eq("space_id", id)
@@ -486,7 +544,7 @@ export async function deleteSpace(id: string): Promise<void> {
     }
     // Remove from cloud with owner guard
     if (isSupabaseConfigured) {
-      const { error } = await supabase
+      const { error } = await getClient()
         .from("spaces")
         .delete()
         .eq("id", id)
@@ -536,7 +594,7 @@ export async function forkSpace(
   // 1. Download notes from Supabase if the source is not local
   if (source.visibility !== "local" && isSupabaseConfigured) {
     try {
-      const { data: cloudNotes } = await supabase
+      const { data: cloudNotes } = await getClient()
         .from("notes")
         .select("path, title, content, created_at, is_canvas")
         .eq("space_id", source.id)

@@ -8,6 +8,7 @@ interface EditorHeaderProps {
   onViewModeChange: (mode: ViewMode) => void;
   onToggleInsight?: () => void;
   onMoreOptions?: () => void;
+  activeEditors?: any[];
 }
 
 export function EditorHeader({
@@ -16,6 +17,7 @@ export function EditorHeader({
   onViewModeChange,
   onToggleInsight,
   onMoreOptions,
+  activeEditors = [],
 }: EditorHeaderProps) {
   // Parse breadcrumbs
   const pathParts = filePath.split("/").filter(Boolean);
@@ -43,6 +45,15 @@ export function EditorHeader({
           ))}
           <span className="breadcrumb-part active">{fileName}</span>
         </div>
+
+        {activeEditors && activeEditors.length > 0 && (
+          <div className="editor-collab-pill" title={activeEditors.map(u => u.name || u.email.split("@")[0]).join(", ")}>
+            <span className="editor-collab-dot" />
+            <span>
+              {activeEditors.map(u => u.name || u.email.split("@")[0]).join(", ")} {activeEditors.length === 1 ? "is" : "are"} editing
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="editor-header-right">
@@ -68,3 +79,4 @@ export function EditorHeader({
     </div>
   );
 }
+

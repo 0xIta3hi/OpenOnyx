@@ -19,10 +19,13 @@ import {
   FolderOpen,
   RotateCcw,
   Puzzle,
+  Users,
 } from "lucide-react";
 import { PluginSettingsPanel } from './PluginSettingsPanel';
 import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
 import { isDarkTheme } from "../utils/helpers";
+import type { LocalVaultCollaborator, LocalVaultInvite } from "../lib/localdb";
+import { CollaborationPanel } from './CollaborationPanel';
 
 export interface AppSettings {
   // Appearance
@@ -107,9 +110,21 @@ interface SettingsPageProps {
   onRefreshPlugins?: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
   onInstallPlugin?: (repo: string, pluginId: string) => Promise<boolean>;
+
+  // Collaboration props
+  collaborators?: LocalVaultCollaborator[];
+  invitesSent?: LocalVaultInvite[];
+  invitesReceived?: LocalVaultInvite[];
+  onInviteUser?: (email: string) => void;
+  onRemoveCollaborator?: (id: string) => void;
+  onAcceptInvite?: (id: string) => void;
+  onRejectInvite?: (id: string) => void;
+  currentUserEmail?: string;
+  vaultPath?: string;
+  onVaultReconstructed?: (path: string) => void;
 }
 
-type SettingsSection = "appearance" | "editor" | "files" | "hotkeys" | "plugins" | "about";
+type SettingsSection = "appearance" | "editor" | "files" | "hotkeys" | "plugins" | "collaboration" | "about";
 
 export function SettingsPage({
   settings,
@@ -122,6 +137,16 @@ export function SettingsPage({
   onRefreshPlugins,
   onReloadPlugin,
   onInstallPlugin,
+  collaborators = [],
+  invitesSent = [],
+  invitesReceived = [],
+  onInviteUser,
+  onRemoveCollaborator,
+  onAcceptInvite,
+  onRejectInvite,
+  currentUserEmail,
+  vaultPath,
+  onVaultReconstructed,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("appearance");
@@ -149,6 +174,7 @@ export function SettingsPage({
     { id: "files" as const, label: "Files & Links", icon: FileText },
     { id: "hotkeys" as const, label: "Hotkeys", icon: Keyboard },
     { id: "plugins" as const, label: "Community Plugins", icon: Puzzle },
+    { id: "collaboration" as const, label: "Collaboration", icon: Users },
     { id: "about" as const, label: "About", icon: Info },
   ];
 
@@ -586,6 +612,23 @@ export function SettingsPage({
                   onRefresh={onRefreshPlugins || (async () => {})}
                   onReloadPlugin={onReloadPlugin}
                   onInstallPlugin={onInstallPlugin}
+                />
+              </div>
+            )}
+
+            {activeSection === "collaboration" && (
+              <div className="settings-section">
+                <h3>Collaboration</h3>
+                <p className="setting-description">Manage real-time collaboration for the current vault.</p>
+                {currentUserEmail && (
+                  <p className="setting-description" style={{ marginTop: '-8px', color: 'var(--text-accent)' }}>
+                    Signed in as: <strong>{currentUserEmail}</strong>
+                  </p>
+                )}
+                <CollaborationPanel
+                  vaultPath={vaultPath || null}
+                  isSettingsMode={true}
+                  onVaultReconstructed={onVaultReconstructed}
                 />
               </div>
             )}

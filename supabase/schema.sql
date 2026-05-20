@@ -23,26 +23,72 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
--- 3. Spaces table
+-- 3. Vaults table (for real-time collaboration)
+CREATE TABLE IF NOT EXISTS public.vaults (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.vaults ENABLE ROW LEVEL SECURITY;
+
+-- 3a. Vault Collaborators
+CREATE TABLE IF NOT EXISTS public.vault_collaborators (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vault_id uuid NOT NULL REFERENCES public.vaults(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('owner', 'editor')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(vault_id, user_id)
+);
+ALTER TABLE public.vault_collaborators ENABLE ROW LEVEL SECURITY;
+
+-- 3b. Vault Invites
+CREATE TABLE IF NOT EXISTS public.vault_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vault_id uuid NOT NULL REFERENCES public.vaults(id) ON DELETE CASCADE,
+  invited_user_email text NOT NULL,
+  invited_by uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  status text NOT NULL CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.vault_invites ENABLE ROW LEVEL SECURITY;
+
+-- 3c. Vault Presence
+CREATE TABLE IF NOT EXISTS public.vault_presence (
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  vault_id uuid NOT NULL REFERENCES public.vaults(id) ON DELETE CASCADE,
+  active_note_id uuid,
+  last_seen timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, vault_id)
+);
+ALTER TABLE public.vault_presence ENABLE ROW LEVEL SECURITY;
+
+-- 4. Spaces table
 CREATE TABLE IF NOT EXISTS public.spaces (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   title text NOT NULL,
   description text,
-  helps_with text[],
+  helps_with text[] DEFAULT '{}',
   is_public boolean NOT NULL DEFAULT false,
   visibility text NOT NULL DEFAULT 'private'
     CHECK (visibility IN ('local', 'private', 'public')),
+  status text NOT NULL DEFAULT 'ready'
+    CHECK (status IN ('processing', 'ready', 'error')),
   forked_from uuid REFERENCES public.spaces(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.spaces ENABLE ROW LEVEL SECURITY;
 
--- 4. Notes table
+-- 5. Notes table
 CREATE TABLE IF NOT EXISTS public.notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
+  space_id uuid REFERENCES public.spaces(id) ON DELETE CASCADE,
+  vault_id uuid REFERENCES public.vaults(id) ON DELETE CASCADE,
+  last_client_id text,
   title text NOT NULL,
   path text NOT NULL DEFAULT '',
   content text NOT NULL DEFAULT '',
@@ -97,6 +143,44 @@ CREATE TABLE IF NOT EXISTS public.space_votes (
 );
 ALTER TABLE public.space_votes ENABLE ROW LEVEL SECURITY;
 
+-- 9. Space invites (for collaboration invitations)
+CREATE TABLE IF NOT EXISTS public.space_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
+  sender_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  receiver_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+  receiver_email text NOT NULL,
+  role text NOT NULL DEFAULT 'editor'
+    CHECK (role IN ('editor', 'viewer')),
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.space_invites ENABLE ROW LEVEL SECURITY;
+
+-- 10. Space collaborators (who has access to a space)
+CREATE TABLE IF NOT EXISTS public.space_collaborators (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role text NOT NULL DEFAULT 'editor'
+    CHECK (role IN ('owner', 'editor', 'viewer')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(space_id, user_id)
+);
+ALTER TABLE public.space_collaborators ENABLE ROW LEVEL SECURITY;
+
+-- 11. Linked vaults (maps local vault paths to cloud spaces)
+CREATE TABLE IF NOT EXISTS public.linked_vaults (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  local_vault_path text NOT NULL,
+  is_bootstrapping boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.linked_vaults ENABLE ROW LEVEL SECURITY;
+
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- INDEXES
@@ -108,6 +192,13 @@ CREATE INDEX IF NOT EXISTS idx_notes_space_updated ON public.notes (space_id, up
 CREATE INDEX IF NOT EXISTS idx_notes_deleted ON public.notes (deleted) WHERE deleted = true;
 CREATE INDEX IF NOT EXISTS idx_note_chunks_note_updated ON public.note_chunks (note_id, updated_at);
 
+-- Collaboration indexes
+CREATE INDEX IF NOT EXISTS idx_space_invites_receiver_email ON public.space_invites (receiver_email);
+CREATE INDEX IF NOT EXISTS idx_space_invites_receiver_id ON public.space_invites (receiver_id);
+CREATE INDEX IF NOT EXISTS idx_linked_vaults_space_user ON public.linked_vaults (space_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_space_collaborators_space_user ON public.space_collaborators (space_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_space_collaborators_user ON public.space_collaborators (user_id);
+
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- AUTO-UPDATE TRIGGERS
@@ -117,6 +208,10 @@ CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$;
+
+DROP TRIGGER IF EXISTS trg_vaults_updated_at ON public.vaults;
+CREATE TRIGGER trg_vaults_updated_at
+  BEFORE UPDATE ON public.vaults FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_spaces_updated_at ON public.spaces;
 CREATE TRIGGER trg_spaces_updated_at
@@ -177,6 +272,13 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Allow authenticated users to look up other profiles (needed for collaborator display)
+DO $$ BEGIN
+  CREATE POLICY "Allow authenticated users to view profiles"
+    ON public.users FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- Spaces
 DO $$ BEGIN
   CREATE POLICY "Users can view their own spaces"
@@ -187,6 +289,14 @@ END $$;
 DO $$ BEGIN
   CREATE POLICY "Public spaces are viewable by everyone"
     ON public.spaces FOR SELECT USING (visibility = 'public');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can view shared private spaces"
+    ON public.spaces FOR SELECT USING (
+      public.is_space_member(spaces.id)
+    );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -428,6 +538,298 @@ BEGIN
   LIMIT match_count;
 END;
 $$;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- COLLABORATION HELPER FUNCTION
+-- ════════════════════════════════════════════════════════════════════════════
+-- SECURITY DEFINER function that bypasses RLS to check space membership.
+-- This prevents infinite recursion when policies on notes/linked_vaults/etc.
+-- need to verify the caller is a space collaborator.
+
+CREATE OR REPLACE FUNCTION public.is_space_member(p_space_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.space_collaborators
+    WHERE space_id = p_space_id AND user_id = auth.uid()
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.spaces
+    WHERE id = p_space_id AND owner_id = auth.uid()
+  );
+$$;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- COLLABORATION RLS
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Space Invites
+DO $$ BEGIN
+  CREATE POLICY "Space owners can insert invites"
+    ON public.space_invites FOR INSERT WITH CHECK (
+      auth.uid() = sender_id
+      AND EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_invites.space_id AND spaces.owner_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Senders can view their sent invites"
+    ON public.space_invites FOR SELECT USING (auth.uid() = sender_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Receivers can view invites sent to them"
+    ON public.space_invites FOR SELECT USING (
+      receiver_email = (SELECT email FROM public.users WHERE id = auth.uid())
+      OR receiver_id = auth.uid()
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Senders can update their invites"
+    ON public.space_invites FOR UPDATE USING (auth.uid() = sender_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Receivers can update invites sent to them"
+    ON public.space_invites FOR UPDATE USING (
+      receiver_email = (SELECT email FROM public.users WHERE id = auth.uid())
+      OR receiver_id = auth.uid()
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Senders can delete their invites"
+    ON public.space_invites FOR DELETE USING (auth.uid() = sender_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Space Collaborators
+-- NOTE: This policy must NOT reference space_collaborators itself (causes infinite recursion).
+-- Users can see: (a) their own collaborator rows, (b) all collaborators for spaces they own.
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can view space collaborators"
+    ON public.space_collaborators FOR SELECT USING (
+      public.is_space_member(space_id)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Space owners can insert collaborators"
+    ON public.space_collaborators FOR INSERT WITH CHECK (
+      EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_collaborators.space_id AND spaces.owner_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Space owners can delete collaborators"
+    ON public.space_collaborators FOR DELETE USING (
+      EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_collaborators.space_id AND spaces.owner_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Notes collaboration: collaborators can CRUD notes in shared spaces
+-- Uses is_space_member() to avoid recursive RLS on space_collaborators.
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can view notes in shared spaces"
+    ON public.notes FOR SELECT USING (
+      public.is_space_member(notes.space_id)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can insert notes in shared spaces"
+    ON public.notes FOR INSERT WITH CHECK (
+      public.is_space_member(notes.space_id)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can update notes in shared spaces"
+    ON public.notes FOR UPDATE USING (
+      public.is_space_member(notes.space_id)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can delete notes in shared spaces"
+    ON public.notes FOR DELETE USING (
+      public.is_space_member(notes.space_id)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Linked vaults
+DO $$ BEGIN
+  CREATE POLICY "Users can view their own linked vaults"
+    ON public.linked_vaults FOR SELECT USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Collaborators can view linked vaults for their spaces"
+    ON public.linked_vaults FOR SELECT USING (
+      public.is_space_member(linked_vaults.space_id)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can insert their own linked vaults"
+    ON public.linked_vaults FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update their own linked vaults"
+    ON public.linked_vaults FOR UPDATE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can delete their own linked vaults"
+    ON public.linked_vaults FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Vault presence
+DO $$ BEGIN
+  CREATE POLICY "Users can view presence in their collaborative spaces"
+    ON public.vault_presence FOR SELECT USING (
+      auth.uid() = user_id
+      OR EXISTS (
+        SELECT 1 FROM public.linked_vaults lv
+        WHERE lv.user_id = vault_presence.user_id
+          AND public.is_space_member(lv.space_id)
+      )
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can insert their own presence"
+    ON public.vault_presence FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update their own presence"
+    ON public.vault_presence FOR UPDATE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can delete their own presence"
+    ON public.vault_presence FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- COLLABORATION RPC FUNCTIONS
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Accept a space invite: validates receiver, updates invite, creates collaborator
+CREATE OR REPLACE FUNCTION public.accept_space_invite(p_invite_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_invite record;
+BEGIN
+  SELECT * INTO v_invite FROM public.space_invites WHERE id = p_invite_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Invite not found'; END IF;
+
+  -- Verify the current user is the receiver
+  IF v_invite.receiver_id IS NOT NULL AND v_invite.receiver_id != auth.uid() THEN
+    RAISE EXCEPTION 'Not your invite';
+  END IF;
+  IF v_invite.receiver_id IS NULL THEN
+    IF v_invite.receiver_email != (SELECT email FROM public.users WHERE id = auth.uid()) THEN
+      RAISE EXCEPTION 'Not your invite';
+    END IF;
+  END IF;
+
+  UPDATE public.space_invites SET status = 'accepted', receiver_id = auth.uid() WHERE id = p_invite_id;
+
+  INSERT INTO public.space_collaborators (space_id, user_id, role)
+  VALUES (v_invite.space_id, auth.uid(), v_invite.role)
+  ON CONFLICT (space_id, user_id) DO NOTHING;
+END;
+$$;
+
+-- Reject a space invite
+CREATE OR REPLACE FUNCTION public.reject_space_invite(p_invite_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE public.space_invites SET status = 'rejected'
+  WHERE id = p_invite_id
+    AND (receiver_id = auth.uid()
+         OR receiver_email = (SELECT email FROM public.users WHERE id = auth.uid()));
+END;
+$$;
+
+-- Get a full snapshot of a space (notes + paths) for vault reconstruction
+CREATE OR REPLACE FUNCTION public.get_space_snapshot(p_space_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.spaces WHERE id = p_space_id AND owner_id = auth.uid()
+    UNION ALL
+    SELECT 1 FROM public.space_collaborators WHERE space_id = p_space_id AND user_id = auth.uid()
+    UNION ALL
+    SELECT 1 FROM public.space_invites WHERE space_id = p_space_id AND status = 'accepted'
+      AND (receiver_id = auth.uid() OR receiver_email = (SELECT email FROM public.users WHERE id = auth.uid()))
+  ) THEN
+    RAISE EXCEPTION 'Access denied';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'space', (SELECT row_to_json(s) FROM public.spaces s WHERE s.id = p_space_id),
+    'notes', COALESCE((
+      SELECT jsonb_agg(row_to_json(n))
+      FROM public.notes n
+      WHERE n.space_id = p_space_id AND n.deleted = false
+    ), '[]'::jsonb),
+    'paths', COALESCE((
+      SELECT jsonb_agg(DISTINCT n.path)
+      FROM public.notes n
+      WHERE n.space_id = p_space_id AND n.deleted = false AND n.path IS NOT NULL AND n.path != ''
+    ), '[]'::jsonb)
+  ) INTO result;
+
+  RETURN result;
+END;
+$$;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- REALTIME PUBLICATION
+-- ════════════════════════════════════════════════════════════════════════════
+-- Enable realtime for collaboration-critical tables.
+-- Run this AFTER tables exist. Safe to re-run.
+
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.notes;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.space_invites;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.vault_presence;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.space_collaborators;
 
 
 -- ════════════════════════════════════════════════════════════════════════════
