@@ -31,6 +31,7 @@ import {
   FileCode
 } from "lucide-react";
 import { PluginSettingsPanel } from './PluginSettingsPanel';
+import { PluginMarketplace } from './PluginMarketplace';
 import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
 import { isDarkTheme } from "../utils/helpers";
 import type { LocalVaultCollaborator, LocalVaultInvite } from "../lib/localdb";
@@ -171,6 +172,7 @@ export function SettingsPage({
   onVaultReconstructed,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("general");
+  const [isBrowsingPlugins, setIsBrowsingPlugins] = useState(false);
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [searchHotkey, setSearchHotkey] = useState("");
   const pageRef = React.useRef<HTMLDivElement>(null);
@@ -247,14 +249,22 @@ export function SettingsPage({
   return (
     <div className="settings-overlay">
       <div className="settings-page" ref={pageRef}>
-        <div className="settings-header">
-          <h2>Settings</h2>
-          <button className="settings-close" onClick={onClose} aria-label="Close settings">
-            <X size={20} />
-          </button>
-        </div>
+        {isBrowsingPlugins ? (
+          <PluginMarketplace
+            onClose={() => setIsBrowsingPlugins(false)}
+            onInstall={onInstallPlugin || (async () => false)}
+            installedPluginIds={plugins.map((p) => p.manifest.id)}
+          />
+        ) : (
+          <>
+            <div className="settings-header">
+              <h2>Settings</h2>
+              <button className="settings-close" onClick={onClose} aria-label="Close settings">
+                <X size={20} />
+              </button>
+            </div>
 
-        <div className="settings-body">
+            <div className="settings-body">
           <nav className="settings-nav">
             <div className="settings-nav-subheader">Options</div>
             {optionSectionsList.map((section) => (
@@ -1083,6 +1093,7 @@ export function SettingsPage({
                   onRefresh={onRefreshPlugins || (async () => {})}
                   onReloadPlugin={onReloadPlugin}
                   onInstallPlugin={onInstallPlugin}
+                  onBrowse={() => setIsBrowsingPlugins(true)}
                 />
               </div>
             )}
@@ -1124,6 +1135,8 @@ export function SettingsPage({
             )}
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

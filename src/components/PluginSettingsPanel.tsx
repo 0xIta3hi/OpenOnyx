@@ -38,6 +38,7 @@ interface PluginSettingsPanelProps {
   onRefresh: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
   onInstallPlugin?: (repo: string, pluginId: string) => Promise<boolean>;
+  onBrowse?: () => void;
 }
 
 export function PluginSettingsPanel({
@@ -48,6 +49,7 @@ export function PluginSettingsPanel({
   onRefresh,
   onReloadPlugin,
   onInstallPlugin,
+  onBrowse,
 }: PluginSettingsPanelProps) {
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
@@ -138,7 +140,7 @@ export function PluginSettingsPanel({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => setShowMarketplace(true)}
+            onClick={onBrowse || (() => setShowMarketplace(true))}
             title="Browse and install community plugins"
             style={{
               background: 'var(--accent-primary, var(--color-accent, #3b82f6))',
@@ -177,7 +179,7 @@ export function PluginSettingsPanel({
         </div>
       </div>
 
-      {showMarketplace && onInstallPlugin && (
+      {showMarketplace && onInstallPlugin && !onBrowse && (
         <PluginMarketplace
           onClose={() => setShowMarketplace(false)}
           onInstall={onInstallPlugin}
