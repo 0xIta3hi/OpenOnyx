@@ -11,10 +11,11 @@ interface AuthModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   message?: string;
+  initialMode?: 'login' | 'signup';
 }
 
-export function AuthModal({ onClose, onSuccess, message }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+export function AuthModal({ onClose, onSuccess, message, initialMode = 'login' }: AuthModalProps) {
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);

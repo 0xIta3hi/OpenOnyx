@@ -22,9 +22,15 @@ interface CollaborationPanelProps {
   vaultPath: string | null;
   onVaultReconstructed?: (path: string) => void;
   isSettingsMode?: boolean;
+  onGoToAccount?: () => void;
 }
 
-export function CollaborationPanel({ vaultPath, onVaultReconstructed, isSettingsMode = false }: CollaborationPanelProps) {
+export function CollaborationPanel({
+  vaultPath,
+  onVaultReconstructed,
+  isSettingsMode = false,
+  onGoToAccount,
+}: CollaborationPanelProps) {
   const [user, setUser] = useState(authManager.getUser());
   const [authLoading, setAuthLoading] = useState(authManager.getState().isLoading);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -228,6 +234,15 @@ export function CollaborationPanel({ vaultPath, onVaultReconstructed, isSettings
         <div className="collab-empty">
           <Users size={32} strokeWidth={1.5} />
           <p>Sign in to collaborate on vaults with other users.</p>
+          {onGoToAccount && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={onGoToAccount}
+              style={{ marginTop: 12 }}
+            >
+              Go to Account Settings
+            </button>
+          )}
         </div>
       </div>
     );

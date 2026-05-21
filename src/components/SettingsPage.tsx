@@ -36,6 +36,9 @@ import type { PluginRegistration, PluginSettingTabRegistration } from '../types/
 import { isDarkTheme } from "../utils/helpers";
 import type { LocalVaultCollaborator, LocalVaultInvite } from "../lib/localdb";
 import { CollaborationPanel } from './CollaborationPanel';
+import { authManager } from "../lib/auth";
+import { AuthModal } from "./AuthModal";
+
 
 export interface AppSettings {
   // Appearance
@@ -177,6 +180,18 @@ export function SettingsPage({
   const [searchHotkey, setSearchHotkey] = useState("");
   const pageRef = React.useRef<HTMLDivElement>(null);
   const isDark = isDarkTheme(localSettings.theme);
+
+  const [currentUser, setCurrentUser] = useState(authManager.getUser());
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+
+  useEffect(() => {
+    const unsub = authManager.subscribe((state) => {
+      setCurrentUser(state.user);
+    });
+    return unsub;
+  }, []);
+
 
   // General tab local states to mock official settings interaction beautifully
   const [autoUpdates, setAutoUpdates] = useState(true);
@@ -367,12 +382,49 @@ export function SettingsPage({
                   <div className="setting-info">
                     <div className="setting-title">Your account</div>
                     <div className="setting-description">
-                      You're not logged in right now. An account is only needed for secure cloud sync and early access builds.
+                      {currentUser ? (
+                        <span>Logged in as <strong>{currentUser.email}</strong>. Your account is connected and ready for cloud sync and collaboration.</span>
+                      ) : (
+                        <span>You're not logged in right now. Log in or sign up to enable cloud spaces, secure sync, and collaboration.</span>
+                      )}
                     </div>
                   </div>
                   <div className="setting-control button-row">
-                    <button className="setting-btn-secondary">Log in</button>
-                    <button className="setting-btn-secondary">Sign up</button>
+                    {currentUser ? (
+                      <button
+                        className="setting-btn-secondary"
+                        onClick={async () => {
+                          try {
+                            await authManager.signOut();
+                          } catch (err) {
+                            console.error("Sign out failed", err);
+                          }
+                        }}
+                      >
+                        Log out
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="setting-btn-secondary"
+                          onClick={() => {
+                            setAuthModalMode('login');
+                            setShowAuthModal(true);
+                          }}
+                        >
+                          Log in
+                        </button>
+                        <button
+                          className="setting-btn-secondary"
+                          onClick={() => {
+                            setAuthModalMode('signup');
+                            setShowAuthModal(true);
+                          }}
+                        >
+                          Sign up
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1011,9 +1063,9 @@ export function SettingsPage({
                   <p className="setting-description">
                     Manage secure, local-first real-time vault sharing and collaborator panels for the currently loaded vault path.
                   </p>
-                  {currentUserEmail && (
+                  {currentUser?.email && (
                     <div className="signed-in-badge">
-                      Signed in as: <strong>{currentUserEmail}</strong>
+                      Signed in as: <strong>{currentUser.email}</strong>
                     </div>
                   )}
                 </div>
@@ -1021,6 +1073,7 @@ export function SettingsPage({
                   vaultPath={vaultPath || null}
                   isSettingsMode={true}
                   onVaultReconstructed={onVaultReconstructed}
+                  onGoToAccount={() => setActiveSection("general")}
                 />
               </div>
             )}
@@ -1138,6 +1191,13 @@ export function SettingsPage({
         </>
         )}
       </div>
+      {showAuthModal && (
+        <AuthModal
+          initialMode={authModalMode}
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => setShowAuthModal(false)}
+        />
+      )}
     </div>
   );
 }
