@@ -46,6 +46,10 @@ import { headingFold, foldTheme } from "../../utils/headingFold";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { type LinkType } from "../SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
+import type { CollabOperation, CursorPresence } from "../../utils/collabOperations";
+import { extractOperations } from "../../utils/collabOperations";
+import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
+import { authManager } from "../../lib/auth";
 
 interface EditorProps {
   tabs: Tab[];
@@ -76,6 +80,14 @@ interface EditorProps {
   showInsight?: boolean;
   onToggleInsight?: (show: boolean) => void;
   theme?: string;
+  // Collaboration: operation-based sync
+  onCollabOperations?: (ops: CollabOperation[]) => void;
+  onCursorChange?: (cursor: { from: number; to: number }) => void;
+  remoteCursors?: CursorPresence[];
+  /** The local client ID, used to tag extracted operations. */
+  localClientId?: string;
+  /** Called when the CodeMirror EditorView is created or destroyed. */
+  onEditorViewReady?: (view: import("@codemirror/view").EditorView | null) => void;
 }
 
 /**
@@ -2191,6 +2203,11 @@ export function Editor({
   showInsight,
   onToggleInsight,
   theme,
+  onCollabOperations,
+  onCursorChange,
+  remoteCursors,
+  localClientId,
+  onEditorViewReady,
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -2824,6 +2841,19 @@ export function Editor({
             );
             onContentChange(update.state.doc.toString(), isUserEdit);
             if (isUserEdit) {
+              // Extract granular operations for collaboration broadcast
+              if (onCollabOperations && localClientId) {
+                const allOps: CollabOperation[] = [];
+                for (const tr of update.transactions) {
+                  if (tr.docChanged) {
+                    allOps.push(...extractOperations(tr.changes, localClientId, authManager.getUserId() || undefined));
+                  }
+                }
+                if (allOps.length > 0) {
+                  onCollabOperations(allOps);
+                }
+              }
+
               markActiveTyping();
               markSectionPauseReady();
               setSectionRetryPending((pending) => {
@@ -2845,7 +2875,14 @@ export function Editor({
               }
             }
           }
+          // Cursor/selection change detection for presence broadcast
+          if (update.selectionSet && onCursorChange) {
+            const sel = update.state.selection.main;
+            onCursorChange({ from: sel.from, to: sel.to });
+          }
         }),
+        // Remote collaborator cursor decorations
+        remoteCursorsExtension(),
         EditorView.theme({
           "&": {
             height: "100%",
@@ -2933,11 +2970,13 @@ export function Editor({
     });
 
     viewRef.current = view;
+    onEditorViewReady?.(view);
     setEditorMountTick((tick) => tick + 1);
 
     return () => {
       view.destroy();
       viewRef.current = null;
+      onEditorViewReady?.(null);
     };
   }, [activeTabId, isSpecialTab]); // Re-create when tab changes
 
@@ -3002,6 +3041,14 @@ export function Editor({
       }
     }
   }, [content, isSpecialTab]);
+
+  // Push remote cursor presence data into CodeMirror state
+  useEffect(() => {
+    if (!viewRef.current || !remoteCursors) return;
+    viewRef.current.dispatch({
+      effects: setCursorsEffect.of(remoteCursors),
+    });
+  }, [remoteCursors]);
 
   // Handle custom search event from Ribbon or App
   useEffect(() => {

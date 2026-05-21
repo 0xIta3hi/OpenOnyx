@@ -28,6 +28,7 @@ import { getUserSupabaseClient } from './userDatabase';
 import { localDB } from './localdb';
 import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
+import type { CollabOperation, CursorPresence } from '../utils/collabOperations';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,21 +159,27 @@ type StatusListener = (status: CollabStatus) => void;
 type ActiveUsersListener = (users: ActiveUser[]) => void;
 type RemoteChangeListener = (table: string, payload: any) => void;
 type RemoteDocUpdateListener = (path: string, content: string, senderClientId: string) => void;
+type RemoteOperationListener = (path: string, ops: CollabOperation[]) => void;
+type RemoteCursorListener = (presence: CursorPresence) => void;
 
 class CollaborationEngine {
   private listeners = new Set<StatusListener>();
   private activeUsersListeners = new Set<ActiveUsersListener>();
   private changeListeners = new Set<RemoteChangeListener>();
   private remoteDocListeners = new Set<RemoteDocUpdateListener>();
+  private remoteOpListeners = new Set<RemoteOperationListener>();
+  private remoteCursorListeners = new Set<RemoteCursorListener>();
   private _status: CollabStatus = { state: 'idle' };
   private _activeSpaceId: string | null = null;
   private _activeUsers: ActiveUser[] = [];
   private realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
   private clientId: string = '';
+  private lastAppliedTimestamps = new Map<string, number>();
 
   get status() { return this._status; }
   get activeSpaceId() { return this._activeSpaceId; }
   get activeUsers() { return this._activeUsers; }
+  get currentClientId() { return this.clientId; }
 
   async init() {
     this.clientId = await localDB.getClientId();
@@ -196,12 +203,27 @@ class CollaborationEngine {
   }
 
   /**
-   * Register a listener for real-time document updates received via Broadcast.
-   * The callback receives the file path, new content, and the sender's client ID.
+   * Register a listener for full-content document updates (DB-level fallback).
    */
   onRemoteDocumentUpdate(fn: RemoteDocUpdateListener): () => void {
     this.remoteDocListeners.add(fn);
     return () => this.remoteDocListeners.delete(fn);
+  }
+
+  /**
+   * Register a listener for granular editing operations received via Broadcast.
+   */
+  onRemoteOperation(fn: RemoteOperationListener): () => void {
+    this.remoteOpListeners.add(fn);
+    return () => this.remoteOpListeners.delete(fn);
+  }
+
+  /**
+   * Register a listener for remote cursor presence updates.
+   */
+  onRemoteCursor(fn: RemoteCursorListener): () => void {
+    this.remoteCursorListeners.add(fn);
+    return () => this.remoteCursorListeners.delete(fn);
   }
 
   private notify(status: CollabStatus) {
@@ -788,11 +810,26 @@ class CollaborationEngine {
           this.handleRemoteNoteChange(payload);
         },
       )
-      // Listen for ephemeral real-time document updates via Broadcast
-      .on('broadcast', { event: 'doc-update' }, (msg) => {
-        const { path, content, clientId: senderClientId } = msg.payload || {};
-        if (!path || senderClientId === this.clientId) return;
-        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId));
+      // Listen for granular editing operations via Broadcast
+      .on('broadcast', { event: 'doc-ops' }, (msg) => {
+        const { path, ops, clientId: senderClientId } = msg.payload || {};
+        if (!path || !ops || senderClientId === this.clientId) return;
+        const lastTs = this.lastAppliedTimestamps.get(path) || 0;
+        // Filter stale operations
+        const freshOps = (ops as CollabOperation[]).filter(
+          op => op.timestamp > lastTs,
+        );
+        if (freshOps.length > 0) {
+          const maxTs = Math.max(lastTs, ...freshOps.map(op => op.timestamp));
+          this.lastAppliedTimestamps.set(path, maxTs);
+          this.remoteOpListeners.forEach(fn => fn(path, freshOps));
+        }
+      })
+      // Listen for cursor presence updates via Broadcast
+      .on('broadcast', { event: 'cursor-presence' }, (msg) => {
+        const presence = msg.payload as CursorPresence | undefined;
+        if (!presence || presence.user_id === authManager.getUserId()) return;
+        this.remoteCursorListeners.forEach(fn => fn(presence));
       })
       // Track presence
       .on('presence', { event: 'sync' }, () => {
@@ -922,23 +959,34 @@ class CollaborationEngine {
     this.changeListeners.forEach(fn => fn('notes', payload));
   }
 
-  // ── Broadcast: Ephemeral Document Sync ─────────────────────────────────────
+  // ── Broadcast: Operation-Based Sync ──────────────────────────────────────
 
   /**
-   * Broadcast a document update to all connected peers via Supabase Broadcast.
-   * This is ephemeral -- it does NOT write to the database. The autosave/sync
-   * engine handles persistence separately.
+   * Broadcast granular editing operations to all connected peers.
+   * This is ephemeral -- it does NOT write to the database.
    */
-  broadcastDocumentUpdate(path: string, content: string) {
+  broadcastOperations(path: string, ops: CollabOperation[]) {
+    if (!this.realtimeChannel || ops.length === 0) return;
+    this.realtimeChannel.send({
+      type: 'broadcast',
+      event: 'doc-ops',
+      payload: {
+        path,
+        ops,
+        clientId: this.clientId,
+      },
+    });
+  }
+
+  /**
+   * Broadcast cursor position / selection to all connected peers.
+   */
+  broadcastCursorPresence(presence: CursorPresence) {
     if (!this.realtimeChannel) return;
     this.realtimeChannel.send({
       type: 'broadcast',
-      event: 'doc-update',
-      payload: {
-        path,
-        content,
-        clientId: this.clientId,
-      },
+      event: 'cursor-presence',
+      payload: presence,
     });
   }
 
@@ -997,6 +1045,8 @@ class CollaborationEngine {
     this.activeUsersListeners.clear();
     this.changeListeners.clear();
     this.remoteDocListeners.clear();
+    this.remoteOpListeners.clear();
+    this.remoteCursorListeners.clear();
   }
 }
 
