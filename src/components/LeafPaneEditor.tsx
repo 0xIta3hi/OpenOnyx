@@ -85,10 +85,6 @@ export function LeafPaneEditor({
     editorViewRef.current = view;
   }, []);
 
-  // Flag: when true, the next onContentChange from the Editor is caused by
-  // us applying a remote operation / full-content update, so skip re-broadcasting.
-  const isRemoteUpdateRef = useRef<boolean>(false);
-
   // Remote cursor presence state for the current file
   const [remoteCursors, setRemoteCursors] = useState<CursorPresence[]>([]);
 
@@ -128,20 +124,17 @@ export function LeafPaneEditor({
   // ── Content Change Handler ──────────────────────────────────────────────────
 
   const handleContentChange = useCallback((newContent: string, isUserEdit?: boolean) => {
-    // If this change was triggered by us applying a remote operation, skip.
-    if (isRemoteUpdateRef.current) {
-      isRemoteUpdateRef.current = false;
-      return;
-    }
-
     setContent(newContent);
 
     // Let the global state know there was a change
     onContentChangeGlobal(activeTab.path, newContent);
 
+    // Only run side-effects for genuine user edits (not remote or programmatic syncs)
+    if (!isUserEdit) return;
+
     // Presence: mark as typing
     const isCollabSpace = !!collaborationEngine.activeSpaceId;
-    if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__" && isUserEdit) {
+    if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       setIsSelfTyping(true);
       collaborationEngine.updatePresenceNote(activeTab.path, true);
 
@@ -196,6 +189,16 @@ export function LeafPaneEditor({
     if (!collaborationEngine.activeSpaceId) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
     collaborationEngine.broadcastOperations(activeTab.path, ops);
+
+    // For large edits (paste, AI generation), also broadcast the full document
+    // as a fallback. Granular ops may fail to apply on diverged documents.
+    const totalInserted = ops.reduce((sum, op) => sum + (op.text?.length || 0), 0);
+    if (totalInserted > 500) {
+      const view = editorViewRef.current;
+      if (view) {
+        collaborationEngine.broadcastFullDocument(activeTab.path, view.state.doc.toString());
+      }
+    }
   }, [activeTab.path]);
 
   // ── Cursor Presence Broadcast ───────────────────────────────────────────────
@@ -240,19 +243,12 @@ export function LeafPaneEditor({
       const changes = ops.map(op => operationToChangeSpec(clampOperation(op, docLen)));
 
       if (changes.length > 0) {
-        // Set flag so handleContentChange skips re-broadcast and state update
-        isRemoteUpdateRef.current = true;
         view.dispatch({
           changes,
           // Use 'remote' annotation so the CM update listener recognises this
           // as a non-user edit (isUserEvent("input"/"delete"/etc.) returns false).
           annotations: Transaction.remote.of(true),
         });
-        // Sync React state with the authoritative CM document.
-        // We read from the view directly since it already has the applied changes.
-        const newDoc = view.state.doc.toString();
-        setContent(newDoc);
-        onContentChangeGlobal(activeTab.path, newDoc);
       }
     });
 
@@ -298,16 +294,12 @@ export function LeafPaneEditor({
       if (view) {
         const currentDoc = view.state.doc.toString();
         if (currentDoc !== remoteContent) {
-          isRemoteUpdateRef.current = true;
           view.dispatch({
             changes: { from: 0, to: currentDoc.length, insert: remoteContent },
             annotations: Transaction.remote.of(true),
           });
-          setContent(remoteContent);
-          onContentChangeGlobal(activeTab.path, remoteContent);
         }
       } else {
-        isRemoteUpdateRef.current = true;
         setContent(remoteContent);
         onContentChangeGlobal(activeTab.path, remoteContent);
       }

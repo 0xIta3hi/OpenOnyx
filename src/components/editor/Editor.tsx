@@ -3067,13 +3067,17 @@ export function Editor({
         }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            const isUserEdit = update.transactions.some(
+            // A change is a "user edit" if it changed the doc AND is not
+            // explicitly marked as remote (from collaboration) or a
+            // programmatic content-sync ('setContent').  This catches
+            // raw view.dispatch() calls from paste, drop, image insert,
+            // and AI suggestions that lack userEvent annotations.
+            const isRemoteOrSync = update.transactions.some(
               (tr) =>
-                tr.isUserEvent("input") ||
-                tr.isUserEvent("delete") ||
-                tr.isUserEvent("paste") ||
-                tr.isUserEvent("move"),
+                tr.annotation(Transaction.remote) ||
+                tr.isUserEvent("setContent"),
             );
+            const isUserEdit = !isRemoteOrSync;
             // Read from refs to avoid stale closures -- the CM view is
             // created once per tab and these callbacks change when the
             // collab space becomes active asynchronously.
@@ -3214,6 +3218,14 @@ export function Editor({
     onEditorViewReady?.(view);
     setEditorMountTick((tick) => tick + 1);
 
+    // Broadcast initial cursor position so remote users see our cursor
+    // immediately without waiting for a manual selection change.
+    const cursorCb = onCursorChangeRef.current;
+    if (cursorCb) {
+      const sel = view.state.selection.main;
+      cursorCb({ from: sel.from, to: sel.to });
+    }
+
     return () => {
       view.destroy();
       viewRef.current = null;
@@ -3275,10 +3287,10 @@ export function Editor({
         const clampedHead = Math.min(oldSel.main.head, maxPos);
 
         viewRef.current.dispatch({
-          changes: { from: 0, to: currentDoc.length, insert: newContent },
-          selection: { anchor: clampedAnchor, head: clampedHead },
-          annotations: Transaction.userEvent.of('setContent'),
-        });
+           changes: { from: 0, to: currentDoc.length, insert: newContent },
+           selection: { anchor: clampedAnchor, head: clampedHead },
+           annotations: Transaction.remote.of(true),
+         });
       }
     }
   }, [content, isSpecialTab]);

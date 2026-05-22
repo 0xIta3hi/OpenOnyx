@@ -950,6 +950,13 @@ class CollaborationEngine {
           this.remoteOpListeners.forEach(fn => fn(path, freshOps));
         }
       })
+      // Listen for full-document sync via Broadcast (fallback for large edits)
+      .on('broadcast', { event: 'doc-full' }, (msg) => {
+        const { path, content, clientId: senderClientId } = msg.payload || {};
+        if (!path || content === undefined) return;
+        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || ''));
+      })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
         const presence = msg.payload as CursorPresence | undefined;
@@ -1130,6 +1137,24 @@ class CollaborationEngine {
       payload: {
         path,
         ops,
+        clientId: this.clientId,
+      },
+    });
+  }
+
+  /**
+   * Broadcast the full document content to all connected peers.
+   * Used as a fallback for large edits (paste, AI generation) where
+   * granular operations may fail to apply cleanly on diverged documents.
+   */
+  broadcastFullDocument(path: string, content: string) {
+    if (!this.realtimeChannel) return;
+    this.realtimeChannel.send({
+      type: 'broadcast',
+      event: 'doc-full',
+      payload: {
+        path,
+        content,
         clientId: this.clientId,
       },
     });

@@ -564,3 +564,7 @@ This document is part of the Notework project.
 ---
 
 *Last updated: April 19, 2026*
+it broke when we tried to edit a same file
+and even though one user stopped editing the user can still see him editing 
+
+and the other user here in this case was owner was editing and none of the updates were visible in the other user window
