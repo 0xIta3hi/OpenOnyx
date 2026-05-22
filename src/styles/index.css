@@ -2376,24 +2376,35 @@ body.is-dragging .plugin-view-panel {
 
 /* ── Callouts / Admonitions ────────────────────────── */
 .callout {
-  margin: 1rem 0;
+  margin: 1.25rem 0;
   padding: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb,
-      var(--callout-color, #448aff) 10%,
+      var(--callout-color, #448aff) 8%,
       var(--bg-elevated));
   border-left: 4px solid var(--callout-color, #448aff);
   overflow: hidden;
+  font-style: normal;
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.callout:hover {
+  box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.06), 0 3px 6px -2px rgba(0, 0, 0, 0.03);
 }
 
 .callout-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
   font-weight: 600;
+  font-size: 0.95rem;
   color: var(--callout-color, #448aff);
+  background: color-mix(in srgb, var(--callout-color, #448aff) 4%, transparent);
   cursor: default;
+  border-bottom: 1px solid color-mix(in srgb, var(--callout-color, #448aff) 6%, transparent);
 }
 
 .callout[data-foldable="true"] .callout-title {
@@ -2401,22 +2412,39 @@ body.is-dragging .plugin-view-panel {
 }
 
 .callout[data-foldable="true"] .callout-title:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--callout-color, #448aff) 8%, transparent);
 }
 
 .callout-icon {
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
+  color: inherit;
+}
+
+.callout-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .callout-title-text {
   flex: 1;
+  font-family: var(--font-sans);
+  letter-spacing: -0.1px;
 }
 
 .callout-fold {
   font-size: 0.75rem;
   opacity: 0.7;
   transition: transform var(--transition-fast);
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .callout[data-collapsed="true"] .callout-fold {
@@ -2424,8 +2452,9 @@ body.is-dragging .plugin-view-panel {
 }
 
 .callout-content {
-  padding: 0 1rem 0.75rem 1rem;
+  padding: 1rem 1.25rem;
   color: var(--text-primary);
+  line-height: 1.6;
 }
 
 .callout-content>*:first-child {
@@ -2441,11 +2470,13 @@ body.is-dragging .plugin-view-panel {
 }
 
 /* Callout in blockquote context - remove default blockquote styling */
-blockquote:has(.callout) {
-  border: none;
-  padding: 0;
-  margin: 0;
-  background: transparent;
+.markdown-preview blockquote:has(.callout) {
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  font-style: normal !important;
+  color: inherit !important;
 }
 
 /* ── Note Embeds ───────────────────────────────────── */

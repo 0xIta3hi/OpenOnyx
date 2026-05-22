@@ -41,34 +41,51 @@ marked.use({
   }
 });
 
+// Beautiful SVG icons for premium look
+const CALLOUT_ICONS = {
+  note: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  info: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
+  tip: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A5 5 0 0 0 8 8c0 1 .4 2.5 1.5 3.5.7.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`,
+  important: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+  warning: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  danger: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`,
+  bug: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3 3 0 1 1 6 0v1"/><path d="M12 20c-4.97 0-9-4.03-9-9 0-4.97 4.03-9 9-9s9 4.03 9 9c0 4.97-4.03 9-9 9Z"/><path d="M12 9v11"/><path d="M3 11h18"/><path d="m19 15 3 3"/><path d="m5 15-3 3"/><path d="m19 7 3-3"/><path d="m5 7-3-3"/></svg>`,
+  example: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14h6"/><path d="M9 18h6"/><path d="M9 10h6"/></svg>`,
+  quote: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 .25 1 1 1Z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 .25 1 1 1Z"/></svg>`,
+  success: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>`,
+  question: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>`,
+  abstract: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 1 1 3-3h7z"/></svg>`,
+  todo: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>`,
+};
+
 // Callout type icons and colors
 const CALLOUT_TYPES: Record<string, { icon: string; color: string }> = {
-  note: { icon: "📝", color: "#448aff" },
-  info: { icon: "ℹ️", color: "#448aff" },
-  tip: { icon: "💡", color: "#00c853" },
-  hint: { icon: "💡", color: "#00c853" },
-  important: { icon: "🔥", color: "#ff5252" },
-  warning: { icon: "⚠️", color: "#ff9100" },
-  caution: { icon: "⚠️", color: "#ff9100" },
-  danger: { icon: "🚨", color: "#ff5252" },
-  error: { icon: "❌", color: "#ff5252" },
-  bug: { icon: "🐛", color: "#ff5252" },
-  example: { icon: "📋", color: "#7c4dff" },
-  quote: { icon: "💬", color: "#9e9e9e" },
-  cite: { icon: "💬", color: "#9e9e9e" },
-  success: { icon: "✅", color: "#00c853" },
-  check: { icon: "✅", color: "#00c853" },
-  done: { icon: "✅", color: "#00c853" },
-  question: { icon: "❓", color: "#448aff" },
-  help: { icon: "❓", color: "#448aff" },
-  faq: { icon: "❓", color: "#448aff" },
-  abstract: { icon: "📄", color: "#00b8d4" },
-  summary: { icon: "📄", color: "#00b8d4" },
-  tldr: { icon: "📄", color: "#00b8d4" },
-  todo: { icon: "☑️", color: "#448aff" },
-  failure: { icon: "❌", color: "#ff5252" },
-  fail: { icon: "❌", color: "#ff5252" },
-  missing: { icon: "❌", color: "#ff5252" },
+  note: { icon: CALLOUT_ICONS.note, color: "#448aff" },
+  info: { icon: CALLOUT_ICONS.info, color: "#448aff" },
+  tip: { icon: CALLOUT_ICONS.tip, color: "#00c853" },
+  hint: { icon: CALLOUT_ICONS.tip, color: "#00c853" },
+  important: { icon: CALLOUT_ICONS.important, color: "#ff5252" },
+  warning: { icon: CALLOUT_ICONS.warning, color: "#ff9100" },
+  caution: { icon: CALLOUT_ICONS.warning, color: "#ff9100" },
+  danger: { icon: CALLOUT_ICONS.danger, color: "#ff5252" },
+  error: { icon: CALLOUT_ICONS.danger, color: "#ff5252" },
+  bug: { icon: CALLOUT_ICONS.bug, color: "#ff5252" },
+  example: { icon: CALLOUT_ICONS.example, color: "#7c4dff" },
+  quote: { icon: CALLOUT_ICONS.quote, color: "#9e9e9e" },
+  cite: { icon: CALLOUT_ICONS.quote, color: "#9e9e9e" },
+  success: { icon: CALLOUT_ICONS.success, color: "#00c853" },
+  check: { icon: CALLOUT_ICONS.success, color: "#00c853" },
+  done: { icon: CALLOUT_ICONS.success, color: "#00c853" },
+  question: { icon: CALLOUT_ICONS.question, color: "#448aff" },
+  help: { icon: CALLOUT_ICONS.question, color: "#448aff" },
+  faq: { icon: CALLOUT_ICONS.question, color: "#448aff" },
+  abstract: { icon: CALLOUT_ICONS.abstract, color: "#00b8d4" },
+  summary: { icon: CALLOUT_ICONS.abstract, color: "#00b8d4" },
+  tldr: { icon: CALLOUT_ICONS.abstract, color: "#00b8d4" },
+  todo: { icon: CALLOUT_ICONS.todo, color: "#448aff" },
+  failure: { icon: CALLOUT_ICONS.danger, color: "#ff5252" },
+  fail: { icon: CALLOUT_ICONS.danger, color: "#ff5252" },
+  missing: { icon: CALLOUT_ICONS.danger, color: "#ff5252" },
 };
 
 interface MarkdownPreviewProps {
@@ -125,7 +142,7 @@ export function MarkdownPreview({
   // Process callouts (Obsidian-style admonitions)
   const processCallouts = (text: string): string => {
     // Match > [!type] or > [!type]+ or > [!type]- with optional title
-    const calloutRegex = /^(>\s*)\[!(\w+)\]([+-]?)(?:\s+(.*))?$/gm;
+    const calloutRegex = /^(>\s*)\[!(\w+)\]([+-]?)(?:[ \t]+(.*))?$/gm;
 
     return text.replace(
       calloutRegex,
@@ -284,8 +301,8 @@ export function MarkdownPreview({
     // Sanitize
     return DOMPurify.sanitize(html, {
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|vault):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "data-video-id", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src", "onmouseover", "onmouseout", "onerror"],
-      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path"],
+      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "data-video-id", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src", "onmouseover", "onmouseout", "onerror", "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "cx", "cy", "r", "x", "y", "rx", "ry", "x1", "y1", "x2", "y2", "d"],
+      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path", "circle", "line", "rect"],
       ADD_DATA_URI_TAGS: ["img"],
     });
   }, [content, onEmbed, theme, getSmartEmbed]);
