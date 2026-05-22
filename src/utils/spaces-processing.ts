@@ -213,6 +213,24 @@ export async function buildVectorIndex(
   // 1. Collect all vault notes
   const vaultNotes = customNotes || await collectVaultNotes(fileTree);
   const totalNotes = vaultNotes.length;
+
+  // 1.5. Push raw notes to Supabase immediately if this is a cloud space
+  const spaceData = await getSpace(spaceId);
+  if (spaceData && spaceData.visibility !== "local" && !customNotes) {
+    const notesForCloud = vaultNotes.map((n) => ({
+      path: n.path,
+      title: n.title,
+      content: n.content,
+      is_canvas: n.isCanvas,
+    }));
+    try {
+      console.log(`[SpacesProcessing] Pushing raw notes immediately for space ${spaceId}...`);
+      await pushSpaceNotes(spaceId, notesForCloud);
+    } catch (err) {
+      console.error("[SpacesProcessing] Failed to push raw notes immediately:", err);
+    }
+  }
+
   const allChunks: SpaceChunk[] = [];
   let processed = 0;
 
@@ -310,7 +328,6 @@ export async function buildVectorIndex(
   await saveVectorIndex(index);
 
   // 4. Push notes to Supabase if this space is cloud-synced
-  const spaceData = await getSpace(spaceId);
   if (spaceData && spaceData.visibility !== "local") {
     const notesForCloud = vaultNotes
       .map((n) => ({

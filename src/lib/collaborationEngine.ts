@@ -765,6 +765,20 @@ class CollaborationEngine {
 
       if (error) {
         console.warn('[Collab] Remote space query failed, checking local cache:', error.message);
+        const isNotFoundError = error.code === 'PGRST116' || 
+          error.message?.includes('no rows') || 
+          error.message?.includes('single JSON object') ||
+          error.message?.includes('JSON object requested');
+
+        if (isNotFoundError) {
+          console.warn('[Collab] Space does not exist on remote server. Clearing dead local link and cache.');
+          await localDB.setMeta(`collab_space_${normPath}`, null);
+          await localDB.deleteSpace(spaceId);
+          if (this._activeSpaceId === spaceId) {
+            this._activeSpaceId = null;
+          }
+          return null;
+        }
       }
     } catch (err) {
       console.warn('[Collab] Exception fetching space details, checking local cache:', err);
