@@ -377,7 +377,16 @@ export function getUserDatabaseConfig(): UserDatabaseConfig | null {
  */
 export function connectUserDatabase(config: UserDatabaseConfig): SupabaseClient<Database> {
   userConfig = config;
-  userClient = createClient<Database>(config.supabaseUrl, config.anonKey);
+  userClient = createClient<Database>(config.supabaseUrl, config.anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      lock: async (name, acquireTimeout, fn) => {
+        return await fn();
+      },
+    },
+  });
   return userClient;
 }
 
@@ -395,7 +404,16 @@ export function disconnectUserDatabase(): void {
  */
 export async function testConnection(config: UserDatabaseConfig): Promise<{ ok: boolean; error?: string }> {
   try {
-    const client = createClient(config.supabaseUrl, config.anonKey);
+    const client = createClient(config.supabaseUrl, config.anonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        lock: async (name, acquireTimeout, fn) => {
+          return await fn();
+        },
+      },
+    });
     // Simple health check -- try to read from auth
     const { error } = await client.auth.getSession();
     if (error) {

@@ -185,10 +185,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setChatMessages([]);
       setStreamingText("");
       setChatInput("");
-      const remoteStatus = space.visibility !== "local";
+      const currentUserId = authManager.getUserId();
+      const isRemoteSpace = space.visibility !== "local" && space.ownerId !== currentUserId;
       
-      // If it's a cloud space, we don't auto-index the local vault on open
-      setIsIndexed(remoteStatus);
+      // If it's a cloud space owned by someone else, we don't auto-index on open
+      setIsIndexed(isRemoteSpace);
     }
   }, []);
 
@@ -282,8 +283,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     try {
       let customNotes: VaultNote[] | undefined = undefined;
       
-      if (activeSpace && activeSpace.visibility !== "local" && isSupabaseConfigured) {
-        // Cloud space: Fetch notes directly from Supabase to index them on the cloud
+      const currentUserId = authManager.getUserId();
+      const isRemoteSpace = activeSpace && activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId;
+      
+      if (activeSpace && activeSpace.visibility !== "local" && isRemoteSpace && isSupabaseConfigured) {
+        // Cloud space (Remote): Fetch notes directly from Supabase to index them on the cloud
         const { data: cloudNotes, error: fetchErr } = await supabase
           .from("notes")
           .select("path, title, content, is_canvas")
