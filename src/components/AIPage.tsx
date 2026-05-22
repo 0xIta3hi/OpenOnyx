@@ -129,7 +129,15 @@ export function AIPage({
   }, []);
   const hasApiKey = !!aiSettings.apiKey;
   const models = getModelsForProvider(aiSettings.provider);
-  const currentModel = models.find((m) => m.id === aiSettings.modelId) || models[0];
+  const matchedModel = models.find((m) => m.id === aiSettings.modelId);
+  const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
+  const currentModel = matchedModel || (isCustomModel ? {
+    id: aiSettings.modelId,
+    label: aiSettings.modelId,
+    shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
+    description: "Custom OpenRouter Model",
+    supportsGrounding: false
+  } : models[0]);
 
   // ── Model status ───────────────────────────────────
   const [modelStatus, setModelStatus] = useState<string>(
@@ -1028,8 +1036,51 @@ export function AIPage({
                     {aiSettings.modelId === model.id && <Check size={14} />}
                   </button>
                 ))}
+
+                {/* Custom Model Preset Option */}
+                {aiSettings.provider === "openrouter" && (
+                  <button
+                    className={`ai-setting-model ${isCustomModel ? "active" : ""}`}
+                    onClick={() => {
+                      const nextModelId = aiSettings.customModelId || "deepseek/deepseek-v4-flash:free";
+                      updateAISettings({
+                        modelId: nextModelId,
+                        customModelId: nextModelId
+                      });
+                    }}
+                  >
+                    <div className="ai-setting-model-info">
+                      <span className="ai-setting-model-name">Custom Model</span>
+                      <span className="ai-setting-model-desc">Use any other OpenRouter model by entering its ID</span>
+                    </div>
+                    {isCustomModel && <Check size={14} />}
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* Custom Model Input */}
+            {aiSettings.provider === "openrouter" && isCustomModel && (
+              <div className="ai-setting-group" style={{ marginTop: "var(--space-2)" }}>
+                <label className="ai-setting-label">Custom Model ID</label>
+                <input
+                  type="text"
+                  className="ai-setting-input"
+                  value={aiSettings.modelId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateAISettings({
+                      modelId: val,
+                      customModelId: val
+                    });
+                  }}
+                  placeholder="e.g. deepseek/deepseek-v4-flash:free"
+                />
+                <p className="ai-section-hint">
+                  Enter the exact model identifier from OpenRouter (e.g. poolside/laguna-m.1:free)
+                </p>
+              </div>
+            )}
 
             {/* Status */}
             <div className="ai-setting-group">

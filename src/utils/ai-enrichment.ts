@@ -8,7 +8,7 @@
  * - Confidence scoring for factual claims
  */
 
-import { loadAIConfig, getBaseUrl, getProviderHeaders, getModelsForProvider } from "./ai-settings";
+import { loadAIConfig, getBaseUrl, getProviderHeaders, getModelsForProvider, parseProviderError } from "./ai-settings";
 
 // ── Content Types ────────────────────────────────────────────────────────────
 
@@ -60,36 +60,7 @@ export function detectContentType(text: string): ContentType {
   return "general";
 }
 
-// ── Provider error parser ────────────────────────────────────────────────────
-
-export async function parseProviderError(response: Response): Promise<string> {
-  let errObj: { message?: string; metadata?: { provider_name?: string } } | undefined;
-  try {
-    const body = await response.json();
-    errObj = body?.error;
-  } catch { /* couldn't parse JSON */ }
-
-  const providerName = errObj?.metadata?.provider_name;
-
-  switch (response.status) {
-    case 401: return "Invalid or missing API key. Check your key in AI Settings.";
-    case 402: return "Insufficient credits. Add credits or switch to a free model.";
-    case 403: return "Content flagged by the provider's safety filter.";
-    case 404: return "Model unavailable. Switch to another model in AI Settings.";
-    case 408: return "Request timed out. Try again.";
-    case 429:
-      return providerName
-        ? `${providerName} is rate-limiting. Retry later or switch models.`
-        : "Too many requests. Slow down and try again.";
-    case 502:
-    case 503:
-      return providerName
-        ? `${providerName} is temporarily unavailable. Try again or switch models.`
-        : "The AI provider is temporarily unavailable. Try again.";
-    default:
-      return errObj?.message ?? `Request failed (${response.status}). Check your settings.`;
-  }
-}
+// ── Provider error parser is now imported from `./ai-settings` ────────────────
 
 // ── Enrichment interfaces ────────────────────────────────────────────────────
 

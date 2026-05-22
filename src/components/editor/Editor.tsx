@@ -50,7 +50,7 @@ import type { CollabOperation, CursorPresence } from "../../utils/collabOperatio
 import { extractOperations } from "../../utils/collabOperations";
 import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { authManager } from "../../lib/auth";
-import { loadAIConfig, getBaseUrl, getProviderHeaders } from "../../utils/ai-settings";
+import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
 
 interface EditorProps {
   tabs: Tab[];
@@ -2179,6 +2179,34 @@ function suggestionContentPlugin(options: SuggestionContentPluginOptions) {
     },
   );
 }
+function cleanInlineAIResponse(text: string): string {
+  if (!text) return "";
+  let cleaned = text.trim();
+
+  // Strip leading/trailing markdown code block markers if the model wrapped the response
+  if (cleaned.startsWith("```")) {
+    const firstNewline = cleaned.indexOf("\n");
+    if (firstNewline !== -1) {
+      cleaned = cleaned.substring(firstNewline + 1);
+    } else {
+      cleaned = cleaned.substring(3);
+    }
+    
+    // Strip trailing code block marker if present
+    if (cleaned.endsWith("```")) {
+      cleaned = cleaned.substring(0, cleaned.length - 3);
+    }
+  }
+
+  // Strip leading and trailing quotes if the model wrapped the response in quotes
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    cleaned = cleaned.substring(1, cleaned.length - 1);
+  } else if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+    cleaned = cleaned.substring(1, cleaned.length - 1);
+  }
+
+  return cleaned.trim();
+}
 
 async function executeInlineAIOperation(
   text: string,
@@ -2224,7 +2252,7 @@ ${text}`;
     headers: getProviderHeaders(config),
     body: JSON.stringify({
       model: config.modelId,
-      max_tokens: 1024,
+      max_tokens: 4096,
       temperature: 0.3,
       messages: [
         { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. You respond strictly with the requested text in the exact same format (preserving list styles, indentation, headings, and markdown markup). Do not use emojis, no intro, no wrap, no filler." },
@@ -2234,7 +2262,7 @@ ${text}`;
   });
 
   if (!response.ok) {
-    throw new Error(`AI request failed (${response.status}).`);
+    throw new Error(await parseProviderError(response));
   }
 
   const data = await response.json();
@@ -2242,7 +2270,7 @@ ${text}`;
   if (!result) {
     throw new Error("Empty response from AI.");
   }
-  return result;
+  return cleanInlineAIResponse(result);
 }
 
 export function Editor({
@@ -2346,12 +2374,30 @@ export function Editor({
 
       if (view) {
         if (editorRef.current?.contains(range.commonAncestorContainer)) {
-          try {
-            from = view.posAtDOM(range.startContainer, range.startOffset);
-            to = view.posAtDOM(range.endContainer, range.endOffset);
-          } catch (e) {
-            from = view.state.selection.main.from;
-            to = view.state.selection.main.to;
+          const cmFrom = view.state.selection.main.from;
+          const cmTo = view.state.selection.main.to;
+          if (cmFrom !== cmTo) {
+            from = cmFrom;
+            to = cmTo;
+          } else {
+            try {
+              from = view.posAtDOM(range.startContainer, range.startOffset);
+              to = view.posAtDOM(range.endContainer, range.endOffset);
+            } catch (e) {
+              from = cmFrom;
+              to = cmTo;
+            }
+          }
+
+          // Safe fallback: if we got collapsed boundaries but the selection is not empty, find it via substring index
+          const selectedText = sel.toString().trim();
+          if (from === to && selectedText) {
+            const docString = view.state.doc.toString();
+            const index = docString.indexOf(selectedText);
+            if (index !== -1) {
+              from = index;
+              to = index + selectedText.length;
+            }
           }
         } else if (previewRef.current?.contains(range.commonAncestorContainer)) {
           const selectedText = sel.toString().trim();

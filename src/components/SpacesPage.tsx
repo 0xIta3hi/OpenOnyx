@@ -114,6 +114,136 @@ function getVisibilityLabel(visibility: SpaceVisibility): string {
   }
 }
 
+/**
+ * Detects the action type from a potentially incomplete action block during streaming,
+ * falling back to proactive detection from the user query if the stream hasn't started/reached the JSON block yet.
+ */
+function detectActionType(text: string, query?: string): string | null {
+  // 1. Try to detect from stream content first (highest accuracy)
+  if (text) {
+    const lower = text.toLowerCase();
+    if (lower.includes('"action": "create_note"') || lower.includes('"action":"create_note"') || lower.includes("'action': 'create_note'") || lower.includes("'action':'create_note'")) {
+      return "create_note";
+    }
+    if (lower.includes('"action": "update_note"') || lower.includes('"action":"update_note"') || lower.includes("'action': 'update_note'") || lower.includes("'action':'update_note'")) {
+      return "update_note";
+    }
+    if (lower.includes('"action": "suggest_structure"') || lower.includes('"action":"suggest_structure"') || lower.includes("'action': 'suggest_structure'") || lower.includes("'action':'suggest_structure'")) {
+      return "suggest_structure";
+    }
+    if (lower.includes('"action": "suggest_links"') || lower.includes('"action":"suggest_links"') || lower.includes("'action': 'suggest_links'") || lower.includes("'action':'suggest_links'")) {
+      return "suggest_links";
+    }
+    if (lower.includes('"action": "insight_report"') || lower.includes('"action":"insight_report"') || lower.includes("'action': 'insight_report'") || lower.includes("'action':'insight_report'")) {
+      return "insight_report";
+    }
+    if (lower.includes("```") || lower.includes('"action"') || lower.includes("'action'")) {
+      return "update_note";
+    }
+  }
+
+  // 2. Fall back to proactive pre-detection from the user's query
+  if (query) {
+    const qLower = query.toLowerCase();
+    if (qLower.includes("insight")) {
+      return "insight_report";
+    }
+    if (qLower.includes("organize") || qLower.includes("structure") || qLower.includes("hierarchy") || qLower.includes("folder")) {
+      return "suggest_structure";
+    }
+    if (qLower.includes("link")) {
+      return "suggest_links";
+    }
+    if (qLower.includes("summary") || qLower.includes("summarize") || qLower.includes("create")) {
+      return "create_note";
+    }
+    if (qLower.includes("rewrite") || qLower.includes("simplify") || qLower.includes("expand") || qLower.includes("edit") || qLower.includes("update") || qLower.includes("[[")) {
+      return "update_note";
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Strips JSON action blocks (complete or incomplete) from assistant messages.
+ */
+function stripJSONBlock(text: string): string {
+  if (!text) return "";
+  
+  let cleaned = text;
+
+  // 1. Handle complete or incomplete code block starting with ```json or ```
+  const codeBlockIndex = cleaned.indexOf("```");
+  if (codeBlockIndex !== -1) {
+    const nextCodeBlockIndex = cleaned.indexOf("```", codeBlockIndex + 3);
+    if (nextCodeBlockIndex !== -1) {
+      cleaned = cleaned.substring(0, codeBlockIndex) + cleaned.substring(nextCodeBlockIndex + 3);
+      return stripJSONBlock(cleaned);
+    } else {
+      cleaned = cleaned.substring(0, codeBlockIndex);
+    }
+  }
+
+  // 2. Also handle any raw JSON block { "action": ... } complete or incomplete
+  const firstBrace = cleaned.indexOf("{");
+  if (firstBrace !== -1) {
+    const candidate = cleaned.substring(firstBrace);
+    if (candidate.includes('"action":') || candidate.includes("'action':") || candidate.includes('"action"') || candidate.includes("'action'")) {
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(0, firstBrace) + cleaned.substring(lastBrace + 1);
+      } else {
+        cleaned = cleaned.substring(0, firstBrace);
+      }
+    }
+  }
+  
+  return cleaned.trim();
+}
+
+interface ActiveActionStatusProps {
+  actionType: string;
+  isApplied: boolean;
+}
+
+function ActiveActionStatus({ actionType, isApplied }: ActiveActionStatusProps) {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (isApplied) return;
+    const interval = setInterval(() => {
+      setStep((prev) => (prev < 2 ? prev + 1 : 0));
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isApplied]);
+
+  if (isApplied) {
+    return (
+      <div className="active-action-status completed">
+        <Check size={13} className="status-icon" />
+        <span>Changes successfully saved and integrated</span>
+      </div>
+    );
+  }
+
+  let steps = ["Preparing changes...", "Editing note...", "Linking your notes..."];
+  if (actionType === "suggest_structure") {
+    steps = ["Analyzing note hierarchy...", "Structuring folders...", "Linking your notes..."];
+  } else if (actionType === "suggest_links") {
+    steps = ["Scanning references...", "Analyzing connections...", "Linking your notes..."];
+  } else if (actionType === "insight_report") {
+    steps = ["Reviewing space contents...", "Correlating insights...", "Structuring findings..."];
+  }
+
+  return (
+    <div className="active-action-status processing">
+      <Loader2 size={13} className="spinner status-icon" />
+      <span>{steps[step]}</span>
+    </div>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
@@ -180,6 +310,8 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   }, []);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const centralInputRef = useRef<HTMLTextAreaElement>(null);
+  const bottomInputRef = useRef<HTMLTextAreaElement>(null);
 
   const vaultNoteCount = countNotes(fileTree);
   const previewNotes = getPreviewNotes(fileTree);
@@ -686,6 +818,17 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [chatMessages, streamingText]);
+
+  // Dynamically adjust textarea height based on content
+  useEffect(() => {
+    const adjustHeight = (textarea: HTMLTextAreaElement | null) => {
+      if (!textarea) return;
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+    adjustHeight(centralInputRef.current);
+    adjustHeight(bottomInputRef.current);
+  }, [chatInput]);
 
   // ── Tag input ────────────────────────────────────────
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1269,6 +1412,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         </div>
                       )}
                       <textarea
+                        ref={centralInputRef}
                         className="space-chat-input"
                         placeholder="Ask anything..."
                         value={chatInput}
@@ -1320,12 +1464,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </div>
                 ) : (
                   <>
-                    <div className="message-content">
-                      <MarkdownPreview
-                        content={msg.content}
-                        onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                      />
-                    </div>
+                    {stripJSONBlock(msg.content) && (
+                      <div className="message-content">
+                        <MarkdownPreview
+                          content={stripJSONBlock(msg.content)}
+                          onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                        />
+                      </div>
+                    )}
 
                     {/* Render Interactive Action Cards if JSON action exists */}
                     {(() => {
@@ -1521,16 +1667,31 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             ))}
 
             {/* Streaming Indicator */}
-            {isQuerying && streamingText && (
-              <div className="space-chat-message assistant">
-                <div className="message-content">
-                  <MarkdownPreview
-                    content={streamingText}
-                    onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                  />
+            {isQuerying && streamingText && (() => {
+              const cleanedText = stripJSONBlock(streamingText);
+              const lastUserMsg = [...chatMessages].reverse().find((m) => m.role === "user");
+              const activeQuery = lastUserMsg?.content || "";
+              const actionType = detectActionType(streamingText, activeQuery);
+              
+              return (
+                <div className="space-chat-message assistant">
+                  {cleanedText && (
+                    <div className="message-content">
+                      <MarkdownPreview
+                        content={cleanedText}
+                        onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                      />
+                    </div>
+                  )}
+                  {actionType && (
+                    <ActiveActionStatus
+                      actionType={actionType}
+                      isApplied={false}
+                    />
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* AI thinking state loader */}
             {isQuerying && !streamingText && (
@@ -1562,6 +1723,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </div>
                 )}
                 <textarea
+                  ref={bottomInputRef}
                   className="space-chat-input"
                   placeholder="Ask anything..."
                   value={chatInput}

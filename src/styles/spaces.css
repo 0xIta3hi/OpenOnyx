@@ -1212,9 +1212,10 @@ textarea.space-form-input {
   outline: none;
   font-family: inherit;
   resize: none;
-  max-height: 100px;
+  max-height: 240px;
   padding: 4px 0;
   line-height: 1.4;
+  overflow-y: auto;
 }
 
 .space-chat-input::placeholder {
@@ -1879,4 +1880,34 @@ textarea.space-form-input {
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
+}
+
+/* Active Action Status Indicator */
+.active-action-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+  width: fit-content;
+  border: 1px solid transparent;
+}
+
+.active-action-status.processing {
+  background: rgba(198, 198, 198, 0.08);
+  color: var(--text-secondary);
+  border-color: rgba(198, 198, 198, 0.15);
+}
+
+.active-action-status.completed {
+  background: rgba(72, 199, 142, 0.08);
+  color: #48c78e;
+  border-color: rgba(72, 199, 142, 0.15);
+}
+
+.active-action-status .status-icon {
+  flex-shrink: 0;
 }

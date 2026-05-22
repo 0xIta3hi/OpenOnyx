@@ -153,6 +153,7 @@ export interface AISettings {
   provider: AIProvider;
   customBaseUrl: string;
   providerKeys?: Partial<Record<AIProvider, string>>;
+  customModelId?: string;
 }
 
 const STORAGE_KEY = "notework-ai-settings";
@@ -160,10 +161,10 @@ const STORAGE_KEY = "notework-ai-settings";
 export function loadSettings(): AISettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "" };
-    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", ...JSON.parse(raw) };
+    if (!raw) return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", customModelId: "" };
+    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", customModelId: "", ...JSON.parse(raw) };
   } catch {
-    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "" };
+    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", customModelId: "" };
   }
 }
 
@@ -184,7 +185,7 @@ export function loadAIConfig(): AIConfig | null {
   if (!s.apiKey) return null;
   const models = getModelsForProvider(s.provider);
   const model = models.find((m) => m.id === s.modelId);
-  const modelId = model?.id ?? models[0]?.id ?? s.modelId ?? DEFAULT_MODEL_ID;
+  const modelId = s.modelId || models[0]?.id || DEFAULT_MODEL_ID;
   const supportsGrounding =
     (s.provider === "openrouter" || s.provider === "openai") &&
     s.webGrounding &&
@@ -207,4 +208,33 @@ export function getProviderHeaders(config: AIConfig): Record<string, string> {
     base["X-Title"] = "OpenObsidian";
   }
   return base;
+}
+
+export async function parseProviderError(response: Response): Promise<string> {
+  let errObj: { message?: string; metadata?: { provider_name?: string } } | undefined;
+  try {
+    const body = await response.json();
+    errObj = body?.error;
+  } catch { /* couldn't parse JSON */ }
+
+  const providerName = errObj?.metadata?.provider_name;
+
+  switch (response.status) {
+    case 401: return "Invalid or missing API key. Check your key in AI Settings.";
+    case 402: return "Insufficient credits. Add credits or switch to a free model.";
+    case 403: return "Content flagged by the provider's safety filter.";
+    case 404: return "Model unavailable. Switch to another model in AI Settings.";
+    case 408: return "Request timed out. Try again.";
+    case 429:
+      return providerName
+        ? `${providerName} is rate-limiting. Retry later or switch models.`
+        : "Too many requests. Slow down and try again.";
+    case 502:
+    case 503:
+      return providerName
+        ? `${providerName} is temporarily unavailable. Try again or switch models.`
+        : "The AI provider is temporarily unavailable. Try again.";
+    default:
+      return errObj?.message ?? `Request failed (${response.status}). Check your settings.`;
+  }
 }

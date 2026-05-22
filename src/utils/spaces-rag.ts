@@ -14,7 +14,7 @@
 
 import { embedText } from "./embeddings";
 import { loadVectorIndex } from "./spaces-store";
-import { loadAIConfig, getBaseUrl, getProviderHeaders } from "./ai-settings";
+import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "./ai-settings";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import type { SpaceChunk } from "../types/spaces";
 
@@ -394,10 +394,7 @@ export async function querySpace(
   });
 
   if (!response.ok) {
-    const status = response.status;
-    if (status === 401) throw new Error("Invalid API key.");
-    if (status === 429) throw new Error("Rate limited. Try again in a moment.");
-    throw new Error(`AI request failed (${status}).`);
+    throw new Error(await parseProviderError(response));
   }
 
   const data = await response.json();
@@ -458,10 +455,7 @@ export async function querySpaceStreaming(
   });
 
   if (!response.ok) {
-    const status = response.status;
-    if (status === 401) throw new Error("Invalid API key.");
-    if (status === 429) throw new Error("Rate limited. Try again in a moment.");
-    throw new Error(`AI request failed (${status}).`);
+    throw new Error(await parseProviderError(response));
   }
 
   const makeSources = () =>
