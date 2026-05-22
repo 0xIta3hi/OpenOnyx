@@ -2324,6 +2324,22 @@ export function Editor({
   const sectionEnterTriggerTimerRef = useRef<number | null>(null);
   const sectionEnterAcceptRef = useRef<(view: EditorView) => boolean>(() => false);
 
+  // Refs for collaboration callbacks -- avoids stale closures in the CodeMirror
+  // update listener which is created once per tab and never re-created when
+  // the collab space becomes active asynchronously.
+  const onContentChangeRef = useRef(onContentChange);
+  const onCollabOperationsRef = useRef(onCollabOperations);
+  const onCursorChangeRef = useRef(onCursorChange);
+  const localClientIdRef = useRef(localClientId);
+
+  // Keep callback refs in sync on every render
+  useEffect(() => {
+    onContentChangeRef.current = onContentChange;
+    onCollabOperationsRef.current = onCollabOperations;
+    onCursorChangeRef.current = onCursorChange;
+    localClientIdRef.current = localClientId;
+  });
+
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [editorMountTick, setEditorMountTick] = useState(0);
@@ -3058,18 +3074,23 @@ export function Editor({
                 tr.isUserEvent("paste") ||
                 tr.isUserEvent("move"),
             );
-            onContentChange(update.state.doc.toString(), isUserEdit);
+            // Read from refs to avoid stale closures -- the CM view is
+            // created once per tab and these callbacks change when the
+            // collab space becomes active asynchronously.
+            onContentChangeRef.current(update.state.doc.toString(), isUserEdit);
             if (isUserEdit) {
               // Extract granular operations for collaboration broadcast
-              if (onCollabOperations && localClientId) {
+              const collabOps = onCollabOperationsRef.current;
+              const cid = localClientIdRef.current;
+              if (collabOps && cid) {
                 const allOps: CollabOperation[] = [];
                 for (const tr of update.transactions) {
                   if (tr.docChanged) {
-                    allOps.push(...extractOperations(tr.changes, localClientId, authManager.getUserId() || undefined));
+                    allOps.push(...extractOperations(tr.changes, cid, authManager.getUserId() || undefined));
                   }
                 }
                 if (allOps.length > 0) {
-                  onCollabOperations(allOps);
+                  collabOps(allOps);
                 }
               }
 
@@ -3095,9 +3116,10 @@ export function Editor({
             }
           }
           // Cursor/selection change detection for presence broadcast
-          if (update.selectionSet && onCursorChange) {
+          const cursorCb = onCursorChangeRef.current;
+          if (update.selectionSet && cursorCb) {
             const sel = update.state.selection.main;
-            onCursorChange({ from: sel.from, to: sel.to });
+            cursorCb({ from: sel.from, to: sel.to });
           }
         }),
         // Remote collaborator cursor decorations

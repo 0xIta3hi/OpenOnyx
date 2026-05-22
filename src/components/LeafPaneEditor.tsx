@@ -240,15 +240,19 @@ export function LeafPaneEditor({
       const changes = ops.map(op => operationToChangeSpec(clampOperation(op, docLen)));
 
       if (changes.length > 0) {
-        // Set flag to prevent echo loop
+        // Set flag so handleContentChange skips re-broadcast and state update
         isRemoteUpdateRef.current = true;
         view.dispatch({
           changes,
-          annotations: Transaction.userEvent.of('setContent'),
+          // Use 'remote' annotation so the CM update listener recognises this
+          // as a non-user edit (isUserEvent("input"/"delete"/etc.) returns false).
+          annotations: Transaction.remote.of(true),
         });
-        // Also update our content state to stay in sync
-        setContent(view.state.doc.toString());
-        onContentChangeGlobal(activeTab.path, view.state.doc.toString());
+        // Sync React state with the authoritative CM document.
+        // We read from the view directly since it already has the applied changes.
+        const newDoc = view.state.doc.toString();
+        setContent(newDoc);
+        onContentChangeGlobal(activeTab.path, newDoc);
       }
     });
 
@@ -297,7 +301,7 @@ export function LeafPaneEditor({
           isRemoteUpdateRef.current = true;
           view.dispatch({
             changes: { from: 0, to: currentDoc.length, insert: remoteContent },
-            annotations: Transaction.userEvent.of('setContent'),
+            annotations: Transaction.remote.of(true),
           });
           setContent(remoteContent);
           onContentChangeGlobal(activeTab.path, remoteContent);
