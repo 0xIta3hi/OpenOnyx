@@ -9,16 +9,17 @@
  *  2. Dual-Column Workspace — Sidebar (details & indexed notes explorer) + AI Chat.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Plus, X, Trash2, ArrowLeft, Send, Loader2,
-  Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles
+  Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles,
+  Zap, Layers, Brain, Check, GitBranch
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
 } from "../utils/spaces-store";
 import { buildVectorIndex, type VaultNote } from "../utils/spaces-processing";
-import { querySpaceStreaming, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
+import { querySpaceStreaming, parseActionPayload, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
@@ -58,6 +59,26 @@ function countNotes(entries: FileEntry[] = []): number {
     else if (e.name.endsWith(".md") || e.name.endsWith(".canvas")) count++;
   }
   return count;
+}
+
+/** Catalog all markdown notes recursively in the vault */
+function getAllVaultNotes(entries: FileEntry[] = []): { path: string; title: string }[] {
+  if (!entries) return [];
+  const notes: { path: string; title: string }[] = [];
+
+  function walk(items: FileEntry[]) {
+    if (!items) return;
+    for (const e of items) {
+      if (e.isDirectory && e.children) {
+        walk(e.children);
+      } else if (e.name.endsWith(".md")) {
+        notes.push({ path: e.path, title: e.name.replace(/\.md$/, "") });
+      }
+    }
+  }
+
+  walk(entries);
+  return notes;
 }
 
 /** Get all preview notes from the file tree */
@@ -130,6 +151,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [isQuerying, setIsQuerying] = useState(false);
   const [streamingText, setStreamingText] = useState("");
 
+  // Mentions State
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+
   // Indexing
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexProgress, setIndexProgress] = useState({ done: 0, total: 0 });
@@ -156,6 +183,64 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   const vaultNoteCount = countNotes(fileTree);
   const previewNotes = getPreviewNotes(fileTree);
+
+  const notesList = activeSpace 
+    ? (activeSpace.visibility === "local" ? previewNotes : remoteNotes)
+    : [];
+
+  const filteredNotes = useMemo(() => {
+    if (!showMentionDropdown) return [];
+    if (!mentionQuery) return notesList.slice(0, 10);
+    const q = mentionQuery.toLowerCase();
+    return notesList.filter(note => 
+      note.title?.toLowerCase().includes(q) || 
+      note.path?.toLowerCase().includes(q)
+    ).slice(0, 10);
+  }, [notesList, mentionQuery, showMentionDropdown]);
+
+  const selectNote = (note: any) => {
+    const textBefore = chatInput.substring(0, mentionStartIndex);
+    const activeTextarea = document.activeElement as HTMLTextAreaElement;
+    let cursorPos = mentionStartIndex;
+    
+    if (activeTextarea && activeTextarea.tagName === "TEXTAREA") {
+      cursorPos = activeTextarea.selectionStart;
+    }
+    
+    const textAfter = chatInput.substring(cursorPos);
+    const insertedLink = `[[${note.title}]] `;
+    const newValue = textBefore + insertedLink + textAfter;
+    setChatInput(newValue);
+    setShowMentionDropdown(false);
+    setMentionQuery("");
+    setMentionStartIndex(-1);
+
+    setTimeout(() => {
+      if (activeTextarea && activeTextarea.tagName === "TEXTAREA") {
+        activeTextarea.focus();
+        const newCursorPos = textBefore.length + insertedLink.length;
+        activeTextarea.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 50);
+  };
+
+  const checkForMention = (text: string, selectionStart: number) => {
+    const lastAtIndex = text.lastIndexOf('@', selectionStart - 1);
+    if (lastAtIndex !== -1) {
+      const textBetween = text.substring(lastAtIndex + 1, selectionStart);
+      const hasSpace = /\s/.test(textBetween);
+      if (!hasSpace) {
+        setShowMentionDropdown(true);
+        setMentionQuery(textBetween);
+        setMentionStartIndex(lastAtIndex);
+        setMentionActiveIndex(0);
+        return;
+      }
+    }
+    setShowMentionDropdown(false);
+    setMentionQuery("");
+    setMentionStartIndex(-1);
+  };
 
   useEffect(() => {
     return authManager.subscribe((state) => {
@@ -379,10 +464,33 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     setStreamingText("");
 
     try {
+      // Parse query for mentioned files [[Note Title]]
+      const matches = [...q.matchAll(/\[\[([^\]]+)\]\]/g)];
+      const explicitNotes: { path: string; title: string; content: string }[] = [];
+
+      if (matches.length > 0) {
+        const allVaultNotes = getAllVaultNotes(fileTree);
+        for (const match of matches) {
+          const title = match[1].trim();
+          const found = allVaultNotes.find(
+            (n) => n.title.toLowerCase() === title.toLowerCase()
+          );
+          if (found) {
+            try {
+              const content = await (window as any).electronAPI.readFile(found.path);
+              explicitNotes.push({ path: found.path, title: found.title, content });
+            } catch (err) {
+              console.warn(`[SpacesPage] Failed to read mentioned note: ${found.path}`, err);
+            }
+          }
+        }
+      }
+
       const spaceMeta: SpaceMetadata = {
         title: activeSpace.title,
         description: activeSpace.description,
         helpsWith: activeSpace.helpsWith || [],
+        explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
       };
       const result = await querySpaceStreaming(activeSpaceId, q, spaceMeta, (chunk) => {
         setStreamingText((prev) => prev + chunk);
@@ -408,12 +516,167 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setStreamingText("");
     }
     setIsQuerying(false);
-  }, [chatInput, activeSpaceId, activeSpace, isQuerying]);
+  }, [chatInput, activeSpaceId, activeSpace, isQuerying, fileTree]);
+
+  // ── Applied Actions state ─────────────────────────────
+  const [appliedActions, setAppliedActions] = useState<Record<string, boolean>>({});
+
+  // ── Dashboard Operations Click Handlers ────────────────
+  const handleGenerateSummary = useCallback(async () => {
+    if (!activeSpace) return;
+    await handleChat("Generate a comprehensive, highly structured space_summary.md file for the entire active space, synthesizing all key concepts, notes, and topics in the structured multi-note synthesis format: # Topic, ## Key Ideas, ## Insights, ## Gaps, ## Suggested Actions. Return this only as a create_note action block.");
+  }, [handleChat, activeSpace]);
+
+  const handleFindInsights = useCallback(async () => {
+    if (!activeSpace) return;
+    await handleChat("Analyze all notes in this space. Find repeated ideas, direct contradictions, and missing definitions or knowledge gaps. Generate an insight report detailing these findings. Return this as an insight_report action block.");
+  }, [handleChat, activeSpace]);
+
+  const handleOrganizeSpace = useCallback(async () => {
+    if (!activeSpace) return;
+    await handleChat("Examine the titles, folders, and contents of the notes in this space. Suggest note mergers for duplicate topics, title improvements, and folder restructuring changes to improve coherence and indexing. Return this as a suggest_structure action block.");
+  }, [handleChat, activeSpace]);
+
+  // ── Filesystem Action Executors ───────────────────────
+  const handleCreateNoteAction = async (title: string, path: string, content: string, msgId: string) => {
+    try {
+      let notePath = path || `${title}.md`;
+      if (!notePath.endsWith(".md")) notePath += ".md";
+
+      const exists = await (window as any).electronAPI.fileExists(notePath);
+      if (exists) {
+        const overwrite = window.confirm(`Note "${notePath}" already exists. Overwrite?`);
+        if (!overwrite) return;
+      }
+
+      await (window as any).electronAPI.writeFile(notePath, content);
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast(`Note "${notePath}" created successfully!`);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to create note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleUpdateNoteAction = async (path: string, content: string, msgId: string) => {
+    try {
+      const exists = await (window as any).electronAPI.fileExists(path);
+      if (!exists) {
+        showToast(`Note "${path}" does not exist to update. Creating it instead.`, "success");
+      }
+      await (window as any).electronAPI.writeFile(path, content);
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast(`Note "${path}" updated successfully!`);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to update note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleInsertLinksAction = async (links: Array<{ from: string, to: string, reason: string }>, msgId: string) => {
+    try {
+      for (const link of links) {
+        let fromPath = link.from;
+        if (!fromPath.endsWith(".md")) fromPath += ".md";
+        let toTitle = link.to.replace(/\.md$/, "");
+
+        const exists = await (window as any).electronAPI.fileExists(fromPath);
+        if (exists) {
+          const originalContent = await (window as any).electronAPI.readFile(fromPath);
+          const linkText = `\n\n%% AI Suggestion: ${link.reason} %%\n[[${toTitle}]]\n`;
+          await (window as any).electronAPI.writeFile(fromPath, originalContent + linkText);
+        }
+      }
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast("Wiki-links inserted successfully!");
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to insert links: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleApplyStructureAction = async (changes: any[], msgId: string) => {
+    try {
+      for (const change of changes) {
+        if (change.type === "rename" || change.type === "move") {
+          let oldPath = change.note;
+          let newPath = change.target;
+          if (!oldPath.endsWith(".md")) oldPath += ".md";
+          if (!newPath.endsWith(".md")) newPath += ".md";
+
+          const exists = await (window as any).electronAPI.fileExists(oldPath);
+          if (exists) {
+            await (window as any).electronAPI.renameFile(oldPath, newPath);
+          }
+        } else if (change.type === "merge") {
+          const targetTitle = change.target;
+          let targetPath = `${targetTitle}.md`;
+          const mergedContent = change.content;
+
+          await (window as any).electronAPI.writeFile(targetPath, mergedContent);
+
+          for (const srcNote of change.notes) {
+            let srcPath = srcNote;
+            if (!srcPath.endsWith(".md")) srcPath += ".md";
+            const srcExists = await (window as any).electronAPI.fileExists(srcPath);
+            if (srcExists) {
+              await (window as any).electronAPI.deleteFile(srcPath);
+            }
+          }
+        }
+      }
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast("Restructuring applied successfully!");
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to apply restructuring: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleSaveInsightsAction = async (insights: any[], msgId: string) => {
+    try {
+      if (!activeSpace) return;
+      const timestamp = new Date().toLocaleDateString();
+      const path = `Insights - ${activeSpace.title}.md`;
+      let content = `# Space Insight Report: ${activeSpace.title}\n*Generated by AI Operator on ${timestamp}*\n\n`;
+
+      insights.forEach((insight, idx) => {
+        content += `### ${idx + 1}. [${insight.type.toUpperCase()}] ${insight.description}\n`;
+        if (insight.notes && insight.notes.length > 0) {
+          content += `*Related Notes:* ${insight.notes.map((n: string) => `[[${n.replace(/\.md$/, "")}]]`).join(", ")}\n`;
+        }
+        content += `\n`;
+      });
+
+      await (window as any).electronAPI.writeFile(path, content);
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast(`Insight report created as "${path}"!`);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to save report: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
 
   const handleChatKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleChat();
+    if (showMentionDropdown && filteredNotes.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionActiveIndex((prev) => (prev + 1) % filteredNotes.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionActiveIndex((prev) => (prev - 1 + filteredNotes.length) % filteredNotes.length);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        selectNote(filteredNotes[mentionActiveIndex]);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setShowMentionDropdown(false);
+      }
+    } else {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleChat();
+      }
     }
   };
 
@@ -816,8 +1079,6 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   if (!activeSpace) return null;
 
-  const notesList = activeSpace.visibility === "local" ? previewNotes : remoteNotes;
-
   return (
     <div className="spaces-page space-view">
       {/* Dual Column Workspace Container */}
@@ -904,6 +1165,40 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
           </div>
 
+          {/* Space Operations Dashboard */}
+          <div className="space-sidebar-section">
+            <div className="space-sidebar-section-header">Space Operations</div>
+            <div className="space-operations-grid">
+              <button
+                className="space-operations-btn"
+                onClick={handleGenerateSummary}
+                disabled={isQuerying || isIndexing}
+                title="Synthesize topics across the space into a structured summary note"
+              >
+                <Brain size={13} />
+                <span>Generate Summary</span>
+              </button>
+              <button
+                className="space-operations-btn"
+                onClick={handleFindInsights}
+                disabled={isQuerying || isIndexing}
+                title="Look for repeated ideas, gaps, and contradictions in space"
+              >
+                <Sparkles size={13} />
+                <span>Find Insights</span>
+              </button>
+              <button
+                className="space-operations-btn"
+                onClick={handleOrganizeSpace}
+                disabled={isQuerying || isIndexing}
+                title="Suggest renames, mergers, and folder restructuring changes"
+              >
+                <Layers size={13} />
+                <span>Organize Space</span>
+              </button>
+            </div>
+          </div>
+
           {/* Curated File Navigator explorer list ("Recents" style) */}
           <div className="space-sidebar-section fill-height">
             <div className="space-sidebar-section-header">
@@ -953,17 +1248,37 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               <div className="space-chat-welcome">
                 <div className="space-chat-welcome-glow" />
                 <div className="space-chat-welcome-content">
-                  <h2>Consult your knowledge space</h2>
+                  <h2>Command your knowledge network</h2>
                   <p>Query the knowledge layer of {activeSpace?.title || "this space"} using semantic context retrieval.</p>
                   
                   {/* CENTRAL INPUT */}
                   <div className="space-chat-central-input-wrapper">
                     <div className="space-chat-input-wrapper">
+                      {showMentionDropdown && filteredNotes.length > 0 && (
+                        <div className="spaces-mention-dropdown">
+                          {filteredNotes.map((note: any, index: number) => (
+                            <div
+                              key={note.path}
+                              className={`spaces-mention-item ${index === mentionActiveIndex ? "active" : ""}`}
+                              onClick={() => selectNote(note)}
+                            >
+                              <FileText size={12} className="mention-item-icon" />
+                              <span className="mention-item-title">{note.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <textarea
                         className="space-chat-input"
                         placeholder="Ask anything..."
                         value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
+                        onChange={(e) => {
+                          setChatInput(e.target.value);
+                          checkForMention(e.target.value, e.target.selectionStart);
+                        }}
+                        onSelect={(e: any) => {
+                          checkForMention(e.target.value, e.target.selectionStart);
+                        }}
                         onKeyDown={handleChatKeyDown}
                         rows={1}
                         disabled={isQuerying}
@@ -1011,6 +1326,178 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
                       />
                     </div>
+
+                    {/* Render Interactive Action Cards if JSON action exists */}
+                    {(() => {
+                      const payload = parseActionPayload(msg.content);
+                      if (!payload) return null;
+                      
+                      const isApplied = appliedActions[msg.id];
+                      
+                      switch (payload.action) {
+                        case "create_note":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <FileText size={14} />
+                                <span>Create Note: {payload.title}</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-path">Path: <code>{payload.path || `${payload.title}.md`}</code></div>
+                                <div className="space-action-preview">
+                                  <pre>{payload.content?.substring(0, 300)}{payload.content?.length > 300 ? "..." : ""}</pre>
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleCreateNoteAction(payload.title, payload.path, payload.content, msg.id)}
+                                  >
+                                    Write to Vault
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "update_note":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <RefreshCw size={14} />
+                                <span>Update Note: {payload.path}</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-path">Path: <code>{payload.path}</code></div>
+                                <div className="space-action-preview">
+                                  <pre>{payload.content?.substring(0, 300)}{payload.content?.length > 300 ? "..." : ""}</pre>
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleUpdateNoteAction(payload.path, payload.content, msg.id)}
+                                  >
+                                    Update Note
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "suggest_structure":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <Layers size={14} />
+                                <span>Suggested Structure Restructuring</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-structure-list">
+                                  {payload.changes?.map((change: any, index: number) => (
+                                    <div key={index} className="structure-change-item">
+                                      <div className="change-type-badge">{change.type.toUpperCase()}</div>
+                                      {change.type === "merge" && (
+                                        <div className="change-details">
+                                          Merge <code>{change.notes.join(", ")}</code> into <strong>{change.target}</strong>
+                                        </div>
+                                      )}
+                                      {change.type === "rename" && (
+                                        <div className="change-details">
+                                          Rename <code>{change.note}</code> to <code>{change.target}</code>
+                                        </div>
+                                      )}
+                                      {change.type === "move" && (
+                                        <div className="change-details">
+                                          Move <code>{change.note}</code> to <code>{change.target}</code>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleApplyStructureAction(payload.changes, msg.id)}
+                                  >
+                                    Apply Restructuring
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "suggest_links":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <GitBranch size={14} />
+                                <span>Suggested Wiki-Links</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <table className="space-action-table">
+                                  <thead>
+                                    <tr>
+                                      <th>From</th>
+                                      <th>To</th>
+                                      <th>Reason</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {payload.links?.map((link: any, index: number) => (
+                                      <tr key={index}>
+                                        <td><code>{link.from}</code></td>
+                                        <td><code>{link.to}</code></td>
+                                        <td>{link.reason}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleInsertLinksAction(payload.links, msg.id)}
+                                  >
+                                    Insert Links
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "insight_report":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <Sparkles size={14} />
+                                <span>Insight Report</span>
+                                {isApplied && <span className="action-applied-badge">Saved</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-insights">
+                                  {payload.insights?.map((insight: any, index: number) => (
+                                    <div key={index} className="insight-item">
+                                      <div className="insight-type">Type: <strong>{insight.type}</strong></div>
+                                      <div className="insight-desc">{insight.description}</div>
+                                      {insight.notes && (
+                                        <div className="insight-notes">Notes: {insight.notes.join(", ")}</div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleSaveInsightsAction(payload.insights, msg.id)}
+                                  >
+                                    Save Insight Report to Vault
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        default:
+                          return null;
+                      }
+                    })()}
                     
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="space-chat-sources">
@@ -1060,11 +1547,31 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           {chatMessages.length > 0 && (
             <div className="space-chat-input-panel">
               <div className="space-chat-input-wrapper">
+                {showMentionDropdown && filteredNotes.length > 0 && (
+                  <div className="spaces-mention-dropdown">
+                    {filteredNotes.map((note: any, index: number) => (
+                      <div
+                        key={note.path}
+                        className={`spaces-mention-item ${index === mentionActiveIndex ? "active" : ""}`}
+                        onClick={() => selectNote(note)}
+                      >
+                        <FileText size={12} className="mention-item-icon" />
+                        <span className="mention-item-title">{note.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <textarea
                   className="space-chat-input"
                   placeholder="Ask anything..."
                   value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
+                  onChange={(e) => {
+                    setChatInput(e.target.value);
+                    checkForMention(e.target.value, e.target.selectionStart);
+                  }}
+                  onSelect={(e: any) => {
+                    checkForMention(e.target.value, e.target.selectionStart);
+                  }}
                   onKeyDown={handleChatKeyDown}
                   rows={1}
                   disabled={isQuerying}

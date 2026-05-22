@@ -50,6 +50,7 @@ import type { CollabOperation, CursorPresence } from "../../utils/collabOperatio
 import { extractOperations } from "../../utils/collabOperations";
 import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { authManager } from "../../lib/auth";
+import { loadAIConfig, getBaseUrl, getProviderHeaders } from "../../utils/ai-settings";
 
 interface EditorProps {
   tabs: Tab[];
@@ -2179,6 +2180,71 @@ function suggestionContentPlugin(options: SuggestionContentPluginOptions) {
   );
 }
 
+async function executeInlineAIOperation(
+  text: string,
+  operation: "rewrite" | "expand" | "simplify" | "explain"
+): Promise<string> {
+  const config = loadAIConfig();
+  if (!config) {
+    throw new Error("No API key configured. Please add one in AI Settings.");
+  }
+
+  let prompt = "";
+  if (operation === "rewrite") {
+    prompt = `You are a professional writing assistant. Rewrite the exact text provided below to make it more polished, clear, and professional, while keeping the meaning identical.
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text.
+Do NOT omit any list syntax or surrounding structure. If the original text starts with a bullet point or checklist, the rewritten text MUST start with the exact same prefix.
+Return ONLY the rewritten markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text to rewrite:
+${text}`;
+  } else if (operation === "expand") {
+    prompt = `You are a professional writing assistant. Expand the exact text provided below by adding useful detail and depth, while maintaining the original tone and intent.
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text.
+Do NOT omit any list syntax or surrounding structure. If the original text starts with a bullet point or checklist, the expanded text MUST start with the exact same prefix.
+Return ONLY the expanded markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text to expand:
+${text}`;
+  } else if (operation === "simplify") {
+    prompt = `You are a professional writing assistant. Simplify the exact text provided below to make it extremely clear, simple, and direct, while keeping the core meaning identical.
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text.
+Do NOT omit any list syntax or surrounding structure. If the original text starts with a bullet point or checklist, the simplified text MUST start with the exact same prefix.
+Return ONLY the simplified markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text to simplify:
+${text}`;
+  } else if (operation === "explain") {
+    prompt = `You are a professional writing assistant. Explain the key concept, meaning, and context of the following highlighted text in a clear, concise paragraph. Return ONLY the explanation paragraph, with no introduction, surrounding quotes, or emojis:\n\n"${text}"`;
+  }
+
+  const baseUrl = getBaseUrl(config);
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: getProviderHeaders(config),
+    body: JSON.stringify({
+      model: config.modelId,
+      max_tokens: 1024,
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. You respond strictly with the requested text in the exact same format (preserving list styles, indentation, headings, and markdown markup). Do not use emojis, no intro, no wrap, no filler." },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI request failed (${response.status}).`);
+  }
+
+  const data = await response.json();
+  const result = data.choices?.[0]?.message?.content?.trim();
+  if (!result) {
+    throw new Error("Empty response from AI.");
+  }
+  return result;
+}
+
 export function Editor({
   tabs,
   activeTabId,
@@ -2248,7 +2314,114 @@ export function Editor({
     src: string;
     alt: string;
   } | null>(null);
+
   const isSpecialTab = !!specialContent;
+
+  const [selectionRange, setSelectionRange] = useState<{ rect: DOMRect; text: string; from: number; to: number } | null>(null);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explanationCoords, setExplanationCoords] = useState<{ x: number; y: number } | null>(null);
+  const [isInlineQuerying, setIsInlineQuerying] = useState(false);
+
+  const handleSelectionChange = useCallback(() => {
+    if (isSpecialTab) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      setSelectionRange(null);
+      return;
+    }
+
+    try {
+      const range = sel.getRangeAt(0);
+      const isInsideEditor = editorRef.current?.contains(range.commonAncestorContainer) || previewRef.current?.contains(range.commonAncestorContainer);
+      if (!isInsideEditor) {
+        setSelectionRange(null);
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+      const view = viewRef.current;
+
+      let from = 0;
+      let to = 0;
+
+      if (view) {
+        if (editorRef.current?.contains(range.commonAncestorContainer)) {
+          try {
+            from = view.posAtDOM(range.startContainer, range.startOffset);
+            to = view.posAtDOM(range.endContainer, range.endOffset);
+          } catch (e) {
+            from = view.state.selection.main.from;
+            to = view.state.selection.main.to;
+          }
+        } else if (previewRef.current?.contains(range.commonAncestorContainer)) {
+          const selectedText = sel.toString().trim();
+          const docString = view.state.doc.toString();
+          const index = docString.indexOf(selectedText);
+          if (index !== -1) {
+            from = index;
+            to = index + selectedText.length;
+          } else {
+            from = view.state.selection.main.from;
+            to = view.state.selection.main.to;
+          }
+        }
+      }
+
+      setSelectionRange({
+        rect,
+        text: sel.toString(),
+        from,
+        to
+      });
+    } catch (e) {
+      // Ignore transient selection range errors
+    }
+  }, [isSpecialTab]);
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+    };
+  }, [handleSelectionChange]);
+
+  const handleInlineAction = async (operation: "rewrite" | "expand" | "simplify" | "explain") => {
+    if (!selectionRange) return;
+    const { text } = selectionRange;
+    
+    setIsInlineQuerying(true);
+    setExplanation(null);
+    setExplanationCoords(null);
+
+    try {
+      const result = await executeInlineAIOperation(text, operation);
+      if (operation === "explain") {
+        setExplanation(result);
+        setExplanationCoords({
+          x: selectionRange.rect.left + window.scrollX,
+          y: selectionRange.rect.bottom + window.scrollY + 8
+        });
+      } else {
+        const view = viewRef.current;
+        if (view) {
+          view.dispatch({
+            changes: { from: selectionRange.from, to: selectionRange.to, insert: result },
+            selection: { anchor: selectionRange.from + result.length }
+          });
+        } else {
+          // If in preview or fallback mode, copy rewritten text to clipboard
+          await navigator.clipboard.writeText(result);
+          alert("Rewritten text copied to clipboard (editor view not focused).");
+        }
+        window.getSelection()?.removeAllRanges();
+        setSelectionRange(null);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Inline AI operation failed.");
+    } finally {
+      setIsInlineQuerying(false);
+    }
+  };
 
   const activeSuggestions = useMemo(() => suggestions || [], [suggestions]);
   const activeNextStepSuggestions = useMemo(
@@ -3221,7 +3394,72 @@ export function Editor({
 
   return (
     <>
+      {selectionRange && !isInlineQuerying && !explanation && (
+        <div
+          className="inline-ai-toolbar"
+          style={{
+            position: "absolute",
+            top: selectionRange.rect.top < 60
+              ? selectionRange.rect.bottom + window.scrollY + 8
+              : selectionRange.rect.top + window.scrollY - 42,
+            left: Math.max(10, selectionRange.rect.left + window.scrollX + (selectionRange.rect.width / 2) - 170),
+            zIndex: 99999,
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("rewrite")}>
+            Rewrite
+          </button>
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("expand")}>
+            Expand
+          </button>
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("simplify")}>
+            Simplify
+          </button>
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("explain")}>
+            Explain
+          </button>
+        </div>
+      )}
 
+      {isInlineQuerying && selectionRange && !explanation && (
+        <div
+          className="inline-ai-toolbar loading"
+          style={{
+            position: "absolute",
+            top: selectionRange.rect.top < 60
+              ? selectionRange.rect.bottom + window.scrollY + 8
+              : selectionRange.rect.top + window.scrollY - 42,
+            left: Math.max(10, selectionRange.rect.left + window.scrollX + (selectionRange.rect.width / 2) - 80),
+            zIndex: 99999,
+          }}
+        >
+          <div className="flat-spinner" style={{ marginRight: 8, display: "inline-block" }} />
+          <span>Processing selection...</span>
+        </div>
+      )}
+
+      {explanation && explanationCoords && (
+        <div
+          className="inline-ai-explanation-popover"
+          style={{
+            position: "absolute",
+            top: explanationCoords.y,
+            left: Math.max(10, explanationCoords.x - 150),
+            zIndex: 99999,
+          }}
+        >
+          <div className="explanation-popover-header">
+            <span>Explanation</span>
+            <button className="explanation-popover-close" onClick={() => setExplanation(null)}>
+              <X size={12} />
+            </button>
+          </div>
+          <div className="explanation-popover-body">
+            {explanation}
+          </div>
+        </div>
+      )}
 
       {/* Inline annotation content */}
       {annotation && isInsightVisible && (

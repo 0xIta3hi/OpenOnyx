@@ -1195,6 +1195,7 @@ textarea.space-form-input {
   max-width: 720px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  position: relative;
 }
 
 .space-chat-input-wrapper:focus-within {
@@ -1517,4 +1518,365 @@ textarea.space-form-input {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ── Space Operations Dashboard & Action Cards ────────────────────────────── */
+
+.space-operations-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.space-operations-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.space-operations-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.space-operations-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.space-operations-btn svg {
+  color: var(--accent-primary);
+}
+
+/* Space Action Card */
+.space-action-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  margin-top: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.space-action-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.space-action-card-header svg {
+  color: var(--accent-primary);
+}
+
+.action-applied-badge {
+  margin-left: auto;
+  font-size: 10px;
+  background: rgba(72, 199, 142, 0.12);
+  color: #48c78e;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.space-action-card-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.space-action-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.space-action-path code {
+  background: var(--bg-primary);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.space-action-preview {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.space-action-preview pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.space-action-btn {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 6px 14px;
+}
+
+/* Restructuring Structure List styling */
+.space-action-structure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.structure-change-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.change-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-active);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.change-details {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.change-details code {
+  background: var(--bg-hover);
+  padding: 1px 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* Suggested Links Table styling */
+.space-action-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+
+.space-action-table th,
+.space-action-table td {
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.space-action-table th {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.space-action-table td code {
+  background: var(--bg-primary);
+  padding: 1px 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* Insight Report styling */
+.space-action-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.insight-item {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.insight-type {
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.insight-desc {
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.insight-notes {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Inline AI Floating Toolbar & Popover (Glassmorphic) ──────────────────── */
+
+.inline-ai-toolbar {
+  display: flex;
+  align-items: center;
+  background: var(--color-base-25);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  gap: 0px;
+  overflow: hidden;
+}
+
+.inline-ai-toolbar.loading {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-ai-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border-radius: 0px;
+}
+
+.inline-ai-btn:not(:last-child) {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.inline-ai-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Glassmorphic Explanation Popover */
+.inline-ai-explanation-popover {
+  width: 340px;
+  background: var(--color-base-25);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.explanation-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.explanation-popover-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.explanation-popover-close:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.explanation-popover-body {
+  padding: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* ── Spaces File Mention Dropdown ─────────────────────────────────────────── */
+
+.spaces-mention-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  max-width: 360px;
+  background: var(--color-base-25);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  z-index: 10000;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.spaces-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.spaces-mention-item:hover,
+.spaces-mention-item.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.mention-item-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mention-item-title {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
