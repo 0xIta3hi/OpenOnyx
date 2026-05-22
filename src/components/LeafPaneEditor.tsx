@@ -227,7 +227,6 @@ export function LeafPaneEditor({
   // ── Receive Remote Operations ───────────────────────────────────────────────
 
   useEffect(() => {
-    if (!collaborationEngine.activeSpaceId) return;
     if (activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteOperation((path, ops) => {
@@ -259,7 +258,6 @@ export function LeafPaneEditor({
   // ── Receive Remote Cursor Presence ──────────────────────────────────────────
 
   useEffect(() => {
-    if (!collaborationEngine.activeSpaceId) return;
     if (activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteCursor((presence) => {
@@ -287,7 +285,6 @@ export function LeafPaneEditor({
   // ── Full-Content Fallback (DB-level sync via postgres_changes) ──────────────
 
   useEffect(() => {
-    if (!collaborationEngine.activeSpaceId) return;
     if (activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId) => {

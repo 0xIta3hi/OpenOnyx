@@ -874,23 +874,34 @@ class CollaborationEngine {
 
   // ── Realtime ───────────────────────────────────────────────────────────────
 
-  subscribeToSpace(spaceId: string) {
+  async subscribeToSpace(spaceId: string) {
+    const userId = authManager.getUserId();
+    // Do NOT subscribe if the user is not authenticated yet -- presence key
+    // would be undefined and create ghost entries.
+    if (!userId) {
+      console.warn('[Collab] subscribeToSpace: skipping -- userId is null');
+      return;
+    }
+
+    // Already subscribed to this exact space with a live channel.
     if (this.realtimeChannel && this._activeSpaceId === spaceId) {
       return;
     }
+
     this.unsubscribeFromSpace();
     this._activeSpaceId = spaceId;
+
+    // Guarantee clientId is loaded before any broadcast/filter logic runs.
     if (!this.clientId) {
-      localDB.getClientId().then(id => { this.clientId = id; });
+      this.clientId = await localDB.getClientId();
     }
 
     const client = getClient();
-    const userId = authManager.getUserId();
 
     this.realtimeChannel = client
       .channel(`space:${spaceId}`, {
         config: {
-          presence: { key: userId || undefined },
+          presence: { key: userId },
           broadcast: { self: false },
         },
       })
@@ -910,7 +921,10 @@ class CollaborationEngine {
       // Listen for granular editing operations via Broadcast
       .on('broadcast', { event: 'doc-ops' }, (msg) => {
         const { path, ops, clientId: senderClientId } = msg.payload || {};
-        if (!path || !ops || senderClientId === this.clientId) return;
+        // Skip if no payload, or if this is our own echo (should not happen
+        // with self:false but guard defensively), or if clientId is empty.
+        if (!path || !ops) return;
+        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
         const lastTs = this.lastAppliedTimestamps.get(path) || 0;
         // Filter stale operations
         const freshOps = (ops as CollabOperation[]).filter(
@@ -925,7 +939,7 @@ class CollaborationEngine {
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
         const presence = msg.payload as CursorPresence | undefined;
-        if (!presence || presence.user_id === authManager.getUserId()) return;
+        if (!presence || presence.user_id === userId) return;
         this.remoteCursorListeners.forEach(fn => fn(presence));
       })
       // Track presence
@@ -933,7 +947,7 @@ class CollaborationEngine {
         this.handlePresenceSync();
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && userId) {
+        if (status === 'SUBSCRIBED') {
           const user = authManager.getUser();
           await this.realtimeChannel?.track({
             user_id: userId,
@@ -946,32 +960,64 @@ class CollaborationEngine {
 
   unsubscribeFromSpace() {
     if (this.realtimeChannel) {
+      // Clean up our presence entry before destroying the channel
+      // to prevent ghost avatar lingering.
+      try {
+        this.realtimeChannel.untrack();
+      } catch { /* best-effort */ }
       this.realtimeChannel.unsubscribe();
       this.realtimeChannel = null;
     }
-    this._activeSpaceId = null;
+    // NOTE: we intentionally do NOT clear _activeSpaceId here.
+    // The space ID is metadata about which space this vault is linked to,
+    // and must persist across channel reconnections. Clearing it breaks
+    // all guards in LeafPaneEditor that check `collaborationEngine.activeSpaceId`.
     this.notifyActiveUsers([]);
+  }
+
+  /**
+   * Explicitly clear the active space context. Call this only when
+   * the vault is actually being switched or the app is unmounting.
+   */
+  clearActiveSpace() {
+    this.unsubscribeFromSpace();
+    this._activeSpaceId = null;
   }
 
   private handlePresenceSync() {
     if (!this.realtimeChannel) return;
 
     const presenceState = this.realtimeChannel.presenceState();
-    const users: ActiveUser[] = [];
     const currentUserId = authManager.getUserId();
+
+    // Collect ALL presence entries, then deduplicate by user_id.
+    // A single user can have multiple presence entries from reconnections,
+    // multiple tabs, or presence key drift. Without deduplication this
+    // causes the "10 avatars for 2 users" bug.
+    const byUserId = new Map<string, any>();
 
     for (const [_key, presences] of Object.entries(presenceState)) {
       for (const p of presences as any[]) {
+        if (!p.user_id) continue; // Skip entries without a user_id
         if (p.user_id === currentUserId) continue; // Skip self
-        users.push({
-          id: p.user_id,
-          email: p.email || '',
-          name: p.email?.split('@')[0] || '',
-          color: getColorForUser(p.user_id),
-          isEditing: !!p.is_typing,
-          activeNoteId: p.active_note_id || null,
-        });
+
+        const existing = byUserId.get(p.user_id);
+        if (!existing || (p.online_at && (!existing.online_at || p.online_at > existing.online_at))) {
+          byUserId.set(p.user_id, p);
+        }
       }
+    }
+
+    const users: ActiveUser[] = [];
+    for (const p of byUserId.values()) {
+      users.push({
+        id: p.user_id,
+        email: p.email || '',
+        name: p.email?.split('@')[0] || '',
+        color: getColorForUser(p.user_id),
+        isEditing: !!p.is_typing,
+        activeNoteId: p.active_note_id || null,
+      });
     }
 
     this.notifyActiveUsers(users);
@@ -1137,7 +1183,7 @@ class CollaborationEngine {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   dispose() {
-    this.unsubscribeFromSpace();
+    this.clearActiveSpace();
     this.listeners.clear();
     this.activeUsersListeners.clear();
     this.changeListeners.clear();

@@ -4057,8 +4057,8 @@ export default function App() {
     const didContextChange = prevSub.vaultPath !== vaultPath || prevSub.userId !== currentUserId;
 
     if (didContextChange) {
-      // Context changed (e.g. vault switch or login/logout). Clean up the old channel.
-      collaborationEngine.unsubscribeFromSpace();
+      // Context changed (e.g. vault switch or login/logout). Fully clear old space.
+      collaborationEngine.clearActiveSpace();
       setCollaborators([]);
       setActiveUsers([]);
       setInvitesSent([]);
@@ -4073,32 +4073,51 @@ export default function App() {
     // Connect sync engine to vault
     syncEngine.setActiveVault(vaultPath);
 
-    const loadCollabState = async () => {
+    // One-time initialization: find the space, subscribe to realtime.
+    // This runs once per context change (vault switch or login).
+    const initCollab = async () => {
       try {
-        // Use collaborationEngine to get the space for this vault
         const space = await collaborationEngine.getSpaceForVault(vaultPath);
         if (space) {
           collabSubRef.current.spaceId = space.id;
 
-          // Get collaborators for the TitleBar avatars
           const collabs = await collaborationEngine.getCollaborators(space.id);
           setCollaborators(collabs);
 
           const sent = await collaborationEngine.getSentInvites(space.id);
           setInvitesSent(sent);
 
-          // Subscribe to realtime changes + presence
-          collaborationEngine.subscribeToSpace(space.id);
+          // Subscribe to realtime changes + presence (called ONCE, not in polling)
+          await collaborationEngine.subscribeToSpace(space.id);
         } else {
           setCollaborators([]);
           setActiveUsers([]);
           setInvitesSent([]);
         }
       } catch (err) {
-        console.error('[App] Failed to load collab state:', err);
+        console.error('[App] Failed to init collab state:', err);
       }
 
-      // Load incoming invites regardless of space
+      try {
+        const incoming = await collaborationEngine.getIncomingInvites();
+        setInvitesReceived(incoming);
+      } catch { /* ignore */ }
+    };
+
+    // Lightweight polling: only refreshes collaborator lists and invites.
+    // Does NOT call subscribeToSpace (that would tear down and recreate the channel).
+    const refreshCollabData = async () => {
+      const spaceId = collabSubRef.current.spaceId;
+      if (!spaceId) return;
+
+      try {
+        const collabs = await collaborationEngine.getCollaborators(spaceId);
+        setCollaborators(collabs);
+
+        const sent = await collaborationEngine.getSentInvites(spaceId);
+        setInvitesSent(sent);
+      } catch { /* ignore */ }
+
       try {
         const incoming = await collaborationEngine.getIncomingInvites();
         setInvitesReceived(incoming);
@@ -4110,21 +4129,21 @@ export default function App() {
       setActiveUsers(users);
     });
 
-    loadCollabState();
-    const interval = setInterval(loadCollabState, 15000);
+    initCollab();
+    const interval = setInterval(refreshCollabData, 15000);
 
     return () => {
       clearInterval(interval);
       unsubActiveUsers();
       // We DO NOT unsubscribe here to avoid tearing down the channel on every render.
-      // Unsubscription is handled on vault/user change or actual component unmount.
+      // Unsubscription is handled on context change (above) or actual component unmount (below).
     };
   }, [vaultPath, currentUser, authLoading]);
 
   // Unmount-only cleanup for collaboration and syncEngine
   useEffect(() => {
     return () => {
-      collaborationEngine.unsubscribeFromSpace();
+      collaborationEngine.clearActiveSpace();
       syncEngine.setActiveVault(null);
     };
   }, []);
