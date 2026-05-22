@@ -35,10 +35,10 @@ import {
   Save,
   Download,
   Upload,
-  Package,
   Eye,
   Zap,
 } from "lucide-react";
+import { SpacesIcon } from "./SpacesIcon";
 import {
   loadStore,
   findSimilar,
@@ -550,7 +550,7 @@ export function AIPage({
             <Search size={14} /> Query
           </button>
           <button className={`thought-model-tab ${activeTab === "spaces" ? "active" : ""}`} onClick={() => setActiveTab("spaces")}>
-            <Package size={14} /> Spaces
+            <SpacesIcon size={14} /> Spaces
           </button>
           <div style={{ flex: 1 }} />
           <button className={`thought-model-tab ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>

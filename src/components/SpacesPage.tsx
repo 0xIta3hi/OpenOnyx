@@ -2,17 +2,17 @@
  * SpacesPage — Main entry for the Spaces feature
  *
  * A Space is a queryable knowledge layer over the user's entire vault.
- * No manual note management — all vault notes are automatically indexed.
+ * Stored locally (or synced with Supabase), fully indexed using AI embeddings.
  *
- * Two views:
- *  1. Marketplace — grid of all spaces with create/delete/remix
- *  2. Space View — header, chat with streaming AI, vault note previews
+ * Redesigned UI/UX:
+ *  1. Marketplace — Gorgeous glassmorphic grid with search, filter tabs, stats.
+ *  2. Dual-Column Workspace — Sidebar (details & indexed notes explorer) + AI Chat.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Layers, Plus, X, Trash2, ArrowLeft, Send, Loader2,
-  Copy, FileText, Globe, RefreshCw, LogIn, LogOut,
+  Plus, X, Trash2, ArrowLeft, Send, Loader2,
+  Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
@@ -23,6 +23,7 @@ import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
 import type { FileEntry } from "../types/index";
+import { SpacesIcon } from "./SpacesIcon";
 import { MarkdownPreview } from "./editor/MarkdownPreview";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
@@ -39,11 +40,11 @@ interface SpacesPageProps {
 // ── Suggested Queries ────────────────────────────────────────────────────────
 
 const SUGGESTED_QUERIES = [
-  "How should I start?",
-  "What mistakes should I avoid?",
-  "Give me a simple plan",
-  "What are the key themes?",
-  "Summarize the most important ideas",
+  "Summarize the key ideas in my vault",
+  "What are the main connections and themes?",
+  "What mistakes or gaps should I watch out for?",
+  "Give me a simple, actionable plan based on my notes",
+  "How can I structure this project better?"
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -59,8 +60,8 @@ function countNotes(entries: FileEntry[] = []): number {
   return count;
 }
 
-/** Get a few preview notes from the file tree */
-function getPreviewNotes(entries: FileEntry[] = [], max = 6): { path: string; title: string }[] {
+/** Get all preview notes from the file tree */
+function getPreviewNotes(entries: FileEntry[] = [], max = 15): { path: string; title: string }[] {
   if (!entries) return [];
   const notes: { path: string; title: string; modified: number }[] = [];
 
@@ -99,16 +100,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [view, setView] = useState<"marketplace" | "space">("marketplace");
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
 
-  // Marketplace state
+  // Marketplace states
   const [spaces, setSpaces] = useState<SpaceIndexEntry[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [marketFilter, setMarketFilter] = useState<"all" | "local" | "cloud">("all");
+  const [marketSearch, setMarketSearch] = useState("");
 
   // Space view state
   const [activeSpace, setActiveSpace] = useState<Space | null>(null);
   const currentUserId = authManager.getUserId();
   const isRemote = activeSpace?.visibility !== "local" && activeSpace?.ownerId !== currentUserId;
 
-  // Create form
+  // Create form states
   const [createTitle, setCreateTitle] = useState("");
   const [createDesc, setCreateDesc] = useState("");
   const [createTags, setCreateTags] = useState<string[]>([]);
@@ -306,7 +309,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         }
       }
 
-      // Fetch a FRESH file tree from the API to avoid stale props (especially after remix)
+      // Fetch a FRESH file tree from the API to avoid stale props
       const api = getAPI();
       const freshTree = await api.getFileTree();
       
@@ -343,7 +346,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             .select("id, title")
             .eq("space_id", activeSpaceId)
             .eq("deleted", false)
-            .limit(10);
+            .limit(15);
           
           if (data) {
             setRemoteNotes(data.map(n => ({ path: n.id, title: n.title })));
@@ -414,8 +417,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     }
   };
 
-  // Scroll to bottom on new messages (guard: only when there are actual messages
-  // to prevent scrollIntoView from propagating to ancestor containers on mount)
+  // Scroll to bottom on new messages
   useEffect(() => {
     if (chatMessages.length > 0 || streamingText) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -437,147 +439,227 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     }
   };
 
+  // ── Filtering and Search inside Marketplace ─────────
+  const filteredSpaces = spaces.filter((s) => {
+    const matchesSearch =
+      s.title.toLowerCase().includes(marketSearch.toLowerCase()) ||
+      (s.description || "").toLowerCase().includes(marketSearch.toLowerCase()) ||
+      (s.helpsWith || []).some(t => t.toLowerCase().includes(marketSearch.toLowerCase()));
+
+    if (marketFilter === "local") {
+      return matchesSearch && s.visibility === "local";
+    }
+    if (marketFilter === "cloud") {
+      return matchesSearch && s.visibility !== "local";
+    }
+    return matchesSearch;
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER: Marketplace
+  // RENDER: Marketplace View
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (view === "marketplace") {
     return (
       <div className="spaces-page">
-        {/* Toast notification */}
+        {/* Toast Notification */}
         {toastMessage && (
-          <div
-            className={`space-toast ${toastType}`}
-            onClick={() => setToastMessage(null)}
-          >
+          <div className={`space-toast ${toastType}`} onClick={() => setToastMessage(null)}>
             {toastMessage}
           </div>
         )}
-        <div className="spaces-header">
-          <h2>
-            <Globe size={18} strokeWidth={1.5} style={{ opacity: 0.5 }} />
-            Spaces
-          </h2>
-          <div className="spaces-header-actions">
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(true)}>
+
+        <div className="spaces-marketplace-container">
+          {/* Left Sidebar Panel */}
+          <div className="spaces-marketplace-sidebar">
+            <div className="spaces-sidebar-brand">
+              <SpacesIcon size={18} />
+              <span>Spaces</span>
+            </div>
+
+            <button
+              className="btn btn-primary btn-sm spaces-sidebar-new-btn"
+              onClick={() => setShowCreateModal(true)}
+            >
               <Plus size={14} /> New Space
             </button>
-            <button className="btn btn-ghost" onClick={onClose}>
-              <X size={16} />
-            </button>
-          </div>
-        </div>
 
-        <div className="space-cloud-status">
-          <div className="space-cloud-status-text">
-            {isSupabaseConfigured
-              ? authEmail
-                ? `Cloud DB connected. Signed in as ${authEmail}.`
-                : "Cloud DB connected. Sign in to create private/public spaces."
-              : "Cloud DB not configured. Spaces run in local-only mode."}
-          </div>
-          <div className="space-cloud-status-actions">
-            {authEmail ? (
-              <button className="btn btn-ghost btn-sm" onClick={handleSignOut}>
-                <LogOut size={12} /> Sign out
-              </button>
-            ) : (
+            <div className="spaces-menu-list">
               <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setAuthMessage("Sign in to create cloud spaces and sync with Supabase.");
-                  setShowAuthModal(true);
-                }}
-                disabled={!isSupabaseConfigured}
-                title={!isSupabaseConfigured ? "Set Supabase env vars to enable cloud auth" : undefined}
+                className={`spaces-menu-item ${marketFilter === "all" ? "active" : ""}`}
+                onClick={() => setMarketFilter("all")}
               >
-                <LogIn size={12} /> Sign in
+                <SpacesIcon size={14} />
+                All Custom Layers
               </button>
-            )}
+              <button
+                className={`spaces-menu-item ${marketFilter === "local" ? "active" : ""}`}
+                onClick={() => setMarketFilter("local")}
+              >
+                <FileText size={14} strokeWidth={1.5} />
+                Local Vaults
+              </button>
+              <button
+                className={`spaces-menu-item ${marketFilter === "cloud" ? "active" : ""}`}
+                onClick={() => setMarketFilter("cloud")}
+              >
+                <Globe size={14} strokeWidth={1.5} />
+                Cloud Hub
+              </button>
+            </div>
+
+            {/* Cloud User Profile status in Sidebar */}
+            <div className="spaces-sidebar-user-section">
+              <div className="spaces-user-status-text">
+                {isSupabaseConfigured
+                  ? authEmail
+                    ? `Cloud Connected\n${authEmail}`
+                    : "Cloud database online. Sign in for sync."
+                  : "Cloud offline (Local Mode)"}
+              </div>
+              <div>
+                {authEmail ? (
+                  <button className="btn btn-ghost btn-sm" onClick={handleSignOut} style={{ width: "100%", padding: "6px 12px", fontSize: 11 }}>
+                    <LogOut size={12} /> Sign out
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setAuthMessage("Sign in to sync your knowledge layers with the cloud.");
+                      setShowAuthModal(true);
+                    }}
+                    disabled={!isSupabaseConfigured}
+                    title={!isSupabaseConfigured ? "Configure Supabase vars in environment to enable cloud database" : undefined}
+                    style={{ width: "100%", padding: "6px 12px", fontSize: 11 }}
+                  >
+                    <LogIn size={12} /> Sign in
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Main Content Panel */}
+          <div className="spaces-marketplace-content">
+            <div className="spaces-marketplace-header">
+              <div className="spaces-search-wrapper">
+                <Search size={13} className="spaces-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search custom spaces..."
+                  className="spaces-search-input"
+                  value={marketSearch}
+                  onChange={(e) => setMarketSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="spaces-marketplace-header-right">
+                <div className="spaces-marketplace-stats">
+                  Vault Notes: {vaultNoteCount} | Custom Layers: {spaces.length}
+                </div>
+                <button className="spaces-close-btn" onClick={onClose}>
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Main Body Grid */}
+            <div className="spaces-body">
+              {filteredSpaces.length === 0 ? (
+                <div className="spaces-empty">
+                  <SpacesIcon size={36} style={{ opacity: 0.3, color: "var(--text-muted)", marginBottom: 8 }} />
+                  <p>
+                    {marketSearch
+                      ? `No spaces matched the query "${marketSearch}".`
+                      : `Build your first queryable AI knowledge layer over your ${vaultNoteCount} notes.`}
+                  </p>
+                  {!marketSearch && (
+                    <button className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
+                      <Plus size={14} /> Create a Space
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="spaces-grid">
+                  {filteredSpaces.map((s) => (
+                    <div key={s.id} className="space-card" onClick={() => openSpace(s.id)}>
+                      <div className="space-card-header-row">
+                        <h3 className="space-card-title">{s.title}</h3>
+                        <span className={`visibility-badge ${s.visibility}`}>
+                          {getVisibilityLabel(s.visibility)}
+                        </span>
+                      </div>
+
+                      {s.description && <p className="space-card-desc">{s.description}</p>}
+
+                      {(s.helpsWith || []).length > 0 && (
+                        <div className="space-card-tags">
+                          {(s.helpsWith || []).map((tag) => (
+                            <span key={tag} className="space-tag">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="space-card-meta">
+                        <div className="space-card-meta-left">
+                          <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} index size</span>
+                        </div>
+                        <div className="space-card-actions" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => handleFork(s.id)} title="Remix/Save Space">
+                            <Copy size={11} /> Remix
+                          </button>
+                          <button onClick={() => setDeleteConfirmId(s.id)} title="Delete Space">
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="spaces-body">
-          {spaces.length === 0 ? (
-            <div className="spaces-empty">
-              <Layers size={40} style={{ opacity: 0.12 }} />
-              <p>
-                No spaces yet. Create one to make your {vaultNoteCount} note{vaultNoteCount !== 1 ? "s" : ""} queryable with AI.
-              </p>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(true)}>
-                <Plus size={14} /> Create your first Space
-              </button>
-            </div>
-          ) : (
-            <div className="spaces-grid">
-              {spaces.map((s) => (
-                <div key={s.id} className="space-card" onClick={() => openSpace(s.id)}>
-                  <h3 className="space-card-title">{s.title}</h3>
-                  {s.description && <p className="space-card-desc">{s.description}</p>}
-                  {(s.helpsWith || []).length > 0 && (
-                    <div className="space-card-tags">
-                      {(s.helpsWith || []).map((tag) => (
-                        <span key={tag} className="space-tag">{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="space-card-meta">
-                    <div className="space-card-meta-left">
-                      <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} indexed</span>
-                      <span className={`visibility-badge ${s.visibility}`}>
-                        {getVisibilityLabel(s.visibility)}
-                      </span>
-                    </div>
-                    <div className="space-card-actions" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleFork(s.id)} title="Remix">
-                        <Copy size={12} /> Remix
-                      </button>
-                      <button onClick={() => setDeleteConfirmId(s.id)} title="Delete">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Create Modal */}
+        {/* Create Space Dialog Modal */}
         {showCreateModal && (
           <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h3>Create Space</h3>
+                <h3>New Knowledge Space</h3>
                 <button className="modal-close" onClick={() => setShowCreateModal(false)}>
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
               <div className="space-create-form">
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", padding: "4px 0 8px", lineHeight: 1.5 }}>
-                  This will index all {vaultNoteCount} notes in your vault as a queryable knowledge space.
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                  Creates an AI-queryable vector directory indexing all {vaultNoteCount} notes in your active vault.
                 </div>
+
                 <div className="space-form-field">
                   <label>Title</label>
                   <input
                     className="space-form-input"
-                    placeholder="e.g. React Patterns"
+                    placeholder="e.g. Research Hub, React Dev"
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
                     autoFocus
                   />
                 </div>
+
                 <div className="space-form-field">
                   <label>Description</label>
                   <textarea
                     className="space-form-input"
-                    placeholder="What is this space about?"
+                    placeholder="Describe the knowledge covered by this space..."
                     value={createDesc}
                     onChange={(e) => setCreateDesc(e.target.value)}
                   />
                 </div>
+
                 <div className="space-form-field">
-                  <label>Helps with (press Enter to add)</label>
+                  <label>Focus Tags (Press Enter / Comma)</label>
                   <div className="space-form-tags-input">
                     {createTags.map((tag) => (
                       <span key={tag} className="space-form-tag">
@@ -588,22 +670,23 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       </span>
                     ))}
                     <input
-                      placeholder={createTags.length === 0 ? "e.g. hooks, state, performance" : ""}
+                      placeholder={createTags.length === 0 ? "e.g. backend, hooks, styling" : ""}
                       value={createTagInput}
                       onChange={(e) => setCreateTagInput(e.target.value)}
                       onKeyDown={handleTagKeyDown}
                     />
                   </div>
                 </div>
+
                 <div className="space-form-field">
-                  <label>Visibility</label>
+                  <label>Vault Visibility</label>
                   <div className="space-visibility-options">
                     <button
                       type="button"
                       className={`space-visibility-option ${createVisibility === "local" ? "active" : ""}`}
                       onClick={() => setCreateVisibility("local")}
                     >
-                      Local only
+                      Local-Only
                     </button>
                     <button
                       type="button"
@@ -611,7 +694,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       onClick={() => setCreateVisibility("private")}
                       disabled={!isSupabaseConfigured}
                     >
-                      Private cloud
+                      Private Cloud
                     </button>
                     <button
                       type="button"
@@ -619,32 +702,33 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       onClick={() => setCreateVisibility("public")}
                       disabled={!isSupabaseConfigured}
                     >
-                      Public
+                      Public Cloud
                     </button>
                   </div>
                   <div className="space-form-hint">
                     {createVisibility === "local"
-                      ? "Stored only on this device."
+                      ? "Securely cached on this local device only."
                       : createVisibility === "private"
-                        ? "Synced to cloud and visible only to your account."
-                        : "Published publicly so others can discover and remix it."}
+                        ? "Encrypted & synced. Access restricted to your logged account."
+                        : "Published dynamically. Discoverable and remixable by others."}
                   </div>
                   {!isSupabaseConfigured && (
                     <div className="space-form-hint warning">
-                      Cloud options require VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.
+                      Cloud DB parameters (Supabase environment keys) are required to toggle remote features.
                     </div>
                   )}
                 </div>
+
                 {createError && <div className="space-form-error">{createError}</div>}
+
                 <div className="space-form-actions">
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(false)}>
                     Cancel
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="btn btn-primary btn-sm"
                     onClick={handleCreate}
                     disabled={!createTitle.trim()}
-                    style={{ fontWeight: 600 }}
                   >
                     Create Space
                   </button>
@@ -654,7 +738,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
         )}
 
-        {/* Delete Confirm */}
+        {/* Delete Confirm Modal */}
         {deleteConfirmId && (() => {
           const spaceToDelete = spaces.find(s => s.id === deleteConfirmId);
           const isCloud = spaceToDelete && spaceToDelete.visibility !== "local";
@@ -664,37 +748,46 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
           return (
             <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
-                <div className="space-delete-confirm">
-                  <p>
-                    Delete <strong>{spaceToDelete?.title || "this space"}</strong>?
+              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+                <div className="modal-header">
+                  <h3>Delete Space</h3>
+                  <button className="modal-close" onClick={() => setDeleteConfirmId(null)}>
+                    <X size={15} />
+                  </button>
+                </div>
+                <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+                    Are you sure you want to delete <strong>{spaceToDelete?.title || "this layer"}</strong>?
                     {" "}
                     {spaceToDelete?.visibility === "local"
-                      ? "This local space will be removed from your vault."
+                      ? "This action clears all local index tables."
                       : isOwner
-                        ? "This will also remove it from the cloud."
+                        ? "This will permanently remove the indices from cloud registers."
                         : ""}
                   </p>
+
                   {isCloud && !authManager.isLoggedIn() && (
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                      You must sign in to delete cloud spaces.
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+                      Account authentication is required to modify cloud states.
                     </p>
                   )}
+
                   {isCloud && authManager.isLoggedIn() && !isOwner && (
-                    <p style={{ fontSize: 11, color: "#e8a838", marginTop: 4 }}>
-                      Only the owner can delete this space.
+                    <p style={{ fontSize: 11, color: "#e8a838", margin: 0 }}>
+                      Only space authors can delete this layer from cloud directory.
                     </p>
                   )}
-                  <div className="space-form-actions">
+
+                  <div className="space-form-actions" style={{ marginTop: 8 }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirmId(null)}>
                       Cancel
                     </button>
                     <button
-                      className="btn btn-ghost btn-sm btn-danger"
+                      className="btn btn-primary btn-sm btn-danger"
                       onClick={() => handleDelete(deleteConfirmId)}
                       disabled={!canDelete}
                     >
-                      Delete
+                      Confirm Delete
                     </button>
                   </div>
                 </div>
@@ -718,209 +811,286 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER: Space View
+  // RENDER: Space View (Dual-Column Overhaul)
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (!activeSpace) return null;
 
+  const notesList = activeSpace.visibility === "local" ? previewNotes : remoteNotes;
+
   return (
     <div className="spaces-page space-view">
-      <button
-        className="space-view-back"
-        onClick={() => {
-          setView("marketplace");
-          setActiveSpace(null);
-          setActiveSpaceId(null);
-          setIsIndexed(false);
-        }}
-      >
-        <ArrowLeft size={14} /> Back to Spaces
-      </button>
+      {/* Dual Column Workspace Container */}
+      <div className="space-view-workspace">
+        
+        {/* LEFT COLUMN: Sidebar (ChatGPT-Inspired Details & Notes Explorer) */}
+        <div className="space-view-sidebar">
+          {/* ChatGPT-style Sidebar Header Actions */}
+          <div className="space-sidebar-actions-group">
+            <button
+              className="space-sidebar-btn primary-action"
+              onClick={() => {
+                setChatMessages([]);
+                setStreamingText("");
+                setChatInput("");
+              }}
+              title="Start a new AI conversation session"
+            >
+              <Plus size={14} />
+              <span>New chat</span>
+            </button>
 
-        {/* Index Progress — always rendered but hidden when not indexing to avoid layout shifts */}
-        <div className={`space-index-bar${isIndexing ? " is-active" : ""}`}>
-          <Loader2 size={14} className="spinner" />
-          <span>Indexing vault notes...</span>
-          <div className="space-index-progress">
-            <div
-              className="space-index-progress-fill"
-              style={{ width: `${indexProgress.total > 0 ? (indexProgress.done / indexProgress.total) * 100 : 0}%` }}
-            />
+            <button
+              className="space-sidebar-btn secondary-action"
+              onClick={() => {
+                setView("marketplace");
+                setActiveSpace(null);
+                setActiveSpaceId(null);
+                setIsIndexed(false);
+              }}
+              title="Return to the spaces marketplace directory"
+            >
+              <ArrowLeft size={14} />
+              <span>Back to Spaces</span>
+            </button>
           </div>
-          <span>{indexProgress.done}/{indexProgress.total}</span>
-        </div>
 
-        <div className="space-view-scroll">
-          {/* Header */}
-          <div className="space-view-header">
-            <div className="space-view-title-row">
-              <div>
-                <h1 className="space-view-title">{activeSpace.title}</h1>
-                {activeSpace.description && (
-                  <p className="space-view-desc">{activeSpace.description}</p>
-                )}
-                <div className={`visibility-badge ${activeSpace.visibility}`} style={{ marginTop: 8 }}>
+          {/* Space Information Details block */}
+          <div className="space-sidebar-section">
+            <div className="space-sidebar-section-header">Space Layer</div>
+            <div className="space-sidebar-project-card">
+              <div className="space-sidebar-project-header">
+                <span className={`space-sidebar-visibility ${activeSpace.visibility}`}>
                   {getVisibilityLabel(activeSpace.visibility)}
-                </div>
+                </span>
+                <span className="space-sidebar-project-title">{activeSpace.title}</span>
               </div>
-              <div className="space-view-actions">
+              
+              {activeSpace.description && (
+                <p className="space-sidebar-project-desc">{activeSpace.description}</p>
+              )}
+
+              {(activeSpace.helpsWith || []).length > 0 && (
+                <div className="space-sidebar-project-tags">
+                  {(activeSpace.helpsWith || []).map((tag) => (
+                    <span key={tag} className="space-sidebar-project-tag">{tag}</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-sidebar-project-meta">
+                {activeSpace.visibility === "local" 
+                  ? `${activeSpace.noteCount || vaultNoteCount} notes indexed` 
+                  : `${activeSpace.noteCount ?? 0} notes indexed`}
+              </div>
+
+              <div className="space-sidebar-project-actions">
                 {!isRemote && (
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="space-sidebar-project-btn"
                     onClick={handleBuildIndex}
                     disabled={isIndexing}
-                    title="Re-index vault notes"
+                    title="Recompute vector indexes over note database"
                   >
-                    <RefreshCw size={13} className={isIndexing ? "spinner" : ""} /> Re-index
+                    <RefreshCw size={11} className={isIndexing ? "spinner" : ""} />
+                    <span>Re-index</span>
                   </button>
                 )}
-                <button className="btn btn-ghost btn-sm" onClick={() => handleFork(activeSpace.id)}>
-                  <Copy size={13} /> Remix
+                <button className="space-sidebar-project-btn" onClick={() => handleFork(activeSpace.id)}>
+                  <Copy size={11} />
+                  <span>Remix</span>
                 </button>
               </div>
             </div>
-            {(activeSpace.helpsWith || []).length > 0 && (
-              <div className="space-view-tags">
-                {(activeSpace.helpsWith || []).map((tag) => (
-                  <span key={tag} className="space-view-tag">{tag}</span>
-                ))}
-              </div>
-            )}
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-              {activeSpace.visibility === "local" 
-                ? `${activeSpace.noteCount || vaultNoteCount} vault notes indexed` 
-                : `${activeSpace.noteCount ?? 0} notes indexed`}
-            </div>
           </div>
 
-          {/* Vault Preview — recent notes */}
-          {(activeSpace.visibility === "local" ? previewNotes : remoteNotes).length > 0 && (
-            <div className="space-preview-section">
-              <div className="space-section-label">
-                {activeSpace.visibility === "local" 
-                  ? "Recent Vault Notes" 
-                  : "Recent Cloud Notes"}
+          {/* Curated File Navigator explorer list ("Recents" style) */}
+          <div className="space-sidebar-section fill-height">
+            <div className="space-sidebar-section-header">
+              <span>Indexed Notes</span>
+              <span className="space-sidebar-section-badge">{notesList.length}</span>
+            </div>
+
+            {notesList.length === 0 ? (
+              <div className="space-sidebar-notes-empty">
+                {isLoadingRemote ? "Loading index matrix..." : "No note layers indexed."}
               </div>
-              <div className="space-preview-grid">
-                {(activeSpace.visibility === "local" ? previewNotes : remoteNotes).map((note) => (
+            ) : (
+              <div className="space-sidebar-notes-list">
+                {notesList.map((note) => (
                   <div
                     key={note.path}
-                    className="space-preview-card"
+                    className="space-sidebar-note-item"
                     onClick={() => {
                       if (note.path && onOpenNote) {
                         onOpenNote(note.path);
                       }
                     }}
-                    style={{ cursor: onOpenNote ? "pointer" : "default" }}
+                    title={activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()
+                      ? "Click to open in Markdown Editor"
+                      : "Cloud read-only index. Remix to make local edits."}
                   >
-                    <h4>
-                      <FileText size={12} style={{ opacity: 0.4, marginRight: 6 }} />
-                      {note.title}
-                    </h4>
-                    <p style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                      {activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()
-                        ? "Click to open in editor"
-                        : "Cloud note (Remix to edit)"}
-                    </p>
+                    <FileText size={13} className="space-note-icon" />
+                    <span className="space-note-title">{note.title}</span>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-
-        {/* Chat Section */}
-        <div className="space-chat-section">
-          <div className="space-section-label">
-            Want to know something specific? Ask this brain
+            )}
           </div>
+        </div>
 
-          {/* Suggested queries — only shown when no messages yet */}
-          {chatMessages.length === 0 && (
-            <div className="space-chat-suggestions">
-              {SUGGESTED_QUERIES.map((q) => (
-                <button key={q} className="space-chat-suggestion" onClick={() => handleChat(q)}>
-                  {q}
-                </button>
-              ))}
+        {/* RIGHT COLUMN: Interactive AI Conversation Interface */}
+        <div className="space-view-chat-container">
+          {isIndexing && (
+            <div className="space-view-indexing-indicator">
+              <Loader2 size={12} className="spinner" />
+              <span>AI Indexing Vault... ({indexProgress.done}/{indexProgress.total})</span>
             </div>
           )}
-
-          {/* Chat history */}
-          {chatMessages.map((msg) => (
-            <div key={msg.id} className="space-chat-response" style={msg.role === "user" ? {
-              background: "transparent", border: "none", padding: "8px 0",
-              fontWeight: 500, fontSize: 13, color: "var(--text-primary)",
-            } : {}}>
-              {msg.role === "user" ? (
-                <span>→ {msg.content}</span>
-              ) : (
-                <>
-                  <div className="space-chat-answer">
-                    <MarkdownPreview
-                      content={msg.content}
-                      onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                    />
+          
+          <div className="space-chat-messages-scroll">
+            {chatMessages.length === 0 && (
+              <div className="space-chat-welcome">
+                <div className="space-chat-welcome-glow" />
+                <div className="space-chat-welcome-content">
+                  <h2>Consult your knowledge space</h2>
+                  <p>Query the knowledge layer of {activeSpace?.title || "this space"} using semantic context retrieval.</p>
+                  
+                  {/* CENTRAL INPUT */}
+                  <div className="space-chat-central-input-wrapper">
+                    <div className="space-chat-input-wrapper">
+                      <textarea
+                        className="space-chat-input"
+                        placeholder="Ask anything..."
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={handleChatKeyDown}
+                        rows={1}
+                        disabled={isQuerying}
+                      />
+                      <button
+                        className="space-chat-send"
+                        onClick={() => handleChat()}
+                        disabled={!chatInput.trim() || isQuerying}
+                      >
+                        {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                      </button>
+                    </div>
+                    {!isAIConfigured() && (
+                      <div className="space-chat-no-ai-warning">
+                        Configure an API key in AI Settings to enable chat queries over vector layers.
+                      </div>
+                    )}
                   </div>
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="space-chat-sources">
-                      <span className="space-chat-sources-label">Sources</span>
-                      {msg.sources.map((s, i) => (
-                        <span key={i} className="space-chat-source-pill">{s}</span>
+
+                  <div className="space-chat-welcome-suggestions">
+                    <div className="space-chat-suggestions-grid">
+                      {SUGGESTED_QUERIES.map((q) => (
+                        <button key={q} className="space-chat-suggestion" onClick={() => handleChat(q)}>
+                          {q}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-
-          {/* Streaming indicator */}
-          {isQuerying && streamingText && (
-            <div className="space-chat-response">
-              <div className="space-chat-answer">
-                <MarkdownPreview
-                  content={streamingText}
-                  onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                />
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-          {isQuerying && !streamingText && (
-            <div className="space-chat-loading">
-              <Loader2 size={14} className="spinner" />
-              Thinking...
-            </div>
-          )}
+            )}
 
-          <div ref={chatEndRef} />
+            {/* Conversation Flow */}
+            {chatMessages.map((msg) => (
+              <div key={msg.id} className={`space-chat-message ${msg.role}`}>
+                {msg.role === "user" ? (
+                  <div className="message-bubble">
+                    <div className="message-content">{msg.content}</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="message-content">
+                      <MarkdownPreview
+                        content={msg.content}
+                        onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                      />
+                    </div>
+                    
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="space-chat-sources">
+                        <span className="space-chat-sources-label">Sources Used</span>
+                        <div className="space-chat-sources-list">
+                          {msg.sources.map((s, i) => (
+                            <span
+                              key={i}
+                              className="space-chat-source-pill"
+                              onClick={() => onOpenNote?.(`${s}.md`)}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
 
-          {/* Input */}
-          <div className="space-chat-input-row">
-            <textarea
-              className="space-chat-input"
-              placeholder="Ask this space anything..."
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={handleChatKeyDown}
-              rows={1}
-              disabled={isQuerying}
-            />
-            <button
-              className="space-chat-send"
-              onClick={() => handleChat()}
-              disabled={!chatInput.trim() || isQuerying}
-            >
-              {isQuerying ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
-            </button>
+            {/* Streaming Indicator */}
+            {isQuerying && streamingText && (
+              <div className="space-chat-message assistant">
+                <div className="message-content">
+                  <MarkdownPreview
+                    content={streamingText}
+                    onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* AI thinking state loader */}
+            {isQuerying && !streamingText && (
+              <div className="space-chat-loading-indicator">
+                <div className="flat-spinner" />
+                <span>Synthesizing response...</span>
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
           </div>
 
-          {!isAIConfigured() && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-              Configure an API key in AI Settings to enable chat.
+          {/* Sticky Anchored Query Drawer Input */}
+          {chatMessages.length > 0 && (
+            <div className="space-chat-input-panel">
+              <div className="space-chat-input-wrapper">
+                <textarea
+                  className="space-chat-input"
+                  placeholder="Ask anything..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={handleChatKeyDown}
+                  rows={1}
+                  disabled={isQuerying}
+                />
+                <button
+                  className="space-chat-send"
+                  onClick={() => handleChat()}
+                  disabled={!chatInput.trim() || isQuerying}
+                >
+                  {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                </button>
+              </div>
+              
+              <div className="space-chat-footer-info">
+                Spaces chat can make mistakes. Verify key details.
+              </div>
+
+              {!isAIConfigured() && (
+                <div className="space-chat-no-ai-warning">
+                  Configure an API key in AI Settings to enable chat queries over vector layers.
+                </div>
+              )}
             </div>
           )}
         </div>
+
       </div>
 
       {showAuthModal && (

@@ -10,9 +10,9 @@ import {
   List,
   Sparkles,
   Layout,
-  Package,
 } from "lucide-react";
 import type { PluginRibbonAction } from '../types/plugin';
+import { SpacesIcon } from "./SpacesIcon";
 
 interface RibbonProps {
   onNewNote: () => void;
@@ -122,7 +122,7 @@ export function Ribbon({
             onClick={onSpaces}
             data-tooltip="Spaces"
           >
-            <Package size={20} strokeWidth={1.5} />
+            <SpacesIcon size={20} />
           </button>
         )}
         {onCanvas && (
