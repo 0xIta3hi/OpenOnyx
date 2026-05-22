@@ -293,9 +293,23 @@ export function LeafPaneEditor({
     const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId) => {
       if (path !== activeTab.path) return;
 
-      isRemoteUpdateRef.current = true;
-      setContent(remoteContent);
-      onContentChangeGlobal(activeTab.path, remoteContent);
+      const view = editorViewRef.current;
+      if (view) {
+        const currentDoc = view.state.doc.toString();
+        if (currentDoc !== remoteContent) {
+          isRemoteUpdateRef.current = true;
+          view.dispatch({
+            changes: { from: 0, to: currentDoc.length, insert: remoteContent },
+            annotations: Transaction.userEvent.of('setContent'),
+          });
+          setContent(remoteContent);
+          onContentChangeGlobal(activeTab.path, remoteContent);
+        }
+      } else {
+        isRemoteUpdateRef.current = true;
+        setContent(remoteContent);
+        onContentChangeGlobal(activeTab.path, remoteContent);
+      }
 
       // Write to local disk (debounced)
       if (autoSaveTimer.current) {

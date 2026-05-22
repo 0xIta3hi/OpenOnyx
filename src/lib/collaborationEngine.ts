@@ -175,6 +175,9 @@ class CollaborationEngine {
   private realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
   private clientId: string = '';
   private lastAppliedTimestamps = new Map<string, number>();
+  constructor() {
+    this.init();
+  }
 
   get status() { return this._status; }
   get activeSpaceId() { return this._activeSpaceId; }
@@ -384,6 +387,18 @@ class CollaborationEngine {
       });
 
       await client.from('spaces').update({ status: 'ready' }).eq('id', spaceId);
+      await localDB.putSpace({
+        id: spaceId,
+        owner_id: user.id,
+        title: spaceName,
+        description: null,
+        helps_with: null,
+        is_public: false,
+        visibility: 'private',
+        forked_from: null,
+        created_at: now,
+        updated_at: now,
+      }, false);
       await localDB.setMeta(`collab_space_${normalizedVaultPath}`, spaceId);
       this._activeSpaceId = spaceId;
 
@@ -668,6 +683,22 @@ class CollaborationEngine {
         .eq('space_id', spaceId)
         .eq('user_id', user.id);
 
+      // Save space details in local cache if present in snapshot
+      if (snapshot.space) {
+        await localDB.putSpace({
+          id: snapshot.space.id,
+          owner_id: snapshot.space.owner_id,
+          title: snapshot.space.title,
+          description: snapshot.space.description || null,
+          helps_with: snapshot.space.helps_with || null,
+          is_public: snapshot.space.is_public || false,
+          visibility: (snapshot.space.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: snapshot.space.forked_from || null,
+          created_at: snapshot.space.created_at || new Date().toISOString(),
+          updated_at: snapshot.space.updated_at || new Date().toISOString(),
+        }, false);
+      }
+
       // Step 5: Store vault-space mapping
       await localDB.setMeta(`collab_space_${normalizedLocalPath}`, spaceId);
       this._activeSpaceId = spaceId;
@@ -707,14 +738,56 @@ class CollaborationEngine {
 
     if (!spaceId) return null;
 
-    const { data } = await client.from('spaces')
-      .select('*')
-      .eq('id', spaceId)
-      .single();
+    try {
+      const { data, error } = await client.from('spaces')
+        .select('*')
+        .eq('id', spaceId)
+        .single();
 
-    if (!data) return null;
-    this._activeSpaceId = spaceId;
-    return data as CloudSpace;
+      if (data) {
+        // Cache space details locally
+        await localDB.putSpace({
+          id: data.id,
+          owner_id: data.owner_id,
+          title: data.title,
+          description: data.description,
+          helps_with: data.helps_with || null,
+          is_public: data.is_public || false,
+          visibility: (data.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: data.forked_from || null,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        }, false);
+
+        this._activeSpaceId = spaceId;
+        return data as CloudSpace;
+      }
+
+      if (error) {
+        console.warn('[Collab] Remote space query failed, checking local cache:', error.message);
+      }
+    } catch (err) {
+      console.warn('[Collab] Exception fetching space details, checking local cache:', err);
+    }
+
+    // Fallback: load from local IndexedDB cache
+    const cachedSpace = await localDB.getSpace(spaceId);
+    if (cachedSpace) {
+      console.log('[Collab] Using cached space details for space:', spaceId);
+      this._activeSpaceId = spaceId;
+      return {
+        id: cachedSpace.id,
+        owner_id: cachedSpace.owner_id,
+        title: cachedSpace.title,
+        description: cachedSpace.description,
+        visibility: cachedSpace.visibility,
+        status: 'ready',
+        created_at: cachedSpace.created_at,
+        updated_at: cachedSpace.updated_at,
+      } as CloudSpace;
+    }
+
+    return null;
   }
 
   async getCollaborators(spaceId: string): Promise<SpaceCollaborator[]> {
@@ -767,6 +840,30 @@ class CollaborationEngine {
 
     if (error) {
       throw new Error(`Failed to link vault in cloud: ${error.message}`);
+    }
+
+    try {
+      const { data: space } = await client.from('spaces')
+        .select('*')
+        .eq('id', spaceId)
+        .single();
+
+      if (space) {
+        await localDB.putSpace({
+          id: space.id,
+          owner_id: space.owner_id,
+          title: space.title,
+          description: space.description || null,
+          helps_with: space.helps_with || null,
+          is_public: space.is_public || false,
+          visibility: (space.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: space.forked_from || null,
+          created_at: space.created_at,
+          updated_at: space.updated_at,
+        }, false);
+      }
+    } catch (e) {
+      console.warn('[Collab] Failed to cache linked space details:', e);
     }
 
     await localDB.setMeta(`collab_space_${normalizedPath}`, spaceId);

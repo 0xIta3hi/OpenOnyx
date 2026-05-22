@@ -973,6 +973,11 @@ export default function App() {
   const [pluginSettingTabs, setPluginSettingTabs] = useState<PluginSettingTabRegistration[]>([]);
   const pluginManagerRef = useRef<PluginManager | null>(null);
   const ooAppRef = useRef<OOApp | null>(null);
+  const collabSubRef = useRef<{
+    vaultPath: string | null;
+    userId: string | null;
+    spaceId: string | null;
+  }>({ vaultPath: null, userId: null, spaceId: null });
   const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; side: 'left' | 'right' | 'main' }>>([]);
   // Permission modal state
   const [permissionModalData, setPermissionModalData] = useState<{
@@ -4047,6 +4052,24 @@ export default function App() {
     if (authLoading) return;
     if (!vaultPath) return;
 
+    const currentUserId = currentUser?.id || null;
+    const prevSub = collabSubRef.current;
+    const didContextChange = prevSub.vaultPath !== vaultPath || prevSub.userId !== currentUserId;
+
+    if (didContextChange) {
+      // Context changed (e.g. vault switch or login/logout). Clean up the old channel.
+      collaborationEngine.unsubscribeFromSpace();
+      setCollaborators([]);
+      setActiveUsers([]);
+      setInvitesSent([]);
+
+      collabSubRef.current = {
+        vaultPath,
+        userId: currentUserId,
+        spaceId: null,
+      };
+    }
+
     // Connect sync engine to vault
     syncEngine.setActiveVault(vaultPath);
 
@@ -4055,6 +4078,8 @@ export default function App() {
         // Use collaborationEngine to get the space for this vault
         const space = await collaborationEngine.getSpaceForVault(vaultPath);
         if (space) {
+          collabSubRef.current.spaceId = space.id;
+
           // Get collaborators for the TitleBar avatars
           const collabs = await collaborationEngine.getCollaborators(space.id);
           setCollaborators(collabs);
@@ -4091,10 +4116,18 @@ export default function App() {
     return () => {
       clearInterval(interval);
       unsubActiveUsers();
+      // We DO NOT unsubscribe here to avoid tearing down the channel on every render.
+      // Unsubscription is handled on vault/user change or actual component unmount.
+    };
+  }, [vaultPath, currentUser, authLoading]);
+
+  // Unmount-only cleanup for collaboration and syncEngine
+  useEffect(() => {
+    return () => {
       collaborationEngine.unsubscribeFromSpace();
       syncEngine.setActiveVault(null);
     };
-  }, [vaultPath, currentUser, authLoading]);
+  }, []);
 
   // Listen to collaboration bootstrapping status globally
   useEffect(() => {
