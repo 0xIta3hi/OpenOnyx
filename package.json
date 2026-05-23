@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "A local-first knowledge management tool with graph-based note linking",
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/dev/start-electron.cjs\"",
     "build": "tsc && vite build && npm run build:electron",
@@ -60,7 +63,7 @@
     "@types/d3": "^7.4.3",
     "@types/dompurify": "^3.2.0",
     "@types/file-saver": "^2.0.7",
-    "@types/node": "^22.14.0",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.1",
     "@types/uuid": "^10.0.0",

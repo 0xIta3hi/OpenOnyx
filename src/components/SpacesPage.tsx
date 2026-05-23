@@ -2,27 +2,29 @@
  * SpacesPage — Main entry for the Spaces feature
  *
  * A Space is a queryable knowledge layer over the user's entire vault.
- * No manual note management — all vault notes are automatically indexed.
+ * Stored locally (or synced with Supabase), fully indexed using AI embeddings.
  *
- * Two views:
- *  1. Marketplace — grid of all spaces with create/delete/remix
- *  2. Space View — header, chat with streaming AI, vault note previews
+ * Redesigned UI/UX:
+ *  1. Marketplace — Gorgeous glassmorphic grid with search, filter tabs, stats.
+ *  2. Dual-Column Workspace — Sidebar (details & indexed notes explorer) + AI Chat.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
-  Layers, Plus, X, Trash2, ArrowLeft, Send, Loader2,
-  Copy, FileText, Globe, RefreshCw, LogIn, LogOut,
+  Plus, X, Trash2, ArrowLeft, Send, Loader2,
+  Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles,
+  Zap, Layers, Brain, Check, GitBranch
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
 } from "../utils/spaces-store";
 import { buildVectorIndex, type VaultNote } from "../utils/spaces-processing";
-import { querySpaceStreaming, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
+import { querySpaceStreaming, parseActionPayload, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
 import type { FileEntry } from "../types/index";
+import { SpacesIcon } from "./SpacesIcon";
 import { MarkdownPreview } from "./editor/MarkdownPreview";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
@@ -39,11 +41,11 @@ interface SpacesPageProps {
 // ── Suggested Queries ────────────────────────────────────────────────────────
 
 const SUGGESTED_QUERIES = [
-  "How should I start?",
-  "What mistakes should I avoid?",
-  "Give me a simple plan",
-  "What are the key themes?",
-  "Summarize the most important ideas",
+  "Summarize the key ideas in my vault",
+  "What are the main connections and themes?",
+  "What mistakes or gaps should I watch out for?",
+  "Give me a simple, actionable plan based on my notes",
+  "How can I structure this project better?"
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -59,8 +61,28 @@ function countNotes(entries: FileEntry[] = []): number {
   return count;
 }
 
-/** Get a few preview notes from the file tree */
-function getPreviewNotes(entries: FileEntry[] = [], max = 6): { path: string; title: string }[] {
+/** Catalog all markdown notes recursively in the vault */
+function getAllVaultNotes(entries: FileEntry[] = []): { path: string; title: string }[] {
+  if (!entries) return [];
+  const notes: { path: string; title: string }[] = [];
+
+  function walk(items: FileEntry[]) {
+    if (!items) return;
+    for (const e of items) {
+      if (e.isDirectory && e.children) {
+        walk(e.children);
+      } else if (e.name.endsWith(".md")) {
+        notes.push({ path: e.path, title: e.name.replace(/\.md$/, "") });
+      }
+    }
+  }
+
+  walk(entries);
+  return notes;
+}
+
+/** Get all preview notes from the file tree */
+function getPreviewNotes(entries: FileEntry[] = [], max = 15): { path: string; title: string }[] {
   if (!entries) return [];
   const notes: { path: string; title: string; modified: number }[] = [];
 
@@ -92,6 +114,136 @@ function getVisibilityLabel(visibility: SpaceVisibility): string {
   }
 }
 
+/**
+ * Detects the action type from a potentially incomplete action block during streaming,
+ * falling back to proactive detection from the user query if the stream hasn't started/reached the JSON block yet.
+ */
+function detectActionType(text: string, query?: string): string | null {
+  // 1. Try to detect from stream content first (highest accuracy)
+  if (text) {
+    const lower = text.toLowerCase();
+    if (lower.includes('"action": "create_note"') || lower.includes('"action":"create_note"') || lower.includes("'action': 'create_note'") || lower.includes("'action':'create_note'")) {
+      return "create_note";
+    }
+    if (lower.includes('"action": "update_note"') || lower.includes('"action":"update_note"') || lower.includes("'action': 'update_note'") || lower.includes("'action':'update_note'")) {
+      return "update_note";
+    }
+    if (lower.includes('"action": "suggest_structure"') || lower.includes('"action":"suggest_structure"') || lower.includes("'action': 'suggest_structure'") || lower.includes("'action':'suggest_structure'")) {
+      return "suggest_structure";
+    }
+    if (lower.includes('"action": "suggest_links"') || lower.includes('"action":"suggest_links"') || lower.includes("'action': 'suggest_links'") || lower.includes("'action':'suggest_links'")) {
+      return "suggest_links";
+    }
+    if (lower.includes('"action": "insight_report"') || lower.includes('"action":"insight_report"') || lower.includes("'action': 'insight_report'") || lower.includes("'action':'insight_report'")) {
+      return "insight_report";
+    }
+    if (lower.includes("```") || lower.includes('"action"') || lower.includes("'action'")) {
+      return "update_note";
+    }
+  }
+
+  // 2. Fall back to proactive pre-detection from the user's query
+  if (query) {
+    const qLower = query.toLowerCase();
+    if (qLower.includes("insight")) {
+      return "insight_report";
+    }
+    if (qLower.includes("organize") || qLower.includes("structure") || qLower.includes("hierarchy") || qLower.includes("folder")) {
+      return "suggest_structure";
+    }
+    if (qLower.includes("link")) {
+      return "suggest_links";
+    }
+    if (qLower.includes("summary") || qLower.includes("summarize") || qLower.includes("create")) {
+      return "create_note";
+    }
+    if (qLower.includes("rewrite") || qLower.includes("simplify") || qLower.includes("expand") || qLower.includes("edit") || qLower.includes("update") || qLower.includes("[[")) {
+      return "update_note";
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Strips JSON action blocks (complete or incomplete) from assistant messages.
+ */
+function stripJSONBlock(text: string): string {
+  if (!text) return "";
+  
+  let cleaned = text;
+
+  // 1. Handle complete or incomplete code block starting with ```json or ```
+  const codeBlockIndex = cleaned.indexOf("```");
+  if (codeBlockIndex !== -1) {
+    const nextCodeBlockIndex = cleaned.indexOf("```", codeBlockIndex + 3);
+    if (nextCodeBlockIndex !== -1) {
+      cleaned = cleaned.substring(0, codeBlockIndex) + cleaned.substring(nextCodeBlockIndex + 3);
+      return stripJSONBlock(cleaned);
+    } else {
+      cleaned = cleaned.substring(0, codeBlockIndex);
+    }
+  }
+
+  // 2. Also handle any raw JSON block { "action": ... } complete or incomplete
+  const firstBrace = cleaned.indexOf("{");
+  if (firstBrace !== -1) {
+    const candidate = cleaned.substring(firstBrace);
+    if (candidate.includes('"action":') || candidate.includes("'action':") || candidate.includes('"action"') || candidate.includes("'action'")) {
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(0, firstBrace) + cleaned.substring(lastBrace + 1);
+      } else {
+        cleaned = cleaned.substring(0, firstBrace);
+      }
+    }
+  }
+  
+  return cleaned.trim();
+}
+
+interface ActiveActionStatusProps {
+  actionType: string;
+  isApplied: boolean;
+}
+
+function ActiveActionStatus({ actionType, isApplied }: ActiveActionStatusProps) {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (isApplied) return;
+    const interval = setInterval(() => {
+      setStep((prev) => (prev < 2 ? prev + 1 : 0));
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isApplied]);
+
+  if (isApplied) {
+    return (
+      <div className="active-action-status completed">
+        <Check size={13} className="status-icon" />
+        <span>Changes successfully saved and integrated</span>
+      </div>
+    );
+  }
+
+  let steps = ["Preparing changes...", "Editing note...", "Linking your notes..."];
+  if (actionType === "suggest_structure") {
+    steps = ["Analyzing note hierarchy...", "Structuring folders...", "Linking your notes..."];
+  } else if (actionType === "suggest_links") {
+    steps = ["Scanning references...", "Analyzing connections...", "Linking your notes..."];
+  } else if (actionType === "insight_report") {
+    steps = ["Reviewing space contents...", "Correlating insights...", "Structuring findings..."];
+  }
+
+  return (
+    <div className="active-action-status processing">
+      <Loader2 size={13} className="spinner status-icon" />
+      <span>{steps[step]}</span>
+    </div>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
@@ -99,16 +251,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [view, setView] = useState<"marketplace" | "space">("marketplace");
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
 
-  // Marketplace state
+  // Marketplace states
   const [spaces, setSpaces] = useState<SpaceIndexEntry[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [marketFilter, setMarketFilter] = useState<"all" | "local" | "cloud">("all");
+  const [marketSearch, setMarketSearch] = useState("");
 
   // Space view state
   const [activeSpace, setActiveSpace] = useState<Space | null>(null);
   const currentUserId = authManager.getUserId();
   const isRemote = activeSpace?.visibility !== "local" && activeSpace?.ownerId !== currentUserId;
 
-  // Create form
+  // Create form states
   const [createTitle, setCreateTitle] = useState("");
   const [createDesc, setCreateDesc] = useState("");
   const [createTags, setCreateTags] = useState<string[]>([]);
@@ -126,6 +280,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [chatMessages, setChatMessages] = useState<SpaceChatMessage[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+
+  // Mentions State
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
 
   // Indexing
   const [isIndexing, setIsIndexing] = useState(false);
@@ -150,9 +310,69 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   }, []);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const centralInputRef = useRef<HTMLTextAreaElement>(null);
+  const bottomInputRef = useRef<HTMLTextAreaElement>(null);
 
   const vaultNoteCount = countNotes(fileTree);
   const previewNotes = getPreviewNotes(fileTree);
+
+  const notesList = activeSpace 
+    ? (activeSpace.visibility === "local" ? previewNotes : remoteNotes)
+    : [];
+
+  const filteredNotes = useMemo(() => {
+    if (!showMentionDropdown) return [];
+    if (!mentionQuery) return notesList.slice(0, 10);
+    const q = mentionQuery.toLowerCase();
+    return notesList.filter(note => 
+      note.title?.toLowerCase().includes(q) || 
+      note.path?.toLowerCase().includes(q)
+    ).slice(0, 10);
+  }, [notesList, mentionQuery, showMentionDropdown]);
+
+  const selectNote = (note: any) => {
+    const textBefore = chatInput.substring(0, mentionStartIndex);
+    const activeTextarea = document.activeElement as HTMLTextAreaElement;
+    let cursorPos = mentionStartIndex;
+    
+    if (activeTextarea && activeTextarea.tagName === "TEXTAREA") {
+      cursorPos = activeTextarea.selectionStart;
+    }
+    
+    const textAfter = chatInput.substring(cursorPos);
+    const insertedLink = `[[${note.title}]] `;
+    const newValue = textBefore + insertedLink + textAfter;
+    setChatInput(newValue);
+    setShowMentionDropdown(false);
+    setMentionQuery("");
+    setMentionStartIndex(-1);
+
+    setTimeout(() => {
+      if (activeTextarea && activeTextarea.tagName === "TEXTAREA") {
+        activeTextarea.focus();
+        const newCursorPos = textBefore.length + insertedLink.length;
+        activeTextarea.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 50);
+  };
+
+  const checkForMention = (text: string, selectionStart: number) => {
+    const lastAtIndex = text.lastIndexOf('@', selectionStart - 1);
+    if (lastAtIndex !== -1) {
+      const textBetween = text.substring(lastAtIndex + 1, selectionStart);
+      const hasSpace = /\s/.test(textBetween);
+      if (!hasSpace) {
+        setShowMentionDropdown(true);
+        setMentionQuery(textBetween);
+        setMentionStartIndex(lastAtIndex);
+        setMentionActiveIndex(0);
+        return;
+      }
+    }
+    setShowMentionDropdown(false);
+    setMentionQuery("");
+    setMentionStartIndex(-1);
+  };
 
   useEffect(() => {
     return authManager.subscribe((state) => {
@@ -185,10 +405,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setChatMessages([]);
       setStreamingText("");
       setChatInput("");
-      const remoteStatus = space.visibility !== "local";
+      const currentUserId = authManager.getUserId();
+      const isRemoteSpace = space.visibility !== "local" && space.ownerId !== currentUserId;
       
-      // If it's a cloud space, we don't auto-index the local vault on open
-      setIsIndexed(remoteStatus);
+      // If it's a cloud space owned by someone else, we don't auto-index on open
+      setIsIndexed(isRemoteSpace);
     }
   }, []);
 
@@ -282,8 +503,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     try {
       let customNotes: VaultNote[] | undefined = undefined;
       
-      if (activeSpace && activeSpace.visibility !== "local" && isSupabaseConfigured) {
-        // Cloud space: Fetch notes directly from Supabase to index them on the cloud
+      const currentUserId = authManager.getUserId();
+      const isRemoteSpace = activeSpace && activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId;
+      
+      if (activeSpace && activeSpace.visibility !== "local" && isRemoteSpace && isSupabaseConfigured) {
+        // Cloud space (Remote): Fetch notes directly from Supabase to index them on the cloud
         const { data: cloudNotes, error: fetchErr } = await supabase
           .from("notes")
           .select("path, title, content, is_canvas")
@@ -302,7 +526,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         }
       }
 
-      // Fetch a FRESH file tree from the API to avoid stale props (especially after remix)
+      // Fetch a FRESH file tree from the API to avoid stale props
       const api = getAPI();
       const freshTree = await api.getFileTree();
       
@@ -339,7 +563,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             .select("id, title")
             .eq("space_id", activeSpaceId)
             .eq("deleted", false)
-            .limit(10);
+            .limit(15);
           
           if (data) {
             setRemoteNotes(data.map(n => ({ path: n.id, title: n.title })));
@@ -372,10 +596,33 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     setStreamingText("");
 
     try {
+      // Parse query for mentioned files [[Note Title]]
+      const matches = [...q.matchAll(/\[\[([^\]]+)\]\]/g)];
+      const explicitNotes: { path: string; title: string; content: string }[] = [];
+
+      if (matches.length > 0) {
+        const allVaultNotes = getAllVaultNotes(fileTree);
+        for (const match of matches) {
+          const title = match[1].trim();
+          const found = allVaultNotes.find(
+            (n) => n.title.toLowerCase() === title.toLowerCase()
+          );
+          if (found) {
+            try {
+              const content = await (window as any).electronAPI.readFile(found.path);
+              explicitNotes.push({ path: found.path, title: found.title, content });
+            } catch (err) {
+              console.warn(`[SpacesPage] Failed to read mentioned note: ${found.path}`, err);
+            }
+          }
+        }
+      }
+
       const spaceMeta: SpaceMetadata = {
         title: activeSpace.title,
         description: activeSpace.description,
         helpsWith: activeSpace.helpsWith || [],
+        explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
       };
       const result = await querySpaceStreaming(activeSpaceId, q, spaceMeta, (chunk) => {
         setStreamingText((prev) => prev + chunk);
@@ -401,22 +648,187 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setStreamingText("");
     }
     setIsQuerying(false);
-  }, [chatInput, activeSpaceId, activeSpace, isQuerying]);
+  }, [chatInput, activeSpaceId, activeSpace, isQuerying, fileTree]);
 
-  const handleChatKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleChat();
+  // ── Applied Actions state ─────────────────────────────
+  const [appliedActions, setAppliedActions] = useState<Record<string, boolean>>({});
+
+  // ── Dashboard Operations Click Handlers ────────────────
+  const handleGenerateSummary = useCallback(async () => {
+    if (!activeSpace) return;
+    await handleChat("Generate a comprehensive, highly structured space_summary.md file for the entire active space, synthesizing all key concepts, notes, and topics in the structured multi-note synthesis format: # Topic, ## Key Ideas, ## Insights, ## Gaps, ## Suggested Actions. Return this only as a create_note action block.");
+  }, [handleChat, activeSpace]);
+
+  const handleFindInsights = useCallback(async () => {
+    if (!activeSpace) return;
+    await handleChat("Analyze all notes in this space. Find repeated ideas, direct contradictions, and missing definitions or knowledge gaps. Generate an insight report detailing these findings. Return this as an insight_report action block.");
+  }, [handleChat, activeSpace]);
+
+  const handleOrganizeSpace = useCallback(async () => {
+    if (!activeSpace) return;
+    await handleChat("Examine the titles, folders, and contents of the notes in this space. Suggest note mergers for duplicate topics, title improvements, and folder restructuring changes to improve coherence and indexing. Return this as a suggest_structure action block.");
+  }, [handleChat, activeSpace]);
+
+  // ── Filesystem Action Executors ───────────────────────
+  const handleCreateNoteAction = async (title: string, path: string, content: string, msgId: string) => {
+    try {
+      let notePath = path || `${title}.md`;
+      if (!notePath.endsWith(".md")) notePath += ".md";
+
+      const exists = await (window as any).electronAPI.fileExists(notePath);
+      if (exists) {
+        const overwrite = window.confirm(`Note "${notePath}" already exists. Overwrite?`);
+        if (!overwrite) return;
+      }
+
+      await (window as any).electronAPI.writeFile(notePath, content);
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast(`Note "${notePath}" created successfully!`);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to create note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     }
   };
 
-  // Scroll to bottom on new messages (guard: only when there are actual messages
-  // to prevent scrollIntoView from propagating to ancestor containers on mount)
+  const handleUpdateNoteAction = async (path: string, content: string, msgId: string) => {
+    try {
+      const exists = await (window as any).electronAPI.fileExists(path);
+      if (!exists) {
+        showToast(`Note "${path}" does not exist to update. Creating it instead.`, "success");
+      }
+      await (window as any).electronAPI.writeFile(path, content);
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast(`Note "${path}" updated successfully!`);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to update note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleInsertLinksAction = async (links: Array<{ from: string, to: string, reason: string }>, msgId: string) => {
+    try {
+      for (const link of links) {
+        let fromPath = link.from;
+        if (!fromPath.endsWith(".md")) fromPath += ".md";
+        let toTitle = link.to.replace(/\.md$/, "");
+
+        const exists = await (window as any).electronAPI.fileExists(fromPath);
+        if (exists) {
+          const originalContent = await (window as any).electronAPI.readFile(fromPath);
+          const linkText = `\n\n%% AI Suggestion: ${link.reason} %%\n[[${toTitle}]]\n`;
+          await (window as any).electronAPI.writeFile(fromPath, originalContent + linkText);
+        }
+      }
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast("Wiki-links inserted successfully!");
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to insert links: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleApplyStructureAction = async (changes: any[], msgId: string) => {
+    try {
+      for (const change of changes) {
+        if (change.type === "rename" || change.type === "move") {
+          let oldPath = change.note;
+          let newPath = change.target;
+          if (!oldPath.endsWith(".md")) oldPath += ".md";
+          if (!newPath.endsWith(".md")) newPath += ".md";
+
+          const exists = await (window as any).electronAPI.fileExists(oldPath);
+          if (exists) {
+            await (window as any).electronAPI.renameFile(oldPath, newPath);
+          }
+        } else if (change.type === "merge") {
+          const targetTitle = change.target;
+          let targetPath = `${targetTitle}.md`;
+          const mergedContent = change.content;
+
+          await (window as any).electronAPI.writeFile(targetPath, mergedContent);
+
+          for (const srcNote of change.notes) {
+            let srcPath = srcNote;
+            if (!srcPath.endsWith(".md")) srcPath += ".md";
+            const srcExists = await (window as any).electronAPI.fileExists(srcPath);
+            if (srcExists) {
+              await (window as any).electronAPI.deleteFile(srcPath);
+            }
+          }
+        }
+      }
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast("Restructuring applied successfully!");
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to apply restructuring: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleSaveInsightsAction = async (insights: any[], msgId: string) => {
+    try {
+      if (!activeSpace) return;
+      const timestamp = new Date().toLocaleDateString();
+      const path = `Insights - ${activeSpace.title}.md`;
+      let content = `# Space Insight Report: ${activeSpace.title}\n*Generated by AI Operator on ${timestamp}*\n\n`;
+
+      insights.forEach((insight, idx) => {
+        content += `### ${idx + 1}. [${insight.type.toUpperCase()}] ${insight.description}\n`;
+        if (insight.notes && insight.notes.length > 0) {
+          content += `*Related Notes:* ${insight.notes.map((n: string) => `[[${n.replace(/\.md$/, "")}]]`).join(", ")}\n`;
+        }
+        content += `\n`;
+      });
+
+      await (window as any).electronAPI.writeFile(path, content);
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+      showToast(`Insight report created as "${path}"!`);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to save report: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleChatKeyDown = (e: React.KeyboardEvent) => {
+    if (showMentionDropdown && filteredNotes.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionActiveIndex((prev) => (prev + 1) % filteredNotes.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionActiveIndex((prev) => (prev - 1 + filteredNotes.length) % filteredNotes.length);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        selectNote(filteredNotes[mentionActiveIndex]);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setShowMentionDropdown(false);
+      }
+    } else {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleChat();
+      }
+    }
+  };
+
+  // Scroll to bottom on new messages
   useEffect(() => {
     if (chatMessages.length > 0 || streamingText) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [chatMessages, streamingText]);
+
+  // Dynamically adjust textarea height based on content
+  useEffect(() => {
+    const adjustHeight = (textarea: HTMLTextAreaElement | null) => {
+      if (!textarea) return;
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+    adjustHeight(centralInputRef.current);
+    adjustHeight(bottomInputRef.current);
+  }, [chatInput]);
 
   // ── Tag input ────────────────────────────────────────
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -433,147 +845,227 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     }
   };
 
+  // ── Filtering and Search inside Marketplace ─────────
+  const filteredSpaces = spaces.filter((s) => {
+    const matchesSearch =
+      s.title.toLowerCase().includes(marketSearch.toLowerCase()) ||
+      (s.description || "").toLowerCase().includes(marketSearch.toLowerCase()) ||
+      (s.helpsWith || []).some(t => t.toLowerCase().includes(marketSearch.toLowerCase()));
+
+    if (marketFilter === "local") {
+      return matchesSearch && s.visibility === "local";
+    }
+    if (marketFilter === "cloud") {
+      return matchesSearch && s.visibility !== "local";
+    }
+    return matchesSearch;
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER: Marketplace
+  // RENDER: Marketplace View
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (view === "marketplace") {
     return (
       <div className="spaces-page">
-        {/* Toast notification */}
+        {/* Toast Notification */}
         {toastMessage && (
-          <div
-            className={`space-toast ${toastType}`}
-            onClick={() => setToastMessage(null)}
-          >
+          <div className={`space-toast ${toastType}`} onClick={() => setToastMessage(null)}>
             {toastMessage}
           </div>
         )}
-        <div className="spaces-header">
-          <h2>
-            <Globe size={18} strokeWidth={1.5} style={{ opacity: 0.5 }} />
-            Spaces
-          </h2>
-          <div className="spaces-header-actions">
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(true)}>
+
+        <div className="spaces-marketplace-container">
+          {/* Left Sidebar Panel */}
+          <div className="spaces-marketplace-sidebar">
+            <div className="spaces-sidebar-brand">
+              <SpacesIcon size={18} />
+              <span>Spaces</span>
+            </div>
+
+            <button
+              className="btn btn-primary btn-sm spaces-sidebar-new-btn"
+              onClick={() => setShowCreateModal(true)}
+            >
               <Plus size={14} /> New Space
             </button>
-            <button className="btn btn-ghost" onClick={onClose}>
-              <X size={16} />
-            </button>
-          </div>
-        </div>
 
-        <div className="space-cloud-status">
-          <div className="space-cloud-status-text">
-            {isSupabaseConfigured
-              ? authEmail
-                ? `Cloud DB connected. Signed in as ${authEmail}.`
-                : "Cloud DB connected. Sign in to create private/public spaces."
-              : "Cloud DB not configured. Spaces run in local-only mode."}
-          </div>
-          <div className="space-cloud-status-actions">
-            {authEmail ? (
-              <button className="btn btn-ghost btn-sm" onClick={handleSignOut}>
-                <LogOut size={12} /> Sign out
-              </button>
-            ) : (
+            <div className="spaces-menu-list">
               <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  setAuthMessage("Sign in to create cloud spaces and sync with Supabase.");
-                  setShowAuthModal(true);
-                }}
-                disabled={!isSupabaseConfigured}
-                title={!isSupabaseConfigured ? "Set Supabase env vars to enable cloud auth" : undefined}
+                className={`spaces-menu-item ${marketFilter === "all" ? "active" : ""}`}
+                onClick={() => setMarketFilter("all")}
               >
-                <LogIn size={12} /> Sign in
+                <SpacesIcon size={14} />
+                All Custom Layers
               </button>
-            )}
+              <button
+                className={`spaces-menu-item ${marketFilter === "local" ? "active" : ""}`}
+                onClick={() => setMarketFilter("local")}
+              >
+                <FileText size={14} strokeWidth={1.5} />
+                Local Vaults
+              </button>
+              <button
+                className={`spaces-menu-item ${marketFilter === "cloud" ? "active" : ""}`}
+                onClick={() => setMarketFilter("cloud")}
+              >
+                <Globe size={14} strokeWidth={1.5} />
+                Cloud Hub
+              </button>
+            </div>
+
+            {/* Cloud User Profile status in Sidebar */}
+            <div className="spaces-sidebar-user-section">
+              <div className="spaces-user-status-text">
+                {isSupabaseConfigured
+                  ? authEmail
+                    ? `Cloud Connected\n${authEmail}`
+                    : "Cloud database online. Sign in for sync."
+                  : "Cloud offline (Local Mode)"}
+              </div>
+              <div>
+                {authEmail ? (
+                  <button className="btn btn-ghost btn-sm" onClick={handleSignOut} style={{ width: "100%", padding: "6px 12px", fontSize: 11 }}>
+                    <LogOut size={12} /> Sign out
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setAuthMessage("Sign in to sync your knowledge layers with the cloud.");
+                      setShowAuthModal(true);
+                    }}
+                    disabled={!isSupabaseConfigured}
+                    title={!isSupabaseConfigured ? "Configure Supabase vars in environment to enable cloud database" : undefined}
+                    style={{ width: "100%", padding: "6px 12px", fontSize: 11 }}
+                  >
+                    <LogIn size={12} /> Sign in
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Main Content Panel */}
+          <div className="spaces-marketplace-content">
+            <div className="spaces-marketplace-header">
+              <div className="spaces-search-wrapper">
+                <Search size={13} className="spaces-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search custom spaces..."
+                  className="spaces-search-input"
+                  value={marketSearch}
+                  onChange={(e) => setMarketSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="spaces-marketplace-header-right">
+                <div className="spaces-marketplace-stats">
+                  Vault Notes: {vaultNoteCount} | Custom Layers: {spaces.length}
+                </div>
+                <button className="spaces-close-btn" onClick={onClose}>
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Main Body Grid */}
+            <div className="spaces-body">
+              {filteredSpaces.length === 0 ? (
+                <div className="spaces-empty">
+                  <SpacesIcon size={36} style={{ opacity: 0.3, color: "var(--text-muted)", marginBottom: 8 }} />
+                  <p>
+                    {marketSearch
+                      ? `No spaces matched the query "${marketSearch}".`
+                      : `Build your first queryable AI knowledge layer over your ${vaultNoteCount} notes.`}
+                  </p>
+                  {!marketSearch && (
+                    <button className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
+                      <Plus size={14} /> Create a Space
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="spaces-grid">
+                  {filteredSpaces.map((s) => (
+                    <div key={s.id} className="space-card" onClick={() => openSpace(s.id)}>
+                      <div className="space-card-header-row">
+                        <h3 className="space-card-title">{s.title}</h3>
+                        <span className={`visibility-badge ${s.visibility}`}>
+                          {getVisibilityLabel(s.visibility)}
+                        </span>
+                      </div>
+
+                      {s.description && <p className="space-card-desc">{s.description}</p>}
+
+                      {(s.helpsWith || []).length > 0 && (
+                        <div className="space-card-tags">
+                          {(s.helpsWith || []).map((tag) => (
+                            <span key={tag} className="space-tag">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="space-card-meta">
+                        <div className="space-card-meta-left">
+                          <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} index size</span>
+                        </div>
+                        <div className="space-card-actions" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => handleFork(s.id)} title="Remix/Save Space">
+                            <Copy size={11} /> Remix
+                          </button>
+                          <button onClick={() => setDeleteConfirmId(s.id)} title="Delete Space">
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="spaces-body">
-          {spaces.length === 0 ? (
-            <div className="spaces-empty">
-              <Layers size={40} style={{ opacity: 0.12 }} />
-              <p>
-                No spaces yet. Create one to make your {vaultNoteCount} note{vaultNoteCount !== 1 ? "s" : ""} queryable with AI.
-              </p>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(true)}>
-                <Plus size={14} /> Create your first Space
-              </button>
-            </div>
-          ) : (
-            <div className="spaces-grid">
-              {spaces.map((s) => (
-                <div key={s.id} className="space-card" onClick={() => openSpace(s.id)}>
-                  <h3 className="space-card-title">{s.title}</h3>
-                  {s.description && <p className="space-card-desc">{s.description}</p>}
-                  {(s.helpsWith || []).length > 0 && (
-                    <div className="space-card-tags">
-                      {(s.helpsWith || []).map((tag) => (
-                        <span key={tag} className="space-tag">{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="space-card-meta">
-                    <div className="space-card-meta-left">
-                      <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} indexed</span>
-                      <span className={`visibility-badge ${s.visibility}`}>
-                        {getVisibilityLabel(s.visibility)}
-                      </span>
-                    </div>
-                    <div className="space-card-actions" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleFork(s.id)} title="Remix">
-                        <Copy size={12} /> Remix
-                      </button>
-                      <button onClick={() => setDeleteConfirmId(s.id)} title="Delete">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Create Modal */}
+        {/* Create Space Dialog Modal */}
         {showCreateModal && (
           <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h3>Create Space</h3>
+                <h3>New Knowledge Space</h3>
                 <button className="modal-close" onClick={() => setShowCreateModal(false)}>
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
               <div className="space-create-form">
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", padding: "4px 0 8px", lineHeight: 1.5 }}>
-                  This will index all {vaultNoteCount} notes in your vault as a queryable knowledge space.
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                  Creates an AI-queryable vector directory indexing all {vaultNoteCount} notes in your active vault.
                 </div>
+
                 <div className="space-form-field">
                   <label>Title</label>
                   <input
                     className="space-form-input"
-                    placeholder="e.g. React Patterns"
+                    placeholder="e.g. Research Hub, React Dev"
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
                     autoFocus
                   />
                 </div>
+
                 <div className="space-form-field">
                   <label>Description</label>
                   <textarea
                     className="space-form-input"
-                    placeholder="What is this space about?"
+                    placeholder="Describe the knowledge covered by this space..."
                     value={createDesc}
                     onChange={(e) => setCreateDesc(e.target.value)}
                   />
                 </div>
+
                 <div className="space-form-field">
-                  <label>Helps with (press Enter to add)</label>
+                  <label>Focus Tags (Press Enter / Comma)</label>
                   <div className="space-form-tags-input">
                     {createTags.map((tag) => (
                       <span key={tag} className="space-form-tag">
@@ -584,22 +1076,23 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       </span>
                     ))}
                     <input
-                      placeholder={createTags.length === 0 ? "e.g. hooks, state, performance" : ""}
+                      placeholder={createTags.length === 0 ? "e.g. backend, hooks, styling" : ""}
                       value={createTagInput}
                       onChange={(e) => setCreateTagInput(e.target.value)}
                       onKeyDown={handleTagKeyDown}
                     />
                   </div>
                 </div>
+
                 <div className="space-form-field">
-                  <label>Visibility</label>
+                  <label>Vault Visibility</label>
                   <div className="space-visibility-options">
                     <button
                       type="button"
                       className={`space-visibility-option ${createVisibility === "local" ? "active" : ""}`}
                       onClick={() => setCreateVisibility("local")}
                     >
-                      Local only
+                      Local-Only
                     </button>
                     <button
                       type="button"
@@ -607,7 +1100,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       onClick={() => setCreateVisibility("private")}
                       disabled={!isSupabaseConfigured}
                     >
-                      Private cloud
+                      Private Cloud
                     </button>
                     <button
                       type="button"
@@ -615,32 +1108,33 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       onClick={() => setCreateVisibility("public")}
                       disabled={!isSupabaseConfigured}
                     >
-                      Public
+                      Public Cloud
                     </button>
                   </div>
                   <div className="space-form-hint">
                     {createVisibility === "local"
-                      ? "Stored only on this device."
+                      ? "Securely cached on this local device only."
                       : createVisibility === "private"
-                        ? "Synced to cloud and visible only to your account."
-                        : "Published publicly so others can discover and remix it."}
+                        ? "Encrypted & synced. Access restricted to your logged account."
+                        : "Published dynamically. Discoverable and remixable by others."}
                   </div>
                   {!isSupabaseConfigured && (
                     <div className="space-form-hint warning">
-                      Cloud options require VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.
+                      Cloud DB parameters (Supabase environment keys) are required to toggle remote features.
                     </div>
                   )}
                 </div>
+
                 {createError && <div className="space-form-error">{createError}</div>}
+
                 <div className="space-form-actions">
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(false)}>
                     Cancel
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="btn btn-primary btn-sm"
                     onClick={handleCreate}
                     disabled={!createTitle.trim()}
-                    style={{ fontWeight: 600 }}
                   >
                     Create Space
                   </button>
@@ -650,7 +1144,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
         )}
 
-        {/* Delete Confirm */}
+        {/* Delete Confirm Modal */}
         {deleteConfirmId && (() => {
           const spaceToDelete = spaces.find(s => s.id === deleteConfirmId);
           const isCloud = spaceToDelete && spaceToDelete.visibility !== "local";
@@ -660,37 +1154,46 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
           return (
             <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
-                <div className="space-delete-confirm">
-                  <p>
-                    Delete <strong>{spaceToDelete?.title || "this space"}</strong>?
+              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+                <div className="modal-header">
+                  <h3>Delete Space</h3>
+                  <button className="modal-close" onClick={() => setDeleteConfirmId(null)}>
+                    <X size={15} />
+                  </button>
+                </div>
+                <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+                    Are you sure you want to delete <strong>{spaceToDelete?.title || "this layer"}</strong>?
                     {" "}
                     {spaceToDelete?.visibility === "local"
-                      ? "This local space will be removed from your vault."
+                      ? "This action clears all local index tables."
                       : isOwner
-                        ? "This will also remove it from the cloud."
+                        ? "This will permanently remove the indices from cloud registers."
                         : ""}
                   </p>
+
                   {isCloud && !authManager.isLoggedIn() && (
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                      You must sign in to delete cloud spaces.
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+                      Account authentication is required to modify cloud states.
                     </p>
                   )}
+
                   {isCloud && authManager.isLoggedIn() && !isOwner && (
-                    <p style={{ fontSize: 11, color: "#e8a838", marginTop: 4 }}>
-                      Only the owner can delete this space.
+                    <p style={{ fontSize: 11, color: "#e8a838", margin: 0 }}>
+                      Only space authors can delete this layer from cloud directory.
                     </p>
                   )}
-                  <div className="space-form-actions">
+
+                  <div className="space-form-actions" style={{ marginTop: 8 }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirmId(null)}>
                       Cancel
                     </button>
                     <button
-                      className="btn btn-ghost btn-sm btn-danger"
+                      className="btn btn-primary btn-sm btn-danger"
                       onClick={() => handleDelete(deleteConfirmId)}
                       disabled={!canDelete}
                     >
-                      Delete
+                      Confirm Delete
                     </button>
                   </div>
                 </div>
@@ -714,209 +1217,549 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER: Space View
+  // RENDER: Space View (Dual-Column Overhaul)
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (!activeSpace) return null;
 
   return (
     <div className="spaces-page space-view">
-      <button
-        className="space-view-back"
-        onClick={() => {
-          setView("marketplace");
-          setActiveSpace(null);
-          setActiveSpaceId(null);
-          setIsIndexed(false);
-        }}
-      >
-        <ArrowLeft size={14} /> Back to Spaces
-      </button>
+      {/* Dual Column Workspace Container */}
+      <div className="space-view-workspace">
+        
+        {/* LEFT COLUMN: Sidebar (ChatGPT-Inspired Details & Notes Explorer) */}
+        <div className="space-view-sidebar">
+          {/* ChatGPT-style Sidebar Header Actions */}
+          <div className="space-sidebar-actions-group">
+            <button
+              className="space-sidebar-btn primary-action"
+              onClick={() => {
+                setChatMessages([]);
+                setStreamingText("");
+                setChatInput("");
+              }}
+              title="Start a new AI conversation session"
+            >
+              <Plus size={14} />
+              <span>New chat</span>
+            </button>
 
-        {/* Index Progress — always rendered but hidden when not indexing to avoid layout shifts */}
-        <div className={`space-index-bar${isIndexing ? " is-active" : ""}`}>
-          <Loader2 size={14} className="spinner" />
-          <span>Indexing vault notes...</span>
-          <div className="space-index-progress">
-            <div
-              className="space-index-progress-fill"
-              style={{ width: `${indexProgress.total > 0 ? (indexProgress.done / indexProgress.total) * 100 : 0}%` }}
-            />
+            <button
+              className="space-sidebar-btn secondary-action"
+              onClick={() => {
+                setView("marketplace");
+                setActiveSpace(null);
+                setActiveSpaceId(null);
+                setIsIndexed(false);
+              }}
+              title="Return to the spaces marketplace directory"
+            >
+              <ArrowLeft size={14} />
+              <span>Back to Spaces</span>
+            </button>
           </div>
-          <span>{indexProgress.done}/{indexProgress.total}</span>
-        </div>
 
-        <div className="space-view-scroll">
-          {/* Header */}
-          <div className="space-view-header">
-            <div className="space-view-title-row">
-              <div>
-                <h1 className="space-view-title">{activeSpace.title}</h1>
-                {activeSpace.description && (
-                  <p className="space-view-desc">{activeSpace.description}</p>
-                )}
-                <div className={`visibility-badge ${activeSpace.visibility}`} style={{ marginTop: 8 }}>
+          {/* Space Information Details block */}
+          <div className="space-sidebar-section">
+            <div className="space-sidebar-section-header">Space Layer</div>
+            <div className="space-sidebar-project-card">
+              <div className="space-sidebar-project-header">
+                <span className={`space-sidebar-visibility ${activeSpace.visibility}`}>
                   {getVisibilityLabel(activeSpace.visibility)}
-                </div>
+                </span>
+                <span className="space-sidebar-project-title">{activeSpace.title}</span>
               </div>
-              <div className="space-view-actions">
+              
+              {activeSpace.description && (
+                <p className="space-sidebar-project-desc">{activeSpace.description}</p>
+              )}
+
+              {(activeSpace.helpsWith || []).length > 0 && (
+                <div className="space-sidebar-project-tags">
+                  {(activeSpace.helpsWith || []).map((tag) => (
+                    <span key={tag} className="space-sidebar-project-tag">{tag}</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-sidebar-project-meta">
+                {activeSpace.visibility === "local" 
+                  ? `${activeSpace.noteCount || vaultNoteCount} notes indexed` 
+                  : `${activeSpace.noteCount ?? 0} notes indexed`}
+              </div>
+
+              <div className="space-sidebar-project-actions">
                 {!isRemote && (
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="space-sidebar-project-btn"
                     onClick={handleBuildIndex}
                     disabled={isIndexing}
-                    title="Re-index vault notes"
+                    title="Recompute vector indexes over note database"
                   >
-                    <RefreshCw size={13} className={isIndexing ? "spinner" : ""} /> Re-index
+                    <RefreshCw size={11} className={isIndexing ? "spinner" : ""} />
+                    <span>Re-index</span>
                   </button>
                 )}
-                <button className="btn btn-ghost btn-sm" onClick={() => handleFork(activeSpace.id)}>
-                  <Copy size={13} /> Remix
+                <button className="space-sidebar-project-btn" onClick={() => handleFork(activeSpace.id)}>
+                  <Copy size={11} />
+                  <span>Remix</span>
                 </button>
               </div>
             </div>
-            {(activeSpace.helpsWith || []).length > 0 && (
-              <div className="space-view-tags">
-                {(activeSpace.helpsWith || []).map((tag) => (
-                  <span key={tag} className="space-view-tag">{tag}</span>
-                ))}
-              </div>
-            )}
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-              {activeSpace.visibility === "local" 
-                ? `${activeSpace.noteCount || vaultNoteCount} vault notes indexed` 
-                : `${activeSpace.noteCount ?? 0} notes indexed`}
+          </div>
+
+          {/* Space Operations Dashboard */}
+          <div className="space-sidebar-section">
+            <div className="space-sidebar-section-header">Space Operations</div>
+            <div className="space-operations-grid">
+              <button
+                className="space-operations-btn"
+                onClick={handleGenerateSummary}
+                disabled={isQuerying || isIndexing}
+                title="Synthesize topics across the space into a structured summary note"
+              >
+                <Brain size={13} />
+                <span>Generate Summary</span>
+              </button>
+              <button
+                className="space-operations-btn"
+                onClick={handleFindInsights}
+                disabled={isQuerying || isIndexing}
+                title="Look for repeated ideas, gaps, and contradictions in space"
+              >
+                <Sparkles size={13} />
+                <span>Find Insights</span>
+              </button>
+              <button
+                className="space-operations-btn"
+                onClick={handleOrganizeSpace}
+                disabled={isQuerying || isIndexing}
+                title="Suggest renames, mergers, and folder restructuring changes"
+              >
+                <Layers size={13} />
+                <span>Organize Space</span>
+              </button>
             </div>
           </div>
 
-          {/* Vault Preview — recent notes */}
-          {(activeSpace.visibility === "local" ? previewNotes : remoteNotes).length > 0 && (
-            <div className="space-preview-section">
-              <div className="space-section-label">
-                {activeSpace.visibility === "local" 
-                  ? "Recent Vault Notes" 
-                  : "Recent Cloud Notes"}
+          {/* Curated File Navigator explorer list ("Recents" style) */}
+          <div className="space-sidebar-section fill-height">
+            <div className="space-sidebar-section-header">
+              <span>Indexed Notes</span>
+              <span className="space-sidebar-section-badge">{notesList.length}</span>
+            </div>
+
+            {notesList.length === 0 ? (
+              <div className="space-sidebar-notes-empty">
+                {isLoadingRemote ? "Loading index matrix..." : "No note layers indexed."}
               </div>
-              <div className="space-preview-grid">
-                {(activeSpace.visibility === "local" ? previewNotes : remoteNotes).map((note) => (
+            ) : (
+              <div className="space-sidebar-notes-list">
+                {notesList.map((note) => (
                   <div
                     key={note.path}
-                    className="space-preview-card"
+                    className="space-sidebar-note-item"
                     onClick={() => {
                       if (note.path && onOpenNote) {
                         onOpenNote(note.path);
                       }
                     }}
-                    style={{ cursor: onOpenNote ? "pointer" : "default" }}
+                    title={activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()
+                      ? "Click to open in Markdown Editor"
+                      : "Cloud read-only index. Remix to make local edits."}
                   >
-                    <h4>
-                      <FileText size={12} style={{ opacity: 0.4, marginRight: 6 }} />
-                      {note.title}
-                    </h4>
-                    <p style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                      {activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()
-                        ? "Click to open in editor"
-                        : "Cloud note (Remix to edit)"}
-                    </p>
+                    <FileText size={13} className="space-note-icon" />
+                    <span className="space-note-title">{note.title}</span>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-
-        {/* Chat Section */}
-        <div className="space-chat-section">
-          <div className="space-section-label">
-            Want to know something specific? Ask this brain
+            )}
           </div>
+        </div>
 
-          {/* Suggested queries — only shown when no messages yet */}
-          {chatMessages.length === 0 && (
-            <div className="space-chat-suggestions">
-              {SUGGESTED_QUERIES.map((q) => (
-                <button key={q} className="space-chat-suggestion" onClick={() => handleChat(q)}>
-                  {q}
-                </button>
-              ))}
+        {/* RIGHT COLUMN: Interactive AI Conversation Interface */}
+        <div className="space-view-chat-container">
+          {isIndexing && (
+            <div className="space-view-indexing-indicator">
+              <Loader2 size={12} className="spinner" />
+              <span>AI Indexing Vault... ({indexProgress.done}/{indexProgress.total})</span>
             </div>
           )}
-
-          {/* Chat history */}
-          {chatMessages.map((msg) => (
-            <div key={msg.id} className="space-chat-response" style={msg.role === "user" ? {
-              background: "transparent", border: "none", padding: "8px 0",
-              fontWeight: 500, fontSize: 13, color: "var(--text-primary)",
-            } : {}}>
-              {msg.role === "user" ? (
-                <span>→ {msg.content}</span>
-              ) : (
-                <>
-                  <div className="space-chat-answer">
-                    <MarkdownPreview
-                      content={msg.content}
-                      onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                    />
+          
+          <div className="space-chat-messages-scroll">
+            {chatMessages.length === 0 && (
+              <div className="space-chat-welcome">
+                <div className="space-chat-welcome-glow" />
+                <div className="space-chat-welcome-content">
+                  <h2>Command your knowledge network</h2>
+                  <p>Query the knowledge layer of {activeSpace?.title || "this space"} using semantic context retrieval.</p>
+                  
+                  {/* CENTRAL INPUT */}
+                  <div className="space-chat-central-input-wrapper">
+                    <div className="space-chat-input-wrapper">
+                      {showMentionDropdown && filteredNotes.length > 0 && (
+                        <div className="spaces-mention-dropdown">
+                          {filteredNotes.map((note: any, index: number) => (
+                            <div
+                              key={note.path}
+                              className={`spaces-mention-item ${index === mentionActiveIndex ? "active" : ""}`}
+                              onClick={() => selectNote(note)}
+                            >
+                              <FileText size={12} className="mention-item-icon" />
+                              <span className="mention-item-title">{note.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <textarea
+                        ref={centralInputRef}
+                        className="space-chat-input"
+                        placeholder="Ask anything..."
+                        value={chatInput}
+                        onChange={(e) => {
+                          setChatInput(e.target.value);
+                          checkForMention(e.target.value, e.target.selectionStart);
+                        }}
+                        onSelect={(e: any) => {
+                          checkForMention(e.target.value, e.target.selectionStart);
+                        }}
+                        onKeyDown={handleChatKeyDown}
+                        rows={1}
+                        disabled={isQuerying}
+                      />
+                      <button
+                        className="space-chat-send"
+                        onClick={() => handleChat()}
+                        disabled={!chatInput.trim() || isQuerying}
+                      >
+                        {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                      </button>
+                    </div>
+                    {!isAIConfigured() && (
+                      <div className="space-chat-no-ai-warning">
+                        Configure an API key in AI Settings to enable chat queries over vector layers.
+                      </div>
+                    )}
                   </div>
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="space-chat-sources">
-                      <span className="space-chat-sources-label">Sources</span>
-                      {msg.sources.map((s, i) => (
-                        <span key={i} className="space-chat-source-pill">{s}</span>
+
+                  <div className="space-chat-welcome-suggestions">
+                    <div className="space-chat-suggestions-grid">
+                      {SUGGESTED_QUERIES.map((q) => (
+                        <button key={q} className="space-chat-suggestion" onClick={() => handleChat(q)}>
+                          {q}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-
-          {/* Streaming indicator */}
-          {isQuerying && streamingText && (
-            <div className="space-chat-response">
-              <div className="space-chat-answer">
-                <MarkdownPreview
-                  content={streamingText}
-                  onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                />
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-          {isQuerying && !streamingText && (
-            <div className="space-chat-loading">
-              <Loader2 size={14} className="spinner" />
-              Thinking...
-            </div>
-          )}
+            )}
 
-          <div ref={chatEndRef} />
+            {/* Conversation Flow */}
+            {chatMessages.map((msg) => (
+              <div key={msg.id} className={`space-chat-message ${msg.role}`}>
+                {msg.role === "user" ? (
+                  <div className="message-bubble">
+                    <div className="message-content">{msg.content}</div>
+                  </div>
+                ) : (
+                  <>
+                    {stripJSONBlock(msg.content) && (
+                      <div className="message-content">
+                        <MarkdownPreview
+                          content={stripJSONBlock(msg.content)}
+                          onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                        />
+                      </div>
+                    )}
 
-          {/* Input */}
-          <div className="space-chat-input-row">
-            <textarea
-              className="space-chat-input"
-              placeholder="Ask this space anything..."
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={handleChatKeyDown}
-              rows={1}
-              disabled={isQuerying}
-            />
-            <button
-              className="space-chat-send"
-              onClick={() => handleChat()}
-              disabled={!chatInput.trim() || isQuerying}
-            >
-              {isQuerying ? <Loader2 size={16} className="spinner" /> : <Send size={16} />}
-            </button>
+                    {/* Render Interactive Action Cards if JSON action exists */}
+                    {(() => {
+                      const payload = parseActionPayload(msg.content);
+                      if (!payload) return null;
+                      
+                      const isApplied = appliedActions[msg.id];
+                      
+                      switch (payload.action) {
+                        case "create_note":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <FileText size={14} />
+                                <span>Create Note: {payload.title}</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-path">Path: <code>{payload.path || `${payload.title}.md`}</code></div>
+                                <div className="space-action-preview">
+                                  <pre>{payload.content?.substring(0, 300)}{payload.content?.length > 300 ? "..." : ""}</pre>
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleCreateNoteAction(payload.title, payload.path, payload.content, msg.id)}
+                                  >
+                                    Write to Vault
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "update_note":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <RefreshCw size={14} />
+                                <span>Update Note: {payload.path}</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-path">Path: <code>{payload.path}</code></div>
+                                <div className="space-action-preview">
+                                  <pre>{payload.content?.substring(0, 300)}{payload.content?.length > 300 ? "..." : ""}</pre>
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleUpdateNoteAction(payload.path, payload.content, msg.id)}
+                                  >
+                                    Update Note
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "suggest_structure":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <Layers size={14} />
+                                <span>Suggested Structure Restructuring</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-structure-list">
+                                  {payload.changes?.map((change: any, index: number) => (
+                                    <div key={index} className="structure-change-item">
+                                      <div className="change-type-badge">{change.type.toUpperCase()}</div>
+                                      {change.type === "merge" && (
+                                        <div className="change-details">
+                                          Merge <code>{change.notes.join(", ")}</code> into <strong>{change.target}</strong>
+                                        </div>
+                                      )}
+                                      {change.type === "rename" && (
+                                        <div className="change-details">
+                                          Rename <code>{change.note}</code> to <code>{change.target}</code>
+                                        </div>
+                                      )}
+                                      {change.type === "move" && (
+                                        <div className="change-details">
+                                          Move <code>{change.note}</code> to <code>{change.target}</code>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleApplyStructureAction(payload.changes, msg.id)}
+                                  >
+                                    Apply Restructuring
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "suggest_links":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <GitBranch size={14} />
+                                <span>Suggested Wiki-Links</span>
+                                {isApplied && <span className="action-applied-badge">Applied</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <table className="space-action-table">
+                                  <thead>
+                                    <tr>
+                                      <th>From</th>
+                                      <th>To</th>
+                                      <th>Reason</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {payload.links?.map((link: any, index: number) => (
+                                      <tr key={index}>
+                                        <td><code>{link.from}</code></td>
+                                        <td><code>{link.to}</code></td>
+                                        <td>{link.reason}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleInsertLinksAction(payload.links, msg.id)}
+                                  >
+                                    Insert Links
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        case "insight_report":
+                          return (
+                            <div className="space-action-card">
+                              <div className="space-action-card-header">
+                                <Sparkles size={14} />
+                                <span>Insight Report</span>
+                                {isApplied && <span className="action-applied-badge">Saved</span>}
+                              </div>
+                              <div className="space-action-card-body">
+                                <div className="space-action-insights">
+                                  {payload.insights?.map((insight: any, index: number) => (
+                                    <div key={index} className="insight-item">
+                                      <div className="insight-type">Type: <strong>{insight.type}</strong></div>
+                                      <div className="insight-desc">{insight.description}</div>
+                                      {insight.notes && (
+                                        <div className="insight-notes">Notes: {insight.notes.join(", ")}</div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                {!isApplied && (
+                                  <button
+                                    className="btn btn-primary btn-sm space-action-btn"
+                                    onClick={() => handleSaveInsightsAction(payload.insights, msg.id)}
+                                  >
+                                    Save Insight Report to Vault
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        default:
+                          return null;
+                      }
+                    })()}
+                    
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="space-chat-sources">
+                        <span className="space-chat-sources-label">Sources Used</span>
+                        <div className="space-chat-sources-list">
+                          {msg.sources.map((s, i) => (
+                            <span
+                              key={i}
+                              className="space-chat-source-pill"
+                              onClick={() => onOpenNote?.(`${s}.md`)}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+
+            {/* Streaming Indicator */}
+            {isQuerying && streamingText && (() => {
+              const cleanedText = stripJSONBlock(streamingText);
+              const lastUserMsg = [...chatMessages].reverse().find((m) => m.role === "user");
+              const activeQuery = lastUserMsg?.content || "";
+              const actionType = detectActionType(streamingText, activeQuery);
+              
+              return (
+                <div className="space-chat-message assistant">
+                  {cleanedText && (
+                    <div className="message-content">
+                      <MarkdownPreview
+                        content={cleanedText}
+                        onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                      />
+                    </div>
+                  )}
+                  {actionType && (
+                    <ActiveActionStatus
+                      actionType={actionType}
+                      isApplied={false}
+                    />
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* AI thinking state loader */}
+            {isQuerying && !streamingText && (
+              <div className="space-chat-loading-indicator">
+                <div className="flat-spinner" />
+                <span>Synthesizing response...</span>
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
           </div>
 
-          {!isAIConfigured() && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-              Configure an API key in AI Settings to enable chat.
+          {/* Sticky Anchored Query Drawer Input */}
+          {chatMessages.length > 0 && (
+            <div className="space-chat-input-panel">
+              <div className="space-chat-input-wrapper">
+                {showMentionDropdown && filteredNotes.length > 0 && (
+                  <div className="spaces-mention-dropdown">
+                    {filteredNotes.map((note: any, index: number) => (
+                      <div
+                        key={note.path}
+                        className={`spaces-mention-item ${index === mentionActiveIndex ? "active" : ""}`}
+                        onClick={() => selectNote(note)}
+                      >
+                        <FileText size={12} className="mention-item-icon" />
+                        <span className="mention-item-title">{note.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  ref={bottomInputRef}
+                  className="space-chat-input"
+                  placeholder="Ask anything..."
+                  value={chatInput}
+                  onChange={(e) => {
+                    setChatInput(e.target.value);
+                    checkForMention(e.target.value, e.target.selectionStart);
+                  }}
+                  onSelect={(e: any) => {
+                    checkForMention(e.target.value, e.target.selectionStart);
+                  }}
+                  onKeyDown={handleChatKeyDown}
+                  rows={1}
+                  disabled={isQuerying}
+                />
+                <button
+                  className="space-chat-send"
+                  onClick={() => handleChat()}
+                  disabled={!chatInput.trim() || isQuerying}
+                >
+                  {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                </button>
+              </div>
+              
+              <div className="space-chat-footer-info">
+                Spaces chat can make mistakes. Verify key details.
+              </div>
+
+              {!isAIConfigured() && (
+                <div className="space-chat-no-ai-warning">
+                  Configure an API key in AI Settings to enable chat queries over vector layers.
+                </div>
+              )}
             </div>
           )}
         </div>
+
       </div>
 
       {showAuthModal && (

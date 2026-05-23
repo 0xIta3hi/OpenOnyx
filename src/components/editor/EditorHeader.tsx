@@ -47,11 +47,37 @@ export function EditorHeader({
         </div>
 
         {activeEditors && activeEditors.length > 0 && (
-          <div className="editor-collab-pill" title={activeEditors.map(u => u.name || u.email.split("@")[0]).join(", ")}>
-            <span className="editor-collab-dot" />
-            <span>
-              {activeEditors.map(u => u.name || u.email.split("@")[0]).join(", ")} {activeEditors.length === 1 ? "is" : "are"} editing
-            </span>
+          <div className="editor-collab-presence">
+            <div className="collab-avatar-stack">
+              {activeEditors.slice(0, 5).map((user, i) => (
+                <div
+                  key={user.id || i}
+                  className="collab-avatar-badge"
+                  style={{
+                    backgroundColor: user.color || '#3b82f6',
+                    zIndex: 10 - i,
+                  }}
+                  title={`${user.name || user.email?.split("@")[0] || "User"} is editing`}
+                >
+                  {(user.name || user.email?.split("@")[0] || "?").charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {activeEditors.length > 5 && (
+                <div
+                  className="collab-avatar-badge collab-avatar-overflow"
+                  style={{ zIndex: 4 }}
+                  title={activeEditors.slice(5).map(u => u.name || u.email?.split("@")[0]).join(", ")}
+                >
+                  +{activeEditors.length - 5}
+                </div>
+              )}
+            </div>
+            <div className="editor-collab-pill">
+              <span className="editor-collab-dot" />
+              <span>
+                {activeEditors.map(u => u.name || u.email?.split("@")[0]).join(", ")} {activeEditors.length === 1 ? "is" : "are"} editing
+              </span>
+            </div>
           </div>
         )}
       </div>

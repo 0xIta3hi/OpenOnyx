@@ -1,6 +1,6 @@
 /**
- * ExploreSpacesPage — Public space discovery with 4 sections:
- *  1. 🔥 Trending (by score)
+ * ExploreSpacesPage — Public space discovery with 4 sections[Not Implemented yet]:
+ *  1. 🔥 Trending (by score) 
  *  2. 🧠 Recommended (based on user's spaces)
  *  3. 🆕 Recently Published
  *  4. 🔎 Semantic Search
@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Globe, Search, TrendingUp, Sparkles, Clock, ArrowLeft,
+  Search, TrendingUp, Sparkles, Clock, ArrowLeft,
   Eye, GitFork, ThumbsUp, ThumbsDown, Loader2, X,
 } from 'lucide-react';
 import {
@@ -21,6 +21,7 @@ import { voteOnSpace, getUserVote, type VoteValue } from '../lib/votes';
 import { forkSpace } from '../utils/spaces-store';
 import { authManager, AuthRequiredError } from '../lib/auth';
 import { AuthModal } from './AuthModal';
+import { SpacesIcon } from './SpacesIcon';
 
 interface ExploreSpacesPageProps {
   onClose: () => void;
@@ -164,7 +165,7 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
       {/* Header */}
       <div className="spaces-header">
         <h2>
-          <Globe size={18} strokeWidth={1.5} style={{ opacity: 0.5 }} />
+          <SpacesIcon size={18} style={{ opacity: 0.5 }} />
           Explore Spaces
         </h2>
         <div className="spaces-header-actions">
@@ -228,7 +229,7 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
           </div>
         ) : displaySpaces.length === 0 ? (
           <div className="spaces-empty">
-            <Globe size={40} style={{ opacity: 0.12 }} />
+            <SpacesIcon size={40} style={{ opacity: 0.12 }} />
             <p>
               {searchResults
                 ? 'No spaces matched your search.'

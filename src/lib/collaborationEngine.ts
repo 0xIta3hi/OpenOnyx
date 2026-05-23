@@ -28,6 +28,7 @@ import { getUserSupabaseClient } from './userDatabase';
 import { localDB } from './localdb';
 import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
+import type { CollabOperation, CursorPresence } from '../utils/collabOperations';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,8 +120,8 @@ function normalizePath(p: string): string {
 }
 
 const COLLABORATOR_COLORS = [
-  '#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626',
-  '#8b5cf6', '#0891b2', '#65a30d', '#ea580c', '#e11d48',
+  '#3b82f6', '#2563eb', '#059669', '#d97706', '#dc2626',
+  '#0ea5e9', '#0891b2', '#65a30d', '#ea580c', '#e11d48',
 ];
 
 function getColorForUser(userId: string): string {
@@ -158,21 +159,30 @@ type StatusListener = (status: CollabStatus) => void;
 type ActiveUsersListener = (users: ActiveUser[]) => void;
 type RemoteChangeListener = (table: string, payload: any) => void;
 type RemoteDocUpdateListener = (path: string, content: string, senderClientId: string) => void;
+type RemoteOperationListener = (path: string, ops: CollabOperation[]) => void;
+type RemoteCursorListener = (presence: CursorPresence) => void;
 
 class CollaborationEngine {
   private listeners = new Set<StatusListener>();
   private activeUsersListeners = new Set<ActiveUsersListener>();
   private changeListeners = new Set<RemoteChangeListener>();
   private remoteDocListeners = new Set<RemoteDocUpdateListener>();
+  private remoteOpListeners = new Set<RemoteOperationListener>();
+  private remoteCursorListeners = new Set<RemoteCursorListener>();
   private _status: CollabStatus = { state: 'idle' };
   private _activeSpaceId: string | null = null;
   private _activeUsers: ActiveUser[] = [];
   private realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
   private clientId: string = '';
+  private lastAppliedTimestamps = new Map<string, number>();
+  constructor() {
+    this.init();
+  }
 
   get status() { return this._status; }
   get activeSpaceId() { return this._activeSpaceId; }
   get activeUsers() { return this._activeUsers; }
+  get currentClientId() { return this.clientId; }
 
   async init() {
     this.clientId = await localDB.getClientId();
@@ -196,12 +206,27 @@ class CollaborationEngine {
   }
 
   /**
-   * Register a listener for real-time document updates received via Broadcast.
-   * The callback receives the file path, new content, and the sender's client ID.
+   * Register a listener for full-content document updates (DB-level fallback).
    */
   onRemoteDocumentUpdate(fn: RemoteDocUpdateListener): () => void {
     this.remoteDocListeners.add(fn);
     return () => this.remoteDocListeners.delete(fn);
+  }
+
+  /**
+   * Register a listener for granular editing operations received via Broadcast.
+   */
+  onRemoteOperation(fn: RemoteOperationListener): () => void {
+    this.remoteOpListeners.add(fn);
+    return () => this.remoteOpListeners.delete(fn);
+  }
+
+  /**
+   * Register a listener for remote cursor presence updates.
+   */
+  onRemoteCursor(fn: RemoteCursorListener): () => void {
+    this.remoteCursorListeners.add(fn);
+    return () => this.remoteCursorListeners.delete(fn);
   }
 
   private notify(status: CollabStatus) {
@@ -362,6 +387,18 @@ class CollaborationEngine {
       });
 
       await client.from('spaces').update({ status: 'ready' }).eq('id', spaceId);
+      await localDB.putSpace({
+        id: spaceId,
+        owner_id: user.id,
+        title: spaceName,
+        description: null,
+        helps_with: null,
+        is_public: false,
+        visibility: 'private',
+        forked_from: null,
+        created_at: now,
+        updated_at: now,
+      }, false);
       await localDB.setMeta(`collab_space_${normalizedVaultPath}`, spaceId);
       this._activeSpaceId = spaceId;
 
@@ -646,6 +683,22 @@ class CollaborationEngine {
         .eq('space_id', spaceId)
         .eq('user_id', user.id);
 
+      // Save space details in local cache if present in snapshot
+      if (snapshot.space) {
+        await localDB.putSpace({
+          id: snapshot.space.id,
+          owner_id: snapshot.space.owner_id,
+          title: snapshot.space.title,
+          description: snapshot.space.description || null,
+          helps_with: snapshot.space.helps_with || null,
+          is_public: snapshot.space.is_public || false,
+          visibility: (snapshot.space.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: snapshot.space.forked_from || null,
+          created_at: snapshot.space.created_at || new Date().toISOString(),
+          updated_at: snapshot.space.updated_at || new Date().toISOString(),
+        }, false);
+      }
+
       // Step 5: Store vault-space mapping
       await localDB.setMeta(`collab_space_${normalizedLocalPath}`, spaceId);
       this._activeSpaceId = spaceId;
@@ -685,14 +738,70 @@ class CollaborationEngine {
 
     if (!spaceId) return null;
 
-    const { data } = await client.from('spaces')
-      .select('*')
-      .eq('id', spaceId)
-      .single();
+    try {
+      const { data, error } = await client.from('spaces')
+        .select('*')
+        .eq('id', spaceId)
+        .single();
 
-    if (!data) return null;
-    this._activeSpaceId = spaceId;
-    return data as CloudSpace;
+      if (data) {
+        // Cache space details locally
+        await localDB.putSpace({
+          id: data.id,
+          owner_id: data.owner_id,
+          title: data.title,
+          description: data.description,
+          helps_with: data.helps_with || null,
+          is_public: data.is_public || false,
+          visibility: (data.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: data.forked_from || null,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        }, false);
+
+        this._activeSpaceId = spaceId;
+        return data as CloudSpace;
+      }
+
+      if (error) {
+        console.warn('[Collab] Remote space query failed, checking local cache:', error.message);
+        const isNotFoundError = error.code === 'PGRST116' || 
+          error.message?.includes('no rows') || 
+          error.message?.includes('single JSON object') ||
+          error.message?.includes('JSON object requested');
+
+        if (isNotFoundError) {
+          console.warn('[Collab] Space does not exist on remote server. Clearing dead local link and cache.');
+          await localDB.setMeta(`collab_space_${normPath}`, null);
+          await localDB.deleteSpace(spaceId);
+          if (this._activeSpaceId === spaceId) {
+            this._activeSpaceId = null;
+          }
+          return null;
+        }
+      }
+    } catch (err) {
+      console.warn('[Collab] Exception fetching space details, checking local cache:', err);
+    }
+
+    // Fallback: load from local IndexedDB cache
+    const cachedSpace = await localDB.getSpace(spaceId);
+    if (cachedSpace) {
+      console.log('[Collab] Using cached space details for space:', spaceId);
+      this._activeSpaceId = spaceId;
+      return {
+        id: cachedSpace.id,
+        owner_id: cachedSpace.owner_id,
+        title: cachedSpace.title,
+        description: cachedSpace.description,
+        visibility: cachedSpace.visibility,
+        status: 'ready',
+        created_at: cachedSpace.created_at,
+        updated_at: cachedSpace.updated_at,
+      } as CloudSpace;
+    }
+
+    return null;
   }
 
   async getCollaborators(spaceId: string): Promise<SpaceCollaborator[]> {
@@ -747,6 +856,30 @@ class CollaborationEngine {
       throw new Error(`Failed to link vault in cloud: ${error.message}`);
     }
 
+    try {
+      const { data: space } = await client.from('spaces')
+        .select('*')
+        .eq('id', spaceId)
+        .single();
+
+      if (space) {
+        await localDB.putSpace({
+          id: space.id,
+          owner_id: space.owner_id,
+          title: space.title,
+          description: space.description || null,
+          helps_with: space.helps_with || null,
+          is_public: space.is_public || false,
+          visibility: (space.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: space.forked_from || null,
+          created_at: space.created_at,
+          updated_at: space.updated_at,
+        }, false);
+      }
+    } catch (e) {
+      console.warn('[Collab] Failed to cache linked space details:', e);
+    }
+
     await localDB.setMeta(`collab_space_${normalizedPath}`, spaceId);
     this._activeSpaceId = spaceId;
 
@@ -755,23 +888,34 @@ class CollaborationEngine {
 
   // ── Realtime ───────────────────────────────────────────────────────────────
 
-  subscribeToSpace(spaceId: string) {
+  async subscribeToSpace(spaceId: string) {
+    const userId = authManager.getUserId();
+    // Do NOT subscribe if the user is not authenticated yet -- presence key
+    // would be undefined and create ghost entries.
+    if (!userId) {
+      console.warn('[Collab] subscribeToSpace: skipping -- userId is null');
+      return;
+    }
+
+    // Already subscribed to this exact space with a live channel.
     if (this.realtimeChannel && this._activeSpaceId === spaceId) {
       return;
     }
+
     this.unsubscribeFromSpace();
     this._activeSpaceId = spaceId;
+
+    // Guarantee clientId is loaded before any broadcast/filter logic runs.
     if (!this.clientId) {
-      localDB.getClientId().then(id => { this.clientId = id; });
+      this.clientId = await localDB.getClientId();
     }
 
     const client = getClient();
-    const userId = authManager.getUserId();
 
     this.realtimeChannel = client
       .channel(`space:${spaceId}`, {
         config: {
-          presence: { key: userId || undefined },
+          presence: { key: userId },
           broadcast: { self: false },
         },
       })
@@ -788,18 +932,43 @@ class CollaborationEngine {
           this.handleRemoteNoteChange(payload);
         },
       )
-      // Listen for ephemeral real-time document updates via Broadcast
-      .on('broadcast', { event: 'doc-update' }, (msg) => {
+      // Listen for granular editing operations via Broadcast
+      .on('broadcast', { event: 'doc-ops' }, (msg) => {
+        const { path, ops, clientId: senderClientId } = msg.payload || {};
+        // Skip if no payload, or if this is our own echo (should not happen
+        // with self:false but guard defensively), or if clientId is empty.
+        if (!path || !ops) return;
+        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+        const lastTs = this.lastAppliedTimestamps.get(path) || 0;
+        // Filter stale operations
+        const freshOps = (ops as CollabOperation[]).filter(
+          op => op.timestamp > lastTs,
+        );
+        if (freshOps.length > 0) {
+          const maxTs = Math.max(lastTs, ...freshOps.map(op => op.timestamp));
+          this.lastAppliedTimestamps.set(path, maxTs);
+          this.remoteOpListeners.forEach(fn => fn(path, freshOps));
+        }
+      })
+      // Listen for full-document sync via Broadcast (fallback for large edits)
+      .on('broadcast', { event: 'doc-full' }, (msg) => {
         const { path, content, clientId: senderClientId } = msg.payload || {};
-        if (!path || senderClientId === this.clientId) return;
-        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId));
+        if (!path || content === undefined) return;
+        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || ''));
+      })
+      // Listen for cursor presence updates via Broadcast
+      .on('broadcast', { event: 'cursor-presence' }, (msg) => {
+        const presence = msg.payload as CursorPresence | undefined;
+        if (!presence || presence.user_id === userId) return;
+        this.remoteCursorListeners.forEach(fn => fn(presence));
       })
       // Track presence
       .on('presence', { event: 'sync' }, () => {
         this.handlePresenceSync();
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && userId) {
+        if (status === 'SUBSCRIBED') {
           const user = authManager.getUser();
           await this.realtimeChannel?.track({
             user_id: userId,
@@ -812,32 +981,64 @@ class CollaborationEngine {
 
   unsubscribeFromSpace() {
     if (this.realtimeChannel) {
+      // Clean up our presence entry before destroying the channel
+      // to prevent ghost avatar lingering.
+      try {
+        this.realtimeChannel.untrack();
+      } catch { /* best-effort */ }
       this.realtimeChannel.unsubscribe();
       this.realtimeChannel = null;
     }
-    this._activeSpaceId = null;
+    // NOTE: we intentionally do NOT clear _activeSpaceId here.
+    // The space ID is metadata about which space this vault is linked to,
+    // and must persist across channel reconnections. Clearing it breaks
+    // all guards in LeafPaneEditor that check `collaborationEngine.activeSpaceId`.
     this.notifyActiveUsers([]);
+  }
+
+  /**
+   * Explicitly clear the active space context. Call this only when
+   * the vault is actually being switched or the app is unmounting.
+   */
+  clearActiveSpace() {
+    this.unsubscribeFromSpace();
+    this._activeSpaceId = null;
   }
 
   private handlePresenceSync() {
     if (!this.realtimeChannel) return;
 
     const presenceState = this.realtimeChannel.presenceState();
-    const users: ActiveUser[] = [];
     const currentUserId = authManager.getUserId();
+
+    // Collect ALL presence entries, then deduplicate by user_id.
+    // A single user can have multiple presence entries from reconnections,
+    // multiple tabs, or presence key drift. Without deduplication this
+    // causes the "10 avatars for 2 users" bug.
+    const byUserId = new Map<string, any>();
 
     for (const [_key, presences] of Object.entries(presenceState)) {
       for (const p of presences as any[]) {
+        if (!p.user_id) continue; // Skip entries without a user_id
         if (p.user_id === currentUserId) continue; // Skip self
-        users.push({
-          id: p.user_id,
-          email: p.email || '',
-          name: p.email?.split('@')[0] || '',
-          color: getColorForUser(p.user_id),
-          isEditing: !!p.is_typing,
-          activeNoteId: p.active_note_id || null,
-        });
+
+        const existing = byUserId.get(p.user_id);
+        if (!existing || (p.online_at && (!existing.online_at || p.online_at > existing.online_at))) {
+          byUserId.set(p.user_id, p);
+        }
       }
+    }
+
+    const users: ActiveUser[] = [];
+    for (const p of byUserId.values()) {
+      users.push({
+        id: p.user_id,
+        email: p.email || '',
+        name: p.email?.split('@')[0] || '',
+        color: getColorForUser(p.user_id),
+        isEditing: !!p.is_typing,
+        activeNoteId: p.active_note_id || null,
+      });
     }
 
     this.notifyActiveUsers(users);
@@ -922,23 +1123,52 @@ class CollaborationEngine {
     this.changeListeners.forEach(fn => fn('notes', payload));
   }
 
-  // ── Broadcast: Ephemeral Document Sync ─────────────────────────────────────
+  // ── Broadcast: Operation-Based Sync ──────────────────────────────────────
 
   /**
-   * Broadcast a document update to all connected peers via Supabase Broadcast.
-   * This is ephemeral -- it does NOT write to the database. The autosave/sync
-   * engine handles persistence separately.
+   * Broadcast granular editing operations to all connected peers.
+   * This is ephemeral -- it does NOT write to the database.
    */
-  broadcastDocumentUpdate(path: string, content: string) {
+  broadcastOperations(path: string, ops: CollabOperation[]) {
+    if (!this.realtimeChannel || ops.length === 0) return;
+    this.realtimeChannel.send({
+      type: 'broadcast',
+      event: 'doc-ops',
+      payload: {
+        path,
+        ops,
+        clientId: this.clientId,
+      },
+    });
+  }
+
+  /**
+   * Broadcast the full document content to all connected peers.
+   * Used as a fallback for large edits (paste, AI generation) where
+   * granular operations may fail to apply cleanly on diverged documents.
+   */
+  broadcastFullDocument(path: string, content: string) {
     if (!this.realtimeChannel) return;
     this.realtimeChannel.send({
       type: 'broadcast',
-      event: 'doc-update',
+      event: 'doc-full',
       payload: {
         path,
         content,
         clientId: this.clientId,
       },
+    });
+  }
+
+  /**
+   * Broadcast cursor position / selection to all connected peers.
+   */
+  broadcastCursorPresence(presence: CursorPresence) {
+    if (!this.realtimeChannel) return;
+    this.realtimeChannel.send({
+      type: 'broadcast',
+      event: 'cursor-presence',
+      payload: presence,
     });
   }
 
@@ -992,11 +1222,13 @@ class CollaborationEngine {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   dispose() {
-    this.unsubscribeFromSpace();
+    this.clearActiveSpace();
     this.listeners.clear();
     this.activeUsersListeners.clear();
     this.changeListeners.clear();
     this.remoteDocListeners.clear();
+    this.remoteOpListeners.clear();
+    this.remoteCursorListeners.clear();
   }
 }
 

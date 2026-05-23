@@ -65,7 +65,7 @@ OpenObsidian implements a secure, offline-first multi-process architecture combi
 ## Getting Started
 
 ### Prerequisites
-- Node.js >= 18.x
+- Node.js >= 24.x
 - npm >= 9.x
 
 ### Installation

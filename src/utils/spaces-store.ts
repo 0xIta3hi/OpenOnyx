@@ -111,6 +111,7 @@ async function upsertCloudSpace(space: Space): Promise<void> {
         forked_from: space.forkedFrom || null,
         created_at: space.createdAt,
         updated_at: space.updatedAt,
+        status: space.status || 'ready',
       },
       { onConflict: "id" },
     );
@@ -482,6 +483,15 @@ export async function createSpace(data: {
 
   if (space.visibility !== "local") {
     await upsertCloudSpace(space);
+    try {
+      await getClient().from("space_collaborators").insert({
+        space_id: space.id,
+        user_id: ownerId,
+        role: "owner",
+      });
+    } catch (collabErr) {
+      console.warn("[SpacesStore] Failed to add owner as collaborator:", collabErr);
+    }
   }
 
   await writeData(`spaces/${space.id}.json`, space);

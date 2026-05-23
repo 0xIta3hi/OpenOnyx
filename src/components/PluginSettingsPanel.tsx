@@ -38,6 +38,7 @@ interface PluginSettingsPanelProps {
   onRefresh: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
   onInstallPlugin?: (repo: string, pluginId: string) => Promise<boolean>;
+  onBrowse?: () => void;
 }
 
 export function PluginSettingsPanel({
@@ -48,6 +49,7 @@ export function PluginSettingsPanel({
   onRefresh,
   onReloadPlugin,
   onInstallPlugin,
+  onBrowse,
 }: PluginSettingsPanelProps) {
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
@@ -138,10 +140,10 @@ export function PluginSettingsPanel({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => setShowMarketplace(true)}
+            onClick={onBrowse || (() => setShowMarketplace(true))}
             title="Browse and install community plugins"
             style={{
-              background: 'var(--accent-primary, #7c3aed)',
+              background: 'var(--accent-primary, var(--color-accent, #3b82f6))',
               border: 'none',
               borderRadius: '6px',
               padding: '6px 12px',
@@ -177,7 +179,7 @@ export function PluginSettingsPanel({
         </div>
       </div>
 
-      {showMarketplace && onInstallPlugin && (
+      {showMarketplace && onInstallPlugin && !onBrowse && (
         <PluginMarketplace
           onClose={() => setShowMarketplace(false)}
           onInstall={onInstallPlugin}
@@ -329,11 +331,11 @@ export function PluginSettingsPanel({
                       onClick={() => handleDebugToggle(plugin.manifest.id)}
                       title="Debug"
                       style={{
-                        background: isDebugging ? 'rgba(124,58,237,0.15)' : 'transparent',
+                        background: isDebugging ? 'color-mix(in srgb, var(--accent-primary, var(--color-accent, #3b82f6)) 15%, transparent)' : 'transparent',
                         border: 'none',
                         borderRadius: '4px',
                         padding: '4px',
-                        color: isDebugging ? 'var(--accent-primary, #7c3aed)' : 'var(--text-muted)',
+                        color: isDebugging ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--text-muted)',
                         cursor: 'pointer',
                         opacity: 0.7,
                         transition: 'opacity 0.15s',
@@ -369,7 +371,7 @@ export function PluginSettingsPanel({
                         width: '40px',
                         height: '22px',
                         borderRadius: '11px',
-                        background: isEnabled ? 'var(--accent-primary, #7c3aed)' : 'var(--bg-hover, rgba(255,255,255,0.1))',
+                        background: isEnabled ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--bg-hover, rgba(255,255,255,0.1))',
                         cursor: isLoading || !versionOk ? 'not-allowed' : 'pointer',
                         position: 'relative',
                         transition: 'background 0.2s',

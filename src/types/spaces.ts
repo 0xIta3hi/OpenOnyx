@@ -38,6 +38,7 @@ export interface SpaceChunk {
   vector: number[];
   startOffset: number;
   endOffset: number;
+  noteHash?: string;
 }
 
 export interface SpaceVectorIndex {

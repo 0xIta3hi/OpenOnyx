@@ -9,7 +9,7 @@ export interface DatabaseRow {
 
 export async function fetchDatabaseRows(folderPath: string): Promise<DatabaseRow[]> {
   const api = getAPI();
-  const files = await api.searchFiles(""); // Fetch all or get from folder. We use localDB or API?
+  const files = await api.listFiles(folderPath); // Fetch files from the folder using existing listFiles API.
   // Let's use local fileSystem API or localDB?
   
   // Need to know how to get all files.

@@ -14,8 +14,8 @@
  * Runs async — never blocks UI.
  */
 
-import { embedText } from "./embeddings";
-import { saveVectorIndex, updateSpace, pushSpaceNotes, pushSpaceChunks, getSpace } from "./spaces-store";
+import { embedText, simpleHash } from "./embeddings";
+import { loadVectorIndex, saveVectorIndex, updateSpace, pushSpaceNotes, pushSpaceChunks, getSpace } from "./spaces-store";
 import { getAPI } from "./api";
 import type { SpaceChunk, SpaceVectorIndex } from "../types/spaces";
 import type { FileEntry } from "../types/index";
@@ -213,34 +213,109 @@ export async function buildVectorIndex(
   // 1. Collect all vault notes
   const vaultNotes = customNotes || await collectVaultNotes(fileTree);
   const totalNotes = vaultNotes.length;
+
+  // 1.5. Push raw notes to Supabase immediately if this is a cloud space
+  const spaceData = await getSpace(spaceId);
+  if (spaceData && spaceData.visibility !== "local" && !customNotes) {
+    const notesForCloud = vaultNotes.map((n) => ({
+      path: n.path,
+      title: n.title,
+      content: n.content,
+      is_canvas: n.isCanvas,
+    }));
+    try {
+      console.log(`[SpacesProcessing] Pushing raw notes immediately for space ${spaceId}...`);
+      await pushSpaceNotes(spaceId, notesForCloud);
+    } catch (err) {
+      console.error("[SpacesProcessing] Failed to push raw notes immediately:", err);
+    }
+  }
+
   const allChunks: SpaceChunk[] = [];
   let processed = 0;
 
-  // 2. Chunk + embed each note (skip canvas files — they're structural JSON)
-  for (const note of vaultNotes) {
-    if (!note.isCanvas) {
-      const textChunks = chunkText(note.content);
+  // Load existing vector index to implement caching
+  const existingIndex = await loadVectorIndex(spaceId);
+  const existingChunksByPath = new Map<string, SpaceChunk[]>();
+  if (existingIndex && existingIndex.chunks) {
+    for (const chunk of existingIndex.chunks) {
+      if (!existingChunksByPath.has(chunk.notePath)) {
+        existingChunksByPath.set(chunk.notePath, []);
+      }
+      existingChunksByPath.get(chunk.notePath)!.push(chunk);
+    }
+  }
 
-      for (const chunk of textChunks) {
-        const vector = await embedText(chunk.text);
+  // First Pass: Resolve cache hits instantly
+  const cacheMisses: { note: VaultNote; hash: string }[] = [];
+
+  for (const note of vaultNotes) {
+    if (note.isCanvas) {
+      processed++;
+      continue;
+    }
+
+    const currentHash = simpleHash(note.content);
+    const existingChunks = existingChunksByPath.get(note.path);
+
+    if (existingChunks && existingChunks.length > 0 && existingChunks[0].noteHash === currentHash) {
+      // Cache hit! Reuse chunks instantly
+      const startIndex = allChunks.length;
+      existingChunks.forEach((c, idx) => {
         allChunks.push({
-          id: `chunk-${allChunks.length}`,
+          ...c,
+          id: `chunk-${startIndex + idx}`,
+        });
+      });
+      processed++;
+    } else {
+      cacheMisses.push({ note, hash: currentHash });
+    }
+  }
+
+  // Report progress after resolving cache hits
+  onProgress?.(processed, totalNotes);
+
+  // Second Pass: Process cache misses in concurrent batches
+  const CONCURRENCY = 16;
+  for (let i = 0; i < cacheMisses.length; i += CONCURRENCY) {
+    const batch = cacheMisses.slice(i, i + CONCURRENCY);
+
+    // Process the batch in parallel
+    const batchResults = await Promise.all(
+      batch.map(async ({ note, hash }) => {
+        const textChunks = chunkText(note.content);
+        if (textChunks.length === 0) return [];
+
+        const vectors = await Promise.all(textChunks.map((chunk) => embedText(chunk.text)));
+        return textChunks.map((chunk, idx) => ({
           spaceId,
           notePath: note.path,
           noteTitle: note.title,
           chunkText: chunk.text,
-          vector,
+          vector: vectors[idx],
           startOffset: chunk.startOffset,
           endOffset: chunk.endOffset,
+          noteHash: hash,
+        }));
+      })
+    );
+
+    // Safe sequential aggregation of the generated chunks to avoid race conditions
+    for (const noteChunks of batchResults) {
+      for (const c of noteChunks) {
+        allChunks.push({
+          ...c,
+          id: `chunk-${allChunks.length}`,
         });
       }
     }
 
-    processed++;
+    processed += batch.length;
     onProgress?.(processed, totalNotes);
-    
-    // Yield to the main thread so the progress bar and spinner can render in real-time
-    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Yield back to the event loop exactly once per batch to keep UI rendering smooth
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   // 3. Save vector index
@@ -253,7 +328,6 @@ export async function buildVectorIndex(
   await saveVectorIndex(index);
 
   // 4. Push notes to Supabase if this space is cloud-synced
-  const spaceData = await getSpace(spaceId);
   if (spaceData && spaceData.visibility !== "local") {
     const notesForCloud = vaultNotes
       .map((n) => ({

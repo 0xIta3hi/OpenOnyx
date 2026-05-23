@@ -12,7 +12,7 @@
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { X, Lightbulb, BookOpen, Pen } from "lucide-react";
-import { Compartment, EditorState, Transaction } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, StateField } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -47,6 +47,11 @@ import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { vimCompartment, toggleVimMode } from "../../editor/vimExtension";
 import { type LinkType } from "../SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
+import type { CollabOperation, CursorPresence } from "../../utils/collabOperations";
+import { extractOperations } from "../../utils/collabOperations";
+import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
+import { authManager } from "../../lib/auth";
+import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
 
 interface EditorProps {
   tabs: Tab[];
@@ -77,6 +82,14 @@ interface EditorProps {
   showInsight?: boolean;
   onToggleInsight?: (show: boolean) => void;
   theme?: string;
+  // Collaboration: operation-based sync
+  onCollabOperations?: (ops: CollabOperation[]) => void;
+  onCursorChange?: (cursor: { from: number; to: number }) => void;
+  remoteCursors?: CursorPresence[];
+  /** The local client ID, used to tag extracted operations. */
+  localClientId?: string;
+  /** Called when the CodeMirror EditorView is created or destroyed. */
+  onEditorViewReady?: (view: import("@codemirror/view").EditorView | null) => void;
 }
 
 /**
@@ -839,12 +852,6 @@ function headingLivePreviewPlugin() {
   );
 }
 
-interface SentenceAnchor {
-  anchorPos: number;
-  anchorLine: number;
-  sentence: string;
-}
-
 const INLINE_PHRASE_STOP_WORDS = new Set([
   "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
   "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
@@ -852,77 +859,6 @@ const INLINE_PHRASE_STOP_WORDS = new Set([
   "their", "you", "your", "we", "our", "i", "me", "my", "as", "if", "then",
   "also", "very", "just", "really", "about", "into", "over", "after", "before",
 ]);
-
-function findLastCompletedSentenceAnchor(
-  doc: EditorState["doc"],
-  cursorPos: number,
-): SentenceAnchor | null {
-  const beforeCursor = doc.sliceString(0, cursorPos);
-  const endMatch = beforeCursor.match(/[.!?](?=[^.!?]*$)/);
-  if (!endMatch || typeof endMatch.index !== "number") return null;
-
-  const sentenceEnd = endMatch.index + 1;
-  const beforeEnd = beforeCursor.slice(0, Math.max(0, endMatch.index));
-  const previousEndMatch = beforeEnd.match(/[.!?](?=[^.!?]*$)/);
-  const sentenceStart =
-    previousEndMatch && typeof previousEndMatch.index === "number"
-      ? previousEndMatch.index + 1
-      : 0;
-
-  const sentence = beforeCursor.slice(sentenceStart, sentenceEnd).trim();
-  if (!sentence) return null;
-
-  const anchorPos = Math.max(0, Math.min(doc.length, sentenceEnd));
-  return {
-    anchorPos,
-    anchorLine: doc.lineAt(anchorPos).number,
-    sentence,
-  };
-}
-
-function isCursorAtSentenceOrLineEnd(
-  doc: EditorState["doc"],
-  cursorPos: number,
-): boolean {
-  const line = doc.lineAt(cursorPos);
-  if (cursorPos === line.to) return true;
-
-  const beforeCursor = doc.sliceString(0, cursorPos).trimEnd();
-  return /[.!?]$/.test(beforeCursor);
-}
-
-function extractInlineTriggerPhrase(
-  sentence: string,
-  suggestion: EnrichedSuggestion,
-): string {
-  const words = sentence
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length > 2 && !INLINE_PHRASE_STOP_WORDS.has(word));
-
-  if (words.length === 0) return "this idea";
-
-  const preferred = new Set(
-    [...suggestion.sharedConcepts, suggestion.title]
-      .flatMap((value) =>
-        value
-          .toLowerCase()
-          .replace(/[^a-z0-9\s]/g, " ")
-          .split(/\s+/),
-      )
-      .filter((word) => word.length > 2 && !INLINE_PHRASE_STOP_WORDS.has(word)),
-  );
-
-  const startIndex = Math.max(
-    0,
-    words.findIndex((word) => preferred.has(word)),
-  );
-
-  const phraseWords = words.slice(startIndex, startIndex + 3);
-  const phrase = phraseWords.join(" ").trim();
-  return phrase || words[0] || "this idea";
-}
 
 interface ParsedListLine {
   lineNumber: number;
@@ -1594,29 +1530,7 @@ function buildSectionScopedSuggestions(
   return { suggestions, lowConfidencePaths, deferredMinimum, topSignalScore };
 }
 
-function insertSectionSuggestionIntoDoc(
-  view: EditorView,
-  suggestion: EnrichedSuggestion,
-  context: ActiveListSectionContext,
-): void {
-  const suggestionLine = `${context.listPrefix}[[${suggestion.title}]]`;
 
-  const from = context.isPlaceholderLine
-    ? context.replaceFrom
-    : context.activeList.to;
-  const to = context.isPlaceholderLine
-    ? context.replaceTo
-    : context.activeList.to;
-  const insert = context.isPlaceholderLine
-    ? suggestionLine
-    : `\n${suggestionLine}`;
-
-  view.dispatch({
-    changes: { from, to, insert },
-    selection: { anchor: from + insert.length },
-    scrollIntoView: true,
-  });
-}
 
 function wireSuggestionAction(
   button: HTMLButtonElement,
@@ -1634,48 +1548,7 @@ function wireSuggestionAction(
   });
 }
 
-class InlineContextSuggestionWidget extends WidgetType {
-  constructor(
-    private readonly suggestion: EnrichedSuggestion,
-    private readonly triggerPhrase: string,
-    private readonly confidence: "high" | "medium" | "low",
-    private readonly onAccept: (path: string) => void,
-  ) {
-    super();
-  }
 
-  eq(other: InlineContextSuggestionWidget): boolean {
-    return (
-      this.suggestion.path === other.suggestion.path &&
-      this.suggestion.similarity === other.suggestion.similarity &&
-      this.triggerPhrase === other.triggerPhrase
-    );
-  }
-
-  toDOM(): HTMLElement {
-    const root = document.createElement("div");
-    root.className = "editor-virtual-inline-suggestion";
-    root.setAttribute("contenteditable", "false");
-
-    const ghostLink = document.createElement("button");
-    ghostLink.type = "button";
-    ghostLink.className =
-      this.confidence === "low"
-        ? "editor-virtual-inline-ghost-link editor-virtual-inline-ghost-link--low-confidence"
-        : this.confidence === "medium"
-          ? "editor-virtual-inline-ghost-link editor-virtual-inline-ghost-link--medium-confidence"
-          : "editor-virtual-inline-ghost-link";
-    ghostLink.textContent = `\u2192 expands on "${this.triggerPhrase}" \u2192 [[${this.suggestion.title}]]`;
-    wireSuggestionAction(ghostLink, () => this.onAccept(this.suggestion.path));
-    root.appendChild(ghostLink);
-
-    return root;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
 
 class EndOfNoteSuggestionsWidget extends WidgetType {
   private readonly key: string;
@@ -1684,15 +1557,12 @@ class EndOfNoteSuggestionsWidget extends WidgetType {
     private readonly suggestions: EnrichedSuggestion[],
     private readonly nextStepSuggestions: EnrichedSuggestion[],
     private readonly onAccept: (path: string) => void,
+    private readonly isClosing: boolean = false,
   ) {
     super();
-    this.key = [
-      ...suggestions.map((suggestion) => `${suggestion.path}:${Math.round(suggestion.similarity * 100)}`),
-      "::next::",
-      ...nextStepSuggestions.map(
-        (suggestion) => `${suggestion.path}:${Math.round(suggestion.similarity * 100)}`,
-      ),
-    ].join("|");
+    this.key = nextStepSuggestions.map(
+      (suggestion) => `${suggestion.path}:${Math.round(suggestion.similarity * 100)}`,
+    ).join("|") + (isClosing ? ":closing" : "");
   }
 
   eq(other: EndOfNoteSuggestionsWidget): boolean {
@@ -1701,40 +1571,13 @@ class EndOfNoteSuggestionsWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const root = document.createElement("div");
-    root.className = "editor-virtual-end-suggestions";
+    root.className = "editor-virtual-end-suggestions" + (this.isClosing ? " editor-virtual-end-suggestions--closing" : "");
     root.setAttribute("contenteditable", "false");
     root.style.userSelect = "none";
     root.style.caretColor = "transparent";
     root.addEventListener("mousedown", (event) => {
       event.preventDefault();
     });
-
-    if (this.suggestions.length > 0) {
-      const heading = document.createElement("div");
-      heading.className = "editor-virtual-end-heading";
-      heading.textContent = "You might also connect this to:";
-      root.appendChild(heading);
-
-      for (const suggestion of this.suggestions) {
-        const line = document.createElement("div");
-        line.className = "editor-virtual-end-line";
-
-        const confidence = resolveSuggestionConfidence(suggestion.similarity);
-
-        const noteButton = document.createElement("button");
-        noteButton.type = "button";
-        noteButton.className =
-          confidence === "low"
-            ? "editor-virtual-end-note editor-virtual-end-note--low-confidence"
-            : confidence === "medium"
-              ? "editor-virtual-end-note editor-virtual-end-note--medium-confidence"
-              : "editor-virtual-end-note";
-        noteButton.textContent = `[[${suggestion.title}]]`;
-        wireSuggestionAction(noteButton, () => this.onAccept(suggestion.path));
-        line.appendChild(noteButton);
-        root.appendChild(line);
-      }
-    }
 
     if (this.nextStepSuggestions.length > 0) {
       const heading = document.createElement("div");
@@ -1759,64 +1602,36 @@ class EndOfNoteSuggestionsWidget extends WidgetType {
     return root;
   }
 
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
-class SectionListSuggestionsWidget extends WidgetType {
-  private readonly key: string;
-
-  constructor(
-    private readonly suggestions: EnrichedSuggestion[],
-    private readonly listPrefix: string,
-    private readonly lowConfidencePaths: Set<string>,
-    private readonly onAccept: (suggestion: EnrichedSuggestion) => void,
-  ) {
-    super();
-    this.key = suggestions
-      .map(
-        (suggestion) =>
-          `${suggestion.path}:${Math.round(suggestion.similarity * 100)}:${this.lowConfidencePaths.has(suggestion.path) ? "low" : "high"}`,
-      )
-      .join("|");
-  }
-
-  eq(other: SectionListSuggestionsWidget): boolean {
-    return this.key === other.key && this.listPrefix === other.listPrefix;
-  }
-
-  toDOM(): HTMLElement {
-    const root = document.createElement("div");
-    root.className = "editor-virtual-section-suggestions";
-    root.setAttribute("contenteditable", "false");
-    root.style.caretColor = "transparent";
-    root.style.userSelect = "none";
-    root.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
-
-    for (const suggestion of this.suggestions) {
-      const confidence = resolveSuggestionConfidence(
-        suggestion.similarity,
-        this.lowConfidencePaths.has(suggestion.path),
-      );
-      const itemButton = document.createElement("button");
-      itemButton.type = "button";
-      itemButton.className =
-        confidence === "low"
-          ? "editor-virtual-section-item editor-virtual-section-item--low-confidence"
-          : confidence === "medium"
-            ? "editor-virtual-section-item editor-virtual-section-item--medium-confidence"
-            : "editor-virtual-section-item";
-      itemButton.style.caretColor = "transparent";
-      itemButton.style.userSelect = "none";
-      itemButton.textContent = `${this.listPrefix}[[${suggestion.title}]]`;
-      wireSuggestionAction(itemButton, () => this.onAccept(suggestion));
-      root.appendChild(itemButton);
+  updateDOM(dom: HTMLElement): boolean {
+    const expectedClass = "editor-virtual-end-suggestions" + (this.isClosing ? " editor-virtual-end-suggestions--closing" : "");
+    if (dom.className !== expectedClass) {
+      dom.className = expectedClass;
     }
 
-    return root;
+    // Smoothly update children in place to prevent animation re-triggers
+    dom.innerHTML = "";
+
+    if (this.nextStepSuggestions.length > 0) {
+      const heading = document.createElement("div");
+      heading.className = "editor-virtual-end-heading editor-virtual-end-heading--next-step";
+      heading.textContent = "You may be moving toward...";
+      dom.appendChild(heading);
+
+      for (const suggestion of this.nextStepSuggestions) {
+        const line = document.createElement("div");
+        line.className = "editor-virtual-end-line";
+
+        const noteButton = document.createElement("button");
+        noteButton.type = "button";
+        noteButton.className = "editor-virtual-end-note editor-virtual-end-note--next-step";
+        noteButton.textContent = `-> [[${suggestion.title}]]`;
+        wireSuggestionAction(noteButton, () => this.onAccept(suggestion.path));
+        line.appendChild(noteButton);
+        dom.appendChild(line);
+      }
+    }
+
+    return true;
   }
 
   ignoreEvent(): boolean {
@@ -1824,348 +1639,242 @@ class SectionListSuggestionsWidget extends WidgetType {
   }
 }
 
-interface SuggestionContentPluginOptions {
-  inlineSuggestion: EnrichedSuggestion | null;
+
+
+interface SuggestionContentStateFieldOptions {
   endSuggestions: EnrichedSuggestion[];
   nextStepSuggestions: EnrichedSuggestion[];
-  sectionCandidates: EnrichedSuggestion[];
   showEndSuggestions: boolean;
-  showSectionSuggestions: boolean;
-  allowForcedSectionMinimum: boolean;
   isActivelyTyping: boolean;
-  onInlineAccept: (path: string) => void;
+  isClosing?: boolean;
   onEndAccept: (path: string) => void;
-  onSectionAccept: (
-    suggestion: EnrichedSuggestion,
-    context: ActiveListSectionContext,
-  ) => void;
-  onSectionMinimumDeferred: () => void;
+  getStableEnd: () => { paths: string[]; topSimilarity: number; until: number } | null;
+  setStableEnd: (val: { paths: string[]; topSimilarity: number; until: number } | null) => void;
+  getPreviousContextVector: () => Map<string, number> | null;
+  setPreviousContextVector: (val: Map<string, number> | null) => void;
+  getIntentShiftUntil: () => number;
+  setIntentShiftUntil: (val: number) => void;
 }
 
-function suggestionContentPlugin(options: SuggestionContentPluginOptions) {
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      stableInline:
-        | { path: string; anchorLine: number; similarity: number; until: number }
-        | null = null;
-      stableSection:
-        | {
-            contextKey: string;
-            paths: string[];
-            lowConfidencePaths: string[];
-            topSignalScore: number;
-            until: number;
-          }
-        | null = null;
-      stableEnd: { paths: string[]; topSimilarity: number; until: number } | null = null;
-      previousContextVector: Map<string, number> | null = null;
-      intentShiftUntil = 0;
-
-      constructor(view: EditorView) {
-        this.decorations = this.buildDecorations(view);
-      }
-
-      update(update: ViewUpdate) {
-        if (
-          update.docChanged ||
-          update.selectionSet ||
-          update.viewportChanged
-        ) {
-          this.decorations = this.buildDecorations(update.view);
-        }
-      }
-
-      buildDecorations(view: EditorView): DecorationSet {
-        const decorations: any[] = [];
-        const doc = view.state.doc;
-        const cursorPos = view.state.selection.main.head;
-        const cursorLine = doc.lineAt(cursorPos).number;
-        const now = Date.now();
-        const sectionContext = detectActiveListSectionContext(doc, cursorPos);
-        const contextSnapshot = buildIntentContextSnapshot(
-          doc,
-          cursorPos,
-          sectionContext,
-        );
-        const currentContextVector = buildTokenFrequencyMap(contextSnapshot);
-        let resetBiasForThisPass = now < this.intentShiftUntil;
-
-        if (
-          this.previousContextVector &&
-          currentContextVector.size > 0
-        ) {
-          const contextSimilarity = cosineSimilarityFromTokenMaps(
-            this.previousContextVector,
-            currentContextVector,
-          );
-          if (contextSimilarity < INTENT_SHIFT_COSINE_THRESHOLD) {
-            this.intentShiftUntil = now + INTENT_SHIFT_RESET_WINDOW_MS;
-            resetBiasForThisPass = true;
-            this.stableInline = null;
-            this.stableSection = null;
-            this.stableEnd = null;
-          }
-        }
-
-        if (currentContextVector.size > 0) {
-          this.previousContextVector = currentContextVector;
-        }
-
-        let inlineLayerActive = false;
-
-        if (options.inlineSuggestion) {
-          const sentenceAnchor = findLastCompletedSentenceAnchor(doc, cursorPos);
-          const cursorAtSentenceOrLineEnd = isCursorAtSentenceOrLineEnd(
-            doc,
-            cursorPos,
-          );
-
-          let inlineSuggestion = options.inlineSuggestion;
-          if (
-            this.stableInline &&
-            !resetBiasForThisPass &&
-            this.stableInline.anchorLine === cursorLine &&
-            now < this.stableInline.until
-          ) {
-            const stableCandidate = options.sectionCandidates.find(
-              (candidate) => candidate.path === this.stableInline?.path,
-            );
-            if (
-              stableCandidate &&
-              inlineSuggestion.similarity <=
-                this.stableInline.similarity +
-                  SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA
-            ) {
-              inlineSuggestion = stableCandidate;
-            }
-          }
-
-          if (sentenceAnchor && cursorAtSentenceOrLineEnd) {
-            const { anchorPos, anchorLine, sentence } = sentenceAnchor;
-            const editingInlineLocation =
-              options.isActivelyTyping && Math.abs(cursorLine - anchorLine) <= 1;
-            const anchorVisibleInViewport =
-              anchorPos >= view.viewport.from && anchorPos <= view.viewport.to;
-            const cursorAlignedWithAnchor =
-              cursorLine === anchorLine && cursorPos >= anchorPos;
-
-            if (
-              !editingInlineLocation &&
-              anchorVisibleInViewport &&
-              cursorAlignedWithAnchor
-            ) {
-              const triggerPhrase = extractInlineTriggerPhrase(
-                sentence,
-                inlineSuggestion,
-              );
-
-              if (
-                !this.stableInline ||
-                this.stableInline.path !== inlineSuggestion.path ||
-                this.stableInline.anchorLine !== anchorLine ||
-                now >= this.stableInline.until
-              ) {
-                this.stableInline = {
-                  path: inlineSuggestion.path,
-                  anchorLine,
-                  similarity: inlineSuggestion.similarity,
-                  until: now + SUGGESTION_STABILITY_WINDOW_MS,
-                };
-              }
-
-              // Only one inline suggestion can appear per viewport.
-              decorations.push(
-                Decoration.widget({
-                  widget: new InlineContextSuggestionWidget(
-                    inlineSuggestion,
-                    triggerPhrase,
-                    resolveSuggestionConfidence(inlineSuggestion.similarity),
-                    options.onInlineAccept,
-                  ),
-                  side: -1,
-                }).range(anchorPos),
-              );
-              inlineLayerActive = true;
-            }
-          }
-        }
-
-        if (
-          !inlineLayerActive &&
-          options.showSectionSuggestions &&
-          options.sectionCandidates.length > 0
-        ) {
-          if (sectionContext) {
-            let sectionPlan = buildSectionScopedSuggestions(
-              sectionContext,
-              options.sectionCandidates,
-              "section-primary",
-              options.allowForcedSectionMinimum,
-              resetBiasForThisPass,
-            );
-
-            if (sectionPlan.deferredMinimum) {
-              options.onSectionMinimumDeferred();
-            }
-
-            const sectionContextKey = `${sectionContext.heading.lineNumber}:${sectionContext.sectionStartLine}:${sectionContext.sectionEndLine}`;
-            if (
-              this.stableSection &&
-              !resetBiasForThisPass &&
-              this.stableSection.contextKey === sectionContextKey &&
-              now < this.stableSection.until
-            ) {
-              const existingTitles = new Set(
-                sectionContext.listItems
-                  .map((item) => normalizeSuggestionText(item.content))
-                  .filter(Boolean),
-              );
-
-              const stableSuggestions = this.stableSection.paths
-                .map((path) =>
-                  options.sectionCandidates.find((candidate) => candidate.path === path),
-                )
-                .filter((candidate): candidate is EnrichedSuggestion => Boolean(candidate))
-                .filter((candidate) =>
-                  !existingTitles.has(normalizeSuggestionText(candidate.title)),
-                );
-
-              if (stableSuggestions.length > 0) {
-                const shouldKeepStableSuggestions =
-                  sectionPlan.topSignalScore <=
-                  this.stableSection.topSignalScore +
-                    SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
-
-                if (shouldKeepStableSuggestions) {
-                  sectionPlan = {
-                    suggestions: stableSuggestions.slice(0, SECTION_DISPLAY_CAP),
-                    lowConfidencePaths: new Set(this.stableSection.lowConfidencePaths),
-                    deferredMinimum: false,
-                    topSignalScore: this.stableSection.topSignalScore,
-                  };
-                }
-              }
-            }
-
-            const sectionAnchorVisible =
-              sectionContext.anchorPos >= view.viewport.from &&
-              sectionContext.anchorPos <= view.viewport.to;
-            const cursorWithinSection =
-              cursorLine >= sectionContext.sectionStartLine &&
-              cursorLine <= sectionContext.sectionEndLine;
-
-            if (
-              sectionPlan.suggestions.length > 0 &&
-              sectionAnchorVisible &&
-              cursorWithinSection
-            ) {
-              if (
-                !this.stableSection ||
-                this.stableSection.contextKey !== sectionContextKey ||
-                now >= this.stableSection.until
-              ) {
-                this.stableSection = {
-                  contextKey: sectionContextKey,
-                  paths: sectionPlan.suggestions.map((suggestion) => suggestion.path),
-                  lowConfidencePaths: [...sectionPlan.lowConfidencePaths],
-                  topSignalScore: sectionPlan.topSignalScore,
-                  until: now + SUGGESTION_STABILITY_WINDOW_MS,
-                };
-              }
-
-              decorations.push(
-                Decoration.widget({
-                  widget: new SectionListSuggestionsWidget(
-                    sectionPlan.suggestions,
-                    sectionContext.listPrefix,
-                    sectionPlan.lowConfidencePaths,
-                    (suggestion) => options.onSectionAccept(suggestion, sectionContext),
-                  ),
-                  side: 1,
-                }).range(sectionContext.anchorPos),
-              );
-            }
-          }
-        }
-
-        if (options.showEndSuggestions && options.endSuggestions.length > 0) {
-          const nearEndStartLine = Math.max(1, doc.lines - 2);
-          const editingEndLocation =
-            options.isActivelyTyping && cursorLine >= nearEndStartLine;
-
-          if (!editingEndLocation) {
-            let endSuggestions = options.endSuggestions;
-            if (this.stableEnd && now < this.stableEnd.until) {
-              const topIncomingSimilarity = endSuggestions[0]?.similarity ?? 0;
-              const shouldKeepStableSuggestions =
-                !resetBiasForThisPass &&
-                topIncomingSimilarity <=
-                this.stableEnd.topSimilarity +
-                  SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
-
-              if (shouldKeepStableSuggestions) {
-                const stableSuggestions = this.stableEnd.paths
-                  .map((path) =>
-                    options.endSuggestions.find((suggestion) => suggestion.path === path),
-                  )
-                  .filter((suggestion): suggestion is EnrichedSuggestion => Boolean(suggestion));
-                if (stableSuggestions.length > 0) {
-                  endSuggestions = stableSuggestions;
-                }
-              }
-            }
-
-            if (
-              !this.stableEnd ||
-              now >= this.stableEnd.until
-            ) {
-              this.stableEnd = {
-                paths: endSuggestions.map((suggestion) => suggestion.path),
-                topSimilarity: endSuggestions[0]?.similarity ?? 0,
-                until: now + SUGGESTION_STABILITY_WINDOW_MS,
-              };
-            }
-
-            decorations.push(
-              Decoration.widget({
-                widget: new EndOfNoteSuggestionsWidget(
-                  endSuggestions,
-                  options.nextStepSuggestions,
-                  options.onEndAccept,
-                ),
-                side: 1,
-              }).range(doc.length),
-            );
-          }
-        }
-
-        if (
-          options.showEndSuggestions &&
-          options.endSuggestions.length === 0 &&
-          options.nextStepSuggestions.length > 0
-        ) {
-          decorations.push(
-            Decoration.widget({
-              widget: new EndOfNoteSuggestionsWidget(
-                [],
-                options.nextStepSuggestions,
-                options.onEndAccept,
-              ),
-              side: 1,
-            }).range(doc.length),
-          );
-        }
-
-        if (decorations.length === 0) return Decoration.none;
-
-        return Decoration.set(decorations, true);
-      }
-    },
-    {
-      decorations: (v) => v.decorations,
-    },
+function buildSuggestionsDecorations(
+  state: EditorState,
+  options: SuggestionContentStateFieldOptions,
+): DecorationSet {
+  const decorations: any[] = [];
+  const doc = state.doc;
+  const cursorPos = state.selection.main.head;
+  const cursorLine = doc.lineAt(cursorPos).number;
+  const now = Date.now();
+  const sectionContext = detectActiveListSectionContext(doc, cursorPos);
+  const contextSnapshot = buildIntentContextSnapshot(
+    doc,
+    cursorPos,
+    sectionContext,
   );
+  const currentContextVector = buildTokenFrequencyMap(contextSnapshot);
+  
+  const intentShiftUntil = options.getIntentShiftUntil();
+  let resetBiasForThisPass = now < intentShiftUntil;
+
+  const previousContextVector = options.getPreviousContextVector();
+  if (previousContextVector && currentContextVector.size > 0) {
+    const contextSimilarity = cosineSimilarityFromTokenMaps(
+      previousContextVector,
+      currentContextVector,
+    );
+    if (contextSimilarity < INTENT_SHIFT_COSINE_THRESHOLD) {
+      const nextIntentShiftUntil = now + INTENT_SHIFT_RESET_WINDOW_MS;
+      options.setIntentShiftUntil(nextIntentShiftUntil);
+      resetBiasForThisPass = true;
+      options.setStableEnd(null);
+    }
+  }
+
+  if (currentContextVector.size > 0) {
+    options.setPreviousContextVector(currentContextVector);
+  }
+
+  if (options.showEndSuggestions && options.endSuggestions.length > 0) {
+    const nearEndStartLine = Math.max(1, doc.lines - 2);
+    const editingEndLocation =
+      options.isActivelyTyping && cursorLine >= nearEndStartLine;
+
+    if (!editingEndLocation) {
+      let endSuggestions = options.endSuggestions;
+      const stableEnd = options.getStableEnd();
+      if (stableEnd && now < stableEnd.until) {
+        const topIncomingSimilarity = endSuggestions[0]?.similarity ?? 0;
+        const shouldKeepStableSuggestions =
+          !resetBiasForThisPass &&
+          topIncomingSimilarity <=
+          stableEnd.topSimilarity +
+            SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
+
+        if (shouldKeepStableSuggestions) {
+          const stableSuggestions = stableEnd.paths
+            .map((path) =>
+              options.endSuggestions.find((suggestion) => suggestion.path === path),
+            )
+            .filter((suggestion): suggestion is EnrichedSuggestion => Boolean(suggestion));
+          if (stableSuggestions.length > 0) {
+            endSuggestions = stableSuggestions;
+          }
+        }
+      }
+
+      const currentStableEnd = options.getStableEnd();
+      if (!currentStableEnd || now >= currentStableEnd.until) {
+        options.setStableEnd({
+          paths: endSuggestions.map((suggestion) => suggestion.path),
+          topSimilarity: endSuggestions[0]?.similarity ?? 0,
+          until: now + SUGGESTION_STABILITY_WINDOW_MS,
+        });
+      }
+
+      decorations.push(
+        Decoration.widget({
+          widget: new EndOfNoteSuggestionsWidget(
+            endSuggestions,
+            options.nextStepSuggestions,
+            options.onEndAccept,
+            options.isClosing || false,
+          ),
+          side: 1,
+          block: true,
+        }).range(doc.length),
+      );
+    }
+  }
+
+  if (
+    options.showEndSuggestions &&
+    options.endSuggestions.length === 0 &&
+    options.nextStepSuggestions.length > 0
+  ) {
+    decorations.push(
+      Decoration.widget({
+        widget: new EndOfNoteSuggestionsWidget(
+          [],
+          options.nextStepSuggestions,
+          options.onEndAccept,
+          options.isClosing || false,
+        ),
+        side: 1,
+        block: true,
+      }).range(doc.length),
+    );
+  }
+
+  if (decorations.length === 0) return Decoration.none;
+  return Decoration.set(decorations, true);
+}
+
+function suggestionContentStateField(options: SuggestionContentStateFieldOptions) {
+  return StateField.define<DecorationSet>({
+    create(state) {
+      return buildSuggestionsDecorations(state, options);
+    },
+    update(decorations, tr) {
+      if (tr.docChanged || tr.selection) {
+        return buildSuggestionsDecorations(tr.state, options);
+      }
+      return decorations.map(tr.changes);
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}
+function cleanInlineAIResponse(text: string): string {
+  if (!text) return "";
+  let cleaned = text.trim();
+
+  // Strip leading/trailing markdown code block markers if the model wrapped the response
+  if (cleaned.startsWith("```")) {
+    const firstNewline = cleaned.indexOf("\n");
+    if (firstNewline !== -1) {
+      cleaned = cleaned.substring(firstNewline + 1);
+    } else {
+      cleaned = cleaned.substring(3);
+    }
+    
+    // Strip trailing code block marker if present
+    if (cleaned.endsWith("```")) {
+      cleaned = cleaned.substring(0, cleaned.length - 3);
+    }
+  }
+
+  // Strip leading and trailing quotes if the model wrapped the response in quotes
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    cleaned = cleaned.substring(1, cleaned.length - 1);
+  } else if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+    cleaned = cleaned.substring(1, cleaned.length - 1);
+  }
+
+  return cleaned.trim();
+}
+
+async function executeInlineAIOperation(
+  text: string,
+  operation: "rewrite" | "expand" | "simplify" | "explain"
+): Promise<string> {
+  const config = loadAIConfig();
+  if (!config) {
+    throw new Error("No API key configured. Please add one in AI Settings.");
+  }
+
+  let prompt = "";
+  if (operation === "rewrite") {
+    prompt = `You are a professional writing assistant. Rewrite the exact text provided below to make it more polished, clear, and professional, while keeping the meaning identical.
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text.
+Do NOT omit any list syntax or surrounding structure. If the original text starts with a bullet point or checklist, the rewritten text MUST start with the exact same prefix.
+Return ONLY the rewritten markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text to rewrite:
+${text}`;
+  } else if (operation === "expand") {
+    prompt = `You are a professional writing assistant. Expand the exact text provided below by adding useful detail and depth, while maintaining the original tone and intent.
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text.
+Do NOT omit any list syntax or surrounding structure. If the original text starts with a bullet point or checklist, the expanded text MUST start with the exact same prefix.
+Return ONLY the expanded markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text to expand:
+${text}`;
+  } else if (operation === "simplify") {
+    prompt = `You are a professional writing assistant. Simplify the exact text provided below to make it extremely clear, simple, and direct, while keeping the core meaning identical.
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text.
+Do NOT omit any list syntax or surrounding structure. If the original text starts with a bullet point or checklist, the simplified text MUST start with the exact same prefix.
+Return ONLY the simplified markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text to simplify:
+${text}`;
+  } else if (operation === "explain") {
+    prompt = `You are a professional writing assistant. Explain the key concept, meaning, and context of the following highlighted text in a clear, concise paragraph. Return ONLY the explanation paragraph, with no introduction, surrounding quotes, or emojis:\n\n"${text}"`;
+  }
+
+  const baseUrl = getBaseUrl(config);
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: getProviderHeaders(config),
+    body: JSON.stringify({
+      model: config.modelId,
+      max_tokens: 4096,
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. You respond strictly with the requested text in the exact same format (preserving list styles, indentation, headings, and markdown markup). Do not use emojis, no intro, no wrap, no filler." },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseProviderError(response));
+  }
+
+  const data = await response.json();
+  const result = data.choices?.[0]?.message?.content?.trim();
+  if (!result) {
+    throw new Error("Empty response from AI.");
+  }
+  return cleanInlineAIResponse(result);
 }
 
 export function Editor({
@@ -2192,6 +1901,11 @@ export function Editor({
   showInsight,
   onToggleInsight,
   theme,
+  onCollabOperations,
+  onCursorChange,
+  remoteCursors,
+  localClientId,
+  onEditorViewReady,
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -2212,7 +1926,23 @@ export function Editor({
   const flowTriggerWindowTimerRef = useRef<number | null>(null);
   const sectionPauseTimerRef = useRef<number | null>(null);
   const sectionEnterTriggerTimerRef = useRef<number | null>(null);
-  const sectionEnterAcceptRef = useRef<(view: EditorView) => boolean>(() => false);
+
+
+  // Refs for collaboration callbacks -- avoids stale closures in the CodeMirror
+  // update listener which is created once per tab and never re-created when
+  // the collab space becomes active asynchronously.
+  const onContentChangeRef = useRef(onContentChange);
+  const onCollabOperationsRef = useRef(onCollabOperations);
+  const onCursorChangeRef = useRef(onCursorChange);
+  const localClientIdRef = useRef(localClientId);
+
+  // Keep callback refs in sync on every render
+  useEffect(() => {
+    onContentChangeRef.current = onContentChange;
+    onCollabOperationsRef.current = onCollabOperations;
+    onCursorChangeRef.current = onCursorChange;
+    localClientIdRef.current = localClientId;
+  });
 
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -2225,13 +1955,23 @@ export function Editor({
   const [allowForcedSectionMinimum, setAllowForcedSectionMinimum] = useState(false);
   const [hasFlowTrigger, setHasFlowTrigger] = useState(false);
   const [isNearNoteEnd, setIsNearNoteEnd] = useState(false);
-  const [dismissedInlinePaths, setDismissedInlinePaths] = useState<Set<string>>(
-    new Set(),
-  );
+
+  // Smoothly animated suggestions closing states
+  const [renderedNextStepSuggestions, setRenderedNextStepSuggestions] = useState<EnrichedSuggestion[]>([]);
+  const [renderedShowEndSuggestions, setRenderedShowEndSuggestions] = useState(false);
+  const [isClosingSuggestions, setIsClosingSuggestions] = useState(false);
+  const closingTimeoutRef = useRef<number | null>(null);
+
+  // Persistent refs for stable suggestions and context shifts
+  const stableEndRef = useRef<{ paths: string[]; topSimilarity: number; until: number } | null>(null);
+  const previousContextVectorRef = useRef<Map<string, number> | null>(null);
+  const intentShiftUntilRef = useRef<number>(0);
+
   const [imageLightbox, setImageLightbox] = useState<{
     src: string;
     alt: string;
   } | null>(null);
+
   const isSpecialTab = !!specialContent;
 
   const readVimModeSetting = useCallback((): boolean => {
@@ -2244,6 +1984,130 @@ export function Editor({
       return false;
     }
   }, []);
+
+  const [selectionRange, setSelectionRange] = useState<{ rect: DOMRect; text: string; from: number; to: number } | null>(null);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explanationCoords, setExplanationCoords] = useState<{ x: number; y: number } | null>(null);
+  const [isInlineQuerying, setIsInlineQuerying] = useState(false);
+
+  const handleSelectionChange = useCallback(() => {
+    if (isSpecialTab) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      setSelectionRange(null);
+      return;
+    }
+
+    try {
+      const range = sel.getRangeAt(0);
+      const isInsideEditor = editorRef.current?.contains(range.commonAncestorContainer) || previewRef.current?.contains(range.commonAncestorContainer);
+      if (!isInsideEditor) {
+        setSelectionRange(null);
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+      const view = viewRef.current;
+
+      let from = 0;
+      let to = 0;
+
+      if (view) {
+        if (editorRef.current?.contains(range.commonAncestorContainer)) {
+          const cmFrom = view.state.selection.main.from;
+          const cmTo = view.state.selection.main.to;
+          if (cmFrom !== cmTo) {
+            from = cmFrom;
+            to = cmTo;
+          } else {
+            try {
+              from = view.posAtDOM(range.startContainer, range.startOffset);
+              to = view.posAtDOM(range.endContainer, range.endOffset);
+            } catch (e) {
+              from = cmFrom;
+              to = cmTo;
+            }
+          }
+
+          // Safe fallback: if we got collapsed boundaries but the selection is not empty, find it via substring index
+          const selectedText = sel.toString().trim();
+          if (from === to && selectedText) {
+            const docString = view.state.doc.toString();
+            const index = docString.indexOf(selectedText);
+            if (index !== -1) {
+              from = index;
+              to = index + selectedText.length;
+            }
+          }
+        } else if (previewRef.current?.contains(range.commonAncestorContainer)) {
+          const selectedText = sel.toString().trim();
+          const docString = view.state.doc.toString();
+          const index = docString.indexOf(selectedText);
+          if (index !== -1) {
+            from = index;
+            to = index + selectedText.length;
+          } else {
+            from = view.state.selection.main.from;
+            to = view.state.selection.main.to;
+          }
+        }
+      }
+
+      setSelectionRange({
+        rect,
+        text: sel.toString(),
+        from,
+        to
+      });
+    } catch (e) {
+      // Ignore transient selection range errors
+    }
+  }, [isSpecialTab]);
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+    };
+  }, [handleSelectionChange]);
+
+  const handleInlineAction = async (operation: "rewrite" | "expand" | "simplify" | "explain") => {
+    if (!selectionRange) return;
+    const { text } = selectionRange;
+    
+    setIsInlineQuerying(true);
+    setExplanation(null);
+    setExplanationCoords(null);
+
+    try {
+      const result = await executeInlineAIOperation(text, operation);
+      if (operation === "explain") {
+        setExplanation(result);
+        setExplanationCoords({
+          x: selectionRange.rect.left + window.scrollX,
+          y: selectionRange.rect.bottom + window.scrollY + 8
+        });
+      } else {
+        const view = viewRef.current;
+        if (view) {
+          view.dispatch({
+            changes: { from: selectionRange.from, to: selectionRange.to, insert: result },
+            selection: { anchor: selectionRange.from + result.length }
+          });
+        } else {
+          // If in preview or fallback mode, copy rewritten text to clipboard
+          await navigator.clipboard.writeText(result);
+          alert("Rewritten text copied to clipboard (editor view not focused).");
+        }
+        window.getSelection()?.removeAllRanges();
+        setSelectionRange(null);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Inline AI operation failed.");
+    } finally {
+      setIsInlineQuerying(false);
+    }
+  };
 
   const activeSuggestions = useMemo(() => suggestions || [], [suggestions]);
   const activeNextStepSuggestions = useMemo(
@@ -2260,115 +2124,22 @@ export function Editor({
     if (primary.length > 0) return primary;
     return broaderPool.slice(0, Math.min(1, broaderPool.length));
   }, [activeSuggestions]);
-  const nextStepEndSuggestions = useMemo(
-    () =>
-      activeNextStepSuggestions
-        .filter((suggestion) => suggestion.similarity >= 0.35)
-        .slice(0, 3),
-    [activeNextStepSuggestions],
-  );
-  const sectionSuggestionCandidates = useMemo(
-    () => activeSuggestions.slice(0, 24),
-    [activeSuggestions],
-  );
-
+  const nextStepEndSuggestions = useMemo(() => {
+    const docText = content || "";
+    return activeNextStepSuggestions
+      .filter((suggestion) => {
+        const titleEscaped = suggestion.title.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const regex = new RegExp(`\\[\\[${titleEscaped}(\\|[^\\]]+)?\\]\\]`, "i");
+        return !regex.test(docText);
+      })
+      .filter((suggestion) => suggestion.similarity >= 0.35)
+      .slice(0, 3);
+  }, [activeNextStepSuggestions, content]);
   const showEndSuggestionContent =
     !isSpecialTab &&
     (activeSuggestions.length > 0 || nextStepEndSuggestions.length > 0) &&
     !isActivelyTyping &&
     (isSuggestionIdle || isNearNoteEnd || hasFlowTrigger);
-
-  const showSectionSuggestionContent =
-    !isSpecialTab &&
-    sectionSuggestionCandidates.length > 0 &&
-    ((isSectionPauseReady && !isActivelyTyping) || hasSectionEnterTrigger);
-
-  const highConfidenceInlineSuggestion = useMemo(() => {
-    if (!(isSuggestionIdle || hasFlowTrigger) || isSpecialTab || isActivelyTyping) {
-      return null;
-    }
-    return (
-      activeSuggestions.find(
-        (suggestion) =>
-          suggestion.similarity >= 0.82 &&
-          !dismissedInlinePaths.has(suggestion.path),
-      ) || null
-    );
-  }, [
-    activeSuggestions,
-    dismissedInlinePaths,
-    hasFlowTrigger,
-    isActivelyTyping,
-    isSuggestionIdle,
-    isSpecialTab,
-  ]);
-
-  const handleInlineContextAccept = useCallback(
-    (path: string) => {
-      setDismissedInlinePaths((prev) => {
-        const next = new Set(prev);
-        next.add(path);
-        return next;
-      });
-      onAcceptSuggestion?.(path, "related");
-    },
-    [onAcceptSuggestion],
-  );
-
-  const handleSectionSuggestionAccept = useCallback(
-    (suggestion: EnrichedSuggestion, context: ActiveListSectionContext) => {
-      const view = viewRef.current;
-      if (!view) return;
-      insertSectionSuggestionIntoDoc(view, suggestion, context);
-      setSectionRetryPending(false);
-      setAllowForcedSectionMinimum(false);
-    },
-    [],
-  );
-
-  const markSectionMinimumDeferred = useCallback(() => {
-    setSectionRetryPending(true);
-    setAllowForcedSectionMinimum(false);
-  }, []);
-
-  const tryAcceptSectionSuggestionOnEnter = useCallback(
-    (view: EditorView): boolean => {
-      if (highConfidenceInlineSuggestion) return false;
-      if (!showSectionSuggestionContent) return false;
-
-      const context = detectActiveListSectionContext(
-        view.state.doc,
-        view.state.selection.main.head,
-      );
-      if (!context) return false;
-
-      let sectionPlan = buildSectionScopedSuggestions(
-        context,
-        sectionSuggestionCandidates,
-        "section-enter-primary",
-        allowForcedSectionMinimum,
-      );
-
-      if (sectionPlan.deferredMinimum) {
-        markSectionMinimumDeferred();
-      }
-      if (sectionPlan.suggestions.length === 0) return false;
-
-      insertSectionSuggestionIntoDoc(view, sectionPlan.suggestions[0], context);
-      setSectionRetryPending(false);
-      setAllowForcedSectionMinimum(false);
-      return true;
-    },
-    [
-      allowForcedSectionMinimum,
-      highConfidenceInlineSuggestion,
-      markSectionMinimumDeferred,
-      sectionSuggestionCandidates,
-      showSectionSuggestionContent,
-    ],
-  );
-
-  sectionEnterAcceptRef.current = tryAcceptSectionSuggestionOnEnter;
 
   const markActiveTyping = useCallback(() => {
     setIsActivelyTyping(true);
@@ -2487,7 +2258,6 @@ export function Editor({
   }, [activeSuggestions.length, activeTabId, content, isSpecialTab]);
 
   useEffect(() => {
-    setDismissedInlinePaths(new Set());
     setHasFlowTrigger(false);
     setIsSectionPauseReady(false);
     setHasSectionEnterTrigger(false);
@@ -2511,6 +2281,54 @@ export function Editor({
     }
   }, [activeTabId]);
 
+  // Keep track of previous nextStepEndSuggestions and showEndSuggestionContent to animate closing smoothly
+  useEffect(() => {
+    const targetShow = showEndSuggestionContent;
+    const targetSuggestions = nextStepEndSuggestions;
+
+    // Case 1: We want to show suggestions (both show flag is true AND we have suggestions)
+    if (targetShow && targetSuggestions.length > 0) {
+      if (closingTimeoutRef.current) {
+        window.clearTimeout(closingTimeoutRef.current);
+        closingTimeoutRef.current = null;
+      }
+      setIsClosingSuggestions(false);
+      setRenderedNextStepSuggestions(targetSuggestions);
+      setRenderedShowEndSuggestions(true);
+    }
+    // Case 2: We are currently showing suggestions, but we should now hide them
+    else if (renderedShowEndSuggestions && !isClosingSuggestions) {
+      setIsClosingSuggestions(true);
+      
+      if (closingTimeoutRef.current) {
+        window.clearTimeout(closingTimeoutRef.current);
+      }
+      
+      closingTimeoutRef.current = window.setTimeout(() => {
+        setIsClosingSuggestions(false);
+        setRenderedShowEndSuggestions(false);
+        setRenderedNextStepSuggestions([]);
+        closingTimeoutRef.current = null;
+      }, 350); // 350ms matching the CSS collapse animation duration
+    }
+  }, [showEndSuggestionContent, nextStepEndSuggestions, renderedShowEndSuggestions, isClosingSuggestions]);
+
+  // Immediately clear closing state and hide suggestions when switching tabs
+  useEffect(() => {
+    if (closingTimeoutRef.current) {
+      window.clearTimeout(closingTimeoutRef.current);
+      closingTimeoutRef.current = null;
+    }
+    setIsClosingSuggestions(false);
+    setRenderedShowEndSuggestions(false);
+    setRenderedNextStepSuggestions([]);
+
+    // Clear stable suggestion refs
+    stableEndRef.current = null;
+    previousContextVectorRef.current = null;
+    intentShiftUntilRef.current = 0;
+  }, [activeTabId]);
+
   useEffect(() => {
     return () => {
       if (typingPauseTimerRef.current) {
@@ -2527,6 +2345,9 @@ export function Editor({
       }
       if (sectionEnterTriggerTimerRef.current) {
         window.clearTimeout(sectionEnterTriggerTimerRef.current);
+      }
+      if (closingTimeoutRef.current) {
+        window.clearTimeout(closingTimeoutRef.current);
       }
     };
   }, []);
@@ -2599,6 +2420,31 @@ export function Editor({
       }
     },
     [content, onContentChange],
+  );
+
+  const handleEndOfNoteAccept = useCallback(
+    (path: string) => {
+      const view = viewRef.current;
+      if (!view) return;
+
+      // Refocus editor to avoid browser scrolling to top due to widget DOM destruction focus loss
+      view.focus();
+
+      const targetName = path.split("/").pop()?.replace(/\.md$/, "") || path;
+      const linkText = `[[${targetName}]]`;
+      const currentDoc = view.state.doc.toString();
+      const separator = currentDoc.endsWith("\n") ? "\n" : "\n\n";
+      const insert = separator + linkText + "\n";
+
+      view.dispatch({
+        changes: { from: view.state.doc.length, to: view.state.doc.length, insert },
+        selection: { anchor: view.state.doc.length + insert.length },
+        scrollIntoView: true,
+      });
+
+      onAcceptSuggestion?.(path, "related");
+    },
+    [onAcceptSuggestion],
   );
 
   // Resizer logic
@@ -2803,40 +2649,54 @@ export function Editor({
         headingLivePreviewPlugin(),
         vimCompartment.of([]),
         suggestionContentCompartmentRef.current.of(
-          suggestionContentPlugin({
-            inlineSuggestion: highConfidenceInlineSuggestion,
+          suggestionContentStateField({
             endSuggestions: endOfNoteSuggestions,
-            nextStepSuggestions: nextStepEndSuggestions,
-            sectionCandidates: sectionSuggestionCandidates,
-            showEndSuggestions: showEndSuggestionContent,
-            showSectionSuggestions: showSectionSuggestionContent,
-            allowForcedSectionMinimum,
+            nextStepSuggestions: renderedNextStepSuggestions,
+            showEndSuggestions: renderedShowEndSuggestions,
             isActivelyTyping,
-            onInlineAccept: handleInlineContextAccept,
-            onEndAccept: (path) => onAcceptSuggestion?.(path, "related"),
-            onSectionAccept: handleSectionSuggestionAccept,
-            onSectionMinimumDeferred: markSectionMinimumDeferred,
+            isClosing: isClosingSuggestions,
+            onEndAccept: handleEndOfNoteAccept,
+            getStableEnd: () => stableEndRef.current,
+            setStableEnd: (val) => { stableEndRef.current = val; },
+            getPreviousContextVector: () => previousContextVectorRef.current,
+            setPreviousContextVector: (val) => { previousContextVectorRef.current = val; },
+            getIntentShiftUntil: () => intentShiftUntilRef.current,
+            setIntentShiftUntil: (val) => { intentShiftUntilRef.current = val; },
           }),
         ),
-        EditorView.domEventHandlers({
-          keydown: (event, view) => {
-            if (event.key !== "Enter") return false;
-            if (!sectionEnterAcceptRef.current(view)) return false;
-            event.preventDefault();
-            return true;
-          },
-        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            const isUserEdit = update.transactions.some(
+            // A change is a "user edit" if it changed the doc AND is not
+            // explicitly marked as remote (from collaboration) or a
+            // programmatic content-sync ('setContent').  This catches
+            // raw view.dispatch() calls from paste, drop, image insert,
+            // and AI suggestions that lack userEvent annotations.
+            const isRemoteOrSync = update.transactions.some(
               (tr) =>
-                tr.isUserEvent("input") ||
-                tr.isUserEvent("delete") ||
-                tr.isUserEvent("paste") ||
-                tr.isUserEvent("move"),
+                tr.annotation(Transaction.remote) ||
+                tr.isUserEvent("setContent"),
             );
-            onContentChange(update.state.doc.toString(), isUserEdit);
+            const isUserEdit = !isRemoteOrSync;
+            // Read from refs to avoid stale closures -- the CM view is
+            // created once per tab and these callbacks change when the
+            // collab space becomes active asynchronously.
+            onContentChangeRef.current(update.state.doc.toString(), isUserEdit);
             if (isUserEdit) {
+              // Extract granular operations for collaboration broadcast
+              const collabOps = onCollabOperationsRef.current;
+              const cid = localClientIdRef.current;
+              if (collabOps && cid) {
+                const allOps: CollabOperation[] = [];
+                for (const tr of update.transactions) {
+                  if (tr.docChanged) {
+                    allOps.push(...extractOperations(tr.changes, cid, authManager.getUserId() || undefined));
+                  }
+                }
+                if (allOps.length > 0) {
+                  collabOps(allOps);
+                }
+              }
+
               markActiveTyping();
               markSectionPauseReady();
               setSectionRetryPending((pending) => {
@@ -2858,7 +2718,15 @@ export function Editor({
               }
             }
           }
+          // Cursor/selection change detection for presence broadcast
+          const cursorCb = onCursorChangeRef.current;
+          if (update.selectionSet && cursorCb) {
+            const sel = update.state.selection.main;
+            cursorCb({ from: sel.from, to: sel.to });
+          }
         }),
+        // Remote collaborator cursor decorations
+        remoteCursorsExtension(),
         EditorView.theme({
           "&": {
             height: "100%",
@@ -2885,9 +2753,14 @@ export function Editor({
           },
           ".cm-cursorLayer .cm-cursor": {
             borderLeft: "2px solid var(--editor-caret)",
+            maxHeight: "1.2em !important",
+          },
+          ".cm-cursor": {
+            maxHeight: "1.2em !important",
           },
           ".cm-dropCursor": {
             borderLeft: "2px solid var(--editor-caret)",
+            maxHeight: "1.2em !important",
           },
           ".cm-fatCursor": {
             backgroundColor: "var(--editor-caret)",
@@ -2947,11 +2820,21 @@ export function Editor({
 
     viewRef.current = view;
     toggleVimMode(view, readVimModeSetting());
+    onEditorViewReady?.(view);
     setEditorMountTick((tick) => tick + 1);
+
+    // Broadcast initial cursor position so remote users see our cursor
+    // immediately without waiting for a manual selection change.
+    const cursorCb = onCursorChangeRef.current;
+    if (cursorCb) {
+      const sel = view.state.selection.main;
+      cursorCb({ from: sel.from, to: sel.to });
+    }
 
     return () => {
       view.destroy();
       viewRef.current = null;
+      onEditorViewReady?.(null);
     };
   }, [activeTabId, isSpecialTab]); // Re-create when tab changes
 
@@ -2988,39 +2871,31 @@ export function Editor({
 
     viewRef.current.dispatch({
       effects: suggestionContentCompartmentRef.current.reconfigure(
-        suggestionContentPlugin({
-          inlineSuggestion: highConfidenceInlineSuggestion,
+        suggestionContentStateField({
           endSuggestions: endOfNoteSuggestions,
-          nextStepSuggestions: nextStepEndSuggestions,
-          sectionCandidates: sectionSuggestionCandidates,
-          showEndSuggestions: showEndSuggestionContent,
-          showSectionSuggestions: showSectionSuggestionContent,
-          allowForcedSectionMinimum,
+          nextStepSuggestions: renderedNextStepSuggestions,
+          showEndSuggestions: renderedShowEndSuggestions,
           isActivelyTyping,
-          onInlineAccept: handleInlineContextAccept,
-          onEndAccept: (path) => onAcceptSuggestion?.(path, "related"),
-          onSectionAccept: handleSectionSuggestionAccept,
-          onSectionMinimumDeferred: markSectionMinimumDeferred,
+          isClosing: isClosingSuggestions,
+          onEndAccept: handleEndOfNoteAccept,
+          getStableEnd: () => stableEndRef.current,
+          setStableEnd: (val) => { stableEndRef.current = val; },
+          getPreviousContextVector: () => previousContextVectorRef.current,
+          setPreviousContextVector: (val) => { previousContextVectorRef.current = val; },
+          getIntentShiftUntil: () => intentShiftUntilRef.current,
+          setIntentShiftUntil: (val) => { intentShiftUntilRef.current = val; },
         }),
       ),
     });
   }, [
-    allowForcedSectionMinimum,
     didPressEnter,
     endOfNoteSuggestions,
-    nextStepEndSuggestions,
-    handleInlineContextAccept,
-    handleSectionSuggestionAccept,
-    highConfidenceInlineSuggestion,
+    renderedNextStepSuggestions,
+    renderedShowEndSuggestions,
+    isClosingSuggestions,
+    handleEndOfNoteAccept,
     isActivelyTyping,
     isSpecialTab,
-    markSectionMinimumDeferred,
-    markSectionEnterTrigger,
-    markSectionPauseReady,
-    onAcceptSuggestion,
-    sectionSuggestionCandidates,
-    showSectionSuggestionContent,
-    showEndSuggestionContent,
   ]);
 
   // Update content when it changes externally (tab switch or remote broadcast)
@@ -3037,13 +2912,21 @@ export function Editor({
         const clampedHead = Math.min(oldSel.main.head, maxPos);
 
         viewRef.current.dispatch({
-          changes: { from: 0, to: currentDoc.length, insert: newContent },
-          selection: { anchor: clampedAnchor, head: clampedHead },
-          annotations: Transaction.userEvent.of('setContent'),
-        });
+           changes: { from: 0, to: currentDoc.length, insert: newContent },
+           selection: { anchor: clampedAnchor, head: clampedHead },
+           annotations: Transaction.remote.of(true),
+         });
       }
     }
   }, [content, isSpecialTab]);
+
+  // Push remote cursor presence data into CodeMirror state
+  useEffect(() => {
+    if (!viewRef.current || !remoteCursors) return;
+    viewRef.current.dispatch({
+      effects: setCursorsEffect.of(remoteCursors),
+    });
+  }, [remoteCursors]);
 
   // Handle custom search event from Ribbon or App
   useEffect(() => {
@@ -3216,7 +3099,72 @@ export function Editor({
 
   return (
     <>
+      {selectionRange && !isInlineQuerying && !explanation && (
+        <div
+          className="inline-ai-toolbar"
+          style={{
+            position: "absolute",
+            top: selectionRange.rect.top < 60
+              ? selectionRange.rect.bottom + window.scrollY + 8
+              : selectionRange.rect.top + window.scrollY - 42,
+            left: Math.max(10, selectionRange.rect.left + window.scrollX + (selectionRange.rect.width / 2) - 170),
+            zIndex: 99999,
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("rewrite")}>
+            Rewrite
+          </button>
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("expand")}>
+            Expand
+          </button>
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("simplify")}>
+            Simplify
+          </button>
+          <button className="inline-ai-btn" onClick={() => handleInlineAction("explain")}>
+            Explain
+          </button>
+        </div>
+      )}
 
+      {isInlineQuerying && selectionRange && !explanation && (
+        <div
+          className="inline-ai-toolbar loading"
+          style={{
+            position: "absolute",
+            top: selectionRange.rect.top < 60
+              ? selectionRange.rect.bottom + window.scrollY + 8
+              : selectionRange.rect.top + window.scrollY - 42,
+            left: Math.max(10, selectionRange.rect.left + window.scrollX + (selectionRange.rect.width / 2) - 80),
+            zIndex: 99999,
+          }}
+        >
+          <div className="flat-spinner" style={{ marginRight: 8, display: "inline-block" }} />
+          <span>Processing selection...</span>
+        </div>
+      )}
+
+      {explanation && explanationCoords && (
+        <div
+          className="inline-ai-explanation-popover"
+          style={{
+            position: "absolute",
+            top: explanationCoords.y,
+            left: Math.max(10, explanationCoords.x - 150),
+            zIndex: 99999,
+          }}
+        >
+          <div className="explanation-popover-header">
+            <span>Explanation</span>
+            <button className="explanation-popover-close" onClick={() => setExplanation(null)}>
+              <X size={12} />
+            </button>
+          </div>
+          <div className="explanation-popover-body">
+            {explanation}
+          </div>
+        </div>
+      )}
 
       {/* Inline annotation content */}
       {annotation && isInsightVisible && (

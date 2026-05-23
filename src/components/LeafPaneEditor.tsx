@@ -9,6 +9,10 @@ import type { EnrichedSuggestion } from "../utils/suggestion-enrichment";
 import { authManager } from "../lib/auth";
 import { collaborationEngine } from "../lib/collaborationEngine";
 import { syncEngine } from "../lib/syncEngine";
+import type { CollabOperation, CursorPresence } from "../utils/collabOperations";
+import { operationToChangeSpec, clampOperation } from "../utils/collabOperations";
+import { Transaction } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 
 const api = getAPI();
 
@@ -71,10 +75,18 @@ export function LeafPaneEditor({
   const dbSyncTimer = useRef<NodeJS.Timeout | null>(null);
   const [isSelfTyping, setIsSelfTyping] = useState<boolean>(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Flag to prevent echo: when we receive a remote update and set content,
-  // the Editor's updateListener fires onContentChange. This ref tells
-  // handleContentChange to NOT re-broadcast that change.
-  const isRemoteUpdateRef = useRef<boolean>(false);
+  const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Ref to the CodeMirror EditorView -- needed to apply remote operations
+  // directly without going through React state (which would cause full-doc replace).
+  const editorViewRef = useRef<EditorView | null>(null);
+
+  const handleEditorViewReady = useCallback((view: EditorView | null) => {
+    editorViewRef.current = view;
+  }, []);
+
+  // Remote cursor presence state for the current file
+  const [remoteCursors, setRemoteCursors] = useState<CursorPresence[]>([]);
 
   // Load content when the active tab changes
   useEffect(() => {
@@ -109,24 +121,20 @@ export function LeafPaneEditor({
     };
   }, [activeTab.path]);
 
-  const handleContentChange = useCallback((newContent: string, isUserEdit?: boolean) => {
-    // If this change was triggered by us applying a remote update, skip echo.
-    if (isRemoteUpdateRef.current) {
-      isRemoteUpdateRef.current = false;
-      return;
-    }
+  // ── Content Change Handler ──────────────────────────────────────────────────
 
+  const handleContentChange = useCallback((newContent: string, isUserEdit?: boolean) => {
     setContent(newContent);
 
-    // Let the global state know there was a change (for UI updates, event dispatch, modified mark, auto-embed)
+    // Let the global state know there was a change
     onContentChangeGlobal(activeTab.path, newContent);
 
-    // If it's a collaborative space and a real user edit, broadcast instantly
-    const isCollabSpace = !!collaborationEngine.activeSpaceId;
-    if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__" && isUserEdit) {
-      // Broadcast the entire document content to all peers immediately
-      collaborationEngine.broadcastDocumentUpdate(activeTab.path, newContent);
+    // Only run side-effects for genuine user edits (not remote or programmatic syncs)
+    if (!isUserEdit) return;
 
+    // Presence: mark as typing
+    const isCollabSpace = !!collaborationEngine.activeSpaceId;
+    if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       setIsSelfTyping(true);
       collaborationEngine.updatePresenceNote(activeTab.path, true);
 
@@ -153,7 +161,7 @@ export function LeafPaneEditor({
       }
     }, 2000);
 
-    // Persist to IndexedDB + enqueue for sync to Supabase (debounced separately)
+    // Persist to IndexedDB + enqueue for sync to Supabase (debounced)
     if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       if (dbSyncTimer.current) {
         clearTimeout(dbSyncTimer.current);
@@ -170,18 +178,162 @@ export function LeafPaneEditor({
     }
   }, [activeTab.path, onContentChangeGlobal]);
 
-  // Cleanup auto-save, db sync, and typing presence on unmount/tab changes
+  // ── Operation-Based Broadcast ───────────────────────────────────────────────
+
+  /**
+   * Called by the Editor when the user makes an edit. The Editor extracts
+   * granular operations from the CodeMirror transaction and passes them here.
+   * We broadcast them to all peers immediately.
+   */
+  const handleCollabOperations = useCallback((ops: CollabOperation[]) => {
+    if (!collaborationEngine.activeSpaceId) return;
+    if (!activeTab.path || activeTab.path === "__new_tab__") return;
+    collaborationEngine.broadcastOperations(activeTab.path, ops);
+
+    // For large edits (paste, AI generation), also broadcast the full document
+    // as a fallback. Granular ops may fail to apply on diverged documents.
+    const totalInserted = ops.reduce((sum, op) => sum + (op.text?.length || 0), 0);
+    if (totalInserted > 500) {
+      const view = editorViewRef.current;
+      if (view) {
+        collaborationEngine.broadcastFullDocument(activeTab.path, view.state.doc.toString());
+      }
+    }
+  }, [activeTab.path]);
+
+  // ── Cursor Presence Broadcast ───────────────────────────────────────────────
+
+  const handleCursorChange = useCallback((cursor: { from: number; to: number }) => {
+    if (!collaborationEngine.activeSpaceId) return;
+    if (!activeTab.path || activeTab.path === "__new_tab__") return;
+
+    // Debounce cursor presence updates (50ms)
+    if (cursorDebounceRef.current) {
+      clearTimeout(cursorDebounceRef.current);
+    }
+    cursorDebounceRef.current = setTimeout(() => {
+      cursorDebounceRef.current = null;
+      const user = authManager.getUser();
+      if (!user) return;
+
+      const userId = user.id;
+      collaborationEngine.broadcastCursorPresence({
+        user_id: userId,
+        file_path: activeTab.path,
+        cursor,
+        name: user.email?.split('@')[0] || 'Anonymous',
+        color: getColorForUser(userId),
+      });
+    }, 50);
+  }, [activeTab.path]);
+
+  // ── Receive Remote Operations ───────────────────────────────────────────────
+
   useEffect(() => {
-    return () => {
+    if (activeTab.path === "__new_tab__") return;
+
+    const unsub = collaborationEngine.onRemoteOperation((path, ops) => {
+      if (path !== activeTab.path) return;
+
+      const view = editorViewRef.current;
+      if (!view) return;
+
+      // Convert operations to CodeMirror ChangeSpecs and apply them
+      const docLen = view.state.doc.length;
+      const changes = ops.map(op => operationToChangeSpec(clampOperation(op, docLen)));
+
+      if (changes.length > 0) {
+        view.dispatch({
+          changes,
+          // Use 'remote' annotation so the CM update listener recognises this
+          // as a non-user edit (isUserEvent("input"/"delete"/etc.) returns false).
+          annotations: Transaction.remote.of(true),
+        });
+      }
+    });
+
+    return unsub;
+  }, [activeTab.path, onContentChangeGlobal]);
+
+  // ── Receive Remote Cursor Presence ──────────────────────────────────────────
+
+  useEffect(() => {
+    if (activeTab.path === "__new_tab__") return;
+
+    const unsub = collaborationEngine.onRemoteCursor((presence) => {
+      // Only show cursors for the same file
+      if (presence.file_path !== activeTab.path) {
+        // Remove this user's cursor if they moved to a different file
+        setRemoteCursors(prev => prev.filter(c => c.user_id !== presence.user_id));
+        return;
+      }
+
+      setRemoteCursors(prev => {
+        const existing = prev.findIndex(c => c.user_id === presence.user_id);
+        if (existing >= 0) {
+          const next = [...prev];
+          next[existing] = presence;
+          return next;
+        }
+        return [...prev, presence];
+      });
+    });
+
+    return unsub;
+  }, [activeTab.path]);
+
+  // ── Full-Content Fallback (DB-level sync via postgres_changes) ──────────────
+
+  useEffect(() => {
+    if (activeTab.path === "__new_tab__") return;
+
+    const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId) => {
+      if (path !== activeTab.path) return;
+
+      const view = editorViewRef.current;
+      if (view) {
+        const currentDoc = view.state.doc.toString();
+        if (currentDoc !== remoteContent) {
+          view.dispatch({
+            changes: { from: 0, to: currentDoc.length, insert: remoteContent },
+            annotations: Transaction.remote.of(true),
+          });
+        }
+      } else {
+        setContent(remoteContent);
+        onContentChangeGlobal(activeTab.path, remoteContent);
+      }
+
+      // Write to local disk (debounced)
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current);
       }
-      if (dbSyncTimer.current) {
-        clearTimeout(dbSyncTimer.current);
-      }
+      autoSaveTimer.current = setTimeout(async () => {
+        autoSaveTimer.current = null;
+        try {
+          await api.writeFile(activeTab.path, remoteContent);
+        } catch (err) {
+          console.error("[Collab] Failed to write remote content to disk:", err);
+        }
+      }, 1000);
+    });
+
+    return unsub;
+  }, [activeTab.path, onContentChangeGlobal]);
+
+  // ── Cleanup ─────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      if (dbSyncTimer.current) clearTimeout(dbSyncTimer.current);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
+      }
+      if (cursorDebounceRef.current) {
+        clearTimeout(cursorDebounceRef.current);
+        cursorDebounceRef.current = null;
       }
     };
   }, []);
@@ -198,39 +350,12 @@ export function LeafPaneEditor({
     };
   }, [activeTab.path, isSelfTyping]);
 
-  // Subscribe to real-time document broadcasts from remote collaborators
+  // Clear remote cursors when switching files
   useEffect(() => {
-    if (!collaborationEngine.activeSpaceId) return;
-    if (activeTab.path === "__new_tab__") return;
+    setRemoteCursors([]);
+  }, [activeTab.path]);
 
-    const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId) => {
-      // Only apply if this update is for the file we currently have open
-      if (path !== activeTab.path) return;
-
-      // Set the flag so handleContentChange knows to skip re-broadcasting
-      isRemoteUpdateRef.current = true;
-      setContent(remoteContent);
-
-      // Notify global state so the rest of the UI stays in sync
-      onContentChangeGlobal(activeTab.path, remoteContent);
-
-      // Write to local disk (debounced) -- broadcast is ephemeral, so we
-      // must persist the received content ourselves.
-      if (autoSaveTimer.current) {
-        clearTimeout(autoSaveTimer.current);
-      }
-      autoSaveTimer.current = setTimeout(async () => {
-        autoSaveTimer.current = null;
-        try {
-          await api.writeFile(activeTab.path, remoteContent);
-        } catch (err) {
-          console.error("[Collab] Failed to write remote content to disk:", err);
-        }
-      }, 1000);
-    });
-
-    return unsub;
-  }, [activeTab.path, onContentChangeGlobal]);
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   const currentUser = authManager.getUser();
   const currentUserId = currentUser?.id;
@@ -270,7 +395,6 @@ export function LeafPaneEditor({
       ) : activeTab.path === "__new_tab__" ? (
         <NewTabView
           onNewNote={() => {
-            // Use the global handler if possible, or trigger event
             document.dispatchEvent(new CustomEvent("menu:new-note"));
           }}
           onSearch={() => {
@@ -302,8 +426,29 @@ export function LeafPaneEditor({
           showInsight={showInlineInsight}
           onToggleInsight={onToggleInsight}
           theme={theme}
+          onCollabOperations={isCollabSpace ? handleCollabOperations : undefined}
+          onCursorChange={isCollabSpace ? handleCursorChange : undefined}
+          remoteCursors={isCollabSpace ? remoteCursors : undefined}
+          localClientId={isCollabSpace ? collaborationEngine.currentClientId : undefined}
+          onEditorViewReady={handleEditorViewReady}
         />
       )}
     </div>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const COLLABORATOR_COLORS = [
+  '#3b82f6', '#2563eb', '#059669', '#d97706', '#dc2626',
+  '#0ea5e9', '#0891b2', '#65a30d', '#ea580c', '#e11d48',
+];
+
+function getColorForUser(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash) + userId.charCodeAt(i);
+    hash |= 0;
+  }
+  return COLLABORATOR_COLORS[Math.abs(hash) % COLLABORATOR_COLORS.length];
 }

@@ -113,6 +113,19 @@ const MAX_EDITOR_FONT_SIZE = 24;
 type FontZoomScope = "both" | "editor" | "preview";
 type GraphMode = "manual" | "ai";
 
+function collectAllActiveTabPaths(node: PaneNode): string[] {
+  if ('children' in node && Array.isArray(node.children)) {
+    return [
+      ...collectAllActiveTabPaths(node.children[0]),
+      ...collectAllActiveTabPaths(node.children[1]),
+    ];
+  } else if ('tabs' in node && Array.isArray(node.tabs)) {
+    const activeTab = node.tabs.find((t) => t.id === node.activeTabId);
+    return activeTab && activeTab.path.endsWith('.md') ? [activeTab.path] : [];
+  }
+  return [];
+}
+
 type RGB = { r: number; g: number; b: number };
 
 const clampByte = (value: number): number =>
@@ -944,6 +957,22 @@ export default function App() {
   const [showOutgoingLinks, setShowOutgoingLinks] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<string>("general");
+
+  useEffect(() => {
+    const handleOpenSettings = (e: Event) => {
+      const customEvent = e as CustomEvent<{ section?: string }>;
+      if (customEvent.detail?.section) {
+        setSettingsSection(customEvent.detail.section);
+      } else {
+        setSettingsSection("general");
+      }
+      setShowSettings(true);
+    };
+    window.addEventListener("open-settings", handleOpenSettings);
+    return () => window.removeEventListener("open-settings", handleOpenSettings);
+  }, []);
+
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUnlinkedMentions, setShowUnlinkedMentions] = useState(false);
   const [showThoughtModel, setShowThoughtModel] = useState(false);
@@ -978,6 +1007,11 @@ export default function App() {
   const [pluginSettingTabs, setPluginSettingTabs] = useState<PluginSettingTabRegistration[]>([]);
   const pluginManagerRef = useRef<PluginManager | null>(null);
   const ooAppRef = useRef<OOApp | null>(null);
+  const collabSubRef = useRef<{
+    vaultPath: string | null;
+    userId: string | null;
+    spaceId: string | null;
+  }>({ vaultPath: null, userId: null, spaceId: null });
   const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; side: 'left' | 'right' | 'main' }>>([]);
   // Permission modal state
   const [permissionModalData, setPermissionModalData] = useState<{
@@ -2803,6 +2837,8 @@ export default function App() {
   // ── Inline suggestions (appear inside editor) ──────────────────────────
   const [inlineSuggestions, setInlineSuggestions] = useState<EnrichedSuggestion[]>([]);
   const [nextStepSuggestions, setNextStepSuggestions] = useState<EnrichedSuggestion[]>([]);
+  const [inlineSuggestionsByPath, setInlineSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
+  const [nextStepSuggestionsByPath, setNextStepSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
   const [inlineAnnotation, setInlineAnnotation] = useState<string | null>(null);
   const ftuxConnectionSuggestion = useMemo(
     () =>
@@ -2989,6 +3025,8 @@ export default function App() {
 
       setInlineSuggestions(enriched);
       setNextStepSuggestions(nextSteps);
+      setInlineSuggestionsByPath((prev) => ({ ...prev, [notePath]: enriched }));
+      setNextStepSuggestionsByPath((prev) => ({ ...prev, [notePath]: nextSteps }));
     } catch { /* silent */ }
   }, []);
 
@@ -3023,6 +3061,16 @@ export default function App() {
       setInlineAnnotation(null);
     }
   }, [activeTabId, tabs, refreshInlineSuggestions, refreshInlineAnnotation]);
+
+  // Pre-load suggestions for all active tabs in all split panes
+  useEffect(() => {
+    const activePaths = collectAllActiveTabPaths(paneTree);
+    for (const path of activePaths) {
+      if (path && !inlineSuggestionsByPath[path]) {
+        refreshInlineSuggestions(path);
+      }
+    }
+  }, [paneTree, tabs, refreshInlineSuggestions, inlineSuggestionsByPath]);
 
   const handleInlineAccept = useCallback(
     async (targetPath: string, linkType: LinkType) => {
@@ -4234,33 +4282,72 @@ export default function App() {
     if (authLoading) return;
     if (!vaultPath) return;
 
+    const currentUserId = currentUser?.id || null;
+    const prevSub = collabSubRef.current;
+    const didContextChange = prevSub.vaultPath !== vaultPath || prevSub.userId !== currentUserId;
+
+    if (didContextChange) {
+      // Context changed (e.g. vault switch or login/logout). Fully clear old space.
+      collaborationEngine.clearActiveSpace();
+      setCollaborators([]);
+      setActiveUsers([]);
+      setInvitesSent([]);
+
+      collabSubRef.current = {
+        vaultPath,
+        userId: currentUserId,
+        spaceId: null,
+      };
+    }
+
     // Connect sync engine to vault
     syncEngine.setActiveVault(vaultPath);
 
-    const loadCollabState = async () => {
+    // One-time initialization: find the space, subscribe to realtime.
+    // This runs once per context change (vault switch or login).
+    const initCollab = async () => {
       try {
-        // Use collaborationEngine to get the space for this vault
         const space = await collaborationEngine.getSpaceForVault(vaultPath);
         if (space) {
-          // Get collaborators for the TitleBar avatars
+          collabSubRef.current.spaceId = space.id;
+
           const collabs = await collaborationEngine.getCollaborators(space.id);
           setCollaborators(collabs);
 
           const sent = await collaborationEngine.getSentInvites(space.id);
           setInvitesSent(sent);
 
-          // Subscribe to realtime changes + presence
-          collaborationEngine.subscribeToSpace(space.id);
+          // Subscribe to realtime changes + presence (called ONCE, not in polling)
+          await collaborationEngine.subscribeToSpace(space.id);
         } else {
           setCollaborators([]);
           setActiveUsers([]);
           setInvitesSent([]);
         }
       } catch (err) {
-        console.error('[App] Failed to load collab state:', err);
+        console.error('[App] Failed to init collab state:', err);
       }
 
-      // Load incoming invites regardless of space
+      try {
+        const incoming = await collaborationEngine.getIncomingInvites();
+        setInvitesReceived(incoming);
+      } catch { /* ignore */ }
+    };
+
+    // Lightweight polling: only refreshes collaborator lists and invites.
+    // Does NOT call subscribeToSpace (that would tear down and recreate the channel).
+    const refreshCollabData = async () => {
+      const spaceId = collabSubRef.current.spaceId;
+      if (!spaceId) return;
+
+      try {
+        const collabs = await collaborationEngine.getCollaborators(spaceId);
+        setCollaborators(collabs);
+
+        const sent = await collaborationEngine.getSentInvites(spaceId);
+        setInvitesSent(sent);
+      } catch { /* ignore */ }
+
       try {
         const incoming = await collaborationEngine.getIncomingInvites();
         setInvitesReceived(incoming);
@@ -4272,16 +4359,24 @@ export default function App() {
       setActiveUsers(users);
     });
 
-    loadCollabState();
-    const interval = setInterval(loadCollabState, 15000);
+    initCollab();
+    const interval = setInterval(refreshCollabData, 15000);
 
     return () => {
       clearInterval(interval);
       unsubActiveUsers();
-      collaborationEngine.unsubscribeFromSpace();
-      syncEngine.setActiveVault(null);
+      // We DO NOT unsubscribe here to avoid tearing down the channel on every render.
+      // Unsubscription is handled on context change (above) or actual component unmount (below).
     };
   }, [vaultPath, currentUser, authLoading]);
+
+  // Unmount-only cleanup for collaboration and syncEngine
+  useEffect(() => {
+    return () => {
+      collaborationEngine.clearActiveSpace();
+      syncEngine.setActiveVault(null);
+    };
+  }, []);
 
   // Listen to collaboration bootstrapping status globally
   useEffect(() => {
@@ -4711,14 +4806,37 @@ export default function App() {
     }
 
     // Regular markdown note
+    const currentPath = leafActiveTab?.path || "";
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const activeTabIdPath = activeTab?.path || "";
+
+    const leafSuggestions =
+      !ftuxSuggestionIdle ||
+      isFTUXFirstNote ||
+      isFTUXConnectionStage ||
+      showFTUXInsightPrompt ||
+      showFTUXGraphPrompt
+        ? []
+        : (inlineSuggestionsByPath[currentPath] || (currentPath === activeTabIdPath ? inlineSuggestions : []));
+
+    const leafNextStepSuggestions =
+      !showTrajectorySuggestions ||
+      !ftuxSuggestionIdle ||
+      isFTUXFirstNote ||
+      isFTUXConnectionStage ||
+      showFTUXInsightPrompt ||
+      showFTUXGraphPrompt
+        ? []
+        : (nextStepSuggestionsByPath[currentPath] || (currentPath === activeTabIdPath ? nextStepSuggestions : []));
+
     return (
       <LeafPaneEditor
         leaf={leaf}
         activeTab={leafActiveTab}
         theme={theme}
         allNoteNames={allNoteNames}
-        editorSuggestions={editorSuggestions}
-        editorNextStepSuggestions={editorNextStepSuggestions}
+        editorSuggestions={leafSuggestions}
+        editorNextStepSuggestions={leafNextStepSuggestions}
         inlineAnnotation={inlineAnnotation}
         showInlineInsight={showInlineInsight}
         ftuxConnectionPulse={ftuxConnectionPulse}
@@ -4739,9 +4857,11 @@ export default function App() {
     );
   }, [
     focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
-    editorSuggestions, editorNextStepSuggestions, inlineAnnotation,
-    showInlineInsight, ftuxConnectionPulse, mainPluginViews, graphMode,
-    recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
+    inlineSuggestions, nextStepSuggestions, inlineSuggestionsByPath, nextStepSuggestionsByPath,
+    activeTabId, tabs, inlineAnnotation, showInlineInsight, ftuxConnectionPulse,
+    mainPluginViews, graphMode, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
+    ftuxSuggestionIdle, isFTUXFirstNote, isFTUXConnectionStage, showFTUXInsightPrompt, showFTUXGraphPrompt,
+    showTrajectorySuggestions
   ]);
 
   return (
@@ -5157,6 +5277,7 @@ export default function App() {
           settings={settings}
           onSettingsChange={setSettings}
           onClose={() => setShowSettings(false)}
+          initialSection={settingsSection as any}
           plugins={pluginList}
           pluginSettingTabs={pluginSettingTabs}
           onEnablePlugin={async (id) => { await pluginManagerRef.current?.enablePlugin(id); }}
@@ -5287,8 +5408,8 @@ export default function App() {
               width: '48px',
               height: '48px',
               borderRadius: '50%',
-              border: '3px solid rgba(124, 58, 237, 0.2)',
-              borderTopColor: '#7c3aed',
+              border: '3px solid color-mix(in srgb, var(--color-accent, var(--accent-primary, #3b82f6)) 20%, transparent)',
+              borderTopColor: 'var(--color-accent, var(--accent-primary, #3b82f6))',
               animation: 'spin 1s linear infinite',
               marginBottom: '24px'
             }} />
@@ -5306,7 +5427,7 @@ export default function App() {
             }}>
               <div style={{
                 height: '100%',
-                background: 'linear-gradient(90deg, #7c3aed, #4f46e5)',
+                background: 'var(--color-accent, var(--accent-primary, #3b82f6))',
                 width: `${collabStatus.progress.total > 0 ? Math.round((collabStatus.progress.current / collabStatus.progress.total) * 100) : 0}%`,
                 transition: 'width 0.2s ease-out',
                 borderRadius: '3px'

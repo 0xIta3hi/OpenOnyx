@@ -14,7 +14,7 @@
 
 import { embedText } from "./embeddings";
 import { loadVectorIndex } from "./spaces-store";
-import { loadAIConfig, getBaseUrl, getProviderHeaders } from "./ai-settings";
+import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "./ai-settings";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import type { SpaceChunk } from "../types/spaces";
 
@@ -29,6 +29,7 @@ export interface SpaceMetadata {
   title: string;
   description: string;
   helpsWith: string[];
+  explicitNotes?: { path: string; title: string; content: string }[];
 }
 
 // ── System Prompt ────────────────────────────────────────────────────────────
@@ -103,6 +104,94 @@ RESPONSE FORMAT:
 - Avoid long paragraphs
 - No emojis, no filler
 
+8. KNOWLEDGE OPERATOR ACTIONS PROTOCOL (CRITICAL)
+If the user's intent is to create a new note, update/improve an existing note, suggest structure improvements, suggest wiki-links, generate roadmaps, or create an insight report, you MUST output a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Never use emojis in titles, paths, or contents.
+
+JSON FORMATS:
+
+A. For creating a new note (e.g. summaries, blogs, roadmaps):
+\`\`\`json
+{
+  "action": "create_note",
+  "title": "Title of Note",
+  "path": "Summary.md",
+  "content": "Full markdown content of the note"
+}
+\`\`\`
+
+B. For updating/improving a note:
+\`\`\`json
+{
+  "action": "update_note",
+  "path": "Note.md",
+  "content": "Full new markdown content for the note"
+}
+\`\`\`
+
+C. For suggesting space restructuring (merging, folder restructuring):
+\`\`\`json
+{
+  "action": "suggest_structure",
+  "changes": [
+    {"type": "merge", "notes": ["Note A.md", "Note B.md"], "target": "Merged Title", "content": "Markdown content for merged note"},
+    {"type": "rename", "note": "Old Path.md", "target": "New Path.md"},
+    {"type": "move", "note": "Note.md", "target": "Folder/Note.md"}
+  ]
+}
+\`\`\`
+
+D. For suggesting wiki-links:
+\`\`\`json
+{
+  "action": "suggest_links",
+  "links": [
+    {"from": "Source Note.md", "to": "Target Note.md", "reason": "Explanation"}
+  ]
+}
+\`\`\`
+
+E. For pattern detection / insight reports:
+\`\`\`json
+{
+  "action": "insight_report",
+  "insights": [
+    {"type": "contradiction", "description": "Description of contradiction", "notes": ["Note A.md", "Note B.md"]}
+  ]
+}
+\`\`\`
+
+Always prioritize returning a structured action payload over a passive text reply if the prompt requests any file creation, editing, restructuring, or link suggestion.
+
+9. PREMIUM MARKDOWN LAYOUT AND STRUCTURING RULES (CRITICAL)
+Your generated note contents must look stunning, highly professional, and extremely well-organized. Follow these formatting rules strictly:
+- No emojis are allowed in any note titles, paths, contents, or headers (Strict project rule).
+- Use a clear and beautiful heading hierarchy (e.g., # Main Title, ## Section, ### Sub-section) for logical structure.
+- Always bold important terms, keys, and definitions using **double asterisks** to make sections easily scannable.
+- Use task list checkboxes (e.g., - [ ] uncompleted task, - [x] completed task) for action items and roadmaps.
+- Use nested, bulleted list items for breakdown and detail.
+- Use Obsidian-style Callout blocks to highlight key definitions, tips, warnings, or notes. Format them as:
+  > [!NOTE]
+  > Important note content here.
+  
+  > [!TIP]
+  > Pro tip or recommended approach.
+  
+  > [!IMPORTANT]
+  > Critical instructions or key takeaways.
+  
+  > [!WARNING]
+  > Potential risks or caveats.
+- Use beautifully formatted Markdown Tables for comparisons, structural data, and side-by-side analyses. Ensure clean spacing and proper header separation (e.g., | Topic | Pros | Cons |).
+- Make sure notes feel like premium wiki entries, rich with deep structure, summaries, and logical layout. Avoid long walls of unstructured text.
+
+10. EXPLICIT FILE MENTIONS & EDITS PROTOCOL (CRITICAL)
+- The user can explicitly mention files in their input using [[Note Title]].
+- If a note is explicitly mentioned, its full path and content will be provided in the user prompt under "EXPLICITLY MENTIONED FILE CONTEXTS".
+- If the user asks to modify, rewrite, expand, simplify, add to, or rewrite/synthesize the mentioned note, you MUST choose the "update_note" action.
+- You MUST use the EXACT file path of that note as provided in the "EXPLICITLY MENTIONED FILE CONTEXTS" (e.g. "Folder/Subfolder/Note.md" or "MyNotes/Note.md").
+- Do NOT create a new note at the root (like "Note.md" or "Summary.md") if the user is asking to update or edit a note that is already in their vault. Always preserve the original file path.
+- In "update_note", you must output the COMPLETE, beautifully structured markdown content of the updated note.
+
 ---
 
 QUALITY CHECK (MANDATORY):
@@ -117,6 +206,40 @@ Only output if all pass.
 
 GOAL:
 Make the user feel: "This isn't ChatGPT. This is MY system thinking back at me."`;
+}
+
+// ── JSON Action Parser ───────────────────────────────────────────────────────
+
+export function parseActionPayload(text: string): any {
+  if (!text) return null;
+  const trimmed = text.trim();
+
+  // 1. Try Code Block Regex matching
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
+  const match = trimmed.match(codeBlockRegex);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (parsed && parsed.action) return parsed;
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 2. Try raw JSON matching (searching for first '{' and last '}')
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const rawCandidate = trimmed.substring(firstBrace, lastBrace + 1);
+    try {
+      const parsed = JSON.parse(rawCandidate);
+      if (parsed && parsed.action) return parsed;
+    } catch {
+      // Fall through
+    }
+  }
+
+  return null;
 }
 
 // ── Cosine Similarity ────────────────────────────────────────────────────────
@@ -196,7 +319,11 @@ export async function retrieveChunks(
 
 // ── Prompt Construction ──────────────────────────────────────────────────────
 
-function buildUserPrompt(query: string, chunks: RetrievedChunk[]): string {
+function buildUserPrompt(
+  query: string,
+  chunks: RetrievedChunk[],
+  explicitNotes?: { path: string; title: string; content: string }[],
+): string {
   const contextBlock = chunks
     .map(
       (r, i) =>
@@ -204,7 +331,17 @@ function buildUserPrompt(query: string, chunks: RetrievedChunk[]): string {
     )
     .join("\n\n---\n\n");
 
-  return `USER INPUT:\n${query}\n\nCONTEXT:\n${contextBlock}`;
+  let explicitBlock = "";
+  if (explicitNotes && explicitNotes.length > 0) {
+    explicitBlock = "\n\nEXPLICITLY MENTIONED FILE CONTEXTS:\n" + explicitNotes
+      .map(
+        (n, i) =>
+          `[EXPLICIT ${i + 1}] Title: "${n.title}"\nPath: "${n.path}"\nContent:\n${n.content}`
+      )
+      .join("\n\n---\n\n");
+  }
+
+  return `USER INPUT:\n${query}\n\nCONTEXT:\n${contextBlock}${explicitBlock}`;
 }
 
 // ── Query Result ─────────────────────────────────────────────────────────────
@@ -239,7 +376,7 @@ export async function querySpace(
   }
 
   const systemPrompt = buildSystemPrompt(meta);
-  const userPrompt = buildUserPrompt(query, retrieved);
+  const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
 
   const baseUrl = getBaseUrl(config);
   const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -257,10 +394,7 @@ export async function querySpace(
   });
 
   if (!response.ok) {
-    const status = response.status;
-    if (status === 401) throw new Error("Invalid API key.");
-    if (status === 429) throw new Error("Rate limited. Try again in a moment.");
-    throw new Error(`AI request failed (${status}).`);
+    throw new Error(await parseProviderError(response));
   }
 
   const data = await response.json();
@@ -302,7 +436,7 @@ export async function querySpaceStreaming(
   }
 
   const systemPrompt = buildSystemPrompt(meta);
-  const userPrompt = buildUserPrompt(query, retrieved);
+  const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
 
   const baseUrl = getBaseUrl(config);
   const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -321,10 +455,7 @@ export async function querySpaceStreaming(
   });
 
   if (!response.ok) {
-    const status = response.status;
-    if (status === 401) throw new Error("Invalid API key.");
-    if (status === 429) throw new Error("Rate limited. Try again in a moment.");
-    throw new Error(`AI request failed (${status}).`);
+    throw new Error(await parseProviderError(response));
   }
 
   const makeSources = () =>

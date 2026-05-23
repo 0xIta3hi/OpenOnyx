@@ -35,10 +35,10 @@ import {
   Save,
   Download,
   Upload,
-  Package,
   Eye,
   Zap,
 } from "lucide-react";
+import { SpacesIcon } from "./SpacesIcon";
 import {
   loadStore,
   findSimilar,
@@ -101,7 +101,7 @@ interface AIPageProps {
   onToggleFullScreen?: () => void;
 }
 
-type AITab = "suggestions" | "insights" | "query" | "spaces" | "settings";
+type AITab = "suggestions" | "insights" | "query" | "spaces";
 
 export function AIPage({
   vaultPath,
@@ -120,16 +120,28 @@ export function AIPage({
 
   // ── AI Settings ────────────────────────────────────
   const [aiSettings, setAiSettings] = useState<AISettings>(loadSettings);
-  const updateAISettings = useCallback((patch: Partial<AISettings>) => {
-    setAiSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveSettings(next);
-      return next;
-    });
+
+  useEffect(() => {
+    const handleSettingsChanged = () => {
+      setAiSettings(loadSettings());
+    };
+    window.addEventListener("ai-settings-changed", handleSettingsChanged);
+    return () => {
+      window.removeEventListener("ai-settings-changed", handleSettingsChanged);
+    };
   }, []);
+
   const hasApiKey = !!aiSettings.apiKey;
   const models = getModelsForProvider(aiSettings.provider);
-  const currentModel = models.find((m) => m.id === aiSettings.modelId) || models[0];
+  const matchedModel = models.find((m) => m.id === aiSettings.modelId);
+  const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
+  const currentModel = matchedModel || (isCustomModel ? {
+    id: aiSettings.modelId,
+    label: aiSettings.modelId,
+    shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
+    description: "Custom OpenRouter Model",
+    supportsGrounding: false
+  } : models[0]);
 
   // ── Model status ───────────────────────────────────
   const [modelStatus, setModelStatus] = useState<string>(
@@ -550,11 +562,7 @@ export function AIPage({
             <Search size={14} /> Query
           </button>
           <button className={`thought-model-tab ${activeTab === "spaces" ? "active" : ""}`} onClick={() => setActiveTab("spaces")}>
-            <Package size={14} /> Spaces
-          </button>
-          <div style={{ flex: 1 }} />
-          <button className={`thought-model-tab ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
-            <Settings size={14} />
+            <SpacesIcon size={14} /> Spaces
           </button>
         </div>
 
@@ -818,7 +826,12 @@ export function AIPage({
               <div className="ai-empty-state">
                 <Key size={28} style={{ opacity: 0.15 }} />
                 <p>Add an API key in Settings to ask questions about your notes.</p>
-                <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab("settings")}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("open-settings", { detail: { section: "ai" } }));
+                  }}
+                >
                   <Settings size={14} /> Open Settings
                 </button>
               </div>
@@ -955,107 +968,6 @@ export function AIPage({
                       ))}
                     </div>
                   )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ══ Settings Tab ════════════════════════════════ */}
-        {activeTab === "settings" && (
-          <div className="ai-settings-tab">
-            <h3 className="ai-settings-title">AI Configuration</h3>
-            <p className="ai-section-hint">
-              Analysis and suggestions work locally. LLM is used for annotations, synthesis, and queries.
-            </p>
-
-            {/* Provider */}
-            <div className="ai-setting-group">
-              <label className="ai-setting-label">Provider</label>
-              <div className="ai-setting-providers">
-                {AI_PROVIDER_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    className={`ai-setting-provider ${aiSettings.provider === preset.id ? "active" : ""}`}
-                    onClick={() => {
-                      const nextKey = aiSettings.providerKeys?.[preset.id] || "";
-                      const nextModels = getModelsForProvider(preset.id);
-                      updateAISettings({
-                        provider: preset.id,
-                        apiKey: nextKey,
-                        modelId: nextModels[0]?.id || DEFAULT_MODEL_ID,
-                        providerKeys: { ...aiSettings.providerKeys, [aiSettings.provider]: aiSettings.apiKey },
-                      });
-                    }}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* API Key */}
-            <div className="ai-setting-group">
-              <label className="ai-setting-label">
-                API Key
-                <a className="ai-setting-link" href={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyUrl} target="_blank" rel="noopener noreferrer">
-                  Get key <ExternalLink size={10} />
-                </a>
-              </label>
-              <input
-                type="password"
-                className="ai-setting-input"
-                value={aiSettings.apiKey}
-                onChange={(e) => updateAISettings({ apiKey: e.target.value })}
-                placeholder={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyPlaceholder}
-              />
-            </div>
-
-            {/* Model */}
-            <div className="ai-setting-group">
-              <label className="ai-setting-label">Model</label>
-              <div className="ai-setting-models">
-                {models.map((model) => (
-                  <button
-                    key={model.id}
-                    className={`ai-setting-model ${aiSettings.modelId === model.id ? "active" : ""}`}
-                    onClick={() => updateAISettings({ modelId: model.id })}
-                  >
-                    <div className="ai-setting-model-info">
-                      <span className="ai-setting-model-name">{model.label}</span>
-                      <span className="ai-setting-model-desc">{model.description}</span>
-                    </div>
-                    {aiSettings.modelId === model.id && <Check size={14} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Status */}
-            <div className="ai-setting-group">
-              <label className="ai-setting-label">System Status</label>
-              <div className="ai-setting-status">
-                <div className={isModelLoaded() ? "ai-setting-status-ok" : "ai-setting-status-warn"}>
-                  {isModelLoaded() ? <Check size={12} /> : <AlertCircle size={12} />}
-                  <span>
-                    {isModelLoaded()
-                      ? `Analysis engine · ${indexedCount} notes indexed`
-                      : "Analysis engine loads automatically on first save"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="ai-setting-status">
-              {hasApiKey ? (
-                <div className="ai-setting-status-ok">
-                  <Check size={12} />
-                  <span>LLM: {currentModel?.shortLabel || currentModel?.label}</span>
-                </div>
-              ) : (
-                <div className="ai-setting-status-warn">
-                  <AlertCircle size={12} />
-                  <span>No API key — local analysis still works</span>
                 </div>
               )}
             </div>
