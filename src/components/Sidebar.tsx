@@ -31,6 +31,7 @@ import {
   Check,
   Library,
   Settings,
+  Table,
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
@@ -684,12 +685,22 @@ export function Sidebar({
                 <button
                   className="context-menu-item"
                   onClick={() => {
+                    const event = new CustomEvent('oo:open-database', { detail: { path: contextMenu.path } });
+                    window.dispatchEvent(event);
+                    closeContextMenu();
+                  }}
+                >
+                  <Table size={14} style={{ marginRight: 8 }} /> Open as Database
+                </button>
+                <div className="context-menu-separator" />
+                <button
+                  className="context-menu-item"
+                  onClick={() => {
                     onNewFolder(contextMenu.path);
                     closeContextMenu();
                   }}
                 >
-                  <FolderPlus size={14} style={{ marginRight: 8 }} /> New
-                  Subfolder
+                  <FolderPlus size={14} style={{ marginRight: 8 }} /> New Subfolder
                 </button>
               </>
             )}

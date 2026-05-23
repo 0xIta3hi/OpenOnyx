@@ -116,6 +116,13 @@ const electronAPI = {
   dataFetch: (url: string): Promise<string> =>
     ipcRenderer.invoke('data:fetch', url),
 
+  // ── Clipboard ────────────────────────────────────
+  writeClipboardText: (text: string): Promise<void> =>
+    ipcRenderer.invoke('clipboard:writeText', text),
+
+  readClipboardText: (): Promise<string> =>
+    ipcRenderer.invoke('clipboard:readText'),
+
   networkRequest: (params: any): Promise<any> =>
     ipcRenderer.invoke('network:request', params),
 

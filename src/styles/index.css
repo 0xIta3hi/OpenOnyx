@@ -2025,6 +2025,32 @@ body.is-dragging .plugin-view-panel {
   line-height: 1.2;
 }
 
+/* ── Vim command line panel ───────────────────────── */
+.cm-editor .cm-vim-panel {
+  background: color-mix(in srgb, var(--bg-elevated) 92%, var(--bg-secondary));
+  color: var(--text-primary);
+  border-top: 1px solid var(--border-subtle);
+  min-height: 30px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.cm-editor .cm-vim-panel input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  caret-color: var(--editor-caret);
+}
+
+.cm-editor .cm-vim-panel input::placeholder {
+  color: var(--text-muted);
+}
+
 .cm-image-widget-meta {
   display: flex;
   align-items: center;
