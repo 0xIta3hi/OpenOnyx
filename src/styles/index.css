@@ -8862,56 +8862,11 @@ body.is-dragging .plugin-view-panel {
 }
 
 /* ── Virtual Suggestion Content (Editor Flow) ───────── */
-.editor-virtual-inline-suggestion {
-  margin: 0.45rem 0 0.2rem;
-  color: var(--text-muted);
-  opacity: 0;
-  font-size: var(--editor-pane-font-size);
-  line-height: var(--editor-line-height);
-  font-family: var(--font-family);
-  caret-color: transparent;
-  animation:
-    editor-virtual-fade-in 200ms ease-out forwards,
-    editor-virtual-fade-soft 6s ease-out 2.2s forwards;
-}
 
-.editor-virtual-inline-ghost-link {
-  border: none;
-  background: none;
-  padding: 0;
-  margin: 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--editor-pane-font-size);
-  line-height: var(--editor-line-height);
-  font-family: var(--font-family);
-  font-style: italic;
-  opacity: 0.92;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-}
-
-.editor-virtual-inline-ghost-link:hover {
-  color: var(--text-secondary);
-}
-
-.editor-virtual-inline-ghost-link:focus {
-  outline: none;
-}
-
-.editor-virtual-inline-ghost-link--medium-confidence {
-  opacity: 0.76;
-}
-
-.editor-virtual-inline-ghost-link--low-confidence {
-  opacity: 0.56;
-}
 
 .editor-virtual-end-suggestions {
   margin: 0.95rem 0 0.35rem;
   color: var(--text-muted);
-  opacity: 0;
   font-size: var(--editor-pane-font-size);
   line-height: var(--editor-line-height);
   font-family: var(--font-family);
@@ -8919,7 +8874,16 @@ body.is-dragging .plugin-view-panel {
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
-  animation: editor-virtual-fade-in 200ms ease-out forwards;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(6px);
+  filter: blur(1px);
+  animation: editor-virtual-expand-fade-in 400ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.editor-virtual-end-suggestions--closing {
+  animation: editor-virtual-collapse-fade-out 350ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
 .editor-virtual-end-heading {
@@ -9028,6 +8992,44 @@ body.is-dragging .plugin-view-panel {
   to {
     opacity: 0.82;
     transform: translateY(0);
+  }
+}
+
+@keyframes editor-virtual-expand-fade-in {
+  from {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    transform: translateY(6px);
+    filter: blur(1px);
+  }
+  to {
+    max-height: 180px;
+    opacity: 0.85;
+    margin-top: 0.95rem;
+    margin-bottom: 0.35rem;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes editor-virtual-collapse-fade-out {
+  from {
+    max-height: 180px;
+    opacity: 0.85;
+    margin-top: 0.95rem;
+    margin-bottom: 0.35rem;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+  to {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    transform: translateY(6px);
+    filter: blur(1px);
   }
 }
 
