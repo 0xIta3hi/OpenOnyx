@@ -44,6 +44,7 @@ import {
 } from "../../utils/linkAutocomplete";
 import { headingFold, foldTheme } from "../../utils/headingFold";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
+import { vimCompartment, toggleVimMode } from "../../editor/vimExtension";
 import { type LinkType } from "../SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 
@@ -2233,6 +2234,17 @@ export function Editor({
   } | null>(null);
   const isSpecialTab = !!specialContent;
 
+  const readVimModeSetting = useCallback((): boolean => {
+    try {
+      const saved = localStorage.getItem("notework-settings");
+      if (!saved) return false;
+      const parsed = JSON.parse(saved) as { vimMode?: boolean };
+      return !!parsed.vimMode;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const activeSuggestions = useMemo(() => suggestions || [], [suggestions]);
   const activeNextStepSuggestions = useMemo(
     () => nextStepSuggestions || [],
@@ -2789,6 +2801,7 @@ export function Editor({
         tagPlugin(),
         imageWidgetPlugin(handleOpenImageLightbox),
         headingLivePreviewPlugin(),
+        vimCompartment.of([]),
         suggestionContentCompartmentRef.current.of(
           suggestionContentPlugin({
             inlineSuggestion: highConfidenceInlineSuggestion,
@@ -2933,6 +2946,7 @@ export function Editor({
     });
 
     viewRef.current = view;
+    toggleVimMode(view, readVimModeSetting());
     setEditorMountTick((tick) => tick + 1);
 
     return () => {
@@ -2940,6 +2954,34 @@ export function Editor({
       viewRef.current = null;
     };
   }, [activeTabId, isSpecialTab]); // Re-create when tab changes
+
+  useEffect(() => {
+    if (isSpecialTab) return;
+
+    const applyVimSetting = (enabled: boolean) => {
+      if (!viewRef.current) return;
+      toggleVimMode(viewRef.current, enabled);
+    };
+
+    applyVimSetting(readVimModeSetting());
+
+    const handleVimSettingChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ enabled?: boolean }>;
+      applyVimSetting(!!customEvent.detail?.enabled);
+    };
+
+    window.addEventListener(
+      "oo:vim-setting-change",
+      handleVimSettingChange as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "oo:vim-setting-change",
+        handleVimSettingChange as EventListener,
+      );
+    };
+  }, [isSpecialTab, readVimModeSetting]);
 
   useEffect(() => {
     if (isSpecialTab || !viewRef.current) return;

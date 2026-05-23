@@ -21,6 +21,7 @@ import "./styles/index.css";
 import "./styles/spaces.css";
 import "./styles/plugins.css";
 import "./styles/collaboration.css";
+import "./styles/database.css";
 
 // ── Global shims for plugin compatibility ──
 if (!(String.prototype as any).contains) {

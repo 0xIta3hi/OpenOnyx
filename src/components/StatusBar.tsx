@@ -19,6 +19,7 @@ import {
 import { Tab, Theme, ViewMode, FileEntry } from "../types";
 import { countWords, countCharacters } from "../utils/helpers";
 import type { PluginStatusBarItem } from '../types/plugin';
+import { VimModeIndicator } from "./VimModeIndicator";
 
 interface StatusBarProps {
   activeTab: Tab | null;
@@ -28,6 +29,7 @@ interface StatusBarProps {
   fileTree?: FileEntry[];
   queueStatus?: QueueStatus | null;
   pluginStatusBarItems?: PluginStatusBarItem[];
+  vimEnabled?: boolean;
 }
 
 // Count notes and folders recursively
@@ -74,6 +76,7 @@ export function StatusBar({
   fileTree = [],
   queueStatus,
   pluginStatusBarItems = [],
+  vimEnabled = false,
 }: StatusBarProps) {
   const wordCount = content ? countWords(content) : 0;
   const charCount = content ? countCharacters(content) : 0;
@@ -146,6 +149,7 @@ export function StatusBar({
         </div>
       )}
       <div className="status-bar-right">
+        <VimModeIndicator vimEnabled={vimEnabled} />
         {vaultStats.notes > 0 && (
           <span className="status-item" title="Notes in vault">
             <FileText size={12} style={{ opacity: 0.7 }} /> {vaultStats.notes}

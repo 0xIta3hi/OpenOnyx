@@ -47,6 +47,7 @@ export interface AppSettings {
   showLineNumbers: boolean;
   wordWrap: boolean;
   spellcheck: boolean;
+  vimMode: boolean;
 
   // Files & Links
   defaultNoteLocation: string;
@@ -83,6 +84,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showLineNumbers: false,
   wordWrap: true,
   spellcheck: false,
+  vimMode: false,
 
   defaultNoteLocation: "",
   attachmentLocation: "attachments",
@@ -432,6 +434,25 @@ export function SettingsPage({
                       checked={localSettings.spellcheck}
                       onChange={(e) =>
                         updateSetting("spellcheck", e.target.checked)
+                      }
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div className="setting-group">
+                  <label className="setting-toggle">
+                    <span>
+                      Vim Mode
+                      <span className="setting-description">
+                        Neovim-style modal editing and : commands
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={localSettings.vimMode}
+                      onChange={(e) =>
+                        updateSetting("vimMode", e.target.checked)
                       }
                     />
                     <span className="toggle-slider"></span>

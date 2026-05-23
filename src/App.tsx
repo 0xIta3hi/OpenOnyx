@@ -46,6 +46,7 @@ import { TemplateModal } from "./components/TemplateModal";
 import { UnlinkedMentionsPanel } from "./components/UnlinkedMentionsPanel";
 import { AIPage } from "./components/AIPage";
 import { SpacesPage } from "./components/SpacesPage";
+import { DatabaseView } from "./components/DatabaseView";
 import {
   embedNote,
   loadStore,
@@ -101,6 +102,10 @@ import {
 } from "./utils/ftux";
 import { readData, writeData } from "./utils/disk-store";
 import { DragCtx, DragContextData } from "./context/DragContext";
+import {
+  initGlobalKeybindings,
+  setGlobalKeybindingsEnabled,
+} from "./keybindings/globalKeys";
 
 const api = getAPI();
 const MIN_EDITOR_FONT_SIZE = 12;
@@ -1575,6 +1580,21 @@ export default function App() {
     localStorage.setItem("notework-settings", JSON.stringify(settings));
   }, [settings, theme]);
 
+  useEffect(() => {
+    if (settings.vimMode) {
+      initGlobalKeybindings();
+      setGlobalKeybindingsEnabled(true);
+    } else {
+      setGlobalKeybindingsEnabled(false);
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("oo:vim-setting-change", {
+        detail: { enabled: settings.vimMode },
+      }),
+    );
+  }, [settings.vimMode]);
+
   // ── Queue status listener ───────────────────────────
   useEffect(() => {
     setQueueStatusCallback((status) => setQueueStatus(status));
@@ -2252,7 +2272,35 @@ export default function App() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    
+    // Listen for custom events
+    const handleOpenDatabase = (e: CustomEvent<{path: string}>) => {
+      const tabId = `__database__.${e.detail.path}`;
+      const newTab: Tab = {
+        id: tabId,
+        name: `DB: ${getNoteName(e.detail.path)}`,
+        path: tabId,
+        isModified: false,
+      };
+
+      setPaneTree(prev => {
+        // Find leaf to insert into
+        const leaf = findLeafWithTab(prev, activeTabId || "") || findFirstLeaf(prev);
+        if (leaf) {
+          const newTree = insertTabIntoLeaf(prev, leaf.id, newTab);
+          return setActiveTabInLeaf(newTree, leaf.id, tabId);
+        }
+        return prev;
+      });
+      setActiveTabId(tabId);
+    };
+    
+    window.addEventListener('oo:open-database', handleOpenDatabase as EventListener);
+    
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener('oo:open-database', handleOpenDatabase as EventListener);
+    };
   }, [activeTabId, tabs, currentContent]);
 
   // ── Vault Operations ────────────────────────────────
@@ -2727,6 +2775,30 @@ export default function App() {
       },
     });
   };
+
+  const handleCreateNamedNote = useCallback(
+    async (rawName?: string) => {
+      if (!vaultPath) return;
+
+      const trimmed = (rawName || "").trim();
+      if (!trimmed) {
+        await handleNewNote();
+        return;
+      }
+
+      const fileName = /\.(md|canvas)$/i.test(trimmed)
+        ? trimmed
+        : `${trimmed}.md`;
+      const content = isCanvasFile(fileName)
+        ? JSON.stringify({ nodes: [], edges: [] }, null, 2)
+        : `# ${trimmed.replace(/\.md$/i, "")}` + "\n\n";
+
+      await api.createFile(fileName, content);
+      await refreshFileTree();
+      await openFile(fileName);
+    },
+    [vaultPath, handleNewNote, refreshFileTree, openFile],
+  );
 
   // ── Inline suggestions (appear inside editor) ──────────────────────────
   const [inlineSuggestions, setInlineSuggestions] = useState<EnrichedSuggestion[]>([]);
@@ -3337,6 +3409,121 @@ export default function App() {
       }
     }
   };
+
+  const selectRelativeTab = useCallback(
+    (direction: 1 | -1) => {
+      if (tabs.length <= 1) return;
+      const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+      if (currentIndex === -1) return;
+
+      const nextIndex =
+        direction === 1
+          ? (currentIndex + 1) % tabs.length
+          : (currentIndex - 1 + tabs.length) % tabs.length;
+
+      const nextTab = tabs[nextIndex];
+      if (nextTab) {
+        void handleTabSelect(nextTab.id);
+      }
+    },
+    [activeTabId, tabs, handleTabSelect],
+  );
+
+  useEffect(() => {
+    const onSave = () => {
+      void handleSave();
+    };
+
+    const onCloseTab = () => {
+      if (activeTabId) {
+        void closeTab(activeTabId);
+      }
+    };
+
+    const onNewNote = (event: Event) => {
+      const customEvent = event as CustomEvent<{ name?: string }>;
+      void handleCreateNamedNote(customEvent.detail?.name);
+    };
+
+    const onSplitView = () => {
+      setViewMode("split");
+    };
+
+    const onOpenGraph = () => {
+      openGraphAsTab();
+    };
+
+    const onOpenChat = () => {
+      setShowGraph(false);
+      setShowCanvas(false);
+      setShowThoughtModel(true);
+    };
+
+    const onDailyNote = () => {
+      void handleCreateDailyNote();
+    };
+
+    const onFuzzySearch = (_event: Event) => {
+      setShowSearch(true);
+    };
+
+    const onToggleBacklinks = () => {
+      setShowBacklinks((prev) => !prev);
+    };
+
+    const onGlobalSearch = () => {
+      setShowSearch(true);
+    };
+
+    const onCommandPalette = () => {
+      setShowCommandPalette(true);
+    };
+
+    const onNextTab = () => {
+      selectRelativeTab(1);
+    };
+
+    const onPrevTab = () => {
+      selectRelativeTab(-1);
+    };
+
+    window.addEventListener("oo:save", onSave as EventListener);
+    window.addEventListener("oo:close-tab", onCloseTab as EventListener);
+    window.addEventListener("oo:new-note", onNewNote as EventListener);
+    window.addEventListener("oo:split-view", onSplitView as EventListener);
+    window.addEventListener("oo:open-graph", onOpenGraph as EventListener);
+    window.addEventListener("oo:open-chat", onOpenChat as EventListener);
+    window.addEventListener("oo:daily-note", onDailyNote as EventListener);
+    window.addEventListener("oo:fuzzy-search", onFuzzySearch as EventListener);
+    window.addEventListener("oo:toggle-backlinks", onToggleBacklinks as EventListener);
+    window.addEventListener("oo:global-search", onGlobalSearch as EventListener);
+    window.addEventListener("oo:command-palette", onCommandPalette as EventListener);
+    window.addEventListener("oo:next-tab", onNextTab as EventListener);
+    window.addEventListener("oo:prev-tab", onPrevTab as EventListener);
+
+    return () => {
+      window.removeEventListener("oo:save", onSave as EventListener);
+      window.removeEventListener("oo:close-tab", onCloseTab as EventListener);
+      window.removeEventListener("oo:new-note", onNewNote as EventListener);
+      window.removeEventListener("oo:split-view", onSplitView as EventListener);
+      window.removeEventListener("oo:open-graph", onOpenGraph as EventListener);
+      window.removeEventListener("oo:open-chat", onOpenChat as EventListener);
+      window.removeEventListener("oo:daily-note", onDailyNote as EventListener);
+      window.removeEventListener("oo:fuzzy-search", onFuzzySearch as EventListener);
+      window.removeEventListener("oo:toggle-backlinks", onToggleBacklinks as EventListener);
+      window.removeEventListener("oo:global-search", onGlobalSearch as EventListener);
+      window.removeEventListener("oo:command-palette", onCommandPalette as EventListener);
+      window.removeEventListener("oo:next-tab", onNextTab as EventListener);
+      window.removeEventListener("oo:prev-tab", onPrevTab as EventListener);
+    };
+  }, [
+    activeTabId,
+    closeTab,
+    handleCreateNamedNote,
+    handleSave,
+    openGraphAsTab,
+    selectRelativeTab,
+  ]);
 
   // ── Link Navigation ─────────────────────────────────
   const handleLinkClick = async (linkName: string, heading?: string) => {
@@ -4480,6 +4667,34 @@ export default function App() {
       );
     }
 
+    if (leafActiveTab.path.startsWith("__database__.")) {
+      const folderPath = leafActiveTab.path.split("__database__.")[1];
+      
+      // Helper function to find a node by path recursively
+      const findNodeByPath = (nodes: FileEntry[], targetPath: string): FileEntry | undefined => {
+        for (const node of nodes) {
+          if (node.path === targetPath) return node;
+          if (node.children) {
+            const found = findNodeByPath(node.children, targetPath);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+
+      const folderNode = findNodeByPath(fileTree, folderPath);
+      if (!folderNode) {
+        return <div className="p-8 text-text-muted">Folder not found: {folderPath}</div>;
+      }
+
+      return (
+        <DatabaseView
+          folderNode={folderNode}
+          onOpenFile={openFile}
+        />
+      );
+    }
+
     if (tabIsPlugin) {
       return (
         <div className="main-plugin-view-container" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
@@ -4902,6 +5117,7 @@ export default function App() {
           fileTree={fileTree}
           queueStatus={queueStatus}
           pluginStatusBarItems={pluginStatusBarItems}
+          vimEnabled={settings.vimMode}
         />
       )}
 

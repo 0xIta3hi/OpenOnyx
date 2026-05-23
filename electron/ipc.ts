@@ -5,7 +5,7 @@
  * Each handler validates inputs and delegates to the appropriate manager.
  */
 
-import { IpcMain, BrowserWindow } from 'electron';
+import { IpcMain, BrowserWindow, clipboard } from 'electron';
 import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
 
@@ -180,6 +180,15 @@ export function registerIpcHandlers(
       console.error('[data:fetch] Error:', e.message);
       throw e;
     }
+  });
+
+  // ── Clipboard ────────────────────────────────────
+  ipcMain.handle('clipboard:writeText', async (_event, text: string) => {
+    clipboard.writeText(text || '');
+  });
+
+  ipcMain.handle('clipboard:readText', async () => {
+    return clipboard.readText();
   });
 
   ipcMain.handle('network:request', async (_event, params: any) => {
