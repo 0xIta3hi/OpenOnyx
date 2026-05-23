@@ -108,6 +108,19 @@ const MAX_EDITOR_FONT_SIZE = 24;
 type FontZoomScope = "both" | "editor" | "preview";
 type GraphMode = "manual" | "ai";
 
+function collectAllActiveTabPaths(node: PaneNode): string[] {
+  if ('children' in node && Array.isArray(node.children)) {
+    return [
+      ...collectAllActiveTabPaths(node.children[0]),
+      ...collectAllActiveTabPaths(node.children[1]),
+    ];
+  } else if ('tabs' in node && Array.isArray(node.tabs)) {
+    const activeTab = node.tabs.find((t) => t.id === node.activeTabId);
+    return activeTab && activeTab.path.endsWith('.md') ? [activeTab.path] : [];
+  }
+  return [];
+}
+
 type RGB = { r: number; g: number; b: number };
 
 const clampByte = (value: number): number =>
@@ -2736,6 +2749,8 @@ export default function App() {
   // ── Inline suggestions (appear inside editor) ──────────────────────────
   const [inlineSuggestions, setInlineSuggestions] = useState<EnrichedSuggestion[]>([]);
   const [nextStepSuggestions, setNextStepSuggestions] = useState<EnrichedSuggestion[]>([]);
+  const [inlineSuggestionsByPath, setInlineSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
+  const [nextStepSuggestionsByPath, setNextStepSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
   const [inlineAnnotation, setInlineAnnotation] = useState<string | null>(null);
   const ftuxConnectionSuggestion = useMemo(
     () =>
@@ -2922,6 +2937,8 @@ export default function App() {
 
       setInlineSuggestions(enriched);
       setNextStepSuggestions(nextSteps);
+      setInlineSuggestionsByPath((prev) => ({ ...prev, [notePath]: enriched }));
+      setNextStepSuggestionsByPath((prev) => ({ ...prev, [notePath]: nextSteps }));
     } catch { /* silent */ }
   }, []);
 
@@ -2956,6 +2973,16 @@ export default function App() {
       setInlineAnnotation(null);
     }
   }, [activeTabId, tabs, refreshInlineSuggestions, refreshInlineAnnotation]);
+
+  // Pre-load suggestions for all active tabs in all split panes
+  useEffect(() => {
+    const activePaths = collectAllActiveTabPaths(paneTree);
+    for (const path of activePaths) {
+      if (path && !inlineSuggestionsByPath[path]) {
+        refreshInlineSuggestions(path);
+      }
+    }
+  }, [paneTree, tabs, refreshInlineSuggestions, inlineSuggestionsByPath]);
 
   const handleInlineAccept = useCallback(
     async (targetPath: string, linkType: LinkType) => {
@@ -4548,14 +4575,37 @@ export default function App() {
     }
 
     // Regular markdown note
+    const currentPath = leafActiveTab?.path || "";
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const activeTabIdPath = activeTab?.path || "";
+
+    const leafSuggestions =
+      !ftuxSuggestionIdle ||
+      isFTUXFirstNote ||
+      isFTUXConnectionStage ||
+      showFTUXInsightPrompt ||
+      showFTUXGraphPrompt
+        ? []
+        : (inlineSuggestionsByPath[currentPath] || (currentPath === activeTabIdPath ? inlineSuggestions : []));
+
+    const leafNextStepSuggestions =
+      !showTrajectorySuggestions ||
+      !ftuxSuggestionIdle ||
+      isFTUXFirstNote ||
+      isFTUXConnectionStage ||
+      showFTUXInsightPrompt ||
+      showFTUXGraphPrompt
+        ? []
+        : (nextStepSuggestionsByPath[currentPath] || (currentPath === activeTabIdPath ? nextStepSuggestions : []));
+
     return (
       <LeafPaneEditor
         leaf={leaf}
         activeTab={leafActiveTab}
         theme={theme}
         allNoteNames={allNoteNames}
-        editorSuggestions={editorSuggestions}
-        editorNextStepSuggestions={editorNextStepSuggestions}
+        editorSuggestions={leafSuggestions}
+        editorNextStepSuggestions={leafNextStepSuggestions}
         inlineAnnotation={inlineAnnotation}
         showInlineInsight={showInlineInsight}
         ftuxConnectionPulse={ftuxConnectionPulse}
@@ -4576,9 +4626,11 @@ export default function App() {
     );
   }, [
     focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
-    editorSuggestions, editorNextStepSuggestions, inlineAnnotation,
-    showInlineInsight, ftuxConnectionPulse, mainPluginViews, graphMode,
-    recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
+    inlineSuggestions, nextStepSuggestions, inlineSuggestionsByPath, nextStepSuggestionsByPath,
+    activeTabId, tabs, inlineAnnotation, showInlineInsight, ftuxConnectionPulse,
+    mainPluginViews, graphMode, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
+    ftuxSuggestionIdle, isFTUXFirstNote, isFTUXConnectionStage, showFTUXInsightPrompt, showFTUXGraphPrompt,
+    showTrajectorySuggestions
   ]);
 
   return (
