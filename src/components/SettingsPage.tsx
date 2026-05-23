@@ -1061,7 +1061,10 @@ export function SettingsPage({
                     <button
                       className={`ai-setting-model ${isCustomModel ? "active" : ""}`}
                       onClick={() => {
-                        const nextModelId = aiSettings.customModelId || "deepseek/deepseek-v4-flash:free";
+                        const isPreset = models.some((m) => m.id === aiSettings.customModelId);
+                        const nextModelId = (!aiSettings.customModelId || isPreset)
+                          ? "deepseek/deepseek-v4-flash:free"
+                          : aiSettings.customModelId;
                         updateAISettings({
                           modelId: nextModelId,
                           customModelId: nextModelId
