@@ -672,23 +672,23 @@ export function SettingsPage({
                   </div>
                 </div>
 
-                <div className="setting-group">
-                  <label className="setting-toggle">
-                    <span>
-                      Vim Mode
-                      <span className="setting-description">
-                        Neovim-style modal editing and : commands
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={localSettings.vimMode}
-                      onChange={(e) =>
-                        updateSetting("vimMode", e.target.checked)
-                      }
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
+                <div className="setting-card">
+                  <div className="setting-info">
+                    <div className="setting-title">Vim Mode</div>
+                    <div className="setting-description">
+                      Neovim-style modal editing and : commands
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <label className="setting-toggle">
+                      <input
+                        type="checkbox"
+                        checked={localSettings.vimMode}
+                        onChange={(e) => updateSetting("vimMode", e.target.checked)}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
