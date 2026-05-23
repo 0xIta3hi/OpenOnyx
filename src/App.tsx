@@ -952,6 +952,22 @@ export default function App() {
   const [showOutgoingLinks, setShowOutgoingLinks] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<string>("general");
+
+  useEffect(() => {
+    const handleOpenSettings = (e: Event) => {
+      const customEvent = e as CustomEvent<{ section?: string }>;
+      if (customEvent.detail?.section) {
+        setSettingsSection(customEvent.detail.section);
+      } else {
+        setSettingsSection("general");
+      }
+      setShowSettings(true);
+    };
+    window.addEventListener("open-settings", handleOpenSettings);
+    return () => window.removeEventListener("open-settings", handleOpenSettings);
+  }, []);
+
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUnlinkedMentions, setShowUnlinkedMentions] = useState(false);
   const [showThoughtModel, setShowThoughtModel] = useState(false);
@@ -5045,6 +5061,7 @@ export default function App() {
           settings={settings}
           onSettingsChange={setSettings}
           onClose={() => setShowSettings(false)}
+          initialSection={settingsSection as any}
           plugins={pluginList}
           pluginSettingTabs={pluginSettingTabs}
           onEnablePlugin={async (id) => { await pluginManagerRef.current?.enablePlugin(id); }}

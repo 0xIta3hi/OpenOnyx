@@ -28,7 +28,11 @@ import {
   Settings,
   ArrowLeftRight,
   Shield,
-  FileCode
+  FileCode,
+  Brain,
+  Check,
+  AlertCircle,
+  ExternalLink
 } from "lucide-react";
 import { PluginSettingsPanel } from './PluginSettingsPanel';
 import { PluginMarketplace } from './PluginMarketplace';
@@ -38,6 +42,15 @@ import type { LocalVaultCollaborator, LocalVaultInvite } from "../lib/localdb";
 import { CollaborationPanel } from './CollaborationPanel';
 import { authManager } from "../lib/auth";
 import { AuthModal } from "./AuthModal";
+import {
+  loadSettings,
+  saveSettings,
+  getModelsForProvider,
+  AI_PROVIDER_PRESETS,
+  DEFAULT_MODEL_ID,
+  type AISettings
+} from "../utils/ai-settings";
+import { isModelLoaded, loadStore } from "../utils/embeddings";
 
 
 export interface AppSettings {
@@ -135,6 +148,7 @@ interface SettingsPageProps {
   currentUserEmail?: string;
   vaultPath?: string;
   onVaultReconstructed?: (path: string) => void;
+  initialSection?: SettingsSection;
 }
 
 type SettingsSection = 
@@ -143,6 +157,7 @@ type SettingsSection =
   | "files" 
   | "appearance" 
   | "hotkeys" 
+  | "ai"
   | "plugins"
   // Core Plugins sub-items
   | "backlinks"
@@ -173,8 +188,9 @@ export function SettingsPage({
   currentUserEmail,
   vaultPath,
   onVaultReconstructed,
+  initialSection,
 }: SettingsPageProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>("general");
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection || "general");
   const [isBrowsingPlugins, setIsBrowsingPlugins] = useState(false);
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [searchHotkey, setSearchHotkey] = useState("");
@@ -198,6 +214,42 @@ export function SettingsPage({
   const [notifyStartup, setNotifyStartup] = useState(true);
   const [cliEnabled, setCliEnabled] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("English");
+
+  // AI Settings local states
+  const [aiSettings, setAiSettings] = useState<AISettings>(() => loadSettings());
+  const [store, setStore] = useState(() => loadStore());
+  const indexedCount = store.entries.size;
+
+  const updateAISettings = (patch: Partial<AISettings>) => {
+    setAiSettings((prev) => {
+      const next = { ...prev, ...patch };
+      saveSettings(next);
+      return next;
+    });
+    // Notify AIPage or other components immediately
+    window.dispatchEvent(new Event("ai-settings-changed"));
+  };
+
+  useEffect(() => {
+    if (activeSection !== "ai") return;
+    const interval = setInterval(() => {
+      setStore(loadStore());
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [activeSection]);
+
+  const models = getModelsForProvider(aiSettings.provider);
+  const matchedModel = models.find((m) => m.id === aiSettings.modelId);
+  const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
+  const currentModel = matchedModel || (isCustomModel ? {
+    id: aiSettings.modelId,
+    label: aiSettings.modelId,
+    shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
+    description: "Custom OpenRouter Model",
+    supportsGrounding: false
+  } : models[0]);
+
+  const hasApiKey = !!aiSettings.apiKey;
 
   // Keep localSettings in sync if props change
   useEffect(() => {
@@ -225,6 +277,7 @@ export function SettingsPage({
     { id: "files" as const, label: "Files and links", icon: FileText },
     { id: "appearance" as const, label: "Appearance", icon: Palette },
     { id: "hotkeys" as const, label: "Hotkeys", icon: Keyboard },
+    { id: "ai" as const, label: "Configure AI", icon: Brain },
     { id: "plugins" as const, label: "Community plugins", icon: Puzzle },
   ];
 
@@ -876,6 +929,210 @@ export function SettingsPage({
                   ) : (
                     <div className="hotkeys-empty">No hotkeys match your search query</div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* ── AI SECTION ──────────────────────────────────────── */}
+            {activeSection === "ai" && (
+              <div className="settings-section animate-fade-in">
+                <div className="setting-description-box" style={{ marginBottom: "20px" }}>
+                  <p className="setting-description" style={{ fontSize: "13px", lineHeight: "1.5" }}>
+                    Analysis and suggestions work locally. LLM is used for annotations, synthesis, and queries.
+                  </p>
+                </div>
+
+                {/* Provider Selector */}
+                <div className="setting-card">
+                  <div className="setting-info">
+                    <div className="setting-title">Provider</div>
+                    <div className="setting-description">
+                      Choose which AI provider you want to use for advanced reasoning.
+                    </div>
+                  </div>
+                  <div className="setting-control button-row">
+                    {AI_PROVIDER_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        className={`setting-btn-tab ${aiSettings.provider === preset.id ? "active" : ""}`}
+                        onClick={() => {
+                          const nextKey = aiSettings.providerKeys?.[preset.id] || "";
+                          const nextModels = getModelsForProvider(preset.id);
+                          const nextModelId = nextModels[0]?.id || DEFAULT_MODEL_ID;
+                          updateAISettings({
+                            provider: preset.id,
+                            apiKey: nextKey,
+                            modelId: nextModelId,
+                            providerKeys: { ...aiSettings.providerKeys, [aiSettings.provider]: aiSettings.apiKey },
+                          });
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* API Key */}
+                <div className="setting-card">
+                  <div className="setting-info">
+                    <div className="setting-title">
+                      API Key
+                    </div>
+                    <div className="setting-description">
+                      Enter credentials for your provider.{" "}
+                      <a
+                        className="setting-link inline-flex items-center gap-1"
+                        href={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}
+                      >
+                        Get key <ExternalLink size={10} />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <input
+                      type="password"
+                      className="setting-input"
+                      style={{ width: "240px" }}
+                      value={aiSettings.apiKey}
+                      onChange={(e) => updateAISettings({ apiKey: e.target.value })}
+                      placeholder={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyPlaceholder}
+                    />
+                  </div>
+                </div>
+
+                {/* Model list */}
+                <h3 className="setting-group-header">Available Models</h3>
+                <div className="ai-setting-models" style={{ width: "100%", marginTop: "12px", border: "1px solid var(--border-medium)", borderRadius: "6px", overflow: "hidden" }}>
+                  {models.map((model) => (
+                    <button
+                      key={model.id}
+                      className={`ai-setting-model ${aiSettings.modelId === model.id ? "active" : ""}`}
+                      onClick={() => updateAISettings({ modelId: model.id })}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "12px 16px",
+                        borderBottom: "1px solid var(--border-subtle)",
+                        background: aiSettings.modelId === model.id ? "var(--bg-active)" : "transparent",
+                        cursor: "pointer",
+                        borderLeft: "none",
+                        borderRight: "none",
+                        borderTop: "none",
+                        textAlign: "left",
+                        color: "inherit"
+                      }}
+                    >
+                      <div className="setting-info">
+                        <div className="setting-title" style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>{model.label}</div>
+                        <div className="setting-description" style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{model.description}</div>
+                      </div>
+                      {aiSettings.modelId === model.id && <Check size={16} style={{ color: "var(--color-accent)", marginRight: "8px" }} />}
+                    </button>
+                  ))}
+
+                  {aiSettings.provider === "openrouter" && (
+                    <button
+                      className={`ai-setting-model ${isCustomModel ? "active" : ""}`}
+                      onClick={() => {
+                        const nextModelId = aiSettings.customModelId || "deepseek/deepseek-v4-flash:free";
+                        updateAISettings({
+                          modelId: nextModelId,
+                          customModelId: nextModelId
+                        });
+                      }}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "12px 16px",
+                        background: isCustomModel ? "var(--bg-active)" : "transparent",
+                        cursor: "pointer",
+                        border: "none",
+                        textAlign: "left",
+                        color: "inherit"
+                      }}
+                    >
+                      <div className="setting-info">
+                        <div className="setting-title" style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>Custom Model</div>
+                        <div className="setting-description" style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>Use any other OpenRouter model by entering its ID</div>
+                      </div>
+                      {isCustomModel && <Check size={16} style={{ color: "var(--color-accent)", marginRight: "8px" }} />}
+                    </button>
+                  )}
+                </div>
+
+                {/* Custom Model Input */}
+                {aiSettings.provider === "openrouter" && isCustomModel && (
+                  <div className="setting-card animate-fade-in" style={{ marginTop: "16px" }}>
+                    <div className="setting-info">
+                      <div className="setting-title">Custom Model ID</div>
+                      <div className="setting-description">
+                        Enter the exact model identifier from OpenRouter (e.g. poolside/laguna-m.1:free).
+                      </div>
+                    </div>
+                    <div className="setting-control">
+                      <input
+                        type="text"
+                        className="setting-input"
+                        style={{ width: "240px" }}
+                        value={aiSettings.modelId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateAISettings({
+                            modelId: val,
+                            customModelId: val
+                          });
+                        }}
+                        placeholder="e.g. deepseek/deepseek-v4-flash:free"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Status indicators */}
+                <h3 className="setting-group-header">System Status</h3>
+                
+                <div className="setting-card">
+                  <div className="setting-info">
+                    <div className="setting-title">Analysis Engine</div>
+                    <div className="setting-description">
+                      State of the background note indexer and vector embeddings store.
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <div className={isModelLoaded() ? "ai-setting-status-ok" : "ai-setting-status-warn"} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
+                      {isModelLoaded() ? <Check size={14} style={{ color: "#22c55e" }} /> : <AlertCircle size={14} style={{ color: "#eab308" }} />}
+                      <span style={{ color: isModelLoaded() ? "var(--text-primary)" : "var(--text-muted)" }}>
+                        {isModelLoaded()
+                          ? `Running · ${indexedCount} notes indexed`
+                          : "Loads automatically on first note save"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="setting-card">
+                  <div className="setting-info">
+                    <div className="setting-title">LLM Service Connection</div>
+                    <div className="setting-description">
+                      Verification of the active remote large language model connection.
+                    </div>
+                  </div>
+                  <div className="setting-control">
+                    <div className={hasApiKey ? "ai-setting-status-ok" : "ai-setting-status-warn"} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
+                      {hasApiKey ? <Check size={14} style={{ color: "#22c55e" }} /> : <AlertCircle size={14} style={{ color: "#eab308" }} />}
+                      <span style={{ color: hasApiKey ? "var(--text-primary)" : "var(--text-muted)" }}>
+                        {hasApiKey ? `Connected: ${currentModel?.shortLabel || currentModel?.label}` : "No API key — local analysis still works"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

@@ -1,6 +1,6 @@
 /**
- * ExploreSpacesPage — Public space discovery with 4 sections:
- *  1. 🔥 Trending (by score)
+ * ExploreSpacesPage — Public space discovery with 4 sections[Not Implemented yet]:
+ *  1. 🔥 Trending (by score) 
  *  2. 🧠 Recommended (based on user's spaces)
  *  3. 🆕 Recently Published
  *  4. 🔎 Semantic Search
