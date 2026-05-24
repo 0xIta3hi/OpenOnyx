@@ -471,6 +471,7 @@ export async function querySpaceStreaming(
   meta: SpaceMetadata,
   history: SpaceChatMessage[] | undefined,
   onChunk: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<RAGResult> {
   const config = loadAIConfig();
   if (!config) {
@@ -505,6 +506,7 @@ export async function querySpaceStreaming(
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: getProviderHeaders(config),
+    signal,
     body: JSON.stringify({
       model: config.modelId,
       max_tokens: 4096,

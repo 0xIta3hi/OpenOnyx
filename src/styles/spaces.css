@@ -1332,7 +1332,7 @@ textarea.space-form-input {
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   border: none;
   background: var(--accent-primary);
   color: var(--text-on-accent);
@@ -1350,6 +1350,15 @@ textarea.space-form-input {
   cursor: not-allowed;
   background: var(--bg-active);
   color: var(--text-muted);
+}
+
+.space-chat-send.aborting {
+  background: var(--accent-red, #ff5252);
+  color: #ffffff;
+}
+
+.space-chat-send.aborting:hover:not(:disabled) {
+  background: #ff7b7b;
 }
 
 .space-chat-no-ai-warning {

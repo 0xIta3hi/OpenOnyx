@@ -11,9 +11,9 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
-  Plus, X, Trash2, ArrowLeft, Send, Loader2,
+  Plus, X, Trash2, ArrowLeft, ArrowUp, Loader2,
   Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles,
-  Zap, Layers, Brain, Check, GitBranch, MessageSquare, Edit2
+  Zap, Layers, Brain, Check, GitBranch, MessageSquare, Edit2, Square
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
@@ -223,6 +223,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [view, setView] = useState<"marketplace" | "space">("marketplace");
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
   const activeSpaceIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Marketplace states
   const [spaces, setSpaces] = useState<SpaceIndexEntry[]>([]);
@@ -304,10 +305,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const bottomInputRef = useRef<HTMLTextAreaElement>(null);
 
   const vaultNoteCount = countNotes(fileTree);
-  const previewNotes = getPreviewNotes(fileTree);
+  const allVaultNotes = useMemo(() => getAllVaultNotes(fileTree), [fileTree]);
 
   const notesList = activeSpace 
-    ? (activeSpace.visibility === "local" ? previewNotes : remoteNotes)
+    ? (activeSpace.visibility === "local" ? allVaultNotes : remoteNotes)
     : [];
 
   const filteredNotes = useMemo(() => {
@@ -541,6 +542,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     setEditingConvId(null);
   }, []);
 
+  const handleAbortChat = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
   // ── Create space ─────────────────────────────────────
   const handleCreate = useCallback(async () => {
     if (!createTitle.trim()) return;
@@ -754,6 +762,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     setIsQuerying(true);
     setStreamingText("");
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    let accumulatedAnswer = "";
+
     try {
       // Parse query for mentioned files [[Note Title]]
       const matches = [...q.matchAll(/\[\[([^\]]+)\]\]/g)];
@@ -784,8 +796,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
       };
       const result = await querySpaceStreaming(activeSpaceId, q, spaceMeta, chatMessages, (chunk) => {
-        setStreamingText((prev) => prev + chunk);
-      });
+        accumulatedAnswer += chunk;
+        setStreamingText(accumulatedAnswer);
+      }, controller.signal);
 
       const assistantMsg: SpaceChatMessage = {
         id: `msg-${Date.now()}-resp`,
@@ -801,20 +814,40 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       });
       setStreamingText("");
     } catch (err) {
-      const errMsg: SpaceChatMessage = {
-        id: `msg-${Date.now()}-err`,
-        role: "assistant",
-        content: `Error: ${err instanceof Error ? err.message : "Query failed"}`,
-        timestamp: Date.now(),
-      };
-      setChatMessages((prev) => {
-        const next = [...prev, errMsg];
-        saveSpaceConversationMessages(activeSpaceId, activeConversationId, next);
-        return next;
-      });
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      if (isAbort) {
+        if (accumulatedAnswer.trim()) {
+          const abortedMsg: SpaceChatMessage = {
+            id: `msg-${Date.now()}-resp`,
+            role: "assistant",
+            content: accumulatedAnswer.trim() + " [Generation Stopped]",
+            sources: [],
+            timestamp: Date.now(),
+          };
+          setChatMessages((prev) => {
+            const next = [...prev, abortedMsg];
+            saveSpaceConversationMessages(activeSpaceId, activeConversationId, next);
+            return next;
+          });
+        }
+      } else {
+        const errMsg: SpaceChatMessage = {
+          id: `msg-${Date.now()}-err`,
+          role: "assistant",
+          content: `Error: ${err instanceof Error ? err.message : "Query failed"}`,
+          timestamp: Date.now(),
+        };
+        setChatMessages((prev) => {
+          const next = [...prev, errMsg];
+          saveSpaceConversationMessages(activeSpaceId, activeConversationId, next);
+          return next;
+        });
+      }
       setStreamingText("");
+    } finally {
+      abortControllerRef.current = null;
+      setIsQuerying(false);
     }
-    setIsQuerying(false);
   }, [chatInput, activeSpaceId, activeSpace, isQuerying, fileTree, chatMessages, activeConversationId, conversations]);
 
   // ── Applied Actions state ─────────────────────────────
@@ -1640,11 +1673,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           </span>
                         )}
                         <button
-                          className="space-chat-send"
-                          onClick={() => handleChat()}
-                          disabled={!chatInput.trim() || isQuerying}
+                          className={`space-chat-send ${isQuerying ? "aborting" : ""}`}
+                          onClick={() => {
+                            if (isQuerying) {
+                              handleAbortChat();
+                            } else {
+                              handleChat();
+                            }
+                          }}
+                          disabled={!isQuerying && !chatInput.trim()}
+                          title={isQuerying ? "Stop generating" : "Send message"}
                         >
-                          {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                          {isQuerying ? <Square size={12} fill="currentColor" /> : <ArrowUp size={14} />}
                         </button>
                       </div>
                     </div>
@@ -1958,11 +1998,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     </span>
                   )}
                   <button
-                    className="space-chat-send"
-                    onClick={() => handleChat()}
-                    disabled={!chatInput.trim() || isQuerying}
+                    className={`space-chat-send ${isQuerying ? "aborting" : ""}`}
+                    onClick={() => {
+                      if (isQuerying) {
+                        handleAbortChat();
+                      } else {
+                        handleChat();
+                      }
+                    }}
+                    disabled={!isQuerying && !chatInput.trim()}
+                    title={isQuerying ? "Stop generating" : "Send message"}
                   >
-                    {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                    {isQuerying ? <Square size={12} fill="currentColor" /> : <ArrowUp size={14} />}
                   </button>
                 </div>
               </div>
