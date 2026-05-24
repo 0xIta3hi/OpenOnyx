@@ -1815,7 +1815,9 @@ function cleanInlineAIResponse(text: string): string {
 async function executeInlineAIOperation(
   text: string,
   operation: "rewrite" | "expand" | "simplify" | "explain" | "custom",
-  customInstruction?: string
+  customInstruction?: string,
+  fullNoteContent?: string,
+  noteTitle?: string
 ): Promise<string> {
   const config = loadAIConfig();
   if (!config) {
@@ -1850,13 +1852,26 @@ ${text}`;
   } else if (operation === "explain") {
     prompt = `You are a professional writing assistant. Explain the key concept, meaning, and context of the following highlighted text in a clear, concise paragraph. Return ONLY the explanation paragraph, with no introduction, surrounding quotes, or emojis:\n\n"${text}"`;
   } else if (operation === "custom") {
-    prompt = `You are a professional writing assistant. You have been asked to perform the following instruction on the text provided below: "${customInstruction}".
-The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text as much as possible, applying the instruction appropriately.
-Do NOT omit any list syntax or surrounding structure unless specifically asked by the instruction. If the original text starts with a bullet point or checklist, the modified text MUST start with the exact same prefix unless instructed otherwise.
-Return ONLY the modified markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+    prompt = `You are an intelligent, precise AI writing assistant inside a local-first markdown editor. 
+You have been asked to perform the following instruction on the SELECTED TEXT: "${customInstruction}".
 
-Original text:
-${text}`;
+To help you perform this task accurately and in a highly context-aware manner, here is the context of the ACTIVE NOTE:
+Note Title: ${noteTitle || "Untitled"}
+Full Note Content:
+"""
+${fullNoteContent || text}
+"""
+
+Here is the SPECIFIC SELECTED TEXT you must modify:
+"""
+${text}
+"""
+
+INSTRUCTIONS:
+1. Apply the instruction ("${customInstruction}") to the SELECTED TEXT appropriately.
+2. Use the FULL NOTE CONTENT and Title as context to intelligently fill in details, resolve references, or deduce relevant information. For example, if asked to fill in review sections or lists, pull relevant events, tasks, and accomplishments from the rest of the note. Do not literally insert the raw instruction text into the blank spaces; instead, fill them with meaningful, contextual content.
+3. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original selected text as much as possible.
+4. Return ONLY the modified version of the SELECTED TEXT. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.`;
   }
 
   const baseUrl = getBaseUrl(config);
@@ -2104,7 +2119,15 @@ export function Editor({
     setExplanationCoords(null);
 
     try {
-      const result = await executeInlineAIOperation(text, operation, customInstruction);
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      const noteTitle = activeTab?.name || activeTab?.path?.split("/").pop()?.replace(".md", "") || "";
+      const result = await executeInlineAIOperation(
+        text,
+        operation,
+        customInstruction,
+        content || "",
+        noteTitle
+      );
       if (operation === "explain") {
         setExplanation(result);
         setExplanationCoords({
