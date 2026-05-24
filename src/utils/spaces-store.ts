@@ -567,6 +567,17 @@ export async function deleteSpace(id: string): Promise<void> {
   // ── Remove local data ──
   await deleteData(`spaces/${id}.json`);
   await deleteData(`spaces/${id}/vectors.json`);
+  await deleteData(`spaces/${id}/chat.json`);
+  
+  // Clean up all conversation logs and their index file
+  try {
+    const convs = await loadSpaceConversations(id);
+    for (const c of convs) {
+      await deleteSpaceConversationMessages(id, c.id);
+    }
+  } catch { /* ignore */ }
+  await deleteData(`spaces/${id}/conversations.json`);
+
   _spaceCache.delete(id);
 
   const index = await loadIndex();
@@ -701,4 +712,59 @@ export async function saveVectorIndex(index: SpaceVectorIndex): Promise<void> {
 export function clearCache(): void {
   _indexCache = null;
   _spaceCache.clear();
+}
+
+// ── Chat History Store ───────────────────────────────────────────────────────
+
+import type { SpaceChatMessage, SpaceConversation } from "../types/spaces";
+
+export async function loadSpaceChat(
+  spaceId: string,
+): Promise<SpaceChatMessage[]> {
+  const data = await readData<SpaceChatMessage[]>(`spaces/${spaceId}/chat.json`);
+  return data || [];
+}
+
+export async function saveSpaceChat(
+  spaceId: string,
+  messages: SpaceChatMessage[],
+): Promise<void> {
+  await writeData(`spaces/${spaceId}/chat.json`, messages);
+}
+
+export async function loadSpaceConversations(
+  spaceId: string,
+): Promise<SpaceConversation[]> {
+  const data = await readData<SpaceConversation[]>(`spaces/${spaceId}/conversations.json`);
+  return data || [];
+}
+
+export async function saveSpaceConversations(
+  spaceId: string,
+  conversations: SpaceConversation[],
+): Promise<void> {
+  await writeData(`spaces/${spaceId}/conversations.json`, conversations);
+}
+
+export async function loadSpaceConversationMessages(
+  spaceId: string,
+  conversationId: string,
+): Promise<SpaceChatMessage[]> {
+  const data = await readData<SpaceChatMessage[]>(`spaces/${spaceId}/chats/${conversationId}.json`);
+  return data || [];
+}
+
+export async function saveSpaceConversationMessages(
+  spaceId: string,
+  conversationId: string,
+  messages: SpaceChatMessage[],
+): Promise<void> {
+  await writeData(`spaces/${spaceId}/chats/${conversationId}.json`, messages);
+}
+
+export async function deleteSpaceConversationMessages(
+  spaceId: string,
+  conversationId: string,
+): Promise<void> {
+  await deleteData(`spaces/${spaceId}/chats/${conversationId}.json`);
 }

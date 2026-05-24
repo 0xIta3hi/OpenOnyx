@@ -13,16 +13,20 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import {
   Plus, X, Trash2, ArrowLeft, Send, Loader2,
   Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles,
-  Zap, Layers, Brain, Check, GitBranch
+  Zap, Layers, Brain, Check, GitBranch, MessageSquare, Edit2
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
+  loadSpaceChat, saveSpaceChat,
+  loadSpaceConversations, saveSpaceConversations,
+  loadSpaceConversationMessages, saveSpaceConversationMessages,
+  deleteSpaceConversationMessages
 } from "../utils/spaces-store";
 import { buildVectorIndex, type VaultNote } from "../utils/spaces-processing";
 import { querySpaceStreaming, parseActionPayload, stripJSONBlock, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
-import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
+import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility, SpaceConversation } from "../types/spaces";
 import type { FileEntry } from "../types/index";
 import { SpacesIcon } from "./SpacesIcon";
 import { MarkdownPreview } from "./editor/MarkdownPreview";
@@ -218,6 +222,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // Navigation
   const [view, setView] = useState<"marketplace" | "space">("marketplace");
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
+  const activeSpaceIdRef = useRef<string | null>(null);
 
   // Marketplace states
   const [spaces, setSpaces] = useState<SpaceIndexEntry[]>([]);
@@ -243,11 +248,17 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [authMessage, setAuthMessage] = useState("");
   const [authEmail, setAuthEmail] = useState<string | null>(authManager.getUser()?.email ?? null);
 
-  // Chat state
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<SpaceChatMessage[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+
+  // Conversation session states
+  const [conversations, setConversations] = useState<SpaceConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const inputTokens = useMemo(() => Math.ceil((chatInput || "").length / 4), [chatInput]);
 
@@ -376,12 +387,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   // ── Open a space ─────────────────────────────────────
   const openSpace = useCallback(async (id: string) => {
+    activeSpaceIdRef.current = id;
     const space = await getSpace(id);
+    if (activeSpaceIdRef.current !== id) return;
     if (space) {
       setActiveSpace(space);
       setActiveSpaceId(id);
       setView("space");
-      setChatMessages([]);
       setStreamingText("");
       setChatInput("");
       const currentUserId = authManager.getUserId();
@@ -389,7 +401,144 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       
       // If it's a cloud space owned by someone else, we don't auto-index on open
       setIsIndexed(isRemoteSpace);
+
+      // Load conversations from disk
+      const convList = await loadSpaceConversations(id);
+      if (activeSpaceIdRef.current !== id) return;
+
+      if (convList.length === 0) {
+        // Attempt migration of legacy single chat
+        const legacyHistory = await loadSpaceChat(id);
+        if (activeSpaceIdRef.current !== id) return;
+
+        if (legacyHistory && legacyHistory.length > 0) {
+          const migratedConv: SpaceConversation = {
+            id: "migrated",
+            title: "Previous Chat",
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          await saveSpaceConversationMessages(id, "migrated", legacyHistory);
+          await saveSpaceConversations(id, [migratedConv]);
+          if (activeSpaceIdRef.current === id) {
+            setConversations([migratedConv]);
+            setActiveConversationId("migrated");
+            activeConversationIdRef.current = "migrated";
+            setChatMessages(legacyHistory);
+          }
+        } else {
+          // Create default conversation
+          const defaultConv: SpaceConversation = {
+            id: `conv-${Date.now()}`,
+            title: "New Chat",
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          await saveSpaceConversationMessages(id, defaultConv.id, []);
+          await saveSpaceConversations(id, [defaultConv]);
+          if (activeSpaceIdRef.current === id) {
+            setConversations([defaultConv]);
+            setActiveConversationId(defaultConv.id);
+            activeConversationIdRef.current = defaultConv.id;
+            setChatMessages([]);
+          }
+        }
+      } else {
+        // Sort conversations by updatedAt descending
+        const sorted = [...convList].sort((a, b) => b.updatedAt - a.updatedAt);
+        const firstConv = sorted[0];
+        const msgs = await loadSpaceConversationMessages(id, firstConv.id);
+        if (activeSpaceIdRef.current === id) {
+          setConversations(sorted);
+          setActiveConversationId(firstConv.id);
+          activeConversationIdRef.current = firstConv.id;
+          setChatMessages(msgs);
+        }
+      }
     }
+  }, []);
+
+  // ── Conversation actions ─────────────────────────────
+  const selectConversation = useCallback(async (convId: string) => {
+    if (!activeSpaceId) return;
+    setStreamingText("");
+    setChatInput("");
+    setActiveConversationId(convId);
+    activeConversationIdRef.current = convId;
+    
+    const msgs = await loadSpaceConversationMessages(activeSpaceId, convId);
+    if (activeConversationIdRef.current === convId) {
+      setChatMessages(msgs);
+    }
+  }, [activeSpaceId]);
+
+  const handleNewConversation = useCallback(async () => {
+    if (!activeSpaceId) return;
+    const newConv: SpaceConversation = {
+      id: `conv-${Date.now()}`,
+      title: "New Chat",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    const updated = [newConv, ...conversations];
+    setConversations(updated);
+    setActiveConversationId(newConv.id);
+    activeConversationIdRef.current = newConv.id;
+    setChatMessages([]);
+    setStreamingText("");
+    setChatInput("");
+    
+    await saveSpaceConversationMessages(activeSpaceId, newConv.id, []);
+    await saveSpaceConversations(activeSpaceId, updated);
+  }, [activeSpaceId, conversations]);
+
+  const handleDeleteConversation = useCallback(async (convId: string) => {
+    if (!activeSpaceId) return;
+    const remaining = conversations.filter(c => c.id !== convId);
+    setConversations(remaining);
+    await deleteSpaceConversationMessages(activeSpaceId, convId);
+    await saveSpaceConversations(activeSpaceId, remaining);
+
+    if (activeConversationId === convId) {
+      if (remaining.length > 0) {
+        selectConversation(remaining[0].id);
+      } else {
+        const defaultConv: SpaceConversation = {
+          id: `conv-${Date.now()}`,
+          title: "New Chat",
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        setConversations([defaultConv]);
+        setActiveConversationId(defaultConv.id);
+        activeConversationIdRef.current = defaultConv.id;
+        setChatMessages([]);
+        await saveSpaceConversationMessages(activeSpaceId, defaultConv.id, []);
+        await saveSpaceConversations(activeSpaceId, [defaultConv]);
+      }
+    }
+  }, [activeSpaceId, conversations, activeConversationId, selectConversation]);
+
+  const startRename = useCallback((convId: string, currentTitle: string) => {
+    setEditingConvId(convId);
+    setRenameValue(currentTitle);
+  }, []);
+
+  const finishRename = useCallback(async (convId: string) => {
+    if (!activeSpaceId || !renameValue.trim()) {
+      setEditingConvId(null);
+      return;
+    }
+    const updated = conversations.map(c =>
+      c.id === convId ? { ...c, title: renameValue.trim(), updatedAt: Date.now() } : c
+    );
+    setConversations(updated);
+    setEditingConvId(null);
+    await saveSpaceConversations(activeSpaceId, updated);
+  }, [activeSpaceId, conversations, renameValue]);
+
+  const cancelRename = useCallback(() => {
+    setEditingConvId(null);
   }, []);
 
   // ── Create space ─────────────────────────────────────
@@ -432,6 +581,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         setView("marketplace");
         setActiveSpace(null);
         setActiveSpaceId(null);
+        activeSpaceIdRef.current = null;
+        setActiveConversationId(null);
+        activeConversationIdRef.current = null;
+        setConversations([]);
+        setChatMessages([]);
       }
       await refreshSpaces();
       showToast("Space deleted.");
@@ -561,7 +715,29 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // ── Chat query ───────────────────────────────────────
   const handleChat = useCallback(async (query?: string) => {
     const q = (query || chatInput).trim();
-    if (!q || !activeSpaceId || !activeSpace || isQuerying) return;
+    if (!q || !activeSpaceId || !activeSpace || isQuerying || !activeConversationId) return;
+
+    // Handle auto-rename and updatedAt timestamp updates
+    let updatedConversations = conversations;
+    const activeConv = conversations.find(c => c.id === activeConversationId);
+    if (activeConv) {
+      const isNewChat = activeConv.title === "New Chat";
+      let title = activeConv.title;
+      if (isNewChat) {
+        title = q.substring(0, 30).trim();
+        if (q.length > 30) {
+          title += "...";
+        }
+        title = title.replace(/^["']|["']$/g, "");
+      }
+      updatedConversations = conversations.map(c =>
+        c.id === activeConversationId
+          ? { ...c, title, updatedAt: Date.now() }
+          : c
+      ).sort((a, b) => b.updatedAt - a.updatedAt);
+      setConversations(updatedConversations);
+      saveSpaceConversations(activeSpaceId, updatedConversations);
+    }
 
     const userMsg: SpaceChatMessage = {
       id: `msg-${Date.now()}`,
@@ -569,7 +745,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       content: q,
       timestamp: Date.now(),
     };
-    setChatMessages((prev) => [...prev, userMsg]);
+    setChatMessages((prev) => {
+      const next = [...prev, userMsg];
+      saveSpaceConversationMessages(activeSpaceId, activeConversationId, next);
+      return next;
+    });
     setChatInput("");
     setIsQuerying(true);
     setStreamingText("");
@@ -614,7 +794,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         sources: result.sources.map((s) => s.noteTitle),
         timestamp: Date.now(),
       };
-      setChatMessages((prev) => [...prev, assistantMsg]);
+      setChatMessages((prev) => {
+        const next = [...prev, assistantMsg];
+        saveSpaceConversationMessages(activeSpaceId, activeConversationId, next);
+        return next;
+      });
       setStreamingText("");
     } catch (err) {
       const errMsg: SpaceChatMessage = {
@@ -623,11 +807,15 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         content: `Error: ${err instanceof Error ? err.message : "Query failed"}`,
         timestamp: Date.now(),
       };
-      setChatMessages((prev) => [...prev, errMsg]);
+      setChatMessages((prev) => {
+        const next = [...prev, errMsg];
+        saveSpaceConversationMessages(activeSpaceId, activeConversationId, next);
+        return next;
+      });
       setStreamingText("");
     }
     setIsQuerying(false);
-  }, [chatInput, activeSpaceId, activeSpace, isQuerying, fileTree]);
+  }, [chatInput, activeSpaceId, activeSpace, isQuerying, fileTree, chatMessages, activeConversationId, conversations]);
 
   // ── Applied Actions state ─────────────────────────────
   const [appliedActions, setAppliedActions] = useState<Record<string, boolean>>({});
@@ -1212,11 +1400,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           <div className="space-sidebar-actions-group">
             <button
               className="space-sidebar-btn primary-action"
-              onClick={() => {
-                setChatMessages([]);
-                setStreamingText("");
-                setChatInput("");
-              }}
+              onClick={handleNewConversation}
               title="Start a new AI conversation session"
             >
               <Plus size={14} />
@@ -1229,6 +1413,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 setView("marketplace");
                 setActiveSpace(null);
                 setActiveSpaceId(null);
+                activeSpaceIdRef.current = null;
+                setActiveConversationId(null);
+                activeConversationIdRef.current = null;
+                setConversations([]);
+                setChatMessages([]);
                 setIsIndexed(false);
               }}
               title="Return to the spaces marketplace directory"
@@ -1321,36 +1510,74 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
           </div>
 
-          {/* Curated File Navigator explorer list ("Recents" style) */}
+          {/* Conversations Explorer Session List */}
           <div className="space-sidebar-section fill-height">
             <div className="space-sidebar-section-header">
-              <span>Indexed Notes</span>
-              <span className="space-sidebar-section-badge">{notesList.length}</span>
+              <span>Conversations</span>
+              <span className="space-sidebar-section-badge">{conversations.length}</span>
             </div>
 
-            {notesList.length === 0 ? (
+            {conversations.length === 0 ? (
               <div className="space-sidebar-notes-empty">
-                {isLoadingRemote ? "Loading index matrix..." : "No note layers indexed."}
+                No chat sessions.
               </div>
             ) : (
-              <div className="space-sidebar-notes-list">
-                {notesList.map((note) => (
-                  <div
-                    key={note.path}
-                    className="space-sidebar-note-item"
-                    onClick={() => {
-                      if (note.path && onOpenNote) {
-                        onOpenNote(note.path);
-                      }
-                    }}
-                    title={activeSpace.visibility === "local" || activeSpace.ownerId === authManager.getUserId()
-                      ? "Click to open in Markdown Editor"
-                      : "Cloud read-only index. Remix to make local edits."}
-                  >
-                    <FileText size={13} className="space-note-icon" />
-                    <span className="space-note-title">{note.title}</span>
-                  </div>
-                ))}
+              <div className="space-sidebar-conversations-list">
+                {conversations.map((conv) => {
+                  const isActive = activeConversationId === conv.id;
+                  return (
+                    <div
+                      key={conv.id}
+                      className={`space-sidebar-conv-item ${isActive ? "active" : ""}`}
+                      onClick={() => selectConversation(conv.id)}
+                    >
+                      <MessageSquare size={13} className="space-conv-icon" />
+                      {editingConvId === conv.id ? (
+                        <input
+                          type="text"
+                          className="space-conv-rename-input"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => finishRename(conv.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") finishRename(conv.id);
+                            if (e.key === "Escape") cancelRename();
+                          }}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="space-conv-title" title={conv.title}>{conv.title}</span>
+                      )}
+                      <div className="space-conv-actions">
+                        {editingConvId !== conv.id && (
+                          <>
+                            <button
+                              className="space-conv-action-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startRename(conv.id, conv.title);
+                              }}
+                              title="Rename conversation"
+                            >
+                              <Edit2 size={11} />
+                            </button>
+                            <button
+                              className="space-conv-action-btn delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteConversation(conv.id);
+                              }}
+                              title="Delete conversation"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

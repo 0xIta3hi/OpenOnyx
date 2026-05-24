@@ -72,6 +72,13 @@ export interface SpaceChatMessage {
   timestamp: number;
 }
 
+export interface SpaceConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ── Remix/Fork Types ─────────────────────────────────────────────────────────
 
 export interface SpaceForkRequest {
