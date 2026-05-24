@@ -141,6 +141,8 @@ export interface StoredEmbedding {
   hash: string;
   vector: number[];
   updatedAt: number;
+  modifiedAt?: number;
+  size?: number;
 }
 
 export interface EmbeddingStore {
@@ -283,6 +285,8 @@ export async function embedNote(
   store: EmbeddingStore,
   path: string,
   content: string,
+  modifiedAt?: number,
+  size?: number,
 ): Promise<boolean> {
   const hash = simpleHash(content);
   const existing = store.entries.get(path);
@@ -290,7 +294,14 @@ export async function embedNote(
   if (existing && existing.hash === hash) return false;
 
   const vector = await embedText(content);
-  const entry: StoredEmbedding = { path, hash, vector, updatedAt: Date.now() };
+  const entry: StoredEmbedding = {
+    path,
+    hash,
+    vector,
+    updatedAt: Date.now(),
+    modifiedAt: modifiedAt ?? Date.now(),
+    size: size ?? content.length,
+  };
   store.entries.set(path, entry);
   _memoryStore.entries.set(path, entry);
 

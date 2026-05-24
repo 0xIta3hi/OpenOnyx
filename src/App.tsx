@@ -2027,14 +2027,18 @@ export default function App() {
     vaultPath,
   ]);
 
-  // Helper: collect all .md paths from file tree
-  const collectAllMdPaths = useCallback((entries: FileEntry[]): string[] => {
-    const result: string[] = [];
+  // Helper: collect all .md metadata from file tree without reading content
+  const collectAllMdMetadata = useCallback((entries: FileEntry[]): Array<{ path: string; modifiedAt: number; size: number }> => {
+    const result: Array<{ path: string; modifiedAt: number; size: number }> = [];
     for (const entry of entries) {
       if (entry.isDirectory && entry.children) {
-        result.push(...collectAllMdPaths(entry.children));
+        result.push(...collectAllMdMetadata(entry.children));
       } else if (!entry.isDirectory && entry.name.endsWith(".md")) {
-        result.push(entry.path);
+        result.push({
+          path: entry.path,
+          modifiedAt: entry.modifiedAt,
+          size: entry.size,
+        });
       }
     }
     return result;
@@ -2042,28 +2046,15 @@ export default function App() {
 
   // Helper: run vault initialization (scan + enqueue missing embeddings)
   const runVaultInit = useCallback(async (tree: FileEntry[]) => {
-    const mdPaths = collectAllMdPaths(tree);
-    if (mdPaths.length === 0) return;
-
-    // Read all note contents in parallel (batched)
-    const allNotes: { path: string; content: string }[] = [];
-    const BATCH = 10;
-    for (let i = 0; i < mdPaths.length; i += BATCH) {
-      const batch = mdPaths.slice(i, i + BATCH);
-      const results = await Promise.allSettled(
-        batch.map(async (p) => ({ path: p, content: await api.readFile(p) })),
-      );
-      for (const r of results) {
-        if (r.status === "fulfilled") allNotes.push(r.value);
-      }
-    }
+    const mdNotes = collectAllMdMetadata(tree);
+    if (mdNotes.length === 0) return;
 
     // Get current active note and recent files for priority
     const activeTab = tabs.find((t) => t.id === activeTabId);
     const activePath = activeTab?.path || null;
 
-    initializeVault(allNotes, activePath, recentFiles, api);
-  }, [collectAllMdPaths, tabs, activeTabId, recentFiles]);
+    initializeVault(mdNotes, activePath, recentFiles, api);
+  }, [collectAllMdMetadata, tabs, activeTabId, recentFiles]);
 
   const initializeRef = useRef(false);
 

@@ -25,11 +25,21 @@ export interface BackgroundJob {
   content: string;
   priority: number; // lower = higher priority
   enqueuedAt: number;
+  modifiedAt?: number;
+  size?: number;
 }
 
 // Persisted queue state (content is NOT persisted — loaded on demand)
 interface PersistedQueue {
-  jobs: Array<{ id: string; type: string; path: string; priority: number; enqueuedAt: number }>;
+  jobs: Array<{
+    id: string;
+    type: string;
+    path: string;
+    priority: number;
+    enqueuedAt: number;
+    modifiedAt?: number;
+    size?: number;
+  }>;
   processedCount: number;
   totalCount: number;
   lastUpdated: number;
@@ -85,6 +95,8 @@ async function persistQueue(): Promise<void> {
       path: j.path,
       priority: j.priority,
       enqueuedAt: j.enqueuedAt,
+      modifiedAt: j.modifiedAt,
+      size: j.size,
     })),
     processedCount: _processedCount,
     totalCount: _totalCount,
@@ -123,6 +135,8 @@ async function loadPersistedQueue(): Promise<void> {
       content: "", // Will be loaded on demand
       priority: job.priority,
       enqueuedAt: job.enqueuedAt,
+      modifiedAt: job.modifiedAt,
+      size: job.size,
     });
   }
   sortQueue();
@@ -183,7 +197,7 @@ async function processBatch(api: any): Promise<void> {
       }
 
       if (job.type === "embed") {
-        await embedNote(store, job.path, content);
+        await embedNote(store, job.path, content, job.modifiedAt, job.size);
       } else if (job.type === "annotate") {
         await getAnnotation(job.path, content);
       }
@@ -246,12 +260,10 @@ export function isQueueRunning(): boolean {
 
 // ── Vault initialization ─────────────────────────────────────────────────────
 
-function simpleHash(text: string): string {
-  let h = 0;
-  for (let i = 0; i < text.length; i++) {
-    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
-  }
-  return h.toString(36);
+export interface VaultNoteMetadata {
+  path: string;
+  modifiedAt: number;
+  size: number;
 }
 
 /**
@@ -259,7 +271,7 @@ function simpleHash(text: string): string {
  * are missing from the embedding store. Supports queue resumption from disk.
  */
 export async function initializeVault(
-  allNotes: { path: string; content: string }[],
+  allNotes: VaultNoteMetadata[],
   activeNotePath?: string | null,
   recentPaths: string[] = [],
   api?: any,
@@ -277,8 +289,10 @@ export async function initializeVault(
 
   for (const note of allNotes) {
     const existing = store.entries.get(note.path);
-    const hash = simpleHash(note.content);
-    if (existing && existing.hash === hash) {
+    const isUnchanged = existing &&
+                        existing.modifiedAt === note.modifiedAt &&
+                        existing.size === note.size;
+    if (isUnchanged) {
       alreadyIndexed++;
       continue;
     }
@@ -291,9 +305,11 @@ export async function initializeVault(
       id: `embed-${note.path}`,
       type: "embed",
       path: note.path,
-      content: note.content,
+      content: "",
       priority,
       enqueuedAt: now,
+      modifiedAt: note.modifiedAt,
+      size: note.size,
     });
     enqueued++;
   }

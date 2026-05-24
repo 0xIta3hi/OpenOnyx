@@ -1557,7 +1557,7 @@ body.is-dragging .plugin-view-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -1568,7 +1568,7 @@ body.is-dragging .plugin-view-panel {
 
 .titlebar-action-btn:hover {
   background: var(--bg-hover);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .titlebar-left {
