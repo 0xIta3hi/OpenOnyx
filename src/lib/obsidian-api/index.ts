@@ -136,7 +136,7 @@ export class MarkdownPreviewRenderer {
 }
 
 import type { WorkspaceLeaf, View } from './workspace';
-import { Component, Events } from './components';
+import { Component, Events, Modal } from './components';
 import { TFile, TFolder, TAbstractFile } from './files';
 
 // ── FileSystemAdapter (obsidian-git uses instanceof checks) ──
@@ -834,3 +834,101 @@ export type CliHandler = (flags: CliFlags) => any;
 
 // QueryController stub
 export class QueryController { abort(): void {} }
+
+// ── ConfirmModal ────────────────────────────────────
+// Convenience modal with OK/Cancel that some plugins import
+export function ConfirmModal(this: any, app: any, title: string, message: string, cb: (confirmed: boolean) => void) {
+  Modal.call(this, app);
+  const self = this;
+  this._title = title;
+  this._message = message;
+  this._cb = cb;
+  
+  this.onOpen = function() {
+    self.titleEl.textContent = title;
+    self.contentEl.textContent = message;
+    const btnContainer = document.createElement('div');
+    btnContainer.className = 'modal-button-container';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'oo-plugin-btn';
+    cancelBtn.addEventListener('click', () => { cb(false); self.close(); });
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Confirm';
+    confirmBtn.className = 'oo-plugin-btn mod-cta';
+    confirmBtn.addEventListener('click', () => { cb(true); self.close(); });
+    
+    btnContainer.appendChild(cancelBtn);
+    btnContainer.appendChild(confirmBtn);
+    self.contentEl.appendChild(btnContainer);
+  };
+}
+ConfirmModal.prototype = Object.create((Modal as any).prototype);
+ConfirmModal.prototype.constructor = ConfirmModal;
+
+// ── Additional utility ──────────────────────────────
+export function hexStringToArrayBuffer(hexString: string): ArrayBuffer {
+  const bytes = new Uint8Array(hexString.length / 2);
+  for (let i = 0; i < hexString.length; i += 2) {
+    bytes[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+  }
+  return bytes.buffer;
+}
+
+// ── Bases API Stubs (v1.10+) ────────────────────────
+// Minimal stubs to prevent import errors. Most plugins
+// do not use these, but having them avoids undefined errors.
+
+export class BasesView extends Component {
+  controller: QueryController;
+  containerEl: HTMLElement;
+  constructor(controller: QueryController, containerEl: HTMLElement) {
+    super();
+    this.controller = controller;
+    this.containerEl = containerEl;
+  }
+}
+
+export class BasesEntry {
+  _file: any = null;
+  _values: Map<string, any> = new Map();
+  getFile(): any { return this._file; }
+  getValue(_id: string): any { return undefined; }
+  setValue(_id: string, _value: any): void {}
+}
+
+export class BasesEntryGroup {
+  entries: BasesEntry[] = [];
+  value: any = null;
+}
+
+export class BasesQueryResult {
+  entries: BasesEntry[] = [];
+  groups: BasesEntryGroup[] = [];
+  properties: any[] = [];
+}
+
+export class BasesViewConfig {
+  id: string = '';
+  name: string = '';
+  icon: string = '';
+}
+
+// ── Value types for Bases formula system ────────────
+class PrimitiveValue<T> {
+  value: T;
+  constructor(value: T) { this.value = value; }
+  toString(): string { return String(this.value); }
+}
+
+export class BooleanValue extends PrimitiveValue<boolean> {}
+export class NumberValue extends PrimitiveValue<number> {}
+export class StringValue extends PrimitiveValue<string> {}
+export class DateValue extends PrimitiveValue<Date> {}
+
+export interface FormulaContext {
+  getValue(id: string): any;
+}
+

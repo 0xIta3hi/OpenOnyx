@@ -63,7 +63,7 @@ export function Ribbon({
 
   return (
     <div 
-      className={`app-ribbon ${hoveringRibbon ? "tooltips-ready" : ""}`}
+      className={`app-ribbon side-dock-ribbon workspace-ribbon ${hoveringRibbon ? "tooltips-ready" : ""}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >

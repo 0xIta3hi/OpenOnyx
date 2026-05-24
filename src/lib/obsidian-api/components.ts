@@ -579,6 +579,8 @@ export class ButtonComponent {
   }
   setTooltip(tooltip: string): this { this.buttonEl.title = tooltip; return this; }
   removeCta(): this { this.buttonEl.classList.remove('mod-cta'); return this; }
+  setDestructive(): this { this.buttonEl.classList.add('mod-destructive'); return this; }
+  removeDestructive(): this { this.buttonEl.classList.remove('mod-destructive'); return this; }
   onClick(callback: (evt: MouseEvent) => any): this {
     this.buttonEl.addEventListener('click', (e) => {
       e.preventDefault();

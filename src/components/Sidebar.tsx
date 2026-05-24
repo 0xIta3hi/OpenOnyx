@@ -410,7 +410,7 @@ export function Sidebar({
 
   return (
     <>
-      <div className={`sidebar ${!visible ? "collapsed" : ""}`}>
+      <div className={`sidebar workspace-split mod-left-split ${!visible ? "collapsed" : ""}`}>
         <div className="sidebar-header">
           <h3>Explorer</h3>
           <div className="sidebar-actions">

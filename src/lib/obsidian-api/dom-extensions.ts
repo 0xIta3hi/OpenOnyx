@@ -629,10 +629,25 @@ if (!(window as any).process) {
   };
 }
 
-// App container shim
+// App container shim — add standard Obsidian body classes
 if (!document.body.classList.contains('app-container')) {
   document.body.classList.add('app-container');
 }
+// Platform modifier (plugins check for mod-windows, mod-macos, mod-linux)
+const platform = navigator.platform.toLowerCase();
+if (platform.includes('mac')) document.body.classList.add('mod-macos');
+else if (platform.includes('win')) document.body.classList.add('mod-windows');
+else document.body.classList.add('mod-linux');
+
+// Theme mode class (plugins check body.theme-dark / body.theme-light)
+if (!document.body.classList.contains('theme-dark') && !document.body.classList.contains('theme-light')) {
+  document.body.classList.add('theme-dark');
+}
+
+// is-focused — toggle on window focus/blur
+document.body.classList.add('is-focused');
+window.addEventListener('focus', () => document.body.classList.add('is-focused'));
+window.addEventListener('blur', () => document.body.classList.remove('is-focused'));
 
 // activeWindow / activeDocument
 if (!(window as any).activeWindow) { (window as any).activeWindow = window; }

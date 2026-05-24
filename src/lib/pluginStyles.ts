@@ -40,6 +40,35 @@ function scopePluginCss(pluginId: string, css: string): string {
   }
   if (current.trim()) rules.push(current.trim());
 
+  // Obsidian structural class prefixes that should NOT be scoped.
+  // Plugins need their CSS targeting these standard classes to affect
+  // the real DOM — scoping would confine them to a container that
+  // doesn't exist in the DOM tree for these elements.
+  const UNSCOPED_PREFIXES = [
+    '.workspace', '.mod-root', '.mod-left', '.mod-right', '.mod-vertical', '.mod-horizontal',
+    '.view-header', '.view-content', '.view-actions',
+    '.nav-file', '.nav-folder', '.nav-action', '.nav-header',
+    '.tree-item', '.tree-item-self', '.tree-item-children',
+    '.modal', '.setting-item', '.menu', '.menu-item', '.menu-separator',
+    '.suggestion-', '.prompt-', '.status-bar', '.side-dock',
+    '.clickable-icon', '.checkbox-container', '.extra-setting-button',
+    '.cm-editor', '.cm-', '.markdown-preview', '.markdown-source',
+    '.markdown-reading', '.markdown-rendered', '.markdown-embed',
+    '.is-active', '.is-enabled', '.is-selected', '.is-focused', '.is-collapsed',
+    '.is-loading', '.is-hidden', '.is-flashing',
+    '.mod-cta', '.mod-warning', '.mod-destructive',
+    '.theme-', '.app-container', '.notice',
+    '.workspace-leaf', '.workspace-split', '.workspace-tab', '.workspace-ribbon',
+    '.callout', '.empty-state', '.search-input',
+    'body', 'html', ':root',
+  ];
+
+  /** Check if a single selector targets known Obsidian structural classes */
+  function isUnscopedSelector(sel: string): boolean {
+    const trimmed = sel.trim();
+    return UNSCOPED_PREFIXES.some(p => trimmed.startsWith(p));
+  }
+
   return rules.map(rule => {
     // Skip @-rules (keyframes, media, etc.) — leave as-is
     if (rule.trimStart().startsWith('@keyframes') || rule.trimStart().startsWith('@font-face')) {
@@ -69,7 +98,7 @@ function scopePluginCss(pluginId: string, css: string): string {
     // Skip universal reset selectors that plugins commonly use
     if (selector === '*' || selector === ':root') return rule;
 
-    // Scope each comma-separated selector
+    // Scope each comma-separated selector individually
     const scopedSelectors = selector.split(',').map(s => {
       s = s.trim();
       if (!s) return s;
@@ -78,6 +107,9 @@ function scopePluginCss(pluginId: string, css: string): string {
       if (/^(html|body|:root)\s*/.test(s)) {
         return s.replace(/^(html|body|:root)/, prefix);
       }
+
+      // If selector targets known Obsidian structural classes, do NOT scope
+      if (isUnscopedSelector(s)) return s;
 
       return `${prefix} ${s}`;
     }).join(', ');

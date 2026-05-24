@@ -4891,7 +4891,7 @@ export default function App() {
         />
 
       <div
-        className="app-body"
+        className="app-body workspace"
         ref={appBodyRef}
         style={{ 
           "--sidebar-width": `${sidebarWidth}px`,
@@ -4966,7 +4966,7 @@ export default function App() {
         )}
 
         <div
-          className="main-content"
+          className="main-content workspace-split mod-root"
           ref={mainContentRef}
           style={{
             display: "flex",
