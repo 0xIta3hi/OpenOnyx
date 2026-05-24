@@ -1626,6 +1626,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           )}
           
           <div className="space-chat-messages-scroll">
+            {chatMessages.length > 0 && <div style={{ marginTop: "auto" }} />}
             {chatMessages.length === 0 && (
               <div className="space-chat-welcome">
                 <div className="space-chat-welcome-glow" />
@@ -1961,6 +1962,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           {chatMessages.length > 0 && (
             <div className="space-chat-input-panel">
               <div className="space-chat-input-wrapper">
+                {estimatedHistoryTokens > 0 && (
+                  <div className="space-chat-memory-badge">
+                    Memory: ~{estimatedHistoryTokens} tokens
+                  </div>
+                )}
                 {showMentionDropdown && filteredNotes.length > 0 && (
                   <div className="spaces-mention-dropdown">
                     {filteredNotes.map((note: any, index: number) => (
@@ -2015,7 +2021,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               </div>
               
               <div className="space-chat-footer-info">
-                {estimatedHistoryTokens > 0 && `Memory: ~${estimatedHistoryTokens} tokens | `}Spaces chat can make mistakes. Verify key details.
+                Spaces chat can make mistakes. Verify key details.
               </div>
 
               {!isAIConfigured() && (
