@@ -4683,24 +4683,10 @@ export default function App() {
   const rightPluginViews = pluginViews.filter(v => v.side === 'right');
   const mainPluginViews = pluginViews.filter(v => v.side === 'main');
 
-  // Render content for a single leaf pane in the split system
-  const renderPaneContent = useCallback((leaf: PaneLeaf): React.ReactNode => {
-    const leafActiveTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
-    if (!leafActiveTab) {
-      return (
-        <div className="empty-state">
-          <div className="empty-icon">
-            <FileText size={48} strokeWidth={1} color="var(--text-muted)" />
-          </div>
-          <div className="empty-text">Select a note or create a new one</div>
-        </div>
-      );
-    }
-
+  // Helper to render regular active tabs (canvas, database, plugin, editor)
+  const renderActiveTabContent = useCallback((leafActiveTab: Tab, leaf: PaneLeaf): React.ReactNode => {
     const isThisFocused = leaf.id === focusedLeafId;
     const tabIsCanvas = isCanvasFile(leafActiveTab.path);
-    const tabIsGraph = leafActiveTab.path === GRAPH_TAB_PATH;
-    const tabIsSpaces = leafActiveTab.path === SPACES_TAB_PATH;
     const tabIsPlugin = leafActiveTab.path.startsWith('__plugin__.');
 
     if (tabIsCanvas) {
@@ -4723,40 +4709,9 @@ export default function App() {
       );
     }
 
-    if (tabIsGraph) {
-      return (
-        <AIKnowledgeGraphFTUX
-          onNodeClick={async (linkName: string, heading?: string, notePath?: string) => {
-            setViewMode("preview");
-            if (notePath) { await openFile(notePath, "preview"); return; }
-            await handleLinkClick(linkName, heading);
-          }}
-          onClose={() => closeTab(leafActiveTab.id)}
-          isFullScreen={false}
-          onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
-          theme={theme}
-          vaultPath={vaultPath!}
-          localNodePath={undefined}
-          initialAIView={graphMode === "ai"}
-          onAIViewChange={(enabled: boolean) => setGraphMode(enabled ? "ai" : "manual")}
-        />
-      );
-    }
-
-    if (tabIsSpaces) {
-      return (
-        <SpacesPage
-          onClose={() => closeTab(leafActiveTab.id)}
-          fileTree={fileTree}
-          onOpenNote={(path) => { openFile(path); }}
-        />
-      );
-    }
-
     if (leafActiveTab.path.startsWith("__database__.")) {
       const folderPath = leafActiveTab.path.split("__database__.")[1];
       
-      // Helper function to find a node by path recursively
       const findNodeByPath = (nodes: FileEntry[], targetPath: string): FileEntry | undefined => {
         for (const node of nodes) {
           if (node.path === targetPath) return node;
@@ -4850,9 +4805,89 @@ export default function App() {
     focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
     inlineSuggestions, nextStepSuggestions, inlineSuggestionsByPath, nextStepSuggestionsByPath,
     activeTabId, tabs, inlineAnnotation, showInlineInsight, ftuxConnectionPulse,
-    mainPluginViews, graphMode, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
+    mainPluginViews, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
     ftuxSuggestionIdle, isFTUXFirstNote, isFTUXConnectionStage, showFTUXInsightPrompt, showFTUXGraphPrompt,
     showTrajectorySuggestions
+  ]);
+
+  // Render content for a single leaf pane in the split system
+  const renderPaneContent = useCallback((leaf: PaneLeaf): React.ReactNode => {
+    const leafActiveTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
+    if (!leafActiveTab) {
+      return (
+        <div className="empty-state">
+          <div className="empty-icon">
+            <FileText size={48} strokeWidth={1} color="var(--text-muted)" />
+          </div>
+          <div className="empty-text">Select a note or create a new one</div>
+        </div>
+      );
+    }
+
+    const spacesTab = leaf.tabs.find((t) => t.path === SPACES_TAB_PATH);
+    const graphTab = leaf.tabs.find((t) => t.path === GRAPH_TAB_PATH);
+
+    const activePath = leafActiveTab.path;
+    const activeIsSpaces = activePath === SPACES_TAB_PATH;
+    const activeIsGraph = activePath === GRAPH_TAB_PATH;
+
+    return (
+      <div style={{ width: "100%", height: "100%", position: "relative" }}>
+        {/* Render active tab content (only if not special persistent tabs) */}
+        {!activeIsSpaces && !activeIsGraph && (
+          <div style={{ width: "100%", height: "100%" }}>
+            {renderActiveTabContent(leafActiveTab, leaf)}
+          </div>
+        )}
+
+        {/* Keep-Alive: Keep SpacesPage mounted in the DOM if it's open */}
+        {spacesTab && (
+          <div
+            style={{
+              display: activeIsSpaces ? "block" : "none",
+              width: "100%",
+              height: "100%",
+            }}
+          >
+            <SpacesPage
+              onClose={() => closeTab(spacesTab.id)}
+              fileTree={fileTree}
+              onOpenNote={(path) => { openFile(path); }}
+            />
+          </div>
+        )}
+
+        {/* Keep-Alive: Keep Graph View mounted in the DOM if it's open */}
+        {graphTab && (
+          <div
+            style={{
+              display: activeIsGraph ? "block" : "none",
+              width: "100%",
+              height: "100%",
+            }}
+          >
+            <AIKnowledgeGraphFTUX
+              onNodeClick={async (linkName: string, heading?: string, notePath?: string) => {
+                setViewMode("preview");
+                if (notePath) { await openFile(notePath, "preview"); return; }
+                await handleLinkClick(linkName, heading);
+              }}
+              onClose={() => closeTab(graphTab.id)}
+              isFullScreen={false}
+              onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
+              theme={theme}
+              vaultPath={vaultPath!}
+              localNodePath={undefined}
+              initialAIView={graphMode === "ai"}
+              onAIViewChange={(enabled: boolean) => setGraphMode(enabled ? "ai" : "manual")}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }, [
+    tabs, fileTree, theme, vaultPath, graphMode, closeTab, openFile,
+    renderActiveTabContent, handleLinkClick, setGraphFullScreen, setGraphMode
   ]);
 
   return (

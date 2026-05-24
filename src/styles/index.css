@@ -2752,17 +2752,17 @@ body.is-dragging .plugin-view-panel {
 
 .markdown-preview input[type="checkbox"]::after {
   content: "";
-  width: 0.36em;
-  height: 0.72em;
+  width: 0.34em;
+  height: 0.68em;
   border: solid var(--text-on-accent);
-  border-width: 0 2.4px 2.4px 0;
-  transform: rotate(45deg) scale(0);
+  border-width: 0 2.2px 2.2px 0;
+  transform: translate(-0.03em, -0.06em) rotate(45deg) scale(0);
   transform-origin: center;
   transition: transform 120ms ease-out;
 }
 
 .markdown-preview input[type="checkbox"]:checked::after {
-  transform: rotate(45deg) scale(1.12);
+  transform: translate(-0.03em, -0.06em) rotate(45deg) scale(1.1);
 }
 
 .markdown-preview input[type="checkbox"]:hover {

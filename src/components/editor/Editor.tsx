@@ -1814,7 +1814,8 @@ function cleanInlineAIResponse(text: string): string {
 
 async function executeInlineAIOperation(
   text: string,
-  operation: "rewrite" | "expand" | "simplify" | "explain"
+  operation: "rewrite" | "expand" | "simplify" | "explain" | "custom",
+  customInstruction?: string
 ): Promise<string> {
   const config = loadAIConfig();
   if (!config) {
@@ -1848,6 +1849,14 @@ Original text to simplify:
 ${text}`;
   } else if (operation === "explain") {
     prompt = `You are a professional writing assistant. Explain the key concept, meaning, and context of the following highlighted text in a clear, concise paragraph. Return ONLY the explanation paragraph, with no introduction, surrounding quotes, or emojis:\n\n"${text}"`;
+  } else if (operation === "custom") {
+    prompt = `You are a professional writing assistant. You have been asked to perform the following instruction on the text provided below: "${customInstruction}".
+The original text is in Markdown format. You MUST preserve the exact markdown formatting, headings, bold/italic markup, bullet points, lists, task list checkboxes (e.g., - [ ], - [x]), blockquotes, tables, links, and indentation of the original text as much as possible, applying the instruction appropriately.
+Do NOT omit any list syntax or surrounding structure unless specifically asked by the instruction. If the original text starts with a bullet point or checklist, the modified text MUST start with the exact same prefix unless instructed otherwise.
+Return ONLY the modified markdown text. Do not add any introductory or concluding text, do not wrap the response in quotation marks, and do not use any emojis.
+
+Original text:
+${text}`;
   }
 
   const baseUrl = getBaseUrl(config);
@@ -1989,11 +1998,19 @@ export function Editor({
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explanationCoords, setExplanationCoords] = useState<{ x: number; y: number } | null>(null);
   const [isInlineQuerying, setIsInlineQuerying] = useState(false);
+  const [showPromptInput, setShowPromptInput] = useState(false);
+  const [customPromptText, setCustomPromptText] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   const handleSelectionChange = useCallback(() => {
     if (isSpecialTab) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      if (isInputFocused) return;
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.closest(".inline-ai-toolbar") || activeEl.classList.contains("inline-ai-prompt-input"))) {
+        return;
+      }
       setSelectionRange(null);
       return;
     }
@@ -2002,6 +2019,10 @@ export function Editor({
       const range = sel.getRangeAt(0);
       const isInsideEditor = editorRef.current?.contains(range.commonAncestorContainer) || previewRef.current?.contains(range.commonAncestorContainer);
       if (!isInsideEditor) {
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.closest(".inline-ai-toolbar") || activeEl.classList.contains("inline-ai-prompt-input"))) {
+          return;
+        }
         setSelectionRange(null);
         return;
       }
@@ -2062,7 +2083,7 @@ export function Editor({
     } catch (e) {
       // Ignore transient selection range errors
     }
-  }, [isSpecialTab]);
+  }, [isSpecialTab, isInputFocused]);
 
   useEffect(() => {
     document.addEventListener("selectionchange", handleSelectionChange);
@@ -2071,7 +2092,10 @@ export function Editor({
     };
   }, [handleSelectionChange]);
 
-  const handleInlineAction = async (operation: "rewrite" | "expand" | "simplify" | "explain") => {
+  const handleInlineAction = async (
+    operation: "rewrite" | "expand" | "simplify" | "explain" | "custom",
+    customInstruction?: string
+  ) => {
     if (!selectionRange) return;
     const { text } = selectionRange;
     
@@ -2080,7 +2104,7 @@ export function Editor({
     setExplanationCoords(null);
 
     try {
-      const result = await executeInlineAIOperation(text, operation);
+      const result = await executeInlineAIOperation(text, operation, customInstruction);
       if (operation === "explain") {
         setExplanation(result);
         setExplanationCoords({
@@ -2101,6 +2125,8 @@ export function Editor({
         }
         window.getSelection()?.removeAllRanges();
         setSelectionRange(null);
+        setShowPromptInput(false);
+        setCustomPromptText("");
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Inline AI operation failed.");
@@ -3097,6 +3123,54 @@ export function Editor({
     menu.showAtMouseEvent(e.nativeEvent);
   }, [activeTabId, tabs]);
 
+  const getClampedToolbarCoords = () => {
+    if (!selectionRange) return { top: 0, left: 0 };
+    const toolbarHeight = showPromptInput ? 84 : 40;
+    const toolbarWidth = 400;
+    
+    const y = selectionRange.rect.top < (showPromptInput ? 110 : 70)
+      ? selectionRange.rect.bottom + 8
+      : selectionRange.rect.top - (showPromptInput ? 92 : 46);
+      
+    const minY = 50;
+    const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 10);
+    const clampedY = Math.max(minY, Math.min(maxY, y));
+    
+    const x = selectionRange.rect.left + (selectionRange.rect.width / 2) - (toolbarWidth / 2);
+    const minX = 10;
+    const maxX = Math.max(minX, window.innerWidth - toolbarWidth - 10);
+    const clampedX = Math.max(minX, Math.min(maxX, x));
+    
+    return {
+      top: clampedY + window.scrollY,
+      left: clampedX + window.scrollX
+    };
+  };
+
+  const getClampedLoadingCoords = () => {
+    if (!selectionRange) return { top: 0, left: 0 };
+    const toolbarHeight = 40;
+    const toolbarWidth = 200;
+    
+    const y = selectionRange.rect.top < 70
+      ? selectionRange.rect.bottom + 8
+      : selectionRange.rect.top - 46;
+      
+    const minY = 50;
+    const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 10);
+    const clampedY = Math.max(minY, Math.min(maxY, y));
+    
+    const x = selectionRange.rect.left + (selectionRange.rect.width / 2) - (toolbarWidth / 2);
+    const minX = 10;
+    const maxX = Math.max(minX, window.innerWidth - toolbarWidth - 10);
+    const clampedX = Math.max(minX, Math.min(maxX, x));
+    
+    return {
+      top: clampedY + window.scrollY,
+      left: clampedX + window.scrollX
+    };
+  };
+
   return (
     <>
       {selectionRange && !isInlineQuerying && !explanation && (
@@ -3104,26 +3178,75 @@ export function Editor({
           className="inline-ai-toolbar"
           style={{
             position: "absolute",
-            top: selectionRange.rect.top < 60
-              ? selectionRange.rect.bottom + window.scrollY + 8
-              : selectionRange.rect.top + window.scrollY - 42,
-            left: Math.max(10, selectionRange.rect.left + window.scrollX + (selectionRange.rect.width / 2) - 170),
-            zIndex: 99999,
+            ...getClampedToolbarCoords(),
+            zIndex: 5000,
           }}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseDown={(e) => {
+            const target = e.target as HTMLElement;
+            if (
+              target.tagName === "INPUT" ||
+              target.tagName === "TEXTAREA" ||
+              target.classList.contains("inline-ai-prompt-input") ||
+              target.closest(".inline-ai-prompt-input") ||
+              target.classList.contains("inline-ai-prompt-submit") ||
+              target.closest(".inline-ai-prompt-submit")
+            ) {
+              return;
+            }
+            e.preventDefault();
+          }}
         >
-          <button className="inline-ai-btn" onClick={() => handleInlineAction("rewrite")}>
-            Rewrite
-          </button>
-          <button className="inline-ai-btn" onClick={() => handleInlineAction("expand")}>
-            Expand
-          </button>
-          <button className="inline-ai-btn" onClick={() => handleInlineAction("simplify")}>
-            Simplify
-          </button>
-          <button className="inline-ai-btn" onClick={() => handleInlineAction("explain")}>
-            Explain
-          </button>
+          <div className={`inline-ai-buttons-row${showPromptInput ? " has-prompt-row" : ""}`}>
+            <button className="inline-ai-btn" onClick={() => handleInlineAction("rewrite")}>
+              Rewrite
+            </button>
+            <button className="inline-ai-btn" onClick={() => handleInlineAction("expand")}>
+              Expand
+            </button>
+            <button className="inline-ai-btn" onClick={() => handleInlineAction("simplify")}>
+              Simplify
+            </button>
+            <button className="inline-ai-btn" onClick={() => handleInlineAction("explain")}>
+              Explain
+            </button>
+            <button
+              className={`inline-ai-btn${showPromptInput ? " active" : ""}`}
+              onClick={() => setShowPromptInput(!showPromptInput)}
+            >
+              Prompt
+            </button>
+          </div>
+          {showPromptInput && (
+            <div className="inline-ai-prompt-row">
+              <input
+                type="text"
+                className="inline-ai-prompt-input"
+                placeholder="Tell AI exactly what to do..."
+                value={customPromptText}
+                onChange={(e) => setCustomPromptText(e.target.value)}
+                onFocus={() => setIsInputFocused(true)}
+                onBlur={() => setIsInputFocused(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customPromptText.trim()) {
+                    handleInlineAction("custom", customPromptText);
+                  } else if (e.key === "Escape") {
+                    window.getSelection()?.removeAllRanges();
+                    setSelectionRange(null);
+                    setShowPromptInput(false);
+                    setCustomPromptText("");
+                  }
+                }}
+                autoFocus
+              />
+              <button
+                className="inline-ai-prompt-submit"
+                onClick={() => handleInlineAction("custom", customPromptText)}
+                disabled={!customPromptText.trim()}
+              >
+                Submit
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -3132,11 +3255,8 @@ export function Editor({
           className="inline-ai-toolbar loading"
           style={{
             position: "absolute",
-            top: selectionRange.rect.top < 60
-              ? selectionRange.rect.bottom + window.scrollY + 8
-              : selectionRange.rect.top + window.scrollY - 42,
-            left: Math.max(10, selectionRange.rect.left + window.scrollX + (selectionRange.rect.width / 2) - 80),
-            zIndex: 99999,
+            ...getClampedLoadingCoords(),
+            zIndex: 5000,
           }}
         >
           <div className="flat-spinner" style={{ marginRight: 8, display: "inline-block" }} />
@@ -3151,7 +3271,7 @@ export function Editor({
             position: "absolute",
             top: explanationCoords.y,
             left: Math.max(10, explanationCoords.x - 150),
-            zIndex: 99999,
+            zIndex: 5000,
           }}
         >
           <div className="explanation-popover-header">

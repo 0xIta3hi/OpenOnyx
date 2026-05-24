@@ -1743,37 +1743,55 @@ textarea.space-form-input {
 
 .inline-ai-toolbar {
   display: flex;
-  align-items: center;
-  background: var(--color-base-25);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
   padding: 0px;
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(12px);
-  gap: 0px;
+  box-shadow: var(--shadow-md);
   overflow: hidden;
+  min-width: 400px;
+  transition: all var(--transition-fast);
+}
+
+.inline-ai-buttons-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.inline-ai-buttons-row.has-prompt-row {
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .inline-ai-toolbar.loading {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--text-secondary);
-  padding: 8px 16px;
-  min-width: 180px;
+  padding: 10px 20px;
+  min-width: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
 }
 
 .inline-ai-btn {
+  flex: 1;
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  padding: 8px 14px;
-  font-size: 11px;
-  font-weight: 500;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all var(--transition-fast);
   border-radius: 0px;
+  text-align: center;
 }
 
 .inline-ai-btn:not(:last-child) {
@@ -1783,6 +1801,63 @@ textarea.space-form-input {
 .inline-ai-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.inline-ai-btn.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.inline-ai-prompt-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  gap: 8px;
+  width: 100%;
+}
+
+.inline-ai-prompt-input {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.inline-ai-prompt-input::placeholder {
+  color: var(--text-muted);
+}
+
+.inline-ai-prompt-input:focus {
+  border-color: var(--accent-primary);
+  background: var(--bg-primary);
+}
+
+.inline-ai-prompt-submit {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.inline-ai-prompt-submit:hover:not(:disabled) {
+  background: var(--accent-secondary);
+}
+
+.inline-ai-prompt-submit:disabled {
+  background: var(--bg-active);
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 /* Glassmorphic Explanation Popover */
