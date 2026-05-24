@@ -19,7 +19,7 @@ import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
 } from "../utils/spaces-store";
 import { buildVectorIndex, type VaultNote } from "../utils/spaces-processing";
-import { querySpaceStreaming, parseActionPayload, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
+import { querySpaceStreaming, parseActionPayload, stripJSONBlock, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
 import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility } from "../types/spaces";
@@ -168,39 +168,7 @@ function detectActionType(text: string, query?: string): string | null {
 /**
  * Strips JSON action blocks (complete or incomplete) from assistant messages.
  */
-function stripJSONBlock(text: string): string {
-  if (!text) return "";
-  
-  let cleaned = text;
 
-  // 1. Handle complete or incomplete code block starting with ```json or ```
-  const codeBlockIndex = cleaned.indexOf("```");
-  if (codeBlockIndex !== -1) {
-    const nextCodeBlockIndex = cleaned.indexOf("```", codeBlockIndex + 3);
-    if (nextCodeBlockIndex !== -1) {
-      cleaned = cleaned.substring(0, codeBlockIndex) + cleaned.substring(nextCodeBlockIndex + 3);
-      return stripJSONBlock(cleaned);
-    } else {
-      cleaned = cleaned.substring(0, codeBlockIndex);
-    }
-  }
-
-  // 2. Also handle any raw JSON block { "action": ... } complete or incomplete
-  const firstBrace = cleaned.indexOf("{");
-  if (firstBrace !== -1) {
-    const candidate = cleaned.substring(firstBrace);
-    if (candidate.includes('"action":') || candidate.includes("'action':") || candidate.includes('"action"') || candidate.includes("'action'")) {
-      const lastBrace = cleaned.lastIndexOf("}");
-      if (lastBrace !== -1 && lastBrace > firstBrace) {
-        cleaned = cleaned.substring(0, firstBrace) + cleaned.substring(lastBrace + 1);
-      } else {
-        cleaned = cleaned.substring(0, firstBrace);
-      }
-    }
-  }
-  
-  return cleaned.trim();
-}
 
 interface ActiveActionStatusProps {
   actionType: string;
@@ -280,6 +248,17 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [chatMessages, setChatMessages] = useState<SpaceChatMessage[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+
+  const inputTokens = useMemo(() => Math.ceil((chatInput || "").length / 4), [chatInput]);
+
+  const estimatedHistoryTokens = useMemo(() => {
+    let total = 0;
+    const recent = chatMessages.slice(-10);
+    for (const msg of recent) {
+      total += Math.ceil((msg.content || "").length / 4);
+    }
+    return total;
+  }, [chatMessages]);
 
   // Mentions State
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -624,7 +603,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         helpsWith: activeSpace.helpsWith || [],
         explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
       };
-      const result = await querySpaceStreaming(activeSpaceId, q, spaceMeta, (chunk) => {
+      const result = await querySpaceStreaming(activeSpaceId, q, spaceMeta, chatMessages, (chunk) => {
         setStreamingText((prev) => prev + chunk);
       });
 
@@ -1427,13 +1406,20 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         rows={1}
                         disabled={isQuerying}
                       />
-                      <button
-                        className="space-chat-send"
-                        onClick={() => handleChat()}
-                        disabled={!chatInput.trim() || isQuerying}
-                      >
-                        {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
-                      </button>
+                      <div className="space-chat-input-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                        {inputTokens > 0 && (
+                          <span className="space-chat-token-counter" style={{ fontSize: "10px", color: "var(--text-muted)", opacity: 0.8 }}>
+                            {inputTokens} tokens
+                          </span>
+                        )}
+                        <button
+                          className="space-chat-send"
+                          onClick={() => handleChat()}
+                          disabled={!chatInput.trim() || isQuerying}
+                        >
+                          {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                        </button>
+                      </div>
                     </div>
                     {!isAIConfigured() && (
                       <div className="space-chat-no-ai-warning">
@@ -1738,17 +1724,24 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   rows={1}
                   disabled={isQuerying}
                 />
-                <button
-                  className="space-chat-send"
-                  onClick={() => handleChat()}
-                  disabled={!chatInput.trim() || isQuerying}
-                >
-                  {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
-                </button>
+                <div className="space-chat-input-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                  {inputTokens > 0 && (
+                    <span className="space-chat-token-counter" style={{ fontSize: "10px", color: "var(--text-muted)", opacity: 0.8 }}>
+                      {inputTokens} tokens
+                    </span>
+                  )}
+                  <button
+                    className="space-chat-send"
+                    onClick={() => handleChat()}
+                    disabled={!chatInput.trim() || isQuerying}
+                  >
+                    {isQuerying ? <Loader2 size={14} className="spinner" /> : <Send size={14} />}
+                  </button>
+                </div>
               </div>
               
               <div className="space-chat-footer-info">
-                Spaces chat can make mistakes. Verify key details.
+                {estimatedHistoryTokens > 0 && `Memory: ~${estimatedHistoryTokens} tokens | `}Spaces chat can make mistakes. Verify key details.
               </div>
 
               {!isAIConfigured() && (

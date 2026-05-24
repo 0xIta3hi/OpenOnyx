@@ -16,7 +16,7 @@ import { embedText } from "./embeddings";
 import { loadVectorIndex } from "./spaces-store";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "./ai-settings";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import type { SpaceChunk } from "../types/spaces";
+import type { SpaceChunk, SpaceChatMessage } from "../types/spaces";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -242,6 +242,44 @@ export function parseActionPayload(text: string): any {
   return null;
 }
 
+/**
+ * Strips JSON code blocks and raw JSON action payloads from LLM context
+ * so that conversation memory only includes clean markdown/conversational text.
+ */
+export function stripJSONBlock(text: string): string {
+  if (!text) return "";
+  
+  let cleaned = text;
+
+  // 1. Handle complete or incomplete code block starting with ```json or ```
+  const codeBlockIndex = cleaned.indexOf("```");
+  if (codeBlockIndex !== -1) {
+    const nextCodeBlockIndex = cleaned.indexOf("```", codeBlockIndex + 3);
+    if (nextCodeBlockIndex !== -1) {
+      cleaned = cleaned.substring(0, codeBlockIndex) + cleaned.substring(nextCodeBlockIndex + 3);
+      return stripJSONBlock(cleaned);
+    } else {
+      cleaned = cleaned.substring(0, codeBlockIndex);
+    }
+  }
+
+  // 2. Also handle any raw JSON block { "action": ... } complete or incomplete
+  const firstBrace = cleaned.indexOf("{");
+  if (firstBrace !== -1) {
+    const candidate = cleaned.substring(firstBrace);
+    if (candidate.includes('"action":') || candidate.includes("'action':") || candidate.includes('"action"') || candidate.includes("'action'")) {
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(0, firstBrace) + cleaned.substring(lastBrace + 1);
+      } else {
+        cleaned = cleaned.substring(0, firstBrace);
+      }
+    }
+  }
+  
+  return cleaned.trim();
+}
+
 // ── Cosine Similarity ────────────────────────────────────────────────────────
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -357,6 +395,7 @@ export async function querySpace(
   spaceId: string,
   query: string,
   meta: SpaceMetadata,
+  history?: SpaceChatMessage[],
 ): Promise<RAGResult> {
   const config = loadAIConfig();
   if (!config) {
@@ -378,6 +417,17 @@ export async function querySpace(
   const systemPrompt = buildSystemPrompt(meta);
   const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
 
+  // Map conversation history to LLM message format, stripping action blocks
+  const historyMessages = (history || [])
+    .slice(-10) // Limit to last 10 messages for token efficiency
+    .map((msg) => {
+      let content = msg.content;
+      if (msg.role === "assistant") {
+        content = stripJSONBlock(content);
+      }
+      return { role: msg.role, content };
+    });
+
   const baseUrl = getBaseUrl(config);
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -388,6 +438,7 @@ export async function querySpace(
       temperature: 0.2,
       messages: [
         { role: "system", content: systemPrompt },
+        ...historyMessages,
         { role: "user", content: userPrompt },
       ],
     }),
@@ -418,6 +469,7 @@ export async function querySpaceStreaming(
   spaceId: string,
   query: string,
   meta: SpaceMetadata,
+  history: SpaceChatMessage[] | undefined,
   onChunk: (text: string) => void,
 ): Promise<RAGResult> {
   const config = loadAIConfig();
@@ -438,6 +490,17 @@ export async function querySpaceStreaming(
   const systemPrompt = buildSystemPrompt(meta);
   const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
 
+  // Map conversation history to LLM message format, stripping action blocks
+  const historyMessages = (history || [])
+    .slice(-10) // Limit to last 10 messages for token efficiency
+    .map((msg) => {
+      let content = msg.content;
+      if (msg.role === "assistant") {
+        content = stripJSONBlock(content);
+      }
+      return { role: msg.role, content };
+    });
+
   const baseUrl = getBaseUrl(config);
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -449,6 +512,7 @@ export async function querySpaceStreaming(
       stream: true,
       messages: [
         { role: "system", content: systemPrompt },
+        ...historyMessages,
         { role: "user", content: userPrompt },
       ],
     }),
