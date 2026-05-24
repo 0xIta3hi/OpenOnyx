@@ -1153,13 +1153,25 @@ body.is-dragging .plugin-view-panel {
   min-height: var(--titlebar-height);
   background: var(--bg-secondary);
   border-bottom: none;
-  -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
   font-size: var(--font-ui-small);
   width: 100%;
   z-index: 3200;
   position: relative;
+  -webkit-app-region: no-drag;
+}
+
+/* Background drag handle covering the whole titlebar */
+.titlebar-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  -webkit-app-region: drag;
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* -- Left action icons (spans over ribbon + sidebar) -- */
@@ -1170,9 +1182,11 @@ body.is-dragging .plugin-view-panel {
   height: 100%;
   flex-shrink: 0;
   pointer-events: auto;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
   background: transparent;
   box-sizing: border-box;
+  position: relative;
+  z-index: 2;
 }
 
 .titlebar-action-btn {
@@ -1351,6 +1365,8 @@ body.is-dragging .plugin-view-panel {
   overflow: hidden;
   padding-left: 4px;
   padding-right: 12px;
+  position: relative;
+  z-index: 2;
 }
 
 .titlebar-tab-scroll {
@@ -1513,6 +1529,8 @@ body.is-dragging .plugin-view-panel {
   -webkit-app-region: no-drag;
   flex-shrink: 0;
   pointer-events: auto;
+  position: relative;
+  z-index: 2;
 }
 
 .titlebar-btn {
@@ -1682,8 +1700,15 @@ body.is-dragging .plugin-view-panel {
 }
 
 .sidebar.collapsed {
-  width: 0;
-  border-right: none;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  border-right: none !important;
+  border-left: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  display: none !important;
 }
 
 .sidebar-header {

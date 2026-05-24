@@ -138,6 +138,9 @@ export function TitleBar({
 
   return (
     <div className="titlebar" ref={titlebarRef}>
+      {/* Background drag handle for window movement */}
+      <div className="titlebar-drag-handle" />
+
       {/* Left action icons - spans over ribbon + sidebar */}
       <div
         className="titlebar-left"
@@ -241,7 +244,7 @@ export function TitleBar({
       </div>
 
       {/* Right: window controls */}
-      <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingRight: '4px' }}>
+      <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingRight: '4px', position: 'relative', zIndex: 2, pointerEvents: 'auto', WebkitAppRegion: 'no-drag' } as any}>
         <div style={{ display: 'flex', alignItems: 'center', marginRight: '16px', gap: '4px' }}>
           {activeUsers.slice(0, 3).map((u, i) => (
             <div 
