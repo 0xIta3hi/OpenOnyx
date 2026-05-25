@@ -334,10 +334,48 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     if (!showMentionDropdown) return [];
     if (!mentionQuery) return notesList.slice(0, 10);
     const q = mentionQuery.toLowerCase();
-    return notesList.filter(note => 
-      note.title?.toLowerCase().includes(q) || 
-      note.path?.toLowerCase().includes(q)
-    ).slice(0, 10);
+    
+    // 1. Filter matching notes
+    const matches = notesList.filter(note => {
+      const title = (note.title || "").toLowerCase();
+      const path = (note.path || "").toLowerCase();
+      return title.includes(q) || path.includes(q);
+    });
+
+    // 2. Sort by relevance
+    matches.sort((a, b) => {
+      const aTitle = (a.title || "").toLowerCase();
+      const bTitle = (b.title || "").toLowerCase();
+      const aPath = (a.path || "").toLowerCase();
+      const bPath = (b.path || "").toLowerCase();
+
+      // Priority 1: Exact title match
+      const aExact = aTitle === q ? 1 : 0;
+      const bExact = bTitle === q ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+
+      // Priority 2: Title starts with query
+      const aStartsWith = aTitle.startsWith(q) ? 1 : 0;
+      const bStartsWith = bTitle.startsWith(q) ? 1 : 0;
+      if (aStartsWith !== bStartsWith) return bStartsWith - aStartsWith;
+
+      // Priority 3: Title contains query
+      const aTitleContains = aTitle.includes(q) ? 1 : 0;
+      const bTitleContains = bTitle.includes(q) ? 1 : 0;
+      if (aTitleContains !== bTitleContains) return bTitleContains - aTitleContains;
+
+      // Priority 4: Filename contains query (excluding directory paths)
+      const aFilename = aPath.split("/").pop() || "";
+      const bFilename = bPath.split("/").pop() || "";
+      const aFileContains = aFilename.includes(q) ? 1 : 0;
+      const bFileContains = bFilename.includes(q) ? 1 : 0;
+      if (aFileContains !== bFileContains) return bFileContains - aFileContains;
+
+      // Default: Preserve alphabetical/original order
+      return 0;
+    });
+
+    return matches.slice(0, 10);
   }, [notesList, mentionQuery, showMentionDropdown]);
 
   const selectNote = (note: any) => {
@@ -808,13 +846,82 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         }
       }
 
+      // ── Detect Complex/Vault-Wide Tasks ───────────────────
+      const historyText = (chatMessages || []).slice(-3).map(m => m.content).join(" ");
+      const combinedText = (q + " " + historyText).toLowerCase();
+
+      const isOrphanQuery = /orphan/i.test(combinedText) || /unlinked/i.test(combinedText);
+      const isVaultWideLinking = /connect all|link all|link those/i.test(combinedText) ||
+                                 (/continue|next|proceed|go on/i.test(q) && (/orphan|link|connect/i.test(combinedText)));
+      const isStructureQuery = /structure|organize|restructure|hierarchy|folders/i.test(combinedText);
+      const isDuplicateQuery = /duplicate|merge|redundant/i.test(combinedText);
+
+      let finalQuery = q;
+
+      if (isOrphanQuery || isVaultWideLinking || isStructureQuery || isDuplicateQuery) {
+        // 1. Load graph data to find relationships and orphans
+        let graph: { nodes: any[]; edges: any[] } = { nodes: [], edges: [] };
+        try {
+          if ((window as any).electronAPI.getGraphData) {
+            graph = await (window as any).electronAPI.getGraphData();
+          }
+        } catch (err) {
+          console.warn("[SpacesPage] Failed to retrieve graph data:", err);
+        }
+
+        // 2. Identify orphan notes (notes with 0 connections)
+        const hasConnections = new Set<string>();
+        for (const edge of graph.edges || []) {
+          if (edge.source) hasConnections.add(edge.source.toLowerCase());
+          if (edge.target) hasConnections.add(edge.target.toLowerCase());
+        }
+
+        const allNotesList = getAllVaultNotes(fileTree);
+        const orphanNodes: any[] = (graph.nodes || []).filter(
+          (node: any) => node.id && !hasConnections.has(node.id.toLowerCase()) && node.path
+        );
+
+        // 3. Load contents of orphans if they are queried
+        if ((isOrphanQuery || isVaultWideLinking) && orphanNodes.length > 0) {
+          const orphansToLoad = orphanNodes
+            .filter(o => !explicitNotes.some(n => n.path === o.path));
+          
+          await Promise.all(
+            orphansToLoad.map(async (orphan) => {
+              try {
+                const content = await (window as any).electronAPI.readFile(orphan.path);
+                explicitNotes.push({ path: orphan.path, title: orphan.name, content });
+              } catch (err) {
+                console.warn(`[SpacesPage] Failed to read orphan file: ${orphan.path}`, err);
+              }
+            })
+          );
+        }
+
+        // 4. Inject a comprehensive vault list summary into the query context
+        const notesSummary = allNotesList
+          .map(n => {
+            const nodeKey = n.title.toLowerCase();
+            const isOrphan = orphanNodes.some((o: any) => o.id && o.id.toLowerCase() === nodeKey);
+            const status = isOrphan ? " [ORPHAN - No links]" : "";
+            return `- Note: "${n.title}" (Path: "${n.path}")${status}`;
+          })
+          .join("\n");
+
+        finalQuery += `\n\n--- VAULT STRUCTURE SUMMARY ---\nHere is the current directory structure and connectivity of the vault:\n${notesSummary}\n\n`;
+        finalQuery += `IMPORTANT UPDATING INSTRUCTIONS:\n`;
+        finalQuery += `1. There are ${orphanNodes.length} orphan notes in total. The full content of all ${orphanNodes.length} notes has been loaded for your direct edit access.\n`;
+        finalQuery += `2. You should update ALL orphan notes in a single go by using Option B (search-and-replace patches) under 'changes'. Simply search for a specific line (e.g. the main heading or the end of the note) and replace it with that line plus the new [[Wiki Link]]. This allows you to process all files in a single response quickly. Only use Option A (full file updates) if you are editing 1-2 notes maximum.\n`;
+        finalQuery += `3. Do not use emojis in the responses, titles, paths, or contents.`;
+      }
+
       const spaceMeta: SpaceMetadata = {
         title: activeSpace.title,
         description: activeSpace.description,
         helpsWith: activeSpace.helpsWith || [],
         explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
       };
-      const result = await querySpaceStreaming(activeSpaceId, q, spaceMeta, chatMessages, (chunk) => {
+      const result = await querySpaceStreaming(activeSpaceId, finalQuery, spaceMeta, chatMessages, (chunk) => {
         accumulatedAnswer += chunk;
         setStreamingText(accumulatedAnswer);
       }, controller.signal);
@@ -1038,6 +1145,30 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     }
   }, [fileTree, onOpenNote]);
 
+  const resolveActionContent = async (action: any): Promise<{ before: string, after: string }> => {
+    let filePath = action.file_path || action.path || "";
+    if (filePath.startsWith("/")) filePath = filePath.substring(1);
+
+    let before = action.changes?.before || "";
+    let after = action.changes?.after || action.content || "";
+
+    if (action.changes?.search !== undefined && action.changes?.replace !== undefined) {
+      try {
+        before = await getAPI().readFile(filePath) || "";
+        after = before.replace(action.changes.search, action.changes.replace);
+      } catch (err) {
+        console.warn(`[SpacesPage] Failed to read file for patch: ${filePath}`, err);
+      }
+    } else if (!before && filePath) {
+      try {
+        before = await getAPI().readFile(filePath) || "";
+      } catch (err) {
+        // Fallback
+      }
+    }
+    return { before, after };
+  };
+
   const handleApplySingleAction = async (action: any, msgId: string, actionIndex?: number) => {
     const isMulti = actionIndex !== undefined;
     const key = isMulti ? `${msgId}-${actionIndex}` : msgId;
@@ -1075,7 +1206,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           notePath = notePath.substring(1);
         }
 
-        const afterContent = action.changes?.after || action.content;
+        const { after: afterContent } = await resolveActionContent(action);
         await getAPI().writeFile(notePath, afterContent);
         
         if (collaborationEngine.activeSpaceId) {
@@ -1978,14 +2109,15 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                               <div className="space-action-buttons">
                                 <button
                                   className="btn btn-secondary btn-sm"
-                                  onClick={() => {
-                                    setSidebarEditText(afterContent);
+                                  onClick={async () => {
+                                    const { before, after } = await resolveActionContent(action);
+                                    setSidebarEditText(after);
                                     setRightSidebarMode("diff");
                                     setRightSidebarData({
                                       actionType: "update_note",
                                       path: filePath,
-                                      before: beforeContent,
-                                      after: afterContent,
+                                      before: before,
+                                      after: after,
                                       msgId: msg.id
                                     });
                                   }}
@@ -2060,7 +2192,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                       ) : (
                                         <button
                                           className="btn btn-secondary btn-xs"
-                                          onClick={() => {
+                                          onClick={async () => {
                                             if (act.type === "create_note") {
                                               let displayPath = act.path || "";
                                               if (displayPath.startsWith("/")) displayPath = displayPath.substring(1);
@@ -2078,12 +2210,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                             } else {
                                               let filePath = act.file_path || act.path || "";
                                               if (filePath.startsWith("/")) filePath = filePath.substring(1);
+                                              const { before, after } = await resolveActionContent(act);
+                                              setSidebarEditText(after);
                                               setRightSidebarMode("diff");
                                               setRightSidebarData({
                                                 actionType: "update_note",
                                                 path: filePath,
-                                                before: act.changes?.before || "",
-                                                after: act.changes?.after || act.content || "",
+                                                before: before,
+                                                after: after,
                                                 msgId: msg.id,
                                                 actionIndex: idx
                                               });

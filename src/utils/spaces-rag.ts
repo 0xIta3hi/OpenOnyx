@@ -119,13 +119,17 @@ Always follow this exact schema for action payloads:
       "path": "folder/path/", // folder path or file path (e.g. "/Systems/")
       "content": "Full markdown content of the new note"
     },
-    // For update_note:
+    // For update_note (you can either propose a full content change, or a search-and-replace patch for lightweight token-efficient updates):
     {
       "type": "update_note",
       "file_path": "folder/path/Note.md", // exact file path
       "changes": {
+        // Option A: Full content update (use for major edits):
         "before": "Original full content of the file, exactly as provided in contextual prompt",
         "after": "New proposed full content of the file"
+        // OR Option B: Search-and-replace patch (RECOMMENDED for minor edits/linking notes, as it allows updating many files in a single turn without hitting token limits):
+        "search": "Exact text block in the original file to replace",
+        "replace": "Replacement text block (e.g. adding a [[Wiki Link]])"
       }
     }
   ],
@@ -383,9 +387,10 @@ export async function querySpace(
     };
   }
 
-  const retrieved = await retrieveChunks(spaceId, query);
+  const cleanQuery = query.split("\n\n--- VAULT STRUCTURE")[0].trim();
+  const retrieved = await retrieveChunks(spaceId, cleanQuery);
 
-  if (retrieved.length === 0) {
+  if (retrieved.length === 0 && (!meta.explicitNotes || meta.explicitNotes.length === 0)) {
     return {
       answer: "No relevant content found in this space. Try rephrasing or adding more notes to your vault.",
       sources: [],
@@ -458,9 +463,10 @@ export async function querySpaceStreaming(
     return { answer: msg, sources: [] };
   }
 
-  const retrieved = await retrieveChunks(spaceId, query);
+  const cleanQuery = query.split("\n\n--- VAULT STRUCTURE")[0].trim();
+  const retrieved = await retrieveChunks(spaceId, cleanQuery);
 
-  if (retrieved.length === 0) {
+  if (retrieved.length === 0 && (!meta.explicitNotes || meta.explicitNotes.length === 0)) {
     const msg = "No relevant content found in this space. Try rephrasing or adding more notes to your vault.";
     onChunk(msg);
     return { answer: msg, sources: [] };
@@ -522,32 +528,54 @@ export async function querySpaceStreaming(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let isTimedOut = false;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  let watchdog = setTimeout(() => {
+    isTimedOut = true;
+    reader.cancel("Timeout waiting for stream chunks");
+  }, 15000); // 15 seconds watchdog timeout
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith("data: ")) continue;
-      const payload = trimmed.slice(6);
-      if (payload === "[DONE]") continue;
-
-      try {
-        const parsed = JSON.parse(payload);
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullAnswer += delta;
-          onChunk(delta);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        if (isTimedOut && !fullAnswer) {
+          throw new Error("AI provider request timed out (no response was received within 15 seconds). The model might be overloaded. Please try again or switch to a different model in AI Settings.");
         }
-      } catch {
-        // Skip malformed chunks
+        break;
+      }
+
+      // Reset watchdog since we got some data
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        isTimedOut = true;
+        reader.cancel("Timeout waiting for stream chunks");
+      }, 15000);
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        const payload = trimmed.slice(6);
+        if (payload === "[DONE]") continue;
+
+        try {
+          const parsed = JSON.parse(payload);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) {
+            fullAnswer += delta;
+            onChunk(delta);
+          }
+        } catch {
+          // Skip malformed chunks
+        }
       }
     }
+  } finally {
+    clearTimeout(watchdog);
   }
 
   // Flush remaining buffer

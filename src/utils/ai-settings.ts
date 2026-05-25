@@ -204,8 +204,8 @@ export function getProviderHeaders(config: AIConfig): Record<string, string> {
     Authorization: `Bearer ${config.apiKey}`,
   };
   if (config.provider === "openrouter") {
-    base["HTTP-Referer"] = "https://openobsidian.app";
-    base["X-Title"] = "OpenObsidian";
+    base["HTTP-Referer"] = "http://localhost:5173";
+    base["X-Title"] = "NoteworkLocal";
   }
   return base;
 }
