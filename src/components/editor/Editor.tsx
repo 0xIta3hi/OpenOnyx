@@ -3037,6 +3037,41 @@ export function Editor({
     };
   }, [isSpecialTab]);
 
+  useEffect(() => {
+    if (isSpecialTab || !activeTabId) return;
+
+    const handleHighlightText = (e: Event) => {
+      const customEvent = e as CustomEvent<{ path: string; text: string }>;
+      const { path, text } = customEvent.detail;
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      if (activeTab && activeTab.path === path && viewRef.current && text) {
+        const docString = viewRef.current.state.doc.toString();
+        const index = docString.indexOf(text);
+        if (index !== -1) {
+          viewRef.current.dispatch({
+            selection: { anchor: index, head: index + text.length },
+            scrollIntoView: true,
+          });
+          viewRef.current.focus();
+        } else {
+          const indexLower = docString.toLowerCase().indexOf(text.toLowerCase());
+          if (indexLower !== -1) {
+            viewRef.current.dispatch({
+              selection: { anchor: indexLower, head: indexLower + text.length },
+              scrollIntoView: true,
+            });
+            viewRef.current.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener("editor:highlight-text", handleHighlightText as EventListener);
+    return () => {
+      document.removeEventListener("editor:highlight-text", handleHighlightText as EventListener);
+    };
+  }, [activeTabId, tabs, isSpecialTab]);
+
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const app = (window as any).__oo_app;
@@ -3156,7 +3191,7 @@ export function Editor({
       : selectionRange.rect.top - (showPromptInput ? 92 : 46);
       
     const minY = 50;
-    const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 10);
+    const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 40);
     const clampedY = Math.max(minY, Math.min(maxY, y));
     
     const x = selectionRange.rect.left + (selectionRange.rect.width / 2) - (toolbarWidth / 2);
@@ -3180,7 +3215,7 @@ export function Editor({
       : selectionRange.rect.top - 46;
       
     const minY = 50;
-    const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 10);
+    const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 40);
     const clampedY = Math.max(minY, Math.min(maxY, y));
     
     const x = selectionRange.rect.left + (selectionRange.rect.width / 2) - (toolbarWidth / 2);

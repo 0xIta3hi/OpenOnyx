@@ -2118,3 +2118,308 @@ textarea.space-form-input {
 .active-action-status .status-icon {
   flex-shrink: 0;
 }
+
+/* ── Action-Driven Right Sidebar & Diff styles ──────────────────────── */
+
+.space-view-right-sidebar {
+  width: 420px;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 20px;
+  gap: 16px;
+  height: 100%;
+}
+
+.space-right-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.space-right-sidebar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.space-right-sidebar-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.space-right-sidebar-close:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.space-right-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.space-right-sidebar-preview {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+}
+
+.space-right-sidebar-diff {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Sidebar Tab Navigation */
+.space-right-sidebar-tabs {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.space-sidebar-tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.space-sidebar-tab:hover {
+  color: var(--text-secondary);
+}
+
+.space-sidebar-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: #48c78e;
+}
+
+/* Diff Viewer Layout */
+.diff-viewer {
+  font-family: var(--font-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.6;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 0;
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-line {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  min-width: max-content;
+}
+
+.diff-line-num {
+  width: 28px;
+  text-align: right;
+  padding-right: 6px;
+  color: var(--text-muted);
+  user-select: none;
+  font-size: 10px;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.diff-line-num-left {
+  /* spacer style */
+}
+
+.diff-line-num-right {
+  border-right: 1px solid var(--border-subtle);
+  margin-right: 6px;
+  padding-right: 6px;
+}
+
+.diff-line-prefix {
+  width: 16px;
+  text-align: center;
+  font-weight: bold;
+  user-select: none;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.diff-line-content {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding-right: 12px;
+}
+
+/* Line backgrounds & color status */
+.diff-line-added {
+  background-color: rgba(72, 199, 142, 0.1);
+  color: #48c78e;
+}
+.diff-line-added .diff-line-num {
+  color: rgba(72, 199, 142, 0.5);
+  border-color: rgba(72, 199, 142, 0.15);
+}
+
+.diff-line-removed {
+  background-color: rgba(255, 82, 82, 0.1);
+  color: #ff5252;
+}
+.diff-line-removed .diff-line-num {
+  color: rgba(255, 82, 82, 0.5);
+  border-color: rgba(255, 82, 82, 0.15);
+}
+
+.diff-line-modified {
+  background-color: rgba(255, 193, 7, 0.08);
+  color: var(--text-primary);
+}
+.diff-line-modified .diff-line-num {
+  color: rgba(255, 193, 7, 0.5);
+  border-color: rgba(255, 193, 7, 0.15);
+}
+
+.diff-line-unchanged {
+  color: var(--text-muted);
+}
+.diff-line-unchanged .diff-line-num {
+  border-color: var(--border-subtle);
+}
+
+/* Word highlights */
+.diff-word-added {
+  background-color: rgba(72, 199, 142, 0.22);
+  color: #48c78e;
+  text-decoration: none;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.diff-word-removed {
+  background-color: rgba(255, 82, 82, 0.22);
+  color: #ff5252;
+  text-decoration: line-through;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* Action Plan Card styles tweaks */
+.space-action-card.applied {
+  border-color: rgba(72, 199, 142, 0.3);
+  background: rgba(72, 199, 142, 0.03);
+}
+
+.space-action-card.rejected {
+  border-color: rgba(255, 82, 82, 0.3);
+  background: rgba(255, 82, 82, 0.03);
+}
+
+.space-action-details {
+  font-size: 12px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.space-action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.space-multi-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.multi-action-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  gap: 8px;
+}
+
+.action-num {
+  font-weight: bold;
+  color: var(--text-muted);
+}
+
+.action-desc {
+  flex: 1;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.action-mini-applied {
+  font-size: 10px;
+  color: #48c78e;
+  background: rgba(72, 199, 142, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.action-applied-badge, .action-rejected-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-left: auto;
+}
+
+.action-applied-badge {
+  color: #48c78e;
+  background: rgba(72, 199, 142, 0.1);
+  border: 1px solid rgba(72, 199, 142, 0.2);
+}
+
+.action-rejected-badge {
+  color: #ff5252;
+  background: rgba(255, 82, 82, 0.1);
+  border: 1px solid rgba(255, 82, 82, 0.2);
+}
+

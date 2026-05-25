@@ -33,6 +33,9 @@ import { MarkdownPreview } from "./editor/MarkdownPreview";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { AuthModal } from "./AuthModal";
+import { collaborationEngine } from "../lib/collaborationEngine";
+import { syncEngine } from "../lib/syncEngine";
+import { generateDiffMarkdown } from "../utils/diff";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -282,6 +285,22 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexProgress, setIndexProgress] = useState({ done: 0, total: 0 });
   const [isIndexed, setIsIndexed] = useState(false);
+
+  // Right Sidebar for AI Actions (Preview, Diff, Edit)
+  const [rightSidebarMode, setRightSidebarMode] = useState<"preview" | "diff" | "edit" | "review_list" | null>(null);
+  const [rightSidebarData, setRightSidebarData] = useState<{
+    actionType: "create_note" | "update_note";
+    title?: string;
+    path: string;
+    content?: string;
+    before?: string;
+    after?: string;
+    msgId: string;
+    actionIndex?: number;
+    actions?: any[];
+  } | null>(null);
+  const [rejectedActions, setRejectedActions] = useState<Record<string, boolean>>({});
+  const [sidebarEditText, setSidebarEditText] = useState("");
 
   // Remote notes (for cloud spaces)
   const [remoteNotes, setRemoteNotes] = useState<{ path: string; title: string }[]>([]);
@@ -987,6 +1006,105 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     } catch (err) {
       showToast("Failed to save report: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     }
+  };
+
+  const handleOpenSource = useCallback((noteTitle: string, chunkText: string) => {
+    let notePath = "";
+    const searchTree = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (node.isFolder) {
+          searchTree(node.children || []);
+        } else if (node.name.replace(/\.md$/, "") === noteTitle.replace(/\.md$/, "")) {
+          notePath = node.path;
+          break;
+        }
+      }
+    };
+    searchTree(fileTree || []);
+
+    if (!notePath) {
+      notePath = `${noteTitle}.md`;
+    }
+
+    onOpenNote?.(notePath);
+
+    if (chunkText) {
+      setTimeout(() => {
+        const event = new CustomEvent("editor:highlight-text", {
+          detail: { path: notePath, text: chunkText }
+        });
+        document.dispatchEvent(event);
+      }, 300);
+    }
+  }, [fileTree, onOpenNote]);
+
+  const handleApplySingleAction = async (action: any, msgId: string, actionIndex?: number) => {
+    const isMulti = actionIndex !== undefined;
+    const key = isMulti ? `${msgId}-${actionIndex}` : msgId;
+    
+    try {
+      if (action.type === "create_note") {
+        let notePath = action.path || `${action.title}.md`;
+        if (notePath.endsWith("/")) {
+          notePath = notePath + (action.title || "Untitled");
+        }
+        if (!notePath.endsWith(".md")) notePath += ".md";
+
+        if (notePath.startsWith("/")) {
+          notePath = notePath.substring(1);
+        }
+
+        const exists = await getAPI().fileExists(notePath);
+        if (exists) {
+          const overwrite = window.confirm(`Note "${notePath}" already exists. Overwrite?`);
+          if (!overwrite) return false;
+        }
+
+        await getAPI().writeFile(notePath, action.content);
+        
+        if (collaborationEngine.activeSpaceId) {
+          await collaborationEngine.persistNoteEdit(notePath, action.content);
+          syncEngine.triggerPush();
+        }
+
+        setAppliedActions(prev => ({ ...prev, [key]: true }));
+        showToast(`Note "${notePath}" created successfully!`);
+      } else if (action.type === "update_note") {
+        let notePath = action.file_path || action.path;
+        if (notePath.startsWith("/")) {
+          notePath = notePath.substring(1);
+        }
+
+        const afterContent = action.changes?.after || action.content;
+        await getAPI().writeFile(notePath, afterContent);
+        
+        if (collaborationEngine.activeSpaceId) {
+          await collaborationEngine.persistNoteEdit(notePath, afterContent);
+          syncEngine.triggerPush();
+        }
+
+        setAppliedActions(prev => ({ ...prev, [key]: true }));
+        showToast(`Note "${notePath}" updated successfully!`);
+      }
+      
+      handleBuildIndex();
+      return true;
+    } catch (err) {
+      showToast("Failed to execute action: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+      return false;
+    }
+  };
+
+  const handleApplyAllActions = async (actions: any[], msgId: string) => {
+    let successCount = 0;
+    for (let i = 0; i < actions.length; i++) {
+      const success = await handleApplySingleAction(actions[i], msgId, i);
+      if (success) successCount++;
+    }
+    if (successCount === actions.length) {
+      setAppliedActions(prev => ({ ...prev, [msgId]: true }));
+    }
+    showToast(`Applied ${successCount} of ${actions.length} actions.`);
   };
 
   const handleChatKeyDown = (e: React.KeyboardEvent) => {
@@ -1733,63 +1851,287 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       if (!payload) return null;
                       
                       const isApplied = appliedActions[msg.id];
+                      const isRejected = rejectedActions[msg.id];
                       
+                      const intent = payload.intent || payload.action;
+                      const summary = payload.summary || "AI proposed changes";
+                      
+                      if (isApplied) {
+                        return (
+                          <div className="space-action-card applied">
+                            <div className="space-action-card-header">
+                              <Check size={14} style={{ color: "var(--success)" }} />
+                              <span>{summary}</span>
+                              <span className="action-applied-badge">Applied</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      if (isRejected) {
+                        return (
+                          <div className="space-action-card rejected">
+                            <div className="space-action-card-header">
+                              <X size={14} style={{ color: "var(--error)" }} />
+                              <span>{summary}</span>
+                              <span className="action-rejected-badge">Rejected</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Create Note flow
+                      if (intent === "create_note" || (payload.actions && payload.actions.length === 1 && payload.actions[0].type === "create_note")) {
+                        const action = payload.actions?.[0] || payload;
+                        let displayPath = action.path || "";
+                        if (displayPath.startsWith("/")) displayPath = displayPath.substring(1);
+                        const displayTitle = action.title || "Untitled";
+                        const notePath = displayPath + (displayPath ? (displayPath.endsWith("/") ? "" : "/") : "") + displayTitle + ".md";
+                        
+                        return (
+                          <div className="space-action-card">
+                            <div className="space-action-card-header">
+                              <FileText size={14} />
+                              <span>AI Plan: Create Note</span>
+                            </div>
+                            <div className="space-action-card-body">
+                              <div className="space-action-details">
+                                <div><strong>Create:</strong> {displayTitle}.md</div>
+                                <div><strong>Location:</strong> {displayPath || "/"}</div>
+                              </div>
+                              <div className="space-action-buttons">
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setSidebarEditText(action.content || "");
+                                    setRightSidebarMode("preview");
+                                    setRightSidebarData({
+                                      actionType: "create_note",
+                                      title: displayTitle,
+                                      path: notePath,
+                                      content: action.content,
+                                      msgId: msg.id
+                                    });
+                                  }}
+                                >
+                                  Preview
+                                </button>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setSidebarEditText(action.content || "");
+                                    setRightSidebarMode("edit");
+                                    setRightSidebarData({
+                                      actionType: "create_note",
+                                      title: displayTitle,
+                                      path: notePath,
+                                      content: action.content,
+                                      msgId: msg.id
+                                    });
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={async () => {
+                                    const ok = await handleApplySingleAction(action, msg.id);
+                                    if (ok) setAppliedActions(prev => ({ ...prev, [msg.id]: true }));
+                                  }}
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  className="btn btn-danger btn-sm"
+                                  onClick={() => {
+                                    setRejectedActions(prev => ({ ...prev, [msg.id]: true }));
+                                    showToast("Action rejected.");
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Update Note flow
+                      if (intent === "update_note" || (payload.actions && payload.actions.length === 1 && payload.actions[0].type === "update_note")) {
+                        const action = payload.actions?.[0] || payload;
+                        let filePath = action.file_path || action.path || "";
+                        if (filePath.startsWith("/")) filePath = filePath.substring(1);
+                        
+                        const beforeContent = action.changes?.before || "";
+                        const afterContent = action.changes?.after || action.content || "";
+                        
+                        return (
+                          <div className="space-action-card">
+                            <div className="space-action-card-header">
+                              <RefreshCw size={14} />
+                              <span>AI Plan: Update Note</span>
+                            </div>
+                            <div className="space-action-card-body">
+                              <div className="space-action-details">
+                                <div><strong>Update:</strong> {filePath}</div>
+                              </div>
+                              <div className="space-action-buttons">
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setSidebarEditText(afterContent);
+                                    setRightSidebarMode("diff");
+                                    setRightSidebarData({
+                                      actionType: "update_note",
+                                      path: filePath,
+                                      before: beforeContent,
+                                      after: afterContent,
+                                      msgId: msg.id
+                                    });
+                                  }}
+                                >
+                                  Preview Changes
+                                </button>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={async () => {
+                                    const ok = await handleApplySingleAction(action, msg.id);
+                                    if (ok) setAppliedActions(prev => ({ ...prev, [msg.id]: true }));
+                                  }}
+                                >
+                                  Apply Changes
+                                </button>
+                                <button
+                                  className="btn btn-danger btn-sm"
+                                  onClick={() => {
+                                    setRejectedActions(prev => ({ ...prev, [msg.id]: true }));
+                                    showToast("Changes rejected.");
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setSidebarEditText(afterContent);
+                                    setRightSidebarMode("edit");
+                                    setRightSidebarData({
+                                      actionType: "update_note",
+                                      path: filePath,
+                                      before: beforeContent,
+                                      after: afterContent,
+                                      msgId: msg.id
+                                    });
+                                  }}
+                                >
+                                  Edit Before Apply
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Multi Action flow
+                      if (intent === "multi_action" || (payload.actions && payload.actions.length > 1)) {
+                        const actions = payload.actions || [];
+                        
+                        return (
+                          <div className="space-action-card">
+                            <div className="space-action-card-header">
+                              <Layers size={14} />
+                              <span>{actions.length} Actions Found</span>
+                            </div>
+                            <div className="space-action-card-body">
+                              <div className="space-multi-action-list">
+                                {actions.map((act: any, idx: number) => {
+                                  const isActApplied = appliedActions[`${msg.id}-${idx}`];
+                                  const title = act.title || act.file_path || act.path || "Action";
+                                  const displayTitle = title.startsWith("/") ? title.substring(1) : title;
+                                  
+                                  return (
+                                    <div key={idx} className="multi-action-item">
+                                      <span className="action-num">{idx + 1}.</span>
+                                      <span className="action-desc">
+                                        {act.type === "create_note" ? "Create" : "Update"} <code>{displayTitle}</code>
+                                      </span>
+                                      {isActApplied ? (
+                                        <span className="action-mini-applied">Applied</span>
+                                      ) : (
+                                        <button
+                                          className="btn btn-secondary btn-xs"
+                                          onClick={() => {
+                                            if (act.type === "create_note") {
+                                              let displayPath = act.path || "";
+                                              if (displayPath.startsWith("/")) displayPath = displayPath.substring(1);
+                                              const displayTitle = act.title || "Untitled";
+                                              const notePath = displayPath + (displayPath ? (displayPath.endsWith("/") ? "" : "/") : "") + displayTitle + ".md";
+                                              setRightSidebarMode("preview");
+                                              setRightSidebarData({
+                                                actionType: "create_note",
+                                                title: displayTitle,
+                                                path: notePath,
+                                                content: act.content,
+                                                msgId: msg.id,
+                                                actionIndex: idx
+                                              });
+                                            } else {
+                                              let filePath = act.file_path || act.path || "";
+                                              if (filePath.startsWith("/")) filePath = filePath.substring(1);
+                                              setRightSidebarMode("diff");
+                                              setRightSidebarData({
+                                                actionType: "update_note",
+                                                path: filePath,
+                                                before: act.changes?.before || "",
+                                                after: act.changes?.after || act.content || "",
+                                                msgId: msg.id,
+                                                actionIndex: idx
+                                              });
+                                            }
+                                          }}
+                                        >
+                                          Review
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="space-action-buttons">
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => handleApplyAllActions(actions, msg.id)}
+                                >
+                                  Apply All
+                                </button>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setRightSidebarMode("review_list");
+                                    setRightSidebarData({
+                                      actionType: "create_note",
+                                      path: "",
+                                      msgId: msg.id,
+                                      actions: actions
+                                    });
+                                  }}
+                                >
+                                  Review Individually
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Fallback support for old restructuring, links, or insight report
                       switch (payload.action) {
-                        case "create_note":
-                          return (
-                            <div className="space-action-card">
-                              <div className="space-action-card-header">
-                                <FileText size={14} />
-                                <span>Create Note: {payload.title}</span>
-                                {isApplied && <span className="action-applied-badge">Applied</span>}
-                              </div>
-                              <div className="space-action-card-body">
-                                <div className="space-action-path">Path: <code>{payload.path || `${payload.title}.md`}</code></div>
-                                <div className="space-action-preview">
-                                  <pre>{payload.content?.substring(0, 300)}{payload.content?.length > 300 ? "..." : ""}</pre>
-                                </div>
-                                {!isApplied && (
-                                  <button
-                                    className="btn btn-primary btn-sm space-action-btn"
-                                    onClick={() => handleCreateNoteAction(payload.title, payload.path, payload.content, msg.id)}
-                                  >
-                                    Write to Vault
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        case "update_note":
-                          return (
-                            <div className="space-action-card">
-                              <div className="space-action-card-header">
-                                <RefreshCw size={14} />
-                                <span>Update Note: {payload.path}</span>
-                                {isApplied && <span className="action-applied-badge">Applied</span>}
-                              </div>
-                              <div className="space-action-card-body">
-                                <div className="space-action-path">Path: <code>{payload.path}</code></div>
-                                <div className="space-action-preview">
-                                  <pre>{payload.content?.substring(0, 300)}{payload.content?.length > 300 ? "..." : ""}</pre>
-                                </div>
-                                {!isApplied && (
-                                  <button
-                                    className="btn btn-primary btn-sm space-action-btn"
-                                    onClick={() => handleUpdateNoteAction(payload.path, payload.content, msg.id)}
-                                  >
-                                    Update Note
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
                         case "suggest_structure":
                           return (
                             <div className="space-action-card">
                               <div className="space-action-card-header">
                                 <Layers size={14} />
                                 <span>Suggested Structure Restructuring</span>
-                                {isApplied && <span className="action-applied-badge">Applied</span>}
                               </div>
                               <div className="space-action-card-body">
                                 <div className="space-action-structure-list">
@@ -1814,14 +2156,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                     </div>
                                   ))}
                                 </div>
-                                {!isApplied && (
-                                  <button
-                                    className="btn btn-primary btn-sm space-action-btn"
-                                    onClick={() => handleApplyStructureAction(payload.changes, msg.id)}
-                                  >
-                                    Apply Restructuring
-                                  </button>
-                                )}
+                                <button
+                                  className="btn btn-primary btn-sm space-action-btn"
+                                  onClick={() => handleApplyStructureAction(payload.changes, msg.id)}
+                                >
+                                  Apply Restructuring
+                                </button>
                               </div>
                             </div>
                           );
@@ -1831,7 +2171,6 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                               <div className="space-action-card-header">
                                 <GitBranch size={14} />
                                 <span>Suggested Wiki-Links</span>
-                                {isApplied && <span className="action-applied-badge">Applied</span>}
                               </div>
                               <div className="space-action-card-body">
                                 <table className="space-action-table">
@@ -1852,14 +2191,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                     ))}
                                   </tbody>
                                 </table>
-                                {!isApplied && (
-                                  <button
-                                    className="btn btn-primary btn-sm space-action-btn"
-                                    onClick={() => handleInsertLinksAction(payload.links, msg.id)}
-                                  >
-                                    Insert Links
-                                  </button>
-                                )}
+                                <button
+                                  className="btn btn-primary btn-sm space-action-btn"
+                                  onClick={() => handleInsertLinksAction(payload.links, msg.id)}
+                                >
+                                  Insert Links
+                                </button>
                               </div>
                             </div>
                           );
@@ -1869,7 +2206,6 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                               <div className="space-action-card-header">
                                 <Sparkles size={14} />
                                 <span>Insight Report</span>
-                                {isApplied && <span className="action-applied-badge">Saved</span>}
                               </div>
                               <div className="space-action-card-body">
                                 <div className="space-action-insights">
@@ -1883,14 +2219,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                     </div>
                                   ))}
                                 </div>
-                                {!isApplied && (
-                                  <button
-                                    className="btn btn-primary btn-sm space-action-btn"
-                                    onClick={() => handleSaveInsightsAction(payload.insights, msg.id)}
-                                  >
-                                    Save Insight Report to Vault
-                                  </button>
-                                )}
+                                <button
+                                  className="btn btn-primary btn-sm space-action-btn"
+                                  onClick={() => handleSaveInsightsAction(payload.insights, msg.id)}
+                                >
+                                  Save Insight Report to Vault
+                                </button>
                               </div>
                             </div>
                           );
@@ -1899,22 +2233,35 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       }
                     })()}
                     
-                    {msg.sources && msg.sources.length > 0 && (
-                      <div className="space-chat-sources">
-                        <span className="space-chat-sources-label">Sources Used</span>
-                        <div className="space-chat-sources-list">
-                          {msg.sources.map((s, i) => (
-                            <span
-                              key={i}
-                              className="space-chat-source-pill"
-                              onClick={() => onOpenNote?.(`${s}.md`)}
-                            >
-                              {s}
-                            </span>
-                          ))}
+                    {(() => {
+                      const payload = parseActionPayload(msg.content);
+                      const sources = payload?.sources || msg.sources || [];
+                      if (sources.length === 0) return null;
+                      
+                      return (
+                        <div className="space-chat-sources">
+                          <span className="space-chat-sources-label">Sources Used</span>
+                          <div className="space-chat-sources-list">
+                            {sources.map((s: any, i: number) => {
+                              const isObject = typeof s === "object";
+                              const noteTitle = isObject ? (s.note || s.noteTitle) : s;
+                              const chunkText = isObject ? (s.chunk || s.chunkText) : "";
+                              
+                              return (
+                                <span
+                                  key={i}
+                                  className="space-chat-source-pill"
+                                  onClick={() => handleOpenSource(noteTitle, chunkText)}
+                                  title={chunkText ? `Excerpt: ${chunkText.substring(0, 100)}...` : `Open ${noteTitle}`}
+                                >
+                                  {noteTitle}
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </>
                 )}
               </div>
@@ -2032,6 +2379,289 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
           )}
         </div>
+
+        {rightSidebarMode && rightSidebarData && (
+          <div className="space-view-right-sidebar">
+            <div className="space-right-sidebar-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "10px", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div className="space-right-sidebar-title">
+                  {rightSidebarMode === "review_list" ? "Review Actions" : `Review: ${rightSidebarData.title || rightSidebarData.path || "Note"}`}
+                </div>
+                <button className="space-right-sidebar-close" onClick={() => setRightSidebarMode(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              {rightSidebarMode !== "review_list" && (
+                <div className="space-right-sidebar-tabs">
+                  <button
+                    className={`space-sidebar-tab ${rightSidebarMode === "preview" ? "active" : ""}`}
+                    onClick={() => setRightSidebarMode("preview")}
+                  >
+                    Preview
+                  </button>
+                  {rightSidebarData.actionType !== "create_note" && (
+                    <button
+                      className={`space-sidebar-tab ${rightSidebarMode === "diff" ? "active" : ""}`}
+                      onClick={() => setRightSidebarMode("diff")}
+                    >
+                      Diff Changes
+                    </button>
+                  )}
+                  <button
+                    className={`space-sidebar-tab ${rightSidebarMode === "edit" ? "active" : ""}`}
+                    onClick={() => setRightSidebarMode("edit")}
+                  >
+                    Edit Content
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="space-right-sidebar-body">
+              {rightSidebarMode === "preview" && (
+                <div className="space-right-sidebar-preview">
+                  <MarkdownPreview
+                    content={sidebarEditText || ""}
+                    onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                  />
+                </div>
+              )}
+
+              {rightSidebarMode === "diff" && (
+                <div className="space-right-sidebar-preview">
+                  <MarkdownPreview
+                    content={generateDiffMarkdown(rightSidebarData.before || "", sidebarEditText || "")}
+                    onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                  />
+                </div>
+              )}
+
+              {rightSidebarMode === "edit" && (
+                <div className="space-right-sidebar-edit" style={{ display: "flex", flexDirection: "column", height: "100%", gap: "10px" }}>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    Editing proposed content before committing to the vault. No emojis allowed.
+                  </div>
+                  <textarea
+                    className="space-right-sidebar-textarea"
+                    value={sidebarEditText}
+                    onChange={(e) => setSidebarEditText(e.target.value)}
+                    style={{
+                      flex: 1,
+                      width: "100%",
+                      height: "100%",
+                      minHeight: "200px",
+                      fontFamily: "var(--font-monospace, monospace)",
+                      fontSize: "12px",
+                      color: "var(--text-primary)",
+                      background: "var(--bg-primary)",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "6px",
+                      padding: "12px",
+                      resize: "none",
+                      outline: "none",
+                      lineHeight: "1.5"
+                    }}
+                  />
+                </div>
+              )}
+
+              {rightSidebarMode === "review_list" && rightSidebarData.actions && (
+                <div className="space-right-sidebar-review-list">
+                  <div className="space-sidebar-section-header">Pending Changes ({rightSidebarData.actions.filter((_, idx) => !appliedActions[`${rightSidebarData.msgId}-${idx}`]).length})</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "12px" }}>
+                    {rightSidebarData.actions.map((act: any, idx: number) => {
+                      const isActApplied = appliedActions[`${rightSidebarData.msgId}-${idx}`];
+                      const title = act.title || act.file_path || act.path || "Action";
+                      const displayTitle = title.startsWith("/") ? title.substring(1) : title;
+                      
+                      return (
+                        <div key={idx} className="review-list-item" style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px",
+                          background: "var(--bg-primary)",
+                          border: "1px solid var(--border-subtle)",
+                          borderRadius: "6px"
+                        }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <span style={{ fontSize: "12px", fontWeight: 500 }}>
+                              {act.type === "create_note" ? "Create Note" : "Update Note"}
+                            </span>
+                            <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                              {displayTitle}
+                            </span>
+                          </div>
+                          {isActApplied ? (
+                            <span className="action-applied-badge">Applied</span>
+                          ) : (
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => {
+                                if (act.type === "create_note") {
+                                  let displayPath = act.path || "";
+                                  if (displayPath.startsWith("/")) displayPath = displayPath.substring(1);
+                                  const displayTitle = act.title || "Untitled";
+                                  const notePath = displayPath + (displayPath ? (displayPath.endsWith("/") ? "" : "/") : "") + displayTitle + ".md";
+                                  setRightSidebarMode("preview");
+                                  setRightSidebarData(prev => ({
+                                    ...prev!,
+                                    actionType: "create_note",
+                                    title: displayTitle,
+                                    path: notePath,
+                                    content: act.content,
+                                    actionIndex: idx
+                                  }));
+                                  setSidebarEditText(act.content || "");
+                                } else {
+                                  let filePath = act.file_path || act.path || "";
+                                  if (filePath.startsWith("/")) filePath = filePath.substring(1);
+                                  setRightSidebarMode("diff");
+                                  setRightSidebarData(prev => ({
+                                    ...prev!,
+                                    actionType: "update_note",
+                                    path: filePath,
+                                    before: act.changes?.before || "",
+                                    after: act.changes?.after || act.content || "",
+                                    actionIndex: idx
+                                  }));
+                                  setSidebarEditText(act.changes?.after || act.content || "");
+                                }
+                              }}
+                            >
+                              Review
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-right-sidebar-footer" style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: "8px",
+              borderTop: "1px solid var(--border-subtle)",
+              paddingTop: "16px",
+              marginTop: "auto",
+              flexShrink: 0
+            }}>
+              {rightSidebarMode === "review_list" ? (
+                <>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={async () => {
+                      await handleApplyAllActions(rightSidebarData.actions || [], rightSidebarData.msgId);
+                      setRightSidebarMode(null);
+                    }}
+                  >
+                    Apply All
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setRightSidebarMode(null)}>
+                    Close
+                  </button>
+                </>
+              ) : (
+                <>
+                  {rightSidebarData.actionIndex !== undefined && (
+                    <button 
+                      className="btn btn-secondary btn-sm" 
+                      onClick={() => {
+                        setRightSidebarMode("review_list");
+                        setRightSidebarData(prev => ({
+                          ...prev!,
+                          actionType: "create_note",
+                          path: "",
+                        }));
+                      }}
+                      style={{ marginRight: "auto" }}
+                    >
+                      Back to List
+                    </button>
+                  )}
+                  
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      if (rightSidebarData.actionIndex !== undefined) {
+                        setRightSidebarMode("review_list");
+                        setRightSidebarData(prev => ({
+                          ...prev!,
+                          actionType: "create_note",
+                          path: "",
+                        }));
+                      } else {
+                        setRightSidebarMode(null);
+                      }
+                      showToast("Changes cancelled.");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={async () => {
+                      const action = rightSidebarData.actionIndex !== undefined
+                        ? rightSidebarData.actions?.[rightSidebarData.actionIndex]
+                        : { 
+                            type: rightSidebarData.actionType, 
+                            title: rightSidebarData.title, 
+                            path: rightSidebarData.path, 
+                            content: rightSidebarData.content,
+                            changes: { before: rightSidebarData.before, after: rightSidebarData.after }
+                          };
+                      
+                      const actualAction = { 
+                        ...action, 
+                        content: sidebarEditText,
+                        changes: { 
+                          before: rightSidebarData.before || "", 
+                          after: sidebarEditText 
+                        } 
+                      };
+                      
+                      const ok = await handleApplySingleAction(actualAction, rightSidebarData.msgId, rightSidebarData.actionIndex);
+                      if (ok) {
+                        if (rightSidebarData.actionIndex === undefined) {
+                          setAppliedActions(prev => ({ ...prev, [rightSidebarData.msgId]: true }));
+                          setRightSidebarMode(null);
+                        } else {
+                          const key = `${rightSidebarData.msgId}-${rightSidebarData.actionIndex}`;
+                          setAppliedActions(prev => {
+                            const updated = { ...prev, [key]: true };
+                            const actions = rightSidebarData.actions || [];
+                            const allApplied = actions.every((_, idx) => 
+                              idx === rightSidebarData.actionIndex || updated[`${rightSidebarData.msgId}-${idx}`]
+                            );
+                            if (allApplied) {
+                              updated[rightSidebarData.msgId] = true;
+                            }
+                            return updated;
+                          });
+                          
+                          setRightSidebarMode("review_list");
+                          setRightSidebarData(prev => ({
+                            ...prev!,
+                            actionType: "create_note",
+                            path: "",
+                          }));
+                        }
+                      }
+                    }}
+                  >
+                    {rightSidebarData.actionType === "create_note" ? "Confirm & Create" : "Apply Changes"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
 

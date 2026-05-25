@@ -105,62 +105,36 @@ RESPONSE FORMAT:
 - No emojis, no filler
 
 8. KNOWLEDGE OPERATOR ACTIONS PROTOCOL (CRITICAL)
-If the user's intent is to create a new note, update/improve an existing note, suggest structure improvements, suggest wiki-links, generate roadmaps, or create an insight report, you MUST output a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Never use emojis in titles, paths, or contents.
+If the user's intent is to create a new note, update/improve an existing note, or perform multiple vault actions, you MUST output a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Never use emojis in titles, paths, or contents.
 
-JSON FORMATS:
-
-A. For creating a new note (e.g. summaries, blogs, roadmaps):
-\`\`\`json
+Always follow this exact schema for action payloads:
 {
-  "action": "create_note",
-  "title": "Title of Note",
-  "path": "Summary.md",
-  "content": "Full markdown content of the note"
-}
-\`\`\`
-
-B. For updating/improving a note:
-\`\`\`json
-{
-  "action": "update_note",
-  "path": "Note.md",
-  "content": "Full new markdown content for the note"
-}
-\`\`\`
-
-C. For suggesting space restructuring (merging, folder restructuring):
-\`\`\`json
-{
-  "action": "suggest_structure",
-  "changes": [
-    {"type": "merge", "notes": ["Note A.md", "Note B.md"], "target": "Merged Title", "content": "Markdown content for merged note"},
-    {"type": "rename", "note": "Old Path.md", "target": "New Path.md"},
-    {"type": "move", "note": "Note.md", "target": "Folder/Note.md"}
+  "intent": "create_note" | "update_note" | "multi_action",
+  "summary": "Short explanation of what you plan to do",
+  "actions": [
+    // Array of actions. For create_note:
+    {
+      "type": "create_note",
+      "title": "Title of Note",
+      "path": "folder/path/", // folder path or file path (e.g. "/Systems/")
+      "content": "Full markdown content of the new note"
+    },
+    // For update_note:
+    {
+      "type": "update_note",
+      "file_path": "folder/path/Note.md", // exact file path
+      "changes": {
+        "before": "Original full content of the file, exactly as provided in contextual prompt",
+        "after": "New proposed full content of the file"
+      }
+    }
+  ],
+  "sources": [
+    { "note": "Note Name Reference", "chunk": "precise text excerpt from the notes context that you used" }
   ]
 }
-\`\`\`
 
-D. For suggesting wiki-links:
-\`\`\`json
-{
-  "action": "suggest_links",
-  "links": [
-    {"from": "Source Note.md", "to": "Target Note.md", "reason": "Explanation"}
-  ]
-}
-\`\`\`
-
-E. For pattern detection / insight reports:
-\`\`\`json
-{
-  "action": "insight_report",
-  "insights": [
-    {"type": "contradiction", "description": "Description of contradiction", "notes": ["Note A.md", "Note B.md"]}
-  ]
-}
-\`\`\`
-
-Always prioritize returning a structured action payload over a passive text reply if the prompt requests any file creation, editing, restructuring, or link suggestion.
+If you are only responding conversationally without proposing any note creation, edits, or multi-actions, do not output any JSON block. Prioritize returning a structured action payload over a passive text reply if the user's prompt suggests any note creation, editing, restructuring, or link suggestion.
 
 9. PREMIUM MARKDOWN LAYOUT AND STRUCTURING RULES (CRITICAL)
 Your generated note contents must look stunning, highly professional, and extremely well-organized. Follow these formatting rules strictly:
@@ -220,7 +194,7 @@ export function parseActionPayload(text: string): any {
   if (match) {
     try {
       const parsed = JSON.parse(match[1].trim());
-      if (parsed && parsed.action) return parsed;
+      if (parsed && (parsed.intent || parsed.action)) return parsed;
     } catch {
       // Fall through
     }
@@ -233,7 +207,7 @@ export function parseActionPayload(text: string): any {
     const rawCandidate = trimmed.substring(firstBrace, lastBrace + 1);
     try {
       const parsed = JSON.parse(rawCandidate);
-      if (parsed && parsed.action) return parsed;
+      if (parsed && (parsed.intent || parsed.action)) return parsed;
     } catch {
       // Fall through
     }
@@ -263,11 +237,15 @@ export function stripJSONBlock(text: string): string {
     }
   }
 
-  // 2. Also handle any raw JSON block { "action": ... } complete or incomplete
+  // 2. Also handle any raw JSON block { "action": ... } or { "intent": ... } complete or incomplete
   const firstBrace = cleaned.indexOf("{");
   if (firstBrace !== -1) {
     const candidate = cleaned.substring(firstBrace);
-    if (candidate.includes('"action":') || candidate.includes("'action':") || candidate.includes('"action"') || candidate.includes("'action'")) {
+    const hasJSONKey = candidate.includes('"action":') || candidate.includes("'action':") ||
+                       candidate.includes('"action"') || candidate.includes("'action'") ||
+                       candidate.includes('"intent":') || candidate.includes("'intent':") ||
+                       candidate.includes('"intent"') || candidate.includes("'intent'");
+    if (hasJSONKey) {
       const lastBrace = cleaned.lastIndexOf("}");
       if (lastBrace !== -1 && lastBrace > firstBrace) {
         cleaned = cleaned.substring(0, firstBrace) + cleaned.substring(lastBrace + 1);
