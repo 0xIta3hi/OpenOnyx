@@ -214,13 +214,11 @@ export function CollaborationPanel({
 
   if (authLoading || isInitialLoading) {
     return (
-      <div className="collab-panel">
-        <div className="collab-bootstrap">
-          <Loader size={20} className="collab-spinner" />
-          <div className="collab-bootstrap-info">
-            <div className="collab-bootstrap-title">Initializing collaboration...</div>
-            <div className="collab-bootstrap-message">Connecting to secure space service...</div>
-          </div>
+      <div className="setting-card" style={{ justifyContent: 'center', padding: '40px 0', border: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center' }}>
+          <Loader size={24} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite', color: 'var(--color-accent)' }} />
+          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>Initializing collaboration...</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Connecting to secure space service...</div>
         </div>
       </div>
     );
@@ -230,15 +228,18 @@ export function CollaborationPanel({
 
   if (!user) {
     return (
-      <div className="collab-panel">
-        <div className="collab-empty">
-          <Users size={32} strokeWidth={1.5} />
-          <p>Sign in to collaborate on vaults with other users.</p>
+      <div className="setting-card" style={{ justifyContent: 'center', padding: '40px 0', border: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center' }}>
+          <Users size={32} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
+          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>Collaborate on Vaults</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', maxWidth: '280px', lineHeight: '1.5' }}>
+            Sign in to collaborate on vaults and share pages with other users in real time.
+          </div>
           {onGoToAccount && (
             <button
-              className="btn btn-secondary btn-sm"
+              className="setting-btn-secondary"
               onClick={onGoToAccount}
-              style={{ marginTop: 12 }}
+              style={{ marginTop: '8px' }}
             >
               Go to Account Settings
             </button>
@@ -254,21 +255,19 @@ export function CollaborationPanel({
     const prog = collabStatus.progress;
     const pct = prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
     return (
-      <div className="collab-panel">
-        <div className="collab-bootstrap">
-          <CloudUpload size={20} className="collab-spinner" />
-          <div className="collab-bootstrap-info">
-            <div className="collab-bootstrap-title">Creating cloud space...</div>
-            <div className="collab-bootstrap-message">{prog.message}</div>
-            {prog.total > 0 && (
-              <>
-                <div className="collab-progress-bar">
-                  <div className="collab-progress-fill" style={{ width: `${pct}%` }} />
-                </div>
-                <div className="collab-bootstrap-pct">{pct}%</div>
-              </>
-            )}
-          </div>
+      <div className="setting-card" style={{ justifyContent: 'center', padding: '40px 0', border: 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center', width: '100%', maxWidth: '320px' }}>
+          <CloudUpload size={24} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite', color: 'var(--color-accent)' }} />
+          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>Creating cloud space...</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{prog.message}</div>
+          {prog.total > 0 && (
+            <div style={{ width: '100%', marginTop: '4px' }}>
+              <div className="collab-progress-bar" style={{ height: '4px', background: 'var(--bg-active)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div className="collab-progress-fill" style={{ width: `${pct}%`, height: '100%', background: 'var(--color-accent)', borderRadius: '2px', transition: 'width 0.3s ease' }} />
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: 500 }}>{pct}%</div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -277,209 +276,212 @@ export function CollaborationPanel({
   // ── Main Panel ───────────────────────────────────────────────────────────
 
   return (
-    <div className="collab-panel">
+    <div className="collaboration-panel-container">
       {error && (
-        <div className="collab-error">
-          <AlertCircle size={14} />
-          <span>{error}</span>
-          <button onClick={() => setError(null)}><X size={12} /></button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', color: '#ef4444', fontSize: '12.5px', marginBottom: '16px' }}>
+          <AlertCircle size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', padding: '2px' }} aria-label="Dismiss error"><X size={12} /></button>
         </div>
       )}
 
       {/* Incoming Invites */}
       {invitesIn.length > 0 && (
-        <div className="collab-section">
-          <button className="collab-section-header" onClick={() => toggleSection('invites')}>
-            <span><UserPlus size={14} /> Incoming Invites ({invitesIn.length})</span>
-            {expandedSection === 'invites' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-          {expandedSection === 'invites' && (
-            <div className="collab-section-body">
-              {invitesIn.map(invite => (
-                <div key={invite.id} className="collab-invite-card">
-                  <div className="collab-invite-info">
-                    <div className="collab-invite-space">{invite.space_title}</div>
-                    <div className="collab-invite-sender">From: {invite.sender_email}</div>
-                  </div>
-                  <div className="collab-invite-actions">
-                    <button className="collab-btn collab-btn-accept" onClick={() => handleAcceptInvite(invite)}>
-                      <Check size={14} /> Accept
-                    </button>
-                    <button className="collab-btn collab-btn-reject" onClick={() => handleRejectInvite(invite)}>
-                      <X size={14} /> Decline
-                    </button>
-                  </div>
+        <div style={{ marginBottom: '24px' }}>
+          <h3 className="setting-group-header">Incoming Invites</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+            {invitesIn.map(invite => (
+              <div key={invite.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{invite.space_title}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>From: {invite.sender_email}</div>
                 </div>
-              ))}
-            </div>
-          )}
+                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  <button className="setting-btn-primary" onClick={() => handleAcceptInvite(invite)} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '4px 10px' }}>
+                    <Check size={12} /> Accept
+                  </button>
+                  <button className="setting-btn-secondary" onClick={() => handleRejectInvite(invite)} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '4px 10px' }}>
+                    <X size={12} /> Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Cloud Space Status */}
       {!cloudSpace && vaultPath && (
-        <div className="collab-section">
-          <div className="collab-create-space">
-            <Cloud size={24} strokeWidth={1.5} />
-            <div className="collab-create-text">
-              <strong>No cloud space</strong>
-              <span>Create a private cloud space to enable collaboration on this vault.</span>
+        <div style={{ marginBottom: '24px' }}>
+          <h3 className="setting-group-header">Setup Cloud Sharing</h3>
+          <div className="setting-card">
+            <div className="setting-info">
+              <div className="setting-title-with-icon">
+                <Cloud size={16} className="setting-title-icon" />
+                <span>Create new cloud space</span>
+              </div>
+              <div className="setting-description">
+                Establish a secure private space on the cloud to enable synchronization and invite users.
+              </div>
             </div>
-            <div className="collab-create-form">
+            <div className="setting-control" style={{ gap: '8px' }}>
               <input
                 type="text"
-                className="collab-input"
+                className="setting-input"
+                style={{ width: '180px' }}
                 placeholder="Space name..."
                 value={spaceName}
                 onChange={e => setSpaceName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleCreateSpace(); }}
               />
               <button
-                className="collab-btn collab-btn-primary"
+                className="setting-btn-primary"
                 onClick={handleCreateSpace}
                 disabled={isCreating || !spaceName.trim()}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
               >
-                <CloudUpload size={14} /> Create Space
+                {isCreating ? <Loader size={12} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite' }} /> : <CloudUpload size={12} />} Create
               </button>
             </div>
+          </div>
 
-            {/* Link to an existing space */}
-            {availableSpaces.length > 0 && (
-              <div className="collab-link-existing" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-subtle, #e2e8f0)', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div className="collab-create-text" style={{ marginBottom: '0.75rem' }}>
-                  <strong>Link to an existing space</strong>
-                  <span>Select a space you are already a member of to link this vault.</span>
+          {/* Link to an existing space */}
+          {availableSpaces.length > 0 && (
+            <div className="setting-card">
+              <div className="setting-info">
+                <div className="setting-title-with-icon">
+                  <FolderOpen size={16} className="setting-title-icon" />
+                  <span>Link existing cloud space</span>
                 </div>
-                <div className="collab-create-form">
-                  <select
-                    className="collab-input"
-                    value={selectedSpaceId}
-                    onChange={e => setSelectedSpaceId(e.target.value)}
-                    style={{
-                      width: '100%',
-                      background: 'var(--bg-secondary, #f8fafc)',
-                      color: 'var(--text-normal, #0f172a)',
-                      border: '1px solid var(--border-subtle, #e2e8f0)',
-                      borderRadius: '6px',
-                      padding: '0.5rem',
-                    }}
-                  >
-                    {availableSpaces.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.title} ({s.visibility})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="collab-btn collab-btn-primary"
-                    onClick={handleLinkSpace}
-                    disabled={isLinking || !selectedSpaceId}
-                    style={{ width: '100%' }}
-                  >
-                    <FolderOpen size={14} /> Link Space
-                  </button>
+                <div className="setting-description">
+                  Connect this local folder to a cloud space you are already a collaborator in.
                 </div>
               </div>
-            )}
-          </div>
+              <div className="setting-control" style={{ gap: '8px' }}>
+                <select
+                  className="setting-select"
+                  value={selectedSpaceId}
+                  onChange={e => setSelectedSpaceId(e.target.value)}
+                  style={{ width: '180px' }}
+                >
+                  {availableSpaces.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.title} ({s.visibility})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="setting-btn-secondary"
+                  onClick={handleLinkSpace}
+                  disabled={isLinking || !selectedSpaceId}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  {isLinking ? <Loader size={12} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite' }} /> : <Check size={12} />} Link
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {cloudSpace && (
         <>
-          {/* Space Info */}
-          <div className="collab-section">
-            <div className="collab-space-info">
-              <div className="collab-space-badge">
-                <Cloud size={14} />
-                <span className={`collab-status-dot collab-status-${cloudSpace.status}`} />
+          <h3 className="setting-group-header">Cloud Space Status</h3>
+          <div className="setting-card">
+            <div className="setting-info">
+              <div className="setting-title-with-icon">
+                <Cloud size={16} className="setting-title-icon" style={{ color: cloudSpace.status === 'ready' ? '#10b981' : '#eab308' }} />
                 <span>{cloudSpace.title}</span>
               </div>
-              <div className="collab-space-status">
-                {cloudSpace.status === 'ready' ? 'Connected' : cloudSpace.status === 'processing' ? 'Uploading...' : 'Error'}
+              <div className="setting-description" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                <span className={`collab-status-dot collab-status-${cloudSpace.status}`} style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: cloudSpace.status === 'ready' ? '#10b981' : cloudSpace.status === 'processing' ? '#eab308' : '#d76464', boxShadow: cloudSpace.status === 'ready' ? '0 0 6px rgba(16, 185, 129, 0.4)' : 'none' }} />
+                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                  {cloudSpace.status === 'ready' ? 'Connected and synced' : cloudSpace.status === 'processing' ? 'Uploading snapshot...' : 'Offline / Error'}
+                </span>
               </div>
+            </div>
+            <div className="setting-control">
+              <button className="setting-btn-secondary" onClick={() => loadSpaceData(false)} title="Refresh collaboration data" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <RefreshCw size={12} /> Refresh
+              </button>
             </div>
           </div>
 
           {/* Invite & Management */}
           {cloudSpace.status === 'ready' && (
-            <div className="collab-section">
-              <button className="collab-section-header" onClick={() => toggleSection('invite')}>
-                <span><Send size={14} /> Invite & Management</span>
-                {expandedSection === 'invite' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-              {expandedSection === 'invite' && (
-                <div className="collab-section-body">
-                  {cloudSpace.owner_id === user.id ? (
-                    <div className="collab-invite-form">
-                      <input
-                        type="email"
-                        className="collab-input"
-                        placeholder="user@example.com"
-                        value={inviteEmail}
-                        onChange={e => setInviteEmail(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSendInvite(); }}
-                      />
-                      <button className="collab-btn collab-btn-primary" onClick={handleSendInvite} disabled={!inviteEmail.trim()}>
-                        <UserPlus size={14} /> Send
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="collab-empty-small" style={{ padding: '4px 0', color: 'var(--text-muted)' }}>
-                      Only the space owner can invite new collaborators.
-                    </div>
-                  )}
-                  {invitesOut.length > 0 && (
-                    <div className="collab-sent-list">
-                      <div className="collab-label">Sent Invites</div>
-                      {invitesOut.map(inv => (
-                        <div key={inv.id} className="collab-sent-item">
-                          <span>{inv.receiver_email}</span>
-                          <span className={`collab-invite-status collab-invite-${inv.status}`}>{inv.status}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+            <div className="setting-card">
+              <div className="setting-info">
+                <div className="setting-title">Invite collaborators</div>
+                <div className="setting-description">
+                  {cloudSpace.owner_id === user.id ? 'Invite members by entering their email address.' : 'Only the space owner can invite new collaborators.'}
                 </div>
-              )}
+              </div>
+              <div className="setting-control">
+                {cloudSpace.owner_id === user.id ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="email"
+                      className="setting-input"
+                      style={{ width: '180px' }}
+                      placeholder="user@example.com"
+                      value={inviteEmail}
+                      onChange={e => setInviteEmail(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSendInvite(); }}
+                    />
+                    <button className="setting-btn-primary" onClick={handleSendInvite} disabled={!inviteEmail.trim()}>
+                      Invite
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>View only</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Sent Invites List */}
+          {invitesOut.filter(inv => inv.status === 'pending').length > 0 && (
+            <div style={{ marginTop: '12px', padding: '12px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '8px' }}>Pending Invites</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {invitesOut.filter(inv => inv.status === 'pending').map(inv => (
+                  <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12.5px', padding: '4px 0' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>{inv.receiver_email}</span>
+                    <span className={`collab-invite-status collab-invite-${inv.status}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '10px', fontWeight: 500, textTransform: 'capitalize', background: 'rgba(234, 179, 8, 0.12)', color: '#eab308' }}>
+                      {inv.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
           {/* Active Collaborators */}
-          <div className="collab-section">
-            <button className="collab-section-header" onClick={() => toggleSection('collabs')}>
-              <span><Users size={14} /> Collaborators ({collaborators.length})</span>
-              {expandedSection === 'collabs' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-            {expandedSection === 'collabs' && (
-              <div className="collab-section-body">
-                {collaborators.length === 0 ? (
-                  <div className="collab-empty-small">No collaborators yet.</div>
-                ) : (
-                  <div className="collab-collab-list">
-                    {collaborators.map(c => (
-                      <div key={c.id} className="collab-collab-item">
-                        <div className="collab-avatar" style={{ background: c.role === 'owner' ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--bg-active)' }}>
-                          {(c.email || c.user_id || '?')[0].toUpperCase()}
-                        </div>
-                        <div className="collab-collab-info">
-                          <span className="collab-collab-email">{c.email || c.user_id}</span>
-                          <span className="collab-collab-role">{c.role}</span>
-                        </div>
+          <div style={{ marginTop: '24px' }}>
+            <h3 className="setting-group-header">Collaborators ({collaborators.length})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+              {collaborators.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12.5px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>No collaborators yet.</div>
+              ) : (
+                collaborators.map(c => {
+                  const isOwner = c.role === 'owner';
+                  return (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
+                      <div className="collab-avatar" style={{ width: '28px', height: '28px', borderRadius: '50%', background: isOwner ? 'var(--color-accent)' : 'var(--bg-active)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: isOwner ? 'var(--text-on-accent)' : 'var(--text-muted)', border: '1px solid var(--border-medium)' }}>
+                        {(c.email || c.user_id || '?')[0].toUpperCase()}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0, flex: 1 }}>
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.email || c.user_id}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{c.role}</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </>
       )}
-
-      {/* Refresh */}
-      <button className="collab-refresh-btn" onClick={() => loadSpaceData(false)} title="Refresh collaboration data">
-        <RefreshCw size={14} /> Refresh
-      </button>
     </div>
   );
 }
