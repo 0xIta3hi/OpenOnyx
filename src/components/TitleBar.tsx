@@ -182,10 +182,10 @@ export function TitleBar({
     group: LocalGroup;
   } | null>(null);
 
-  const [collapsedGroupIds, setCollapsedGroupIds] = React.useState<React.SetStateAction<Set<string>>>(() => new Set<string>());
+  const [collapsedGroupIds, setCollapsedGroupIds] = React.useState<Set<string>>(() => new Set<string>());
 
   const toggleGroupCollapse = (groupId: string) => {
-    setCollapsedGroupIds((prev: any) => {
+    setCollapsedGroupIds((prev) => {
       const next = new Set<string>(prev);
       if (next.has(groupId)) {
         next.delete(groupId);
@@ -206,45 +206,42 @@ export function TitleBar({
       | { type: "tab"; tab: Tab; key: string; tabGroup: LocalGroup | null }
     > = [];
     
-    let currentGroupId: string | null = null;
-    for (const tab of sortedTabs) {
-      if (tab.groupId) {
-        if (tab.groupId !== currentGroupId) {
-          currentGroupId = tab.groupId;
-          const group = groups.find((g) => g.id === tab.groupId);
-          if (group) {
-            const tabsCount = sortedTabs.filter((t) => t.groupId === group.id).length;
-            const isCollapsed = collapsedGroupIds.has(group.id);
-            items.push({
-              type: "group-header",
-              group,
-              key: `group-header-${group.id}`,
-              tabsCount,
-              isCollapsed,
-            });
-          }
-        }
-        
-        const isCollapsed = collapsedGroupIds.has(tab.groupId);
-        if (!isCollapsed) {
-          const tabGroup = groups.find((g) => g.id === tab.groupId) || null;
+    // 1. Add each group pill, followed by its active tabs (if any and not collapsed)
+    for (const group of groups) {
+      const activeGroupTabs = sortedTabs.filter(t => t.groupId === group.id);
+      const isCollapsed = collapsedGroupIds.has(group.id);
+      
+      items.push({
+        type: "group-header",
+        group,
+        key: `group-header-${group.id}`,
+        tabsCount: activeGroupTabs.length,
+        isCollapsed,
+      });
+
+      if (!isCollapsed) {
+        for (const tab of activeGroupTabs) {
           items.push({
             type: "tab",
             tab,
             key: `tab-${tab.id}`,
-            tabGroup,
+            tabGroup: group,
           });
         }
-      } else {
-        currentGroupId = null;
-        items.push({
-          type: "tab",
-          tab,
-          key: `tab-${tab.id}`,
-          tabGroup: null,
-        });
       }
     }
+
+    // 2. Add all ungrouped tabs at the end (so they appear next to/aside of the group names)
+    const ungroupedTabs = sortedTabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+    for (const tab of ungroupedTabs) {
+      items.push({
+        type: "tab",
+        tab,
+        key: `tab-${tab.id}`,
+        tabGroup: null,
+      });
+    }
+    
     return items;
   }, [sortedTabs, groups, collapsedGroupIds]);
 
@@ -417,7 +414,13 @@ export function TitleBar({
                     backgroundColor: group.color,
                     color: getContrastColor(group.color),
                   }}
-                  onClick={() => toggleGroupCollapse(group.id)}
+                  onClick={() => {
+                    if (group.id === activeGroupId) {
+                      toggleGroupCollapse(group.id);
+                    } else {
+                      onRestoreGroup?.(group.id);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     const rect = e.currentTarget.getBoundingClientRect();

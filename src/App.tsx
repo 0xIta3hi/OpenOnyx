@@ -1207,20 +1207,6 @@ export default function App() {
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
 
-  const handleOpenNewTab = useCallback((groupId?: any) => {
-    const newTab: Tab = {
-      id: generateId(),
-      path: "__new_tab__",
-      name: "New tab",
-      isModified: false,
-      groupId: typeof groupId === "string" ? groupId : null,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-    setCurrentContent("");
-    setBacklinks([]);
-  }, [generateId]);
-
   const [showInlineInsight, setShowInlineInsight] = useState(false);
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -1253,6 +1239,94 @@ export default function App() {
     initialColor?: string;
     tabId?: string;
   } | null>(null);
+
+  const handleOpenNewTab = useCallback((groupId?: any) => {
+    const targetGroupId = typeof groupId === "string" ? groupId : null;
+
+    if (activeGroupId && !targetGroupId) {
+      // Auto-save the current layout state to the database before exiting the group
+      const activeGroup = groups.find((g) => g.id === activeGroupId);
+      if (activeGroup) {
+        const currentScrolls: Record<string, number> = {};
+        const currentCursors: Record<string, number> = {};
+        const currentViewModes: Record<string, string> = {};
+
+        const allOpenTabs = collectAllTabs(paneTree);
+        for (const tab of allOpenTabs) {
+          const cached = scrollCursorCacheRef.current[tab.path];
+          if (cached) {
+            if (cached.scroll !== undefined) currentScrolls[tab.path] = cached.scroll;
+            if (cached.cursor !== undefined) currentCursors[tab.path] = cached.cursor;
+            if (cached.viewMode !== undefined) currentViewModes[tab.path] = cached.viewMode;
+          }
+        }
+
+        const updatedGroup: LocalGroup = {
+          ...activeGroup,
+          updated_at: new Date().toISOString(),
+          layout_state: {
+            paneTree,
+            activeTabId,
+            focusedLeafId,
+            scrollPositions: currentScrolls,
+            cursorPositions: currentCursors,
+            viewModes: currentViewModes,
+          },
+        };
+
+        // Save layout to local database
+        localDB.putGroup(updatedGroup)
+          .then(() => {
+            setGroups((prev) =>
+              prev.map((g) => (g.id === activeGroupId ? updatedGroup : g))
+            );
+          })
+          .catch((err) => console.error("Auto-save group failed before opening blank tab:", err));
+      }
+
+      setActiveGroupId(null);
+
+      const ungroupedTabs = tabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+
+      const newTab: Tab = {
+        id: generateId(),
+        path: "__new_tab__",
+        name: "New tab",
+        isModified: false,
+        groupId: null,
+      };
+
+      ungroupedTabs.push(newTab);
+
+      const newTree: PaneLeaf = {
+        type: 'leaf',
+        id: generateId(),
+        tabs: ungroupedTabs,
+        activeTabId: newTab.id,
+      };
+
+      skipTabSyncRef.current = true;
+      setPaneTree(newTree);
+      setTabs(ungroupedTabs);
+      setActiveTabId(newTab.id);
+      setFocusedLeafId(newTree.id);
+      setCurrentContent("");
+      setBacklinks([]);
+      return;
+    }
+
+    const newTab: Tab = {
+      id: generateId(),
+      path: "__new_tab__",
+      name: "New tab",
+      isModified: false,
+      groupId: targetGroupId,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    setCurrentContent("");
+    setBacklinks([]);
+  }, [generateId, activeGroupId, groups, paneTree, activeTabId, focusedLeafId]);
 
   // Position and mode cache per file path
   const scrollCursorCacheRef = useRef<Record<string, { scroll?: number, cursor?: number, viewMode?: ViewMode }>>({});
@@ -1387,8 +1461,14 @@ export default function App() {
   }, [paneTree, activeTabId, focusedLeafId, activeGroupId, groups]);
 
   // Sync flat tabs -> pane tree (bridge legacy state to new split system)
+  const skipTabSyncRef = useRef<boolean>(false);
   const prevTabsRef = useRef<Tab[]>([]);
   useEffect(() => {
+    if (skipTabSyncRef.current) {
+      skipTabSyncRef.current = false;
+      prevTabsRef.current = tabs;
+      return;
+    }
     const prevTabs = prevTabsRef.current;
     prevTabsRef.current = tabs;
 
@@ -2707,15 +2787,99 @@ export default function App() {
       };
     }
 
-    setPaneTree(layout_state.paneTree);
-    setTabs(collectAllTabs(layout_state.paneTree));
-    if (layout_state.activeTabId) setActiveTabId(layout_state.activeTabId);
-    if (layout_state.focusedLeafId) setFocusedLeafId(layout_state.focusedLeafId);
+    // Capture any currently open ungrouped tabs in the active workspace before restoring
+    const ungroupedTabsToPreserve = tabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+
+    // Clone restored paneTree
+    let tree = JSON.parse(JSON.stringify(layout_state.paneTree)) as PaneNode;
+
+    // Helper to insert a tab as a background tab (retaining the existing active tab)
+    const insertTabAsBackground = (node: PaneNode, leafId: string, tabToInsert: Tab): PaneNode => {
+      if (node.type === "leaf") {
+        if (node.id !== leafId) return node;
+        if (node.tabs.some((t) => t.id === tabToInsert.id)) return node;
+        return {
+          ...node,
+          tabs: [...node.tabs, tabToInsert],
+        };
+      }
+      return {
+        ...node,
+        children: [
+          insertTabAsBackground(node.children[0], leafId, tabToInsert),
+          insertTabAsBackground(node.children[1], leafId, tabToInsert),
+        ] as [PaneNode, PaneNode],
+      };
+    };
+
+    // Find the leaf to insert any preserved ungrouped tabs into
+    const restoredFocusedLeafId = layout_state.focusedLeafId;
+    let targetLeaf = restoredFocusedLeafId ? findLeafById(tree, restoredFocusedLeafId) : null;
+    if (!targetLeaf) {
+      targetLeaf = findFirstLeaf(tree);
+    }
+
+    if (targetLeaf) {
+      for (const tab of ungroupedTabsToPreserve) {
+        if (!findLeafWithTab(tree, tab.id)) {
+          tree = insertTabAsBackground(tree, targetLeaf.id, tab);
+        }
+      }
+    }
+
+    skipTabSyncRef.current = true;
+    setPaneTree(tree);
+    const allRestoredTabs = collectAllTabs(tree);
+    setTabs(allRestoredTabs);
+
+    // Focus on the first tab of the restored group
+    let targetTabId = layout_state.activeTabId;
+    const groupTabs = allRestoredTabs.filter((t) => t.groupId === groupId);
+    if (groupTabs.length > 0) {
+      targetTabId = groupTabs[0].id;
+    }
+
+    if (targetTabId) {
+      setActiveTabId(targetTabId);
+      const tabObj = allRestoredTabs.find((t) => t.id === targetTabId);
+      if (tabObj) {
+        if (tabObj.path !== "__new_tab__" && tabObj.path !== GRAPH_TAB_PATH && tabObj.path !== SPACES_TAB_PATH && !tabObj.path.startsWith('__plugin__.')) {
+          if (isCanvasFile(tabObj.path)) {
+            setCanvasFilePath(tabObj.path);
+            setCurrentContent("");
+            setBacklinks([]);
+          } else {
+            try {
+              const content = await api.readFile(tabObj.path);
+              setCurrentContent(content);
+              loadBacklinks(tabObj.path);
+            } catch (err) {
+              console.error("Failed to load active tab content on restore:", err);
+            }
+          }
+        } else {
+          setCurrentContent("");
+          setBacklinks([]);
+        }
+      }
+    }
+
+    // Set the focused leaf containing the active tab if possible
+    if (targetTabId) {
+      const leaf = findLeafWithTab(tree, targetTabId);
+      if (leaf) {
+        setFocusedLeafId(leaf.id);
+      } else if (layout_state.focusedLeafId) {
+        setFocusedLeafId(layout_state.focusedLeafId);
+      }
+    } else if (layout_state.focusedLeafId) {
+      setFocusedLeafId(layout_state.focusedLeafId);
+    }
 
     setActiveGroupId(groupId);
     setHasUnsavedChanges(false);
     showToast(`Switched to ${group.name}`, "success");
-  }, [groups, showToast]);
+  }, [groups, tabs, showToast, api]);
 
   const handleUpdateActiveGroup = async (groupId?: string) => {
     const targetGroupId = groupId || activeGroupId;
@@ -2954,8 +3118,13 @@ export default function App() {
       baseTabs = tabs.filter(t => t.id !== activeTabId);
     }
 
-    if (activeGroupId && !baseTabs.some((t) => t.path === filePath)) {
+    const existingBaseTab = baseTabs.find((t) => t.path === filePath);
+    const isGroupTab = existingBaseTab && existingBaseTab.groupId === activeGroupId;
+
+    if (activeGroupId && !isGroupTab) {
       setActiveGroupId(null);
+
+      const ungroupedTabs = baseTabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
 
       const newTabId = generateId();
       const newTab: Tab = {
@@ -2965,15 +3134,18 @@ export default function App() {
         isModified: false,
       };
 
+      ungroupedTabs.push(newTab);
+
       const newTree: PaneLeaf = {
         type: 'leaf',
         id: generateId(),
-        tabs: [newTab],
+        tabs: ungroupedTabs,
         activeTabId: newTabId,
       };
 
+      skipTabSyncRef.current = true;
       setPaneTree(newTree);
-      setTabs([newTab]);
+      setTabs(ungroupedTabs);
       setActiveTabId(newTabId);
       setFocusedLeafId(newTree.id);
 
@@ -3906,6 +4078,99 @@ export default function App() {
   }, [tabs]);
 
   const handleTabSelect = async (id: string) => {
+    const selectedTab = tabs.find((t) => t.id === id);
+    const targetGroupId = selectedTab ? selectedTab.groupId : null;
+
+    if (activeGroupId && targetGroupId !== activeGroupId) {
+      // Auto-save the current layout state to the database before exiting the group
+      const activeGroup = groups.find((g) => g.id === activeGroupId);
+      if (activeGroup) {
+        const currentScrolls: Record<string, number> = {};
+        const currentCursors: Record<string, number> = {};
+        const currentViewModes: Record<string, string> = {};
+
+        const allOpenTabs = collectAllTabs(paneTree);
+        for (const t of allOpenTabs) {
+          const cached = scrollCursorCacheRef.current[t.path];
+          if (cached) {
+            if (cached.scroll !== undefined) currentScrolls[t.path] = cached.scroll;
+            if (cached.cursor !== undefined) currentCursors[t.path] = cached.cursor;
+            if (cached.viewMode !== undefined) currentViewModes[t.path] = cached.viewMode;
+          }
+        }
+
+        const updatedGroup: LocalGroup = {
+          ...activeGroup,
+          updated_at: new Date().toISOString(),
+          layout_state: {
+            paneTree,
+            activeTabId,
+            focusedLeafId,
+            scrollPositions: currentScrolls,
+            cursorPositions: currentCursors,
+            viewModes: currentViewModes,
+          },
+        };
+
+        // Save layout to local database
+        localDB.putGroup(updatedGroup)
+          .then(() => {
+            setGroups((prev) =>
+              prev.map((g) => (g.id === activeGroupId ? updatedGroup : g))
+            );
+          })
+          .catch((err) => console.error("Auto-save group failed before switching to ungrouped tab:", err));
+      }
+
+      setActiveGroupId(null);
+
+      if (selectedTab) {
+        const ungroupedTabs = tabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+        if (!ungroupedTabs.some(t => t.id === selectedTab.id)) {
+          ungroupedTabs.push(selectedTab);
+        }
+
+        const newTree: PaneLeaf = {
+          type: 'leaf',
+          id: generateId(),
+          tabs: ungroupedTabs,
+          activeTabId: selectedTab.id,
+        };
+
+        skipTabSyncRef.current = true;
+        setPaneTree(newTree);
+        setTabs(ungroupedTabs);
+        setActiveTabId(selectedTab.id);
+        setFocusedLeafId(newTree.id);
+
+        if (isCanvasFile(selectedTab.path)) {
+          setRecentCanvasFiles((prev) => {
+            const filtered = prev.filter((p) => p !== selectedTab.path);
+            return [selectedTab.path, ...filtered].slice(0, 12);
+          });
+          setShowThoughtModel(false);
+          setShowGraph(false);
+          setShowCanvas(false);
+          setCanvasFullScreen(false);
+          setCanvasFilePath(selectedTab.path);
+          setCurrentContent("");
+          setBacklinks([]);
+        } else if (selectedTab.path !== "__new_tab__" && selectedTab.path !== GRAPH_TAB_PATH && selectedTab.path !== SPACES_TAB_PATH && !selectedTab.path.startsWith('__plugin__.')) {
+          try {
+            const content = await api.readFile(selectedTab.path);
+            setCurrentContent(content);
+            loadBacklinks(selectedTab.path);
+          } catch (err) {
+            console.error("Failed to load active tab content:", err);
+          }
+        } else {
+          setCurrentContent("");
+          setBacklinks([]);
+        }
+      }
+      return;
+    }
+
     setActiveTabId(id);
     
     // Sync with pane tree
@@ -3914,7 +4179,7 @@ export default function App() {
       setFocusedLeafId(targetLeaf.id);
       setPaneTree((prev) => setActiveTabInLeaf(prev, targetLeaf.id, id));
     }
-    const tab = tabs.find((t) => t.id === id);
+    const tab = selectedTab;
     if (tab) {
       if (isCanvasFile(tab.path)) {
         await openFile(tab.path, "preview");
