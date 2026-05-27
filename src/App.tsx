@@ -3057,6 +3057,70 @@ export default function App() {
       });
     }
 
+    if (!groupId) {
+      const isPartOfLayout = findLeafWithTab(paneTree, tabId);
+      if (isPartOfLayout) {
+        let updatedTree = removeTabFromTree(paneTree, tabId);
+        const hasRemainingTabs = updatedTree && collectAllTabs(updatedTree).length > 0;
+
+        if (!updatedTree) {
+          updatedTree = createLeaf([]);
+        }
+
+        setPaneTree(updatedTree);
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, groupId: null } : t));
+
+        if (activeTabId === tabId) {
+          if (hasRemainingTabs) {
+            const remainingGroupTabs = collectAllTabs(updatedTree);
+            const focusedLeaf = findLeafById(updatedTree, focusedLeafId) || findFirstLeaf(updatedTree);
+            const nextActiveTabId = (focusedLeaf && focusedLeaf.tabs.length > 0)
+              ? focusedLeaf.activeTabId || focusedLeaf.tabs[0].id
+              : remainingGroupTabs[0].id;
+
+            setActiveTabId(nextActiveTabId);
+
+            const tabObj = remainingGroupTabs.find((t) => t.id === nextActiveTabId);
+            if (tabObj) {
+              if (tabObj.path !== "__new_tab__" && tabObj.path !== GRAPH_TAB_PATH && tabObj.path !== SPACES_TAB_PATH && !tabObj.path.startsWith('__plugin__.')) {
+                try {
+                  const content = await api.readFile(tabObj.path);
+                  setCurrentContent(content);
+                  loadBacklinks(tabObj.path);
+                } catch (err) {
+                  console.error("Failed to load active tab content on ungroup:", err);
+                }
+              } else {
+                setCurrentContent("");
+                setBacklinks([]);
+              }
+            }
+            if (focusedLeaf) {
+              setFocusedLeafId(focusedLeaf.id);
+            }
+          } else {
+            setActiveGroupId(null);
+            const ungroupedTabs = tabs.map(t => t.id === tabId ? { ...t, groupId: null } : t)
+              .filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+
+            const newTree: PaneLeaf = {
+              type: 'leaf',
+              id: generateId(),
+              tabs: ungroupedTabs,
+              activeTabId: tabId,
+            };
+
+            skipTabSyncRef.current = true;
+            setPaneTree(newTree);
+            setTabs(ungroupedTabs);
+            setActiveTabId(tabId);
+            setFocusedLeafId(newTree.id);
+          }
+        }
+        return;
+      }
+    }
+
     if (groupId && groupId !== activeGroupId) {
       // Shifting a tab into an inactive/collapsed group splits tree
       const group = groups.find((g) => g.id === groupId);
