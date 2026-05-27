@@ -44,8 +44,14 @@ export function CollaborationPanel({
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>('invites');
+  const [isCollabActive, setIsCollabActive] = useState(!collaborationEngine.collabPaused);
 
   const [availableSpaces, setAvailableSpaces] = useState<CloudSpace[]>([]);
+
+  // Sync collaboration pause state
+  useEffect(() => {
+    setIsCollabActive(!collaborationEngine.collabPaused);
+  }, [collabStatus]);
   const [selectedSpaceId, setSelectedSpaceId] = useState('');
   const [isLinking, setIsLinking] = useState(false);
 
@@ -404,6 +410,30 @@ export function CollaborationPanel({
               <button className="setting-btn-secondary" onClick={() => loadSpaceData(false)} title="Refresh collaboration data" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <RefreshCw size={12} /> Refresh
               </button>
+            </div>
+          </div>
+
+          {/* Local collaboration active toggle card */}
+          <div className="setting-card">
+            <div className="setting-info">
+              <div className="setting-title">Enable Collaboration</div>
+              <div className="setting-description">
+                Temporarily pause or resume real-time collaboration and presence syncing for yourself.
+              </div>
+            </div>
+            <div className="setting-control">
+              <label className="setting-toggle">
+                <input
+                  type="checkbox"
+                  checked={isCollabActive}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsCollabActive(checked);
+                    collaborationEngine.setCollabPaused(!checked);
+                  }}
+                />
+                <span className="toggle-slider"></span>
+              </label>
             </div>
           </div>
 

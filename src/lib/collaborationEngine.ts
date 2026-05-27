@@ -175,7 +175,9 @@ class CollaborationEngine {
   private realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
   private clientId: string = '';
   private lastAppliedTimestamps = new Map<string, number>();
+  private _collabPaused: boolean = false;
   constructor() {
+    this._collabPaused = typeof localStorage !== 'undefined' ? localStorage.getItem('collab_paused') === 'true' : false;
     this.init();
   }
 
@@ -183,6 +185,42 @@ class CollaborationEngine {
   get activeSpaceId() { return this._activeSpaceId; }
   get activeUsers() { return this._activeUsers; }
   get currentClientId() { return this.clientId; }
+  get collabPaused() { return this._collabPaused; }
+
+  setCollabPaused(paused: boolean) {
+    this._collabPaused = paused;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('collab_paused', paused ? 'true' : 'false');
+    }
+    
+    if (paused) {
+      // Untrack presence to hide avatar/cursor for other users
+      if (this.realtimeChannel) {
+        try {
+          this.realtimeChannel.untrack();
+        } catch { /* best-effort */ }
+      }
+      this.notifyActiveUsers([]);
+    } else {
+      // Re-track presence to show online
+      if (this.realtimeChannel) {
+        const userId = authManager.getUserId();
+        const user = authManager.getUser();
+        if (userId) {
+          this.realtimeChannel.track({
+            user_id: userId,
+            email: user?.email || '',
+            online_at: new Date().toISOString(),
+          }).catch(err => console.error('[Collab] Failed to track presence on resume:', err));
+        }
+        // Force sync presence
+        this.handlePresenceSync();
+      }
+    }
+    
+    // Notify all status listeners to trigger a re-render
+    this.notify(this._status);
+  }
 
   async init() {
     this.clientId = await localDB.getClientId();
@@ -929,11 +967,13 @@ class CollaborationEngine {
           filter: `space_id=eq.${spaceId}`,
         },
         (payload) => {
+          if (this._collabPaused) return;
           this.handleRemoteNoteChange(payload);
         },
       )
       // Listen for granular editing operations via Broadcast
       .on('broadcast', { event: 'doc-ops' }, (msg) => {
+        if (this._collabPaused) return;
         const { path, ops, clientId: senderClientId } = msg.payload || {};
         // Skip if no payload, or if this is our own echo (should not happen
         // with self:false but guard defensively), or if clientId is empty.
@@ -952,6 +992,7 @@ class CollaborationEngine {
       })
       // Listen for full-document sync via Broadcast (fallback for large edits)
       .on('broadcast', { event: 'doc-full' }, (msg) => {
+        if (this._collabPaused) return;
         const { path, content, clientId: senderClientId } = msg.payload || {};
         if (!path || content === undefined) return;
         if (senderClientId && this.clientId && senderClientId === this.clientId) return;
@@ -959,6 +1000,7 @@ class CollaborationEngine {
       })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
+        if (this._collabPaused) return;
         const presence = msg.payload as CursorPresence | undefined;
         if (!presence || presence.user_id === userId) return;
         this.remoteCursorListeners.forEach(fn => fn(presence));
@@ -968,7 +1010,7 @@ class CollaborationEngine {
         this.handlePresenceSync();
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
+        if (status === 'SUBSCRIBED' && !this._collabPaused) {
           const user = authManager.getUser();
           await this.realtimeChannel?.track({
             user_id: userId,
@@ -1007,6 +1049,10 @@ class CollaborationEngine {
 
   private handlePresenceSync() {
     if (!this.realtimeChannel) return;
+    if (this._collabPaused) {
+      this.notifyActiveUsers([]);
+      return;
+    }
 
     const presenceState = this.realtimeChannel.presenceState();
     const currentUserId = authManager.getUserId();
@@ -1045,6 +1091,7 @@ class CollaborationEngine {
   }
 
   async updatePresenceNote(noteId: string | null, isTyping: boolean = false) {
+    if (this._collabPaused) return;
     if (!this.realtimeChannel) return;
     const userId = authManager.getUserId();
     if (!userId) return;
@@ -1060,6 +1107,7 @@ class CollaborationEngine {
   }
 
   private async handleRemoteNoteChange(payload: any) {
+    if (this._collabPaused) return;
     // Skip self-echo
     if (payload.new?.last_client_id === this.clientId) return;
 
@@ -1130,6 +1178,7 @@ class CollaborationEngine {
    * This is ephemeral -- it does NOT write to the database.
    */
   broadcastOperations(path: string, ops: CollabOperation[]) {
+    if (this._collabPaused) return;
     if (!this.realtimeChannel || ops.length === 0) return;
     this.realtimeChannel.send({
       type: 'broadcast',
@@ -1148,6 +1197,7 @@ class CollaborationEngine {
    * granular operations may fail to apply cleanly on diverged documents.
    */
   broadcastFullDocument(path: string, content: string) {
+    if (this._collabPaused) return;
     if (!this.realtimeChannel) return;
     this.realtimeChannel.send({
       type: 'broadcast',
@@ -1164,6 +1214,7 @@ class CollaborationEngine {
    * Broadcast cursor position / selection to all connected peers.
    */
   broadcastCursorPresence(presence: CursorPresence) {
+    if (this._collabPaused) return;
     if (!this.realtimeChannel) return;
     this.realtimeChannel.send({
       type: 'broadcast',
@@ -1180,6 +1231,7 @@ class CollaborationEngine {
    * Debounce this externally -- it does DB I/O on every call.
    */
   async persistNoteEdit(path: string, content: string): Promise<void> {
+    if (this._collabPaused) return;
     const spaceId = this._activeSpaceId;
     if (!spaceId) return;
 

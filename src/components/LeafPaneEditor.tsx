@@ -149,7 +149,7 @@ export function LeafPaneEditor({
     if (!isUserEdit) return;
 
     // Presence: mark as typing
-    const isCollabSpace = !!collaborationEngine.activeSpaceId;
+    const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused;
     if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       setIsSelfTyping(true);
       collaborationEngine.updatePresenceNote(activeTab.path, true);
@@ -394,7 +394,7 @@ export function LeafPaneEditor({
 
   const currentUser = authManager.getUser();
   const currentUserId = currentUser?.id;
-  const isCollabSpace = !!collaborationEngine.activeSpaceId;
+  const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused;
 
   const activeEditors = [...(activeUsers || []).filter(u => u.activeNoteId === activeTab.path && u.isEditing)];
   

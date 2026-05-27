@@ -3027,7 +3027,98 @@ export default function App() {
     }
   };
 
-  const handleAddTabToGroup = useCallback((tabId: string, groupId: string | null) => {
+  const handleAddTabToGroup = useCallback(async (tabId: string, groupId: string | null) => {
+    if (groupId && groupId !== activeGroupId) {
+      // Shifting a tab into an inactive/collapsed group splits tree
+      const group = groups.find((g) => g.id === groupId);
+      const tabObj = tabs.find((t) => t.id === tabId);
+      
+      if (group && tabObj && group.layout_state) {
+        const updatedTab: Tab = { ...tabObj, groupId };
+
+        // Clone the group's saved paneTree
+        let tree = JSON.parse(JSON.stringify(group.layout_state.paneTree)) as PaneNode;
+
+        // Find the leaf pane inside the group splits
+        const restoredFocusedLeafId = group.layout_state.focusedLeafId;
+        let targetLeaf = restoredFocusedLeafId ? findLeafById(tree, restoredFocusedLeafId) : null;
+        if (!targetLeaf) {
+          targetLeaf = findFirstLeaf(tree);
+        }
+
+        if (targetLeaf) {
+          // Insert the tab into the group splits tree
+          tree = insertTabIntoLeaf(tree, targetLeaf.id, updatedTab);
+        }
+
+        // Update the group's layout state in IndexedDB and state
+        const updatedGroup: LocalGroup = {
+          ...group,
+          updated_at: new Date().toISOString(),
+          layout_state: {
+            ...group.layout_state,
+            paneTree: tree,
+            activeTabId: tabId, // Focus on the newly added tab inside the group
+            focusedLeafId: targetLeaf ? targetLeaf.id : group.layout_state.focusedLeafId,
+          },
+        };
+
+        try {
+          await localDB.putGroup(updatedGroup);
+          
+          // Update the groups state
+          setGroups((prev) =>
+            prev.map((g) => (g.id === groupId ? updatedGroup : g))
+          );
+
+          // Auto-save the current ungrouped/other group layout before switching
+          if (activeGroupId) {
+            const activeGroup = groups.find((g) => g.id === activeGroupId);
+            if (activeGroup) {
+              const currentScrolls: Record<string, number> = {};
+              const currentCursors: Record<string, number> = {};
+              const currentViewModes: Record<string, string> = {};
+
+              const allOpenTabs = collectAllTabs(paneTree);
+              for (const t of allOpenTabs) {
+                const cached = scrollCursorCacheRef.current[t.path];
+                if (cached) {
+                  if (cached.scroll !== undefined) currentScrolls[t.path] = cached.scroll;
+                  if (cached.cursor !== undefined) currentCursors[t.path] = cached.cursor;
+                  if (cached.viewMode !== undefined) currentViewModes[t.path] = cached.viewMode;
+                }
+              }
+
+              const updatedActiveGroup: LocalGroup = {
+                ...activeGroup,
+                updated_at: new Date().toISOString(),
+                layout_state: {
+                  paneTree,
+                  activeTabId,
+                  focusedLeafId,
+                  scrollPositions: currentScrolls,
+                  cursorPositions: currentCursors,
+                  viewModes: currentViewModes,
+                },
+              };
+
+              await localDB.putGroup(updatedActiveGroup);
+              setGroups((prev) =>
+                prev.map((g) => (g.id === activeGroupId ? updatedActiveGroup : g))
+              );
+            }
+          }
+
+          // Instantly restore and switch to the target group splits!
+          await handleRestoreGroup(groupId);
+          return;
+        } catch (err) {
+          console.error("Failed to add tab to group splits:", err);
+        }
+      }
+    }
+
+    // Default inline grouping state update (when group is active, or removing tab from group)
     setTabs(prev => prev.map(t => t.id === tabId ? { ...t, groupId } : t));
     setPaneTree(prev => {
       const updateTabGroup = (node: PaneNode): PaneNode => {
@@ -3047,7 +3138,7 @@ export default function App() {
       };
       return updateTabGroup(prev);
     });
-  }, []);
+  }, [activeGroupId, groups, tabs, paneTree, activeTabId, focusedLeafId, handleRestoreGroup]);
 
   const handleCreateGroupFromTab = useCallback((tabId: string) => {
     setGroupModalData({
