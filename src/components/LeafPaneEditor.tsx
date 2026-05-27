@@ -41,6 +41,8 @@ interface LeafPaneEditorProps {
   onToggleInsight: (show: boolean) => void;
   onContentChangeGlobal: (path: string, content: string) => void;
   activeUsers?: any[];
+  getViewState?: (path: string) => { scroll?: number; cursor?: number; viewMode?: ViewMode } | undefined;
+  onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number; viewMode?: ViewMode }) => void;
 }
 
 export function LeafPaneEditor({
@@ -67,10 +69,13 @@ export function LeafPaneEditor({
   onToggleInsight,
   onContentChangeGlobal,
   activeUsers = [],
+  getViewState,
+  onViewStateChange,
 }: LeafPaneEditorProps) {
   const [content, setContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(activeTab.path !== "__new_tab__");
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
+  const [fileExists, setFileExists] = useState<boolean>(true);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const dbSyncTimer = useRef<NodeJS.Timeout | null>(null);
   const [isSelfTyping, setIsSelfTyping] = useState<boolean>(false);
@@ -94,6 +99,7 @@ export function LeafPaneEditor({
     
     // Set loading state to prevent Editor from mounting with old content
     setIsLoading(true); 
+    setFileExists(true);
 
     if (activeTab.path === "__new_tab__") {
       setContent("");
@@ -101,20 +107,30 @@ export function LeafPaneEditor({
       return;
     }
     
-    api.readFile(activeTab.path)
-      .then((c: string) => {
-        if (isActive) {
-          setContent(c);
+    const loadContent = async () => {
+      try {
+        const exists = await api.fileExists(activeTab.path);
+        if (!isActive) return;
+        if (!exists) {
+          setFileExists(false);
           setIsLoading(false);
+          return;
         }
-      })
-      .catch((err: Error) => {
+        const c = await api.readFile(activeTab.path);
+        if (!isActive) return;
+        setContent(c);
+        setIsLoading(false);
+      } catch (err) {
         if (isActive) {
+          setFileExists(false);
           setContent("");
           setIsLoading(false);
           console.error("Failed to load note content:", err);
         }
-      });
+      }
+    };
+
+    void loadContent();
 
     return () => {
       isActive = false;
@@ -355,6 +371,25 @@ export function LeafPaneEditor({
     setRemoteCursors([]);
   }, [activeTab.path]);
 
+  // Restore viewMode state when tab changes
+  useEffect(() => {
+    if (activeTab.path && activeTab.path !== "__new_tab__") {
+      const cached = getViewState?.(activeTab.path);
+      if (cached?.viewMode) {
+        setViewMode(cached.viewMode);
+      } else {
+        setViewMode("editor");
+      }
+    }
+  }, [activeTab.path, getViewState]);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (activeTab.path && activeTab.path !== "__new_tab__") {
+      onViewStateChange?.(activeTab.path, { viewMode: mode });
+    }
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const currentUser = authManager.getUser();
@@ -378,13 +413,42 @@ export function LeafPaneEditor({
     }
   }
 
+  if (!fileExists) {
+    return (
+      <div className="file-missing-placeholder" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        padding: '24px',
+        color: 'var(--text-muted)',
+        textAlign: 'center',
+        backgroundColor: 'var(--bg-primary, var(--background-primary))'
+      }}>
+        <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: 'var(--text-normal, var(--text-primary))' }}>
+          File missing
+        </div>
+        <div style={{ fontSize: '12px', marginBottom: '16px', maxWidth: '300px' }}>
+          The file <code style={{ wordBreak: 'break-all', backgroundColor: 'var(--bg-secondary, var(--background-secondary))', padding: '2px 4px', borderRadius: '4px' }}>{activeTab.path}</code> could not be found. It may have been renamed or deleted.
+        </div>
+        <button 
+          className="setting-btn-secondary"
+          onClick={() => onTabClose(activeTab.id)}
+          style={{ padding: '6px 12px', fontSize: '12px' }}
+        >
+          Close tab
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className={`ftux-editor-host ${ftuxConnectionPulse && isFocused ? "ftux-connection-highlight-pulse" : ""}`}>
       <EditorHeader
         filePath={activeTab.path}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={handleViewModeChange}
         onToggleInsight={() => onToggleInsight(!showInlineInsight)}
         activeEditors={activeEditors}
       />
@@ -413,7 +477,7 @@ export function LeafPaneEditor({
           onTabSelect={(id) => onTabSelect(leaf.id, id)}
           onTabClose={onTabClose}
           onContentChange={handleContentChange}
-          onViewModeChange={setViewMode}
+          onViewModeChange={handleViewModeChange}
           onLinkClick={onLinkClick}
           onImagePaste={onImagePaste}
           onGetNoteContent={getNoteContent}
@@ -431,6 +495,8 @@ export function LeafPaneEditor({
           remoteCursors={isCollabSpace ? remoteCursors : undefined}
           localClientId={isCollabSpace ? collaborationEngine.currentClientId : undefined}
           onEditorViewReady={handleEditorViewReady}
+          getViewState={getViewState}
+          onViewStateChange={onViewStateChange}
         />
       )}
     </div>

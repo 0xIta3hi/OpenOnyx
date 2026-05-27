@@ -50,6 +50,7 @@ export interface Tab {
   path: string;
   name: string;
   isModified: boolean;
+  groupId?: string | null;
 }
 
 // ── Split Pane Types ─────────────────────────────────

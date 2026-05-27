@@ -80,6 +80,17 @@ export interface SyncQueueItem {
   retry_count: number;
 }
 
+export interface LocalGroup {
+  id: string;
+  vault_path: string;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+  auto_save_enabled: boolean;
+  layout_state: any;
+}
+
 interface NoteworkDB extends DBSchema {
   vaults: {
     key: string;
@@ -124,13 +135,17 @@ interface NoteworkDB extends DBSchema {
     key: string;
     value: any;
   };
+  groups: {
+    key: string;
+    value: LocalGroup;
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<NoteworkDB>>;
 
 export function getLocalDB() {
   if (!dbPromise) {
-    dbPromise = openDB<NoteworkDB>('notework-local', 4, {
+    dbPromise = openDB<NoteworkDB>('notework-local', 5, {
       upgrade(db, oldVersion, newVersion, transaction) {
         if (oldVersion < 1) {
           const spaceStore = db.createObjectStore('spaces', { keyPath: 'id' });
@@ -191,6 +206,11 @@ export function getLocalDB() {
             if (!store.indexNames.contains('by-vault')) {
               store.createIndex('by-vault', 'vault_id');
             }
+          }
+        }
+        if (oldVersion < 5) {
+          if (!db.objectStoreNames.contains('groups')) {
+            db.createObjectStore('groups', { keyPath: 'id' });
           }
         }
       },
@@ -486,5 +506,22 @@ export const localDB = {
   async clearSyncQueue(): Promise<void> {
     const db = await getLocalDB();
     await db.clear('sync_queue');
+  },
+
+  // ── Groups ──────────────────────────────────────────────
+  async getGroups(vaultPath: string): Promise<LocalGroup[]> {
+    const db = await getLocalDB();
+    const all = await db.getAll('groups');
+    return all.filter(g => g.vault_path === vaultPath);
+  },
+
+  async putGroup(group: LocalGroup): Promise<void> {
+    const db = await getLocalDB();
+    await db.put('groups', group);
+  },
+
+  async deleteGroup(id: string): Promise<void> {
+    const db = await getLocalDB();
+    await db.delete('groups', id);
   },
 };

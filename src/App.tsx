@@ -106,7 +106,7 @@ import {
   initGlobalKeybindings,
   setGlobalKeybindingsEnabled,
 } from "./keybindings/globalKeys";
-
+import { GroupModal } from "./components/GroupModal";
 const api = getAPI();
 const MIN_EDITOR_FONT_SIZE = 12;
 const MAX_EDITOR_FONT_SIZE = 24;
@@ -936,7 +936,7 @@ function getTransitionLikelihood(
 
 import { syncEngine } from "./lib/syncEngine";
 import { collaborationEngine, type CollabStatus } from "./lib/collaborationEngine";
-import { localDB } from "./lib/localdb";
+import { localDB, LocalGroup } from "./lib/localdb";
 import { authManager } from "./lib/auth";
 import { v4 as uuidv4 } from "uuid";
 
@@ -1207,12 +1207,13 @@ export default function App() {
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
 
-  const handleOpenNewTab = useCallback(() => {
+  const handleOpenNewTab = useCallback((groupId?: any) => {
     const newTab: Tab = {
       id: generateId(),
       path: "__new_tab__",
       name: "New tab",
       isModified: false,
+      groupId: typeof groupId === "string" ? groupId : null,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
@@ -1226,11 +1227,164 @@ export default function App() {
   const [currentContent, setCurrentContent] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [backlinks, setBacklinks] = useState<string[]>([]);
+  
+  // Toast notifications state
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const showToast = useCallback((message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // ── Split Pane Tree ──
   const [initialLeaf] = useState(() => createLeaf([]));
   const [paneTree, setPaneTree] = useState<PaneNode>(initialLeaf);
   const [focusedLeafId, setFocusedLeafId] = useState<string>(initialLeaf.id);
+
+  // ── Layout Groups State & Refs ──
+  const [groups, setGroups] = useState<LocalGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [groupModalData, setGroupModalData] = useState<{
+    type: "create" | "rename" | "color";
+    groupId?: string;
+    title: string;
+    initialName?: string;
+    initialColor?: string;
+    tabId?: string;
+  } | null>(null);
+
+  // Position and mode cache per file path
+  const scrollCursorCacheRef = useRef<Record<string, { scroll?: number, cursor?: number, viewMode?: ViewMode }>>({});
+
+  const handleScrollAndCursorChange = useCallback((path: string, stateUpdate: { scroll?: number, cursor?: number, viewMode?: ViewMode }) => {
+    if (!path || path === "__new_tab__") return;
+    const current = scrollCursorCacheRef.current[path] || {};
+    scrollCursorCacheRef.current[path] = {
+      ...current,
+      ...stateUpdate,
+    };
+  }, []);
+
+  const getViewState = useCallback((path: string) => {
+    return scrollCursorCacheRef.current[path];
+  }, []);
+
+  // Load layout groups for current vault
+  useEffect(() => {
+    if (!vaultPath) {
+      setGroups([]);
+      setActiveGroupId(null);
+      setHasUnsavedChanges(false);
+      return;
+    }
+    
+    localDB.getGroups(vaultPath)
+      .then((g) => {
+        setGroups(g);
+        setActiveGroupId(null);
+        setHasUnsavedChanges(false);
+      })
+      .catch((err) => console.error("Failed to load layout groups:", err));
+  }, [vaultPath]);
+
+  // Layout change detection & Auto-save
+  useEffect(() => {
+    if (!activeGroupId) {
+      setHasUnsavedChanges(false);
+      return;
+    }
+
+    const activeGroup = groups.find((g) => g.id === activeGroupId);
+    if (!activeGroup) {
+      setHasUnsavedChanges(false);
+      return;
+    }
+
+    // Normalizing tree helper
+    function normalizePaneTree(node: any): any {
+      if (!node) return null;
+      if (node.type === 'leaf') {
+        return {
+          type: 'leaf',
+          id: node.id,
+          activeTabId: node.activeTabId,
+          tabs: node.tabs.map((t: any) => ({
+            id: t.id,
+            path: t.path,
+            name: t.name
+          }))
+        };
+      } else if (node.type === 'split') {
+        return {
+          type: 'split',
+          id: node.id,
+          direction: node.direction,
+          ratio: Math.round(node.ratio * 100) / 100,
+          children: [
+            normalizePaneTree(node.children[0]),
+            normalizePaneTree(node.children[1])
+          ]
+        };
+      }
+      return null;
+    }
+
+    const currentNorm = JSON.stringify(normalizePaneTree(paneTree));
+    const savedNorm = JSON.stringify(normalizePaneTree(activeGroup.layout_state?.paneTree));
+
+    const structChanged =
+      currentNorm !== savedNorm ||
+      activeTabId !== activeGroup.layout_state?.activeTabId ||
+      focusedLeafId !== activeGroup.layout_state?.focusedLeafId;
+
+    if (activeGroup.auto_save_enabled) {
+      if (structChanged) {
+        // Auto-save: debounce saving to prevent DB spam
+        const saveTimer = setTimeout(() => {
+          const currentScrolls: Record<string, number> = {};
+          const currentCursors: Record<string, number> = {};
+          const currentViewModes: Record<string, string> = {};
+
+          const allOpenTabs = collectAllTabs(paneTree);
+          for (const tab of allOpenTabs) {
+            const cached = scrollCursorCacheRef.current[tab.path];
+            if (cached) {
+              if (cached.scroll !== undefined) currentScrolls[tab.path] = cached.scroll;
+              if (cached.cursor !== undefined) currentCursors[tab.path] = cached.cursor;
+              if (cached.viewMode !== undefined) currentViewModes[tab.path] = cached.viewMode;
+            }
+          }
+
+          const updatedGroup: LocalGroup = {
+            ...activeGroup,
+            updated_at: new Date().toISOString(),
+            layout_state: {
+              paneTree,
+              activeTabId,
+              focusedLeafId,
+              scrollPositions: currentScrolls,
+              cursorPositions: currentCursors,
+              viewModes: currentViewModes,
+            },
+          };
+
+          localDB.putGroup(updatedGroup)
+            .then(() => {
+              setGroups((prev) =>
+                prev.map((g) => (g.id === activeGroupId ? updatedGroup : g))
+              );
+              setHasUnsavedChanges(false);
+            })
+            .catch((err) => console.error("Auto-save group failed:", err));
+        }, 1500);
+
+        return () => clearTimeout(saveTimer);
+      }
+    } else {
+      setHasUnsavedChanges(structChanged);
+    }
+  }, [paneTree, activeTabId, focusedLeafId, activeGroupId, groups]);
 
   // Sync flat tabs -> pane tree (bridge legacy state to new split system)
   const prevTabsRef = useRef<Tab[]>([]);
@@ -1264,8 +1418,10 @@ export default function App() {
 
       // Add new tabs to the focused leaf
       for (const tab of addedTabs) {
-        const targetLeaf = findLeafById(tree, focusedLeafId) || findFirstLeaf(tree);
-        tree = insertTabIntoLeaf(tree, targetLeaf.id, tab);
+        if (!findLeafWithTab(tree, tab.id)) {
+          const targetLeaf = findLeafById(tree, focusedLeafId) || findFirstLeaf(tree);
+          tree = insertTabIntoLeaf(tree, targetLeaf.id, tab);
+        }
       }
 
       return tree;
@@ -2204,6 +2360,10 @@ export default function App() {
       const existingGraphTab = tabs.find((t) => t.path === GRAPH_TAB_PATH);
       if (existingGraphTab) {
         setActiveTabId(existingGraphTab.id);
+        const leaf = findLeafWithTab(paneTree, existingGraphTab.id);
+        if (leaf) {
+          setFocusedLeafId(leaf.id);
+        }
       } else {
         const graphTab: Tab = {
           id: generateId(),
@@ -2301,6 +2461,14 @@ export default function App() {
     // Listen for custom events
     const handleOpenDatabase = (e: CustomEvent<{path: string}>) => {
       const tabId = `__database__.${e.detail.path}`;
+      const existingLeaf = findLeafWithTab(paneTree, tabId);
+      if (existingLeaf) {
+        setFocusedLeafId(existingLeaf.id);
+        setActiveTabId(tabId);
+        setPaneTree((prev) => setActiveTabInLeaf(prev, existingLeaf.id, tabId));
+        return;
+      }
+
       const newTab: Tab = {
         id: tabId,
         name: `DB: ${getNoteName(e.detail.path)}`,
@@ -2326,7 +2494,7 @@ export default function App() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener('oo:open-database', handleOpenDatabase as EventListener);
     };
-  }, [activeTabId, tabs, currentContent]);
+  }, [activeTabId, tabs, currentContent, paneTree]);
 
   // ── Vault Operations ────────────────────────────────
   const handleOpenVault = async (): Promise<boolean> => {
@@ -2459,6 +2627,302 @@ export default function App() {
     [vaultPath, refreshFileTree, promptForInput, getUniqueCanvasPath],
   );
 
+  // ── Layout Groups Operations ─────────────────────────
+  const handleOpenCreateGroupModal = () => {
+    setGroupModalData({
+      type: "create",
+      title: "Save Current Layout as Group",
+      initialName: "",
+      initialColor: "#3b82f6",
+    });
+  };
+
+  const handleSaveGroupConfirm = async (name: string, color: string, tabId?: string) => {
+    if (!vaultPath) return;
+
+    const newGroupId = "group-" + generateId();
+    const currentScrolls: Record<string, number> = {};
+    const currentCursors: Record<string, number> = {};
+    const currentViewModes: Record<string, string> = {};
+
+    const allOpenTabs = collectAllTabs(paneTree);
+    for (const tab of allOpenTabs) {
+      const cached = scrollCursorCacheRef.current[tab.path];
+      if (cached) {
+        if (cached.scroll !== undefined) currentScrolls[tab.path] = cached.scroll;
+        if (cached.cursor !== undefined) currentCursors[tab.path] = cached.cursor;
+        if (cached.viewMode !== undefined) currentViewModes[tab.path] = cached.viewMode;
+      }
+    }
+
+    const newGroup: LocalGroup = {
+      id: newGroupId,
+      vault_path: vaultPath,
+      name,
+      color,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      auto_save_enabled: true,
+      layout_state: {
+        paneTree,
+        activeTabId,
+        focusedLeafId,
+        scrollPositions: currentScrolls,
+        cursorPositions: currentCursors,
+        viewModes: currentViewModes,
+      },
+    };
+
+    try {
+      await localDB.putGroup(newGroup);
+      setGroups((prev) => [...prev, newGroup]);
+      setActiveGroupId(newGroupId);
+      setHasUnsavedChanges(false);
+      if (tabId) {
+        handleAddTabToGroup(tabId, newGroupId);
+      }
+      showToast(`Created group ${name}`, "success");
+    } catch (err) {
+      console.error("Failed to save layout group:", err);
+    }
+  };
+
+  const handleRestoreGroup = useCallback(async (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+
+    const { layout_state } = group;
+    if (!layout_state) return;
+
+    const scrolls = layout_state.scrollPositions || {};
+    const cursors = layout_state.cursorPositions || {};
+    const viewModes = layout_state.viewModes || {};
+
+    const allPaths = Object.keys({ ...scrolls, ...cursors, ...viewModes });
+    for (const path of allPaths) {
+      scrollCursorCacheRef.current[path] = {
+        scroll: scrolls[path],
+        cursor: cursors[path],
+        viewMode: viewModes[path] as any,
+      };
+    }
+
+    setPaneTree(layout_state.paneTree);
+    setTabs(collectAllTabs(layout_state.paneTree));
+    if (layout_state.activeTabId) setActiveTabId(layout_state.activeTabId);
+    if (layout_state.focusedLeafId) setFocusedLeafId(layout_state.focusedLeafId);
+
+    setActiveGroupId(groupId);
+    setHasUnsavedChanges(false);
+    showToast(`Switched to ${group.name}`, "success");
+  }, [groups, showToast]);
+
+  const handleUpdateActiveGroup = async (groupId?: string) => {
+    const targetGroupId = groupId || activeGroupId;
+    if (!targetGroupId) return;
+    const group = groups.find((g) => g.id === targetGroupId);
+    if (!group) return;
+
+    const currentScrolls: Record<string, number> = {};
+    const currentCursors: Record<string, number> = {};
+    const currentViewModes: Record<string, string> = {};
+
+    const allOpenTabs = collectAllTabs(paneTree);
+    for (const tab of allOpenTabs) {
+      const cached = scrollCursorCacheRef.current[tab.path];
+      if (cached) {
+        if (cached.scroll !== undefined) currentScrolls[tab.path] = cached.scroll;
+        if (cached.cursor !== undefined) currentCursors[tab.path] = cached.cursor;
+        if (cached.viewMode !== undefined) currentViewModes[tab.path] = cached.viewMode;
+      }
+    }
+
+    const updatedGroup: LocalGroup = {
+      ...group,
+      updated_at: new Date().toISOString(),
+      layout_state: {
+        paneTree,
+        activeTabId,
+        focusedLeafId,
+        scrollPositions: currentScrolls,
+        cursorPositions: currentCursors,
+        viewModes: currentViewModes,
+      },
+    };
+
+    try {
+      await localDB.putGroup(updatedGroup);
+      setGroups((prev) =>
+        prev.map((g) => (g.id === targetGroupId ? updatedGroup : g))
+      );
+      if (targetGroupId === activeGroupId) {
+        setHasUnsavedChanges(false);
+      }
+      showToast(`Saved layout to ${group.name}`, "success");
+    } catch (err) {
+      console.error("Failed to update active group:", err);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    if (!activeGroupId) return;
+    handleRestoreGroup(activeGroupId);
+  };
+
+  const handleRenameGroup = (id: string, name: string) => {
+    const group = groups.find((g) => g.id === id);
+    if (!group) return;
+    setGroupModalData({
+      type: "rename",
+      groupId: id,
+      title: "Rename Layout Group",
+      initialName: name,
+      initialColor: group.color,
+    });
+  };
+
+  const handleChangeGroupColor = (id: string, color: string) => {
+    const group = groups.find((g) => g.id === id);
+    if (!group) return;
+    setGroupModalData({
+      type: "color",
+      groupId: id,
+      title: "Change Group Color",
+      initialName: group.name,
+      initialColor: color,
+    });
+  };
+
+  const handleDuplicateGroup = async (id: string) => {
+    const group = groups.find((g) => g.id === id);
+    if (!group) return;
+
+    const dupGroup: LocalGroup = {
+      ...group,
+      id: "group-" + generateId(),
+      name: group.name + " Copy",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await localDB.putGroup(dupGroup);
+      setGroups((prev) => [...prev, dupGroup]);
+      showToast(`Duplicated group ${group.name}`, "success");
+    } catch (err) {
+      console.error("Failed to duplicate group:", err);
+    }
+  };
+
+  const handleDeleteGroup = async (id: string) => {
+    setModal({
+      type: "confirm",
+      title: "Delete Layout Group",
+      message: "Are you sure you want to delete this group layout snapshot? This will not delete any note files.",
+      onConfirm: async (confirmed) => {
+        if (confirmed) {
+          try {
+            await localDB.deleteGroup(id);
+            setGroups((prev) => prev.filter((g) => g.id !== id));
+            if (activeGroupId === id) {
+              setActiveGroupId(null);
+              setHasUnsavedChanges(false);
+            }
+            showToast("Deleted group", "success");
+          } catch (err) {
+            console.error("Failed to delete group:", err);
+          }
+        }
+      },
+    });
+  };
+
+  const handleToggleGroupAutoSave = async (id: string) => {
+    const group = groups.find((g) => g.id === id);
+    if (!group) return;
+
+    const updatedGroup: LocalGroup = {
+      ...group,
+      auto_save_enabled: !group.auto_save_enabled,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await localDB.putGroup(updatedGroup);
+      setGroups((prev) =>
+        prev.map((g) => (g.id === id ? updatedGroup : g))
+      );
+      showToast(
+        updatedGroup.auto_save_enabled
+          ? `Enabled auto-save for ${group.name}`
+          : `Disabled auto-save for ${group.name}`,
+        "info"
+      );
+    } catch (err) {
+      console.error("Failed to toggle auto save:", err);
+    }
+  };
+
+  const handleAddTabToGroup = useCallback((tabId: string, groupId: string | null) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, groupId } : t));
+    setPaneTree(prev => {
+      const updateTabGroup = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') {
+          return {
+            ...node,
+            tabs: node.tabs.map(t => t.id === tabId ? { ...t, groupId } : t)
+          };
+        }
+        return {
+          ...node,
+          children: [
+            updateTabGroup(node.children[0]),
+            updateTabGroup(node.children[1])
+          ] as [PaneNode, PaneNode]
+        };
+      };
+      return updateTabGroup(prev);
+    });
+  }, []);
+
+  const handleCreateGroupFromTab = useCallback((tabId: string) => {
+    setGroupModalData({
+      type: "create",
+      title: "Create Group from Tab",
+      tabId,
+    });
+  }, []);
+
+  const handleGroupModalClose = (result: { name: string; color: string } | null) => {
+    const data = groupModalData;
+    setGroupModalData(null);
+    if (!result || !data) return;
+
+    if (data.type === "create") {
+      void handleSaveGroupConfirm(result.name, result.color, data.tabId);
+    } else if (data.type === "rename" || data.type === "color") {
+      if (!data.groupId) return;
+      const group = groups.find((g) => g.id === data.groupId);
+      if (!group) return;
+
+      const updatedGroup: LocalGroup = {
+        ...group,
+        name: result.name,
+        color: result.color,
+        updated_at: new Date().toISOString(),
+      };
+
+      localDB.putGroup(updatedGroup)
+        .then(() => {
+          setGroups((prev) =>
+            prev.map((g) => (g.id === data.groupId ? updatedGroup : g))
+          );
+          showToast(`Updated group ${result.name}`, "success");
+        })
+        .catch((err) => console.error("Failed to update group metadata:", err));
+    }
+  };
+
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
     const readOrCreateMissingMarkdown = async (path: string): Promise<string> => {
@@ -2490,6 +2954,52 @@ export default function App() {
       baseTabs = tabs.filter(t => t.id !== activeTabId);
     }
 
+    if (activeGroupId && !baseTabs.some((t) => t.path === filePath)) {
+      setActiveGroupId(null);
+
+      const newTabId = generateId();
+      const newTab: Tab = {
+        id: newTabId,
+        path: filePath,
+        name: getNoteName(filePath),
+        isModified: false,
+      };
+
+      const newTree: PaneLeaf = {
+        type: 'leaf',
+        id: generateId(),
+        tabs: [newTab],
+        activeTabId: newTabId,
+      };
+
+      setPaneTree(newTree);
+      setTabs([newTab]);
+      setActiveTabId(newTabId);
+      setFocusedLeafId(newTree.id);
+
+      if (isCanvasFile(filePath)) {
+        setRecentCanvasFiles((prev) => {
+          const filtered = prev.filter((p) => p !== filePath);
+          return [filePath, ...filtered].slice(0, 12);
+        });
+        setShowThoughtModel(false);
+        setShowGraph(false);
+        setShowCanvas(false);
+        setCanvasFullScreen(false);
+        setCanvasFilePath(filePath);
+        setCurrentContent("");
+        setBacklinks([]);
+      } else {
+        const content = await readOrCreateMissingMarkdown(filePath);
+        setCurrentContent(content);
+        if (mode) {
+          setViewMode(mode);
+        }
+        loadBacklinks(filePath);
+      }
+      return;
+    }
+
     if (isCanvasFile(filePath)) {
       setRecentCanvasFiles((prev) => {
         const filtered = prev.filter((p) => p !== filePath);
@@ -2505,6 +3015,10 @@ export default function App() {
       if (existingCanvasTab) {
         setTabs(baseTabs); // Apply the removal of New Tab if it happened
         setActiveTabId(existingCanvasTab.id);
+        const leaf = findLeafWithTab(paneTree, existingCanvasTab.id);
+        if (leaf) {
+          setFocusedLeafId(leaf.id);
+        }
       } else {
         const canvasTab: Tab = {
           id: generateId(),
@@ -2525,6 +3039,10 @@ export default function App() {
     if (existingTab) {
       setTabs(baseTabs); // Apply removal of New Tab if it happened
       setActiveTabId(existingTab.id);
+      const leaf = findLeafWithTab(paneTree, existingTab.id);
+      if (leaf) {
+        setFocusedLeafId(leaf.id);
+      }
       const content = await readOrCreateMissingMarkdown(filePath);
       setCurrentContent(content);
       if (mode) {
@@ -2562,6 +3080,10 @@ export default function App() {
     const existingGraphTab = tabs.find((t) => t.path === GRAPH_TAB_PATH);
     if (existingGraphTab) {
       setActiveTabId(existingGraphTab.id);
+      const leaf = findLeafWithTab(paneTree, existingGraphTab.id);
+      if (leaf) {
+        setFocusedLeafId(leaf.id);
+      }
     } else {
       const graphTab: Tab = {
         id: generateId(),
@@ -2588,6 +3110,10 @@ export default function App() {
     const existingSpacesTab = tabs.find((t) => t.path === SPACES_TAB_PATH);
     if (existingSpacesTab) {
       setActiveTabId(existingSpacesTab.id);
+      const leaf = findLeafWithTab(paneTree, existingSpacesTab.id);
+      if (leaf) {
+        setFocusedLeafId(leaf.id);
+      }
     } else {
       const spacesTab: Tab = {
         id: generateId(),
@@ -3349,14 +3875,35 @@ export default function App() {
   }, [clearAutoSaveTimer]);
 
   const handleTabReorder = useCallback((draggedId: string, targetId: string, insertBefore: boolean) => {
+    // Find target tab's groupId
+    const targetTab = tabs.find(t => t.id === targetId);
+    const targetGroupId = targetTab ? targetTab.groupId : null;
+
     setPaneTree((prev) => {
-      const newTree = moveTabInTree(prev, draggedId, targetId, insertBefore);
+      // First update the groupId of the dragged tab in the tree
+      const updateTabGroup = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') {
+          return {
+            ...node,
+            tabs: node.tabs.map(t => t.id === draggedId ? { ...t, groupId: targetGroupId } : t)
+          };
+        }
+        return {
+          ...node,
+          children: [
+            updateTabGroup(node.children[0]),
+            updateTabGroup(node.children[1])
+          ] as [PaneNode, PaneNode]
+        };
+      };
+      const updatedTree = updateTabGroup(prev);
+      const newTree = moveTabInTree(updatedTree, draggedId, targetId, insertBefore);
       // Synchronize flat tabs state
       const allTabs = collectAllTabs(newTree);
       setTabs(allTabs);
       return newTree;
     });
-  }, []);
+  }, [tabs]);
 
   const handleTabSelect = async (id: string) => {
     setActiveTabId(id);
@@ -4799,6 +5346,8 @@ export default function App() {
         onToggleInsight={setShowInlineInsight}
         onContentChangeGlobal={handleContentChangeGlobal}
         activeUsers={activeUsers}
+        getViewState={getViewState}
+        onViewStateChange={handleScrollAndCursorChange}
       />
     );
   }, [
@@ -4807,7 +5356,7 @@ export default function App() {
     activeTabId, tabs, inlineAnnotation, showInlineInsight, ftuxConnectionPulse,
     mainPluginViews, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
     ftuxSuggestionIdle, isFTUXFirstNote, isFTUXConnectionStage, showFTUXInsightPrompt, showFTUXGraphPrompt,
-    showTrajectorySuggestions
+    showTrajectorySuggestions, getViewState, handleScrollAndCursorChange
   ]);
 
   // Render content for a single leaf pane in the split system
@@ -4914,6 +5463,21 @@ export default function App() {
           tabScrollRef={tabScrollRef}
           activeUsers={activeUsers}
           onInvite={() => setShowSettings(true)}
+          
+          groups={groups}
+          activeGroupId={activeGroupId}
+          hasUnsavedChanges={hasUnsavedChanges}
+          onRestoreGroup={handleRestoreGroup}
+          onSaveGroup={handleUpdateActiveGroup}
+          onRenameGroup={handleRenameGroup}
+          onChangeGroupColor={handleChangeGroupColor}
+          onToggleGroupAutoSave={handleToggleGroupAutoSave}
+          onDuplicateGroup={handleDuplicateGroup}
+          onDeleteGroup={handleDeleteGroup}
+          onCreateGroupFromTab={handleCreateGroupFromTab}
+          onAddTabToGroup={handleAddTabToGroup}
+          onRemoveTabFromGroup={(tabId) => handleAddTabToGroup(tabId, null)}
+          onMoveTabToGroup={handleAddTabToGroup}
         />
 
       <div
@@ -4980,6 +5544,15 @@ export default function App() {
               const app = ooAppRef.current;
               if (app) app.workspace.detachLeavesOfType(viewType);
             }}
+            groups={groups}
+            activeGroupId={activeGroupId}
+            onCreateGroup={handleOpenCreateGroupModal}
+            onRestoreGroup={handleRestoreGroup}
+            onRenameGroup={handleRenameGroup}
+            onChangeGroupColor={handleChangeGroupColor}
+            onDeleteGroup={handleDeleteGroup}
+            onDuplicateGroup={handleDuplicateGroup}
+            onToggleGroupAutoSave={handleToggleGroupAutoSave}
           />
         )}
 
@@ -5040,6 +5613,7 @@ export default function App() {
                     flexDirection: "column",
                   }}
                 >
+
                   <SplitPaneContainer
                     paneTree={paneTree}
                     onPaneTreeChange={handlePaneTreeChange}
@@ -5386,6 +5960,15 @@ export default function App() {
         />
       )}
 
+      {groupModalData && (
+        <GroupModal
+          title={groupModalData.title}
+          initialName={groupModalData.initialName}
+          initialColor={groupModalData.initialColor}
+          onClose={handleGroupModalClose}
+        />
+      )}
+
       {modal && (
         <Modal
           type={modal.type}
@@ -5469,6 +6052,13 @@ export default function App() {
               100% { transform: rotate(360deg); }
             }
           `}</style>
+        </div>
+      )}
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast ${toast.type}`}>
+            {toast.message}
+          </div>
         </div>
       )}
     </div>

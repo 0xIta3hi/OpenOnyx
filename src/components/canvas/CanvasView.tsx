@@ -775,6 +775,7 @@ export function CanvasView({
     { nodes: [], edges: [], scribbles: [] },
   ]);
   const [histIdx, setHistIdx] = useState(0);
+  const [fileExists, setFileExists] = useState<boolean>(true);
 
   /* ── Theme-aware scribble color migration ── */
   const isLightTheme = (t: string) => t === "light" || t === "peach-white";
@@ -1238,6 +1239,7 @@ export function CanvasView({
         setSelEdges(new Set());
         setHist([{ nodes: [], edges: [], scribbles: [] }]);
         setHistIdx(0);
+        setFileExists(true);
         if (saveDebounceTimerRef.current) {
           clearTimeout(saveDebounceTimerRef.current);
           saveDebounceTimerRef.current = null;
@@ -1249,6 +1251,14 @@ export function CanvasView({
       loadingCanvasRef.current = true;
       pendingInitialZoomFitRef.current = false;
       try {
+        const exists = await getAPI().fileExists(canvasFilePath);
+        if (cancelled) return;
+        if (!exists) {
+          setFileExists(false);
+          loadingCanvasRef.current = false;
+          return;
+        }
+        setFileExists(true);
         const raw = await getAPI().readFile(canvasFilePath);
         let parsed = parseCanvasDocument(raw || "");
         let usedRecovery = false;
@@ -3428,6 +3438,36 @@ export function CanvasView({
   }, [firstSelEdge]);
 
   /* ═══ RENDER ═══ */
+  if (!fileExists) {
+    return (
+      <div className="canvas-missing-placeholder" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        padding: '24px',
+        color: 'var(--text-muted)',
+        textAlign: 'center',
+        backgroundColor: 'var(--bg-primary, var(--background-primary, #14141f))'
+      }}>
+        <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: 'var(--text-normal, var(--text-primary, #ffffff))' }}>
+          File missing
+        </div>
+        <div style={{ fontSize: '12px', marginBottom: '16px', maxWidth: '300px' }}>
+          The canvas file <code style={{ wordBreak: 'break-all', backgroundColor: 'var(--bg-secondary, var(--background-secondary, #1e1e2e))', padding: '2px 4px', borderRadius: '4px' }}>{canvasFilePath}</code> could not be found. It may have been renamed or deleted.
+        </div>
+        <button 
+          className="setting-btn-secondary"
+          onClick={onClose}
+          style={{ padding: '6px 12px', fontSize: '12px' }}
+        >
+          Close tab
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className="cv"

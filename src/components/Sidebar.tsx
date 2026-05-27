@@ -32,10 +32,14 @@ import {
   Library,
   Settings,
   Table,
+  Plus,
+  MoreVertical,
+  Copy,
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
 import { PluginViewPanel } from "./PluginViewPanel";
+import { LocalGroup } from "../lib/localdb";
 
 interface SidebarProps {
   visible: boolean;
@@ -56,6 +60,15 @@ interface SidebarProps {
   onSettings?: () => void;
   pluginViews?: Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }>;
   onClosePluginView?: (viewType: string) => void;
+  groups?: LocalGroup[];
+  activeGroupId?: string | null;
+  onCreateGroup?: () => void;
+  onRestoreGroup?: (id: string) => void;
+  onRenameGroup?: (id: string, name: string) => void;
+  onChangeGroupColor?: (id: string, color: string) => void;
+  onDeleteGroup?: (id: string) => void;
+  onDuplicateGroup?: (id: string) => void;
+  onToggleGroupAutoSave?: (id: string) => void;
 }
 
 type SortMode = "name" | "modified" | "type";
@@ -135,6 +148,15 @@ export function Sidebar({
   onSettings,
   pluginViews,
   onClosePluginView,
+  groups = [],
+  activeGroupId = null,
+  onCreateGroup = () => {},
+  onRestoreGroup = () => {},
+  onRenameGroup = () => {},
+  onChangeGroupColor = () => {},
+  onDeleteGroup = () => {},
+  onDuplicateGroup = () => {},
+  onToggleGroupAutoSave = () => {},
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
@@ -148,6 +170,12 @@ export function Sidebar({
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
   const [showStarred, setShowStarred] = useState(true);
+  const [showGroups, setShowGroups] = useState(true);
+  const [groupContextMenu, setGroupContextMenu] = useState<{
+    x: number;
+    y: number;
+    groupId: string;
+  } | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const [showFilter, setShowFilter] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("name");
@@ -229,6 +257,12 @@ export function Sidebar({
   };
 
   const closeContextMenu = () => setContextMenu(null);
+
+  const handleGroupContextMenu = (e: React.MouseEvent, groupId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setGroupContextMenu({ x: e.clientX, y: e.clientY, groupId });
+  };
 
   const startRename = (path: string) => {
     renameInFlightRef.current = false;
@@ -539,6 +573,70 @@ export function Sidebar({
           </div>
         )}
 
+        {/* Layout Groups Section */}
+        {!filterQuery && (
+          <div className="sidebar-section groups-section">
+            <button
+              className="section-header"
+              onClick={() => setShowGroups(!showGroups)}
+            >
+              <span className="section-chevron">
+                {showGroups ? (
+                  <ChevronDown size={14} />
+                ) : (
+                  <ChevronRight size={14} />
+                )}
+              </span>
+              <LayoutGrid size={14} className="section-icon" style={{ color: "var(--accent)" }} />
+              <span>Groups</span>
+              <span className="section-count">{groups.length}</span>
+              <div 
+                style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCreateGroup();
+                }}
+                title="Save current layout as group"
+              >
+                <Plus size={14} style={{ opacity: 0.6, cursor: "pointer" }} />
+              </div>
+            </button>
+            {showGroups && (
+              <div className="groups-list">
+                {groups.map((group) => (
+                  <div key={group.id} className="group-item-container">
+                    <button
+                      className={`group-item-btn ${activeGroupId === group.id ? "active" : ""}`}
+                      onClick={() => onRestoreGroup(group.id)}
+                      onContextMenu={(e) => handleGroupContextMenu(e, group.id)}
+                    >
+                      <span 
+                        className="group-color-dot" 
+                        style={{ backgroundColor: group.color }}
+                      />
+                      <span>{group.name}</span>
+                      {group.auto_save_enabled && (
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", marginLeft: "4px" }}>
+                          (auto)
+                        </span>
+                      )}
+                    </button>
+                    <div className="group-item-actions">
+                      <button
+                        className="group-action-btn"
+                        onClick={(e) => handleGroupContextMenu(e, group.id)}
+                        title="Group Options"
+                      >
+                        <MoreVertical size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div
           className={`file-explorer ${dragOverPath === "" ? "drag-over" : ""}`}
           onDragOver={(e) => handleDragOver(e, "")}
@@ -714,6 +812,81 @@ export function Sidebar({
             >
               <Trash2 size={14} style={{ marginRight: 8 }} /> Delete
             </button>
+          </div>
+        </>
+      )}
+
+      {/* Group Context Menu */}
+      {groupContextMenu && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 199 }}
+            onClick={() => setGroupContextMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setGroupContextMenu(null);
+            }}
+          />
+          <div
+            className="context-menu"
+            style={{ left: groupContextMenu.x, top: groupContextMenu.y }}
+          >
+            {(() => {
+              const group = groups.find((g) => g.id === groupContextMenu.groupId);
+              if (!group) return null;
+              return (
+                <>
+                  <button
+                    className="context-menu-item"
+                    onClick={() => {
+                      onToggleGroupAutoSave(group.id);
+                      setGroupContextMenu(null);
+                    }}
+                  >
+                    <Check size={14} style={{ marginRight: 8, opacity: group.auto_save_enabled ? 1 : 0 }} /> 
+                    <span>Auto-update Layout</span>
+                  </button>
+                  <div className="context-menu-separator" />
+                  <button
+                    className="context-menu-item"
+                    onClick={() => {
+                      onRenameGroup(group.id, group.name);
+                      setGroupContextMenu(null);
+                    }}
+                  >
+                    <FileEdit size={14} style={{ marginRight: 8 }} /> Rename
+                  </button>
+                  <button
+                    className="context-menu-item"
+                    onClick={() => {
+                      onChangeGroupColor(group.id, group.color);
+                      setGroupContextMenu(null);
+                    }}
+                  >
+                    <Palette size={14} style={{ marginRight: 8 }} /> Change Color
+                  </button>
+                  <button
+                    className="context-menu-item"
+                    onClick={() => {
+                      onDuplicateGroup(group.id);
+                      setGroupContextMenu(null);
+                    }}
+                  >
+                    <Copy size={14} style={{ marginRight: 8 }} /> Duplicate
+                  </button>
+                  <div className="context-menu-separator" />
+                  <button
+                    className="context-menu-item danger"
+                    onClick={() => {
+                      onDeleteGroup(group.id);
+                      setGroupContextMenu(null);
+                    }}
+                  >
+                    <Trash2 size={14} style={{ marginRight: 8 }} /> Delete
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </>
       )}

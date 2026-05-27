@@ -90,6 +90,8 @@ interface EditorProps {
   localClientId?: string;
   /** Called when the CodeMirror EditorView is created or destroyed. */
   onEditorViewReady?: (view: import("@codemirror/view").EditorView | null) => void;
+  getViewState?: (path: string) => { scroll?: number; cursor?: number } | undefined;
+  onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number }) => void;
 }
 
 /**
@@ -1930,7 +1932,27 @@ export function Editor({
   remoteCursors,
   localClientId,
   onEditorViewReady,
+  getViewState,
+  onViewStateChange,
 }: EditorProps) {
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activePath = activeTab?.path;
+
+  const onViewStateChangeRef = useRef(onViewStateChange);
+  useEffect(() => {
+    onViewStateChangeRef.current = onViewStateChange;
+  }, [onViewStateChange]);
+
+  const getViewStateRef = useRef(getViewState);
+  useEffect(() => {
+    getViewStateRef.current = getViewState;
+  }, [getViewState]);
+
+  const activePathRef = useRef(activePath);
+  useEffect(() => {
+    activePathRef.current = activePath;
+  }, [activePath]);
+
   const editorRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -2407,7 +2429,14 @@ export function Editor({
       return;
     }
 
-    const handleScroll = () => updateEndSuggestionProximity();
+    const handleScroll = () => {
+      updateEndSuggestionProximity();
+      if (activePathRef.current && viewRef.current) {
+        onViewStateChangeRef.current?.(activePathRef.current, {
+          scroll: viewRef.current.scrollDOM.scrollTop,
+        });
+      }
+    };
     const editorScroller = viewRef.current?.scrollDOM as HTMLElement | null;
     const previewScroller = previewRef.current;
 
@@ -2677,8 +2706,13 @@ export function Editor({
     }
 
     // Create new editor view
+    const cachedState = activePathRef.current ? getViewStateRef.current?.(activePathRef.current) : undefined;
+    const initialCursor = cachedState?.cursor ?? 0;
+    const initialScroll = cachedState?.scroll ?? 0;
+
     const state = EditorState.create({
       doc: content,
+      selection: { anchor: Math.min(initialCursor, content.length) },
       extensions: [
         history(),
         drawSelection(),
@@ -2714,6 +2748,11 @@ export function Editor({
           }),
         ),
         EditorView.updateListener.of((update) => {
+          if (update.selectionSet && activePathRef.current) {
+            onViewStateChangeRef.current?.(activePathRef.current, {
+              cursor: update.state.selection.main.head,
+            });
+          }
           if (update.docChanged) {
             // A change is a "user edit" if it changed the doc AND is not
             // explicitly marked as remote (from collaboration) or a
@@ -2868,6 +2907,13 @@ export function Editor({
     });
 
     viewRef.current = view;
+    if (initialScroll > 0) {
+      setTimeout(() => {
+        if (view.scrollDOM) {
+          view.scrollDOM.scrollTop = initialScroll;
+        }
+      }, 0);
+    }
     toggleVimMode(view, readVimModeSetting());
     onEditorViewReady?.(view);
     setEditorMountTick((tick) => tick + 1);

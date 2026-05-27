@@ -11,6 +11,7 @@ import React, { useRef } from "react";
 import { Tab, Theme } from "../types";
 import { getAPI } from "../utils/api";
 import { DragCtx } from "../context/DragContext";
+import { LocalGroup } from "../lib/localdb";
 import {
   PanelLeft,
   Search,
@@ -20,7 +21,68 @@ import {
   PanelRightClose,
   PanelRightOpen,
   X,
+  Trash2,
+  Copy,
+  Save,
+  Link2Off,
 } from "lucide-react";
+
+export const GROUP_COLORS = [
+  { name: "Blue", value: "#1a73e8" },
+  { name: "Red", value: "#d93025" },
+  { name: "Yellow", value: "#f29900" },
+  { name: "Green", value: "#188038" },
+  { name: "Pink", value: "#d01884" },
+  { name: "Purple", value: "#a142f4" },
+  { name: "Cyan", value: "#007b83" },
+  { name: "Orange", value: "#fa7b17" },
+  { name: "Grey", value: "#5f6368" },
+];
+
+function getContrastColor(hexColor: string): string {
+  if (!hexColor) return "#ffffff";
+  const hex = hexColor.replace("#", "");
+  if (hex.length === 3) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 150 ? "#111111" : "#ffffff";
+  }
+  if (hex.length === 6) {
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 150 ? "#111111" : "#ffffff";
+  }
+  return "#ffffff";
+}
+
+function groupAndSortTabs(tabsList: Tab[], groupsList: LocalGroup[]): Tab[] {
+  const grouped: Record<string, Tab[]> = {};
+  const ungrouped: Tab[] = [];
+  const groupOrder: string[] = [];
+  
+  for (const tab of tabsList) {
+    const hasGroup = tab.groupId && groupsList.some(g => g.id === tab.groupId);
+    if (hasGroup && tab.groupId) {
+      if (!grouped[tab.groupId]) {
+        grouped[tab.groupId] = [];
+        groupOrder.push(tab.groupId);
+      }
+      grouped[tab.groupId].push(tab);
+    } else {
+      ungrouped.push(tab);
+    }
+  }
+  
+  const sorted: Tab[] = [...ungrouped];
+  for (const gId of groupOrder) {
+    sorted.push(...grouped[gId]);
+  }
+  return sorted;
+}
 
 interface TitleBarProps {
   theme: Theme;
@@ -38,12 +100,28 @@ interface TitleBarProps {
   activeTabId?: string | null;
   onTabSelect?: (id: string) => void;
   onTabClose?: (id: string) => void;
-  onNewTab?: () => void;
+  onNewTab?: (groupId?: string) => void;
   onTabReorder?: (draggedId: string, targetId: string, insertBefore: boolean) => void;
   tabScrollRef?: React.RefObject<HTMLDivElement | null>;
   children?: React.ReactNode;
   activeUsers?: { id: string, name: string, email: string, color?: string, isEditing?: boolean }[];
   onInvite?: () => void;
+  
+  // Tab-groups refactoring props
+  groups?: LocalGroup[];
+  activeGroupId?: string | null;
+  hasUnsavedChanges?: boolean;
+  onRestoreGroup?: (groupId: string) => void;
+  onSaveGroup?: (groupId: string) => void;
+  onRenameGroup?: (groupId: string, currentName: string) => void;
+  onChangeGroupColor?: (groupId: string, currentColor: string) => void;
+  onToggleGroupAutoSave?: (groupId: string) => void;
+  onDuplicateGroup?: (groupId: string) => void;
+  onDeleteGroup?: (groupId: string) => void;
+  onCreateGroupFromTab?: (tabId: string) => void;
+  onAddTabToGroup?: (tabId: string, groupId: string) => void;
+  onRemoveTabFromGroup?: (tabId: string) => void;
+  onMoveTabToGroup?: (tabId: string, groupId: string) => void;
 }
 
 export function TitleBar({
@@ -66,6 +144,21 @@ export function TitleBar({
   children,
   activeUsers = [],
   onInvite,
+  
+  groups = [],
+  activeGroupId = null,
+  hasUnsavedChanges = false,
+  onRestoreGroup,
+  onSaveGroup,
+  onRenameGroup,
+  onChangeGroupColor,
+  onToggleGroupAutoSave,
+  onDuplicateGroup,
+  onDeleteGroup,
+  onCreateGroupFromTab,
+  onAddTabToGroup,
+  onRemoveTabFromGroup,
+  onMoveTabToGroup,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
@@ -76,6 +169,84 @@ export function TitleBar({
   const [dragDirection, setDragDirection] = React.useState<'left' | 'right' | null>(null);
   const [hoveredTab, setHoveredTab] = React.useState<{ name: string; x: number; y: number } | null>(null);
   const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  const [tabContextMenu, setTabContextMenu] = React.useState<{
+    x: number;
+    y: number;
+    tab: Tab;
+  } | null>(null);
+
+  const [groupPopup, setGroupPopup] = React.useState<{
+    x: number;
+    y: number;
+    group: LocalGroup;
+  } | null>(null);
+
+  const [collapsedGroupIds, setCollapsedGroupIds] = React.useState<React.SetStateAction<Set<string>>>(() => new Set<string>());
+
+  const toggleGroupCollapse = (groupId: string) => {
+    setCollapsedGroupIds((prev: any) => {
+      const next = new Set<string>(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const sortedTabs = React.useMemo(() => {
+    return groupAndSortTabs(tabs, groups);
+  }, [tabs, groups]);
+
+  const renderItems = React.useMemo(() => {
+    const items: Array<
+      | { type: "group-header"; group: LocalGroup; key: string; tabsCount: number; isCollapsed: boolean }
+      | { type: "tab"; tab: Tab; key: string; tabGroup: LocalGroup | null }
+    > = [];
+    
+    let currentGroupId: string | null = null;
+    for (const tab of sortedTabs) {
+      if (tab.groupId) {
+        if (tab.groupId !== currentGroupId) {
+          currentGroupId = tab.groupId;
+          const group = groups.find((g) => g.id === tab.groupId);
+          if (group) {
+            const tabsCount = sortedTabs.filter((t) => t.groupId === group.id).length;
+            const isCollapsed = collapsedGroupIds.has(group.id);
+            items.push({
+              type: "group-header",
+              group,
+              key: `group-header-${group.id}`,
+              tabsCount,
+              isCollapsed,
+            });
+          }
+        }
+        
+        const isCollapsed = collapsedGroupIds.has(tab.groupId);
+        if (!isCollapsed) {
+          const tabGroup = groups.find((g) => g.id === tab.groupId) || null;
+          items.push({
+            type: "tab",
+            tab,
+            key: `tab-${tab.id}`,
+            tabGroup,
+          });
+        }
+      } else {
+        currentGroupId = null;
+        items.push({
+          type: "tab",
+          tab,
+          key: `tab-${tab.id}`,
+          tabGroup: null,
+        });
+      }
+    }
+    return items;
+  }, [sortedTabs, groups, collapsedGroupIds]);
 
   React.useEffect(() => {
     return () => {
@@ -233,46 +404,92 @@ export function TitleBar({
           className="titlebar-tab-scroll" 
           ref={tabScrollRef}
         >
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              data-tab-id={tab.id}
-              className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""} ${
-                dragOverTabId === tab.id ? `drop-target-${dragDirection}` : ""
-              }`}
-              onClick={() => handleTabClick(tab.id)}
-              onMouseEnter={(e) => handleTabMouseEnter(e, tab.name)}
-              onMouseLeave={handleTabMouseLeave}
-              draggable
-              onDragStart={(e) => handleDragStart(e, tab.id)}
-              onDragOver={(e) => handleDragOver(e, tab.id)}
-              onDragLeave={handleDragLeave}
-              onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, tab.id)}
-            >
-              <div className="tab-inner">
-                {tab.isModified && (
-                  <span className="titlebar-tab-dot">{"\u25CF"}</span>
-                )}
-                <span className="titlebar-tab-title">{tab.name}</span>
-                <button
-                  className="titlebar-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                    setHoveredTab(null);
-                    onTabClose?.(tab.id);
+          {renderItems.map((item) => {
+            if (item.type === "group-header") {
+              const { group, tabsCount, isCollapsed } = item;
+              return (
+                <div
+                  key={item.key}
+                  className={`titlebar-group-pill ${activeGroupId === group.id ? "active-group" : ""} ${
+                    isCollapsed ? "is-collapsed" : ""
+                  }`}
+                  style={{
+                    backgroundColor: group.color,
+                    color: getContrastColor(group.color),
+                  }}
+                  onClick={() => toggleGroupCollapse(group.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setGroupPopup({
+                      x: rect.left,
+                      y: rect.bottom + 4,
+                      group,
+                    });
+                  }}
+                  title={`Group: ${group.name} (${tabsCount} tabs)`}
+                >
+                  <span className="titlebar-group-name">
+                    {group.name}
+                    {group.id === activeGroupId && hasUnsavedChanges ? " *" : ""}
+                  </span>
+                </div>
+              );
+            } else {
+              const { tab, tabGroup } = item;
+              return (
+                <div
+                  key={item.key}
+                  data-tab-id={tab.id}
+                  className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""} ${
+                    dragOverTabId === tab.id ? `drop-target-${dragDirection}` : ""
+                  } ${tabGroup ? "grouped-tab" : ""}`}
+                  style={{
+                    borderTop: tabGroup ? `3px solid ${tabGroup.color}` : undefined,
+                  }}
+                  onClick={() => handleTabClick(tab.id)}
+                  onMouseEnter={(e) => handleTabMouseEnter(e, tab.name)}
+                  onMouseLeave={handleTabMouseLeave}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, tab.id)}
+                  onDragOver={(e) => handleDragOver(e, tab.id)}
+                  onDragLeave={handleDragLeave}
+                  onDragEnd={handleDragEnd}
+                  onDrop={(e) => handleDrop(e, tab.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setTabContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      tab,
+                    });
                   }}
                 >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
+                  <div className="tab-inner">
+                    {tab.isModified && (
+                      <span className="titlebar-tab-dot">{"\u25CF"}</span>
+                    )}
+                    <span className="titlebar-tab-title">{tab.name}</span>
+                    <button
+                      className="titlebar-tab-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                        setHoveredTab(null);
+                        onTabClose?.(tab.id);
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+          })}
           {onNewTab && (
             <button
               className="titlebar-new-tab titlebar-btn"
-              onClick={onNewTab}
+              onClick={() => onNewTab?.()}
               title="New tab"
             >
               <Plus size={16} strokeWidth={1.5} />
@@ -379,6 +596,252 @@ export function TitleBar({
           }}
         >
           {hoveredTab.name}
+        </div>
+      )}
+
+      {tabContextMenu && (
+        <div
+          className="context-menu-backdrop"
+          onClick={() => setTabContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setTabContextMenu(null);
+          }}
+        >
+          <div
+            className="context-menu"
+            style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {tabContextMenu.tab.groupId ? (
+              <>
+                <button
+                  className="context-menu-item"
+                  onClick={() => {
+                    onRemoveTabFromGroup?.(tabContextMenu.tab.id);
+                    setTabContextMenu(null);
+                  }}
+                >
+                  Remove from Group
+                </button>
+                {groups.filter(g => g.id !== tabContextMenu.tab.groupId).length > 0 && (
+                  <div className="context-menu-submenu-container">
+                    <div className="context-menu-item submenu-header">
+                      Move to Group &rarr;
+                    </div>
+                    <div className="context-menu-submenu">
+                      {groups.filter(g => g.id !== tabContextMenu.tab.groupId).map(g => (
+                        <button
+                          key={g.id}
+                          className="context-menu-item"
+                          onClick={() => {
+                            onMoveTabToGroup?.(tabContextMenu.tab.id, g.id);
+                            setTabContextMenu(null);
+                          }}
+                        >
+                          <span className="group-color-dot" style={{ backgroundColor: g.color }} />
+                          {g.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {groups.length > 0 && (
+                  <div className="context-menu-submenu-container">
+                    <div className="context-menu-item submenu-header">
+                      Add to Group &rarr;
+                    </div>
+                    <div className="context-menu-submenu">
+                      {groups.map(g => (
+                        <button
+                          key={g.id}
+                          className="context-menu-item"
+                          onClick={() => {
+                            onAddTabToGroup?.(tabContextMenu.tab.id, g.id);
+                            setTabContextMenu(null);
+                          }}
+                        >
+                          <span className="group-color-dot" style={{ backgroundColor: g.color }} />
+                          {g.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button
+                  className="context-menu-item"
+                  onClick={() => {
+                    onCreateGroupFromTab?.(tabContextMenu.tab.id);
+                    setTabContextMenu(null);
+                  }}
+                >
+                  Create New Group from Tab
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {groupPopup && (
+        <div
+          className="context-menu-backdrop"
+          onClick={() => setGroupPopup(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setGroupPopup(null);
+          }}
+        >
+          <div
+            className="group-editor-popup"
+            style={{ left: groupPopup.x, top: groupPopup.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Input name field */}
+            <input
+              type="text"
+              className="group-editor-input"
+              style={{ borderColor: groupPopup.group.color }}
+              defaultValue={groupPopup.group.name}
+              placeholder="Group name"
+              onChange={(e) => {
+                const val = e.target.value.trim();
+                if (val) {
+                  onRenameGroup?.(groupPopup.group.id, val);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setGroupPopup(null);
+                }
+              }}
+              autoFocus
+            />
+
+            {/* Color picker circles */}
+            <div className="group-editor-colors">
+              {GROUP_COLORS.map((c) => {
+                const isSelected = groupPopup.group.color.toLowerCase() === c.value.toLowerCase();
+                return (
+                  <button
+                    key={c.value}
+                    className={`group-editor-color-btn ${isSelected ? "selected" : ""}`}
+                    style={{
+                      backgroundColor: c.value,
+                      color: c.value,
+                    }}
+                    onClick={() => {
+                      onChangeGroupColor?.(groupPopup.group.id, c.value);
+                      setGroupPopup(prev => prev ? {
+                        ...prev,
+                        group: { ...prev.group, color: c.value }
+                      } : null);
+                    }}
+                    title={c.name}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="group-editor-divider" />
+
+            {/* Action list */}
+            <button
+              className="group-editor-item"
+              onClick={() => {
+                onNewTab?.(groupPopup.group.id);
+                setGroupPopup(null);
+              }}
+            >
+              <Plus size={15} />
+              <span>New tab in group</span>
+            </button>
+
+            <button
+              className="group-editor-item"
+              onClick={() => {
+                const tabsToUngroup = tabs.filter(t => t.groupId === groupPopup.group.id);
+                tabsToUngroup.forEach(t => {
+                  onRemoveTabFromGroup?.(t.id);
+                });
+                onDeleteGroup?.(groupPopup.group.id);
+                setGroupPopup(null);
+              }}
+            >
+              <Link2Off size={15} />
+              <span>Ungroup</span>
+            </button>
+
+            <button
+              className="group-editor-item"
+              onClick={() => {
+                const tabsToClose = sortedTabs.filter(t => t.groupId === groupPopup.group.id);
+                tabsToClose.forEach(t => {
+                  onTabClose?.(t.id);
+                });
+                setGroupPopup(null);
+              }}
+            >
+              <X size={15} />
+              <span>Close grouped tabs</span>
+            </button>
+
+            <div className="group-editor-divider" />
+
+            <button
+              className="group-editor-item"
+              onClick={() => {
+                onSaveGroup?.(groupPopup.group.id);
+                setGroupPopup(null);
+              }}
+            >
+              <Save size={15} />
+              <span>Save current layout to group</span>
+            </button>
+
+            <button
+              className="group-editor-item"
+              onClick={() => {
+                onToggleGroupAutoSave?.(groupPopup.group.id);
+                setGroupPopup(prev => prev ? {
+                  ...prev,
+                  group: { ...prev.group, auto_save_enabled: !prev.group.auto_save_enabled }
+                } : null);
+              }}
+            >
+              <span className="group-editor-check">
+                {groupPopup.group.auto_save_enabled ? "✓" : ""}
+              </span>
+              <span>Enable Auto-save</span>
+            </button>
+
+            <button
+              className="group-editor-item"
+              onClick={() => {
+                onDuplicateGroup?.(groupPopup.group.id);
+                setGroupPopup(null);
+              }}
+            >
+              <Copy size={15} />
+              <span>Duplicate group</span>
+            </button>
+
+            <div className="group-editor-divider" />
+
+            <button
+              className="group-editor-item danger"
+              onClick={() => {
+                onDeleteGroup?.(groupPopup.group.id);
+                setGroupPopup(null);
+              }}
+            >
+              <Trash2 size={15} />
+              <span>Delete group</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
