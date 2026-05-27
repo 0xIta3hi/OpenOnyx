@@ -61,11 +61,11 @@ function getLucideIconHtml(iconId: string): string | null {
   // Handle some obsidian specific mappings if needed
   if (iconId === 'lucide-rss') iconId = 'rss';
   if (iconId === 'document') iconId = 'file';
-  
+
   const pascalName = toPascalCase(iconId);
   const iconNodes = (icons as any)[pascalName];
   if (!iconNodes) return null;
-  
+
   let innerHtml = '';
   for (const node of iconNodes) {
     const [tag, attrs] = node;
@@ -78,9 +78,9 @@ function getLucideIconHtml(iconId: string): string | null {
 export function setIcon(parent: HTMLElement, iconId: string): void {
   const custom = customIcons.get(iconId);
   if (custom) { parent.innerHTML = custom; return; }
-  
+
   parent.setAttribute('data-icon', iconId);
-  
+
   let innerHtml = getLucideIconHtml(iconId);
   if (!innerHtml) {
     console.log("[setIcon] Missing icon requested by plugin:", iconId);
@@ -110,7 +110,7 @@ export const Platform = {
 
 export async function requestUrl(request: any): Promise<any> {
   const params = typeof request === 'string' ? { url: request } : request;
-  
+
   if ((window as any).electronAPI?.networkRequest) {
     try {
       const result = await (window as any).electronAPI.networkRequest(params);
@@ -149,7 +149,7 @@ export function debounce<T extends (...args: any[]) => any>(
   fn: T, wait: number, immediate?: boolean
 ): T & { cancel: () => void } {
   let timeout: number | null = null;
-  const debounced = function(this: any, ...args: any[]) {
+  const debounced = function (this: any, ...args: any[]) {
     const later = () => { timeout = null; if (!immediate) fn.apply(this, args); };
     const callNow = immediate && !timeout;
     if (timeout) window.clearTimeout(timeout);

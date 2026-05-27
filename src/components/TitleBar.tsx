@@ -74,8 +74,43 @@ export function TitleBar({
 
   const [dragOverTabId, setDragOverTabId] = React.useState<string | null>(null);
   const [dragDirection, setDragDirection] = React.useState<'left' | 'right' | null>(null);
+  const [hoveredTab, setHoveredTab] = React.useState<{ name: string; x: number; y: number } | null>(null);
+  const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
+
+  const handleTabMouseEnter = (e: React.MouseEvent, name: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const parentRect = titlebarRef.current?.getBoundingClientRect();
+    if (!parentRect) return;
+
+    const x = rect.left + rect.width / 2 - parentRect.left;
+    const y = rect.bottom - parentRect.top + 6;
+
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredTab({ name, x, y });
+    }, 400);
+  };
+
+  const handleTabMouseLeave = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredTab(null);
+  };
+
+  const handleTabClick = (tabId: string) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredTab(null);
+    onTabSelect?.(tabId);
+  };
 
   const handleDragStart = (e: React.DragEvent, tabId: string) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredTab(null);
     e.dataTransfer.setData("text/plain", tabId);
     e.dataTransfer.effectAllowed = "move";
     const tabObj = tabs.find(t => t.id === tabId);
@@ -202,11 +237,12 @@ export function TitleBar({
             <div
               key={tab.id}
               data-tab-id={tab.id}
-              data-tooltip={tab.name}
               className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""} ${
                 dragOverTabId === tab.id ? `drop-target-${dragDirection}` : ""
               }`}
-              onClick={() => onTabSelect?.(tab.id)}
+              onClick={() => handleTabClick(tab.id)}
+              onMouseEnter={(e) => handleTabMouseEnter(e, tab.name)}
+              onMouseLeave={handleTabMouseLeave}
               draggable
               onDragStart={(e) => handleDragStart(e, tab.id)}
               onDragOver={(e) => handleDragOver(e, tab.id)}
@@ -223,6 +259,8 @@ export function TitleBar({
                   className="titlebar-tab-close"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                    setHoveredTab(null);
                     onTabClose?.(tab.id);
                   }}
                 >
@@ -331,6 +369,18 @@ export function TitleBar({
         </div>
       )}
       </div>
+
+      {hoveredTab && (
+        <div
+          className="titlebar-tooltip"
+          style={{
+            left: `${hoveredTab.x}px`,
+            top: `${hoveredTab.y}px`,
+          }}
+        >
+          {hoveredTab.name}
+        </div>
+      )}
     </div>
   );
 }

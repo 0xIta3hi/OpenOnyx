@@ -1407,8 +1407,19 @@ body.is-dragging .plugin-view-panel {
   scroll-margin-inline-start: 6px;
   -webkit-app-region: no-drag;
   flex-shrink: 1;
-  min-width: 40px;
+  min-width: 100px;
   max-width: 200px;
+}
+
+/* Division line between non-active tabs */
+.titlebar-tab:not(.active):has(+ .titlebar-tab:not(.active))::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 1px;
+  background-color: var(--border-strong, rgba(255, 255, 255, 0.15));
 }
 
 .titlebar-tab .tab-inner {
@@ -1681,6 +1692,45 @@ body.is-dragging .plugin-view-panel {
 .tooltips-ready [data-tooltip]::before,
 .tooltips-ready [data-tooltip]::after {
   transition: opacity 0.1s 0s, visibility 0s 0s;
+}
+
+/* Titlebar dynamic tooltip */
+.titlebar-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: #000;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  animation: fadeInTooltip 0.15s forwards;
+}
+
+.titlebar-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 4px 4px 4px;
+  border-style: solid;
+  border-color: transparent transparent #000 transparent;
+  pointer-events: none;
+}
+
+@keyframes fadeInTooltip {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 
@@ -2164,6 +2214,20 @@ body.is-dragging .plugin-view-panel {
   border-radius: var(--tab-radius-active);
   scroll-margin-inline-start: 6px;
   -webkit-app-region: no-drag;
+  min-width: 100px;
+  max-width: 200px;
+  flex-shrink: 1;
+}
+
+/* Division line between non-active editor tabs */
+.editor-tab:not(.active):has(+ .editor-tab:not(.active))::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 1px;
+  background-color: var(--border-strong, rgba(255, 255, 255, 0.15));
 }
 
 .editor-tab .tab-inner {
@@ -12237,22 +12301,7 @@ body.is-dragging .plugin-view-panel {
   cursor: grabbing;
 }
 
-/* Custom tooltip positioning for tabs (bottom) */
-.titlebar-tab[data-tooltip]::before {
-  top: calc(100% + 5px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-}
-
-.titlebar-tab[data-tooltip]::after {
-  top: calc(100% + 1px);
-  left: 50%;
-  transform: translateX(-50%);
-  border-width: 0 4px 4px 4px;
-  border-color: transparent transparent #000 transparent;
-  z-index: 1000;
-}
+/* Custom tooltip positioning for tabs (bottom) handled dynamically via React */
 
 /* ── New Tab View ──────────────────────────────────── */
 .new-tab-view {
