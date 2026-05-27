@@ -122,6 +122,8 @@ interface TitleBarProps {
   onAddTabToGroup?: (tabId: string, groupId: string) => void;
   onRemoveTabFromGroup?: (tabId: string) => void;
   onMoveTabToGroup?: (tabId: string, groupId: string) => void;
+  collapsedGroupIds?: Set<string>;
+  onToggleGroupCollapse?: (groupId: string) => void;
 }
 
 export function TitleBar({
@@ -159,6 +161,8 @@ export function TitleBar({
   onAddTabToGroup,
   onRemoveTabFromGroup,
   onMoveTabToGroup,
+  collapsedGroupIds = new Set<string>(),
+  onToggleGroupCollapse,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
@@ -181,20 +185,6 @@ export function TitleBar({
     y: number;
     group: LocalGroup;
   } | null>(null);
-
-  const [collapsedGroupIds, setCollapsedGroupIds] = React.useState<Set<string>>(() => new Set<string>());
-
-  const toggleGroupCollapse = (groupId: string) => {
-    setCollapsedGroupIds((prev) => {
-      const next = new Set<string>(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  };
 
   const sortedTabs = React.useMemo(() => {
     return groupAndSortTabs(tabs, groups);
@@ -416,7 +406,7 @@ export function TitleBar({
                   }}
                   onClick={() => {
                     if (group.id === activeGroupId) {
-                      toggleGroupCollapse(group.id);
+                      onToggleGroupCollapse?.(group.id);
                     } else {
                       onRestoreGroup?.(group.id);
                     }

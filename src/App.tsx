@@ -1231,6 +1231,19 @@ export default function App() {
   const [groups, setGroups] = useState<LocalGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set<string>());
+
+  const handleToggleGroupCollapse = useCallback((groupId: string) => {
+    setCollapsedGroupIds((prev) => {
+      const next = new Set<string>(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
   const [groupModalData, setGroupModalData] = useState<{
     type: "create" | "rename" | "color";
     groupId?: string;
@@ -2767,8 +2780,8 @@ export default function App() {
     }
   };
 
-  const handleRestoreGroup = useCallback(async (groupId: string) => {
-    const group = groups.find((g) => g.id === groupId);
+  const handleRestoreGroup = useCallback(async (groupId: string, groupOverride?: LocalGroup) => {
+    const group = groupOverride || groups.find((g) => g.id === groupId);
     if (!group) return;
 
     const { layout_state } = group;
@@ -2875,6 +2888,13 @@ export default function App() {
     } else if (layout_state.focusedLeafId) {
       setFocusedLeafId(layout_state.focusedLeafId);
     }
+
+    // Expand/uncollapse the group automatically on restore
+    setCollapsedGroupIds((prev) => {
+      const next = new Set<string>(prev);
+      next.delete(groupId);
+      return next;
+    });
 
     setActiveGroupId(groupId);
     setHasUnsavedChanges(false);
@@ -3028,6 +3048,15 @@ export default function App() {
   };
 
   const handleAddTabToGroup = useCallback(async (tabId: string, groupId: string | null) => {
+    if (groupId) {
+      setCollapsedGroupIds((prev) => {
+        if (!prev.has(groupId)) return prev;
+        const next = new Set<string>(prev);
+        next.delete(groupId);
+        return next;
+      });
+    }
+
     if (groupId && groupId !== activeGroupId) {
       // Shifting a tab into an inactive/collapsed group splits tree
       const group = groups.find((g) => g.id === groupId);
@@ -3109,8 +3138,15 @@ export default function App() {
             }
           }
 
+          // Expand/uncollapse the group automatically
+          setCollapsedGroupIds((prev) => {
+            const next = new Set<string>(prev);
+            next.delete(groupId);
+            return next;
+          });
+
           // Instantly restore and switch to the target group splits!
-          await handleRestoreGroup(groupId);
+          await handleRestoreGroup(groupId, updatedGroup);
           return;
         } catch (err) {
           console.error("Failed to add tab to group splits:", err);
@@ -5834,6 +5870,8 @@ export default function App() {
           onAddTabToGroup={handleAddTabToGroup}
           onRemoveTabFromGroup={(tabId) => handleAddTabToGroup(tabId, null)}
           onMoveTabToGroup={handleAddTabToGroup}
+          collapsedGroupIds={collapsedGroupIds}
+          onToggleGroupCollapse={handleToggleGroupCollapse}
         />
 
       <div
