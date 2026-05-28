@@ -11,6 +11,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { X, Lightbulb, BookOpen, Pen } from "lucide-react";
 import { Compartment, EditorState, Transaction, StateField } from "@codemirror/state";
 import {
@@ -3277,7 +3278,7 @@ export function Editor({
 
   return (
     <>
-      {selectionRange && !isInlineQuerying && !explanation && (
+      {selectionRange && !isInlineQuerying && !explanation && createPortal(
         <div
           className="inline-ai-toolbar"
           style={{
@@ -3351,10 +3352,11 @@ export function Editor({
               </button>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
 
-      {isInlineQuerying && selectionRange && !explanation && (
+      {isInlineQuerying && selectionRange && !explanation && createPortal(
         <div
           className="inline-ai-toolbar loading"
           style={{
@@ -3365,10 +3367,11 @@ export function Editor({
         >
           <div className="flat-spinner" style={{ marginRight: 8, display: "inline-block" }} />
           <span>Processing selection...</span>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {explanation && explanationCoords && (
+      {explanation && explanationCoords && createPortal(
         <div
           className="inline-ai-explanation-popover"
           style={{
@@ -3387,7 +3390,8 @@ export function Editor({
           <div className="explanation-popover-body">
             {explanation}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Inline annotation content */}
