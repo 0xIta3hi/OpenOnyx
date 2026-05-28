@@ -1487,7 +1487,13 @@ export default function App() {
 
     // Find tabs that were added
     const prevIds = new Set(prevTabs.map((t) => t.id));
-    const addedTabs = tabs.filter((t) => !prevIds.has(t.id));
+    let addedTabs = tabs.filter((t) => !prevIds.has(t.id));
+
+    if (activeGroupId) {
+      addedTabs = addedTabs.filter((t) => t.groupId === activeGroupId);
+    } else {
+      addedTabs = addedTabs.filter((t) => !t.groupId || !groups.some(g => g.id === t.groupId));
+    }
 
     // Find tabs that were removed
     const currentIds = new Set(tabs.map((t) => t.id));
@@ -1519,7 +1525,7 @@ export default function App() {
 
       return tree;
     });
-  }, [tabs, focusedLeafId]);
+  }, [tabs, focusedLeafId, activeGroupId, groups]);
 
   // Sync activeTabId -> focused leaf's activeTabId
   useEffect(() => {
@@ -2806,36 +2812,13 @@ export default function App() {
     // Clone restored paneTree
     let tree = JSON.parse(JSON.stringify(layout_state.paneTree)) as PaneNode;
 
-    // Helper to insert a tab as a background tab (retaining the existing active tab)
-    const insertTabAsBackground = (node: PaneNode, leafId: string, tabToInsert: Tab): PaneNode => {
-      if (node.type === "leaf") {
-        if (node.id !== leafId) return node;
-        if (node.tabs.some((t) => t.id === tabToInsert.id)) return node;
-        return {
-          ...node,
-          tabs: [...node.tabs, tabToInsert],
-        };
-      }
-      return {
-        ...node,
-        children: [
-          insertTabAsBackground(node.children[0], leafId, tabToInsert),
-          insertTabAsBackground(node.children[1], leafId, tabToInsert),
-        ] as [PaneNode, PaneNode],
-      };
-    };
-
-    // Find the leaf to insert any preserved ungrouped tabs into
-    const restoredFocusedLeafId = layout_state.focusedLeafId;
-    let targetLeaf = restoredFocusedLeafId ? findLeafById(tree, restoredFocusedLeafId) : null;
-    if (!targetLeaf) {
-      targetLeaf = findFirstLeaf(tree);
-    }
-
-    if (targetLeaf) {
-      for (const tab of ungroupedTabsToPreserve) {
-        if (!findLeafWithTab(tree, tab.id)) {
-          tree = insertTabAsBackground(tree, targetLeaf.id, tab);
+    // Prune any legacy ungrouped tabs that might have been saved inside this group's splits tree
+    const allTabsInTree = collectAllTabs(tree);
+    for (const t of allTabsInTree) {
+      if (t.groupId !== groupId) {
+        const pruned = removeTabFromTree(tree, t.id);
+        if (pruned) {
+          tree = pruned;
         }
       }
     }
@@ -2843,7 +2826,9 @@ export default function App() {
     skipTabSyncRef.current = true;
     setPaneTree(tree);
     const allRestoredTabs = collectAllTabs(tree);
-    setTabs(allRestoredTabs);
+    const restoredIds = new Set(allRestoredTabs.map(t => t.id));
+    const filteredUngroupedTabs = ungroupedTabsToPreserve.filter(t => !restoredIds.has(t.id));
+    setTabs([...allRestoredTabs, ...filteredUngroupedTabs]);
 
     // Focus on the first tab of the restored group
     let targetTabId = layout_state.activeTabId;
