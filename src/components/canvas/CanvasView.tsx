@@ -64,7 +64,7 @@ import {
   CANVAS_PRESET_COLORS,
   resolveCanvasColor,
 } from "../../types/canvas";
-import { generateId } from "../../utils/helpers";
+import { generateId, isDarkTheme } from "../../utils/helpers";
 import { getAPI } from "../../utils/api";
 import { MarkdownPreview } from "../editor/MarkdownPreview";
 import {
@@ -778,40 +778,36 @@ export function CanvasView({
   const [fileExists, setFileExists] = useState<boolean>(true);
 
   /* ── Theme-aware scribble color migration ── */
-  const isLightTheme = (t: string) => t === "light" || t === "peach-white";
-  const isDarkTheme = (t: string) => t === "dark" || t === "oceanic" || t === "dark-plus";
-
   useEffect(() => {
-    if (scribbles.length === 0) return;
-
-    const isLight = isLightTheme(theme);
     const isDark = isDarkTheme(theme);
-    if (!isLight && !isDark) return; // Skip for 'custom' unless we want a fallback
+    const isLight = !isDark;
 
-    let changed = false;
-    const migrated = scribbles.map((stroke) => {
-      if (!stroke.color) return stroke;
+    if (scribbles.length > 0) {
+      let changed = false;
+      const migrated = scribbles.map((stroke) => {
+        if (!stroke.color) return stroke;
 
-      const c = stroke.color.toLowerCase();
-      // If we are in light theme, and the scribble is white-ish, make it dark-ish
-      if (isLight) {
-        if (c === "#ffffff" || c === "#f9fafb" || c === "#fcfbf9" || c === "white") {
-          changed = true;
-          return { ...stroke, color: "#111827" }; // Dark navy/black
+        const c = stroke.color.toLowerCase();
+        // If we are in light theme, and the scribble is white-ish, make it dark-ish
+        if (isLight) {
+          if (c === "#ffffff" || c === "#f9fafb" || c === "#fcfbf9" || c === "white") {
+            changed = true;
+            return { ...stroke, color: "#111827" }; // Dark navy/black
+          }
+        } else if (isDark) {
+          // If we are in dark theme, and the scribble is dark-ish, make it white-ish
+          if (c === "#000000" || c === "#111827" || c === "#1a1a1a" || c === "black") {
+            changed = true;
+            return { ...stroke, color: "#f9fafb" }; // Off-white
+          }
         }
-      } else if (isDark) {
-        // If we are in dark theme, and the scribble is dark-ish, make it white-ish
-        if (c === "#000000" || c === "#111827" || c === "#1a1a1a" || c === "black") {
-          changed = true;
-          return { ...stroke, color: "#f9fafb" }; // Off-white
-        }
+        return stroke;
+      });
+
+      if (changed) {
+        setScribbles(migrated);
+        scribblesRef.current = migrated;
       }
-      return stroke;
-    });
-
-    if (changed) {
-      setScribbles(migrated);
-      scribblesRef.current = migrated;
     }
 
     // Also migrate the active tool color if it's an extreme one
@@ -3494,7 +3490,7 @@ export function CanvasView({
             zoom={renderVp.zoom}
             offX={renderVp.x}
             offY={renderVp.y}
-            color={canvasDotColor || (isLightTheme(theme) ? "rgba(0, 0, 0, 0.5)" : "rgba(255, 255, 255, 0.25)")}
+            color={canvasDotColor || (!isDarkTheme(theme) ? "rgba(0, 0, 0, 0.5)" : "rgba(255, 255, 255, 0.25)")}
             opacityMultiplier={canvasDotOpacityMultiplier}
           />
         )}

@@ -5903,7 +5903,6 @@ export default function App() {
           onTabReorder={handleTabReorder}
           tabScrollRef={tabScrollRef}
           activeUsers={activeUsers}
-          onInvite={() => setShowSettings(true)}
           
           groups={groups}
           activeGroupId={activeGroupId}
