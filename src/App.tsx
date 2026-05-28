@@ -982,7 +982,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     // Load settings from localStorage on initial render
     try {
-      const saved = localStorage.getItem("notework-settings");
+      const saved = localStorage.getItem("openobsidian-settings");
       if (saved) {
         return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
       }
@@ -1866,7 +1866,7 @@ export default function App() {
     }
 
     // Save settings to localStorage
-    localStorage.setItem("notework-settings", JSON.stringify(settings));
+    localStorage.setItem("openobsidian-settings", JSON.stringify(settings));
   }, [settings, theme]);
 
   useEffect(() => {
@@ -4091,7 +4091,7 @@ export default function App() {
     await api.writeFile(tab.path, currentContent);
     if (tab.path.toLowerCase().endsWith(".md")) {
       window.dispatchEvent(
-        new CustomEvent("notework:note-content-changed", {
+        new CustomEvent("openobsidian:note-content-changed", {
           detail: { path: tab.path, content: currentContent },
         }),
       );
@@ -4118,7 +4118,7 @@ export default function App() {
         path.toLowerCase().endsWith(".md")
       ) {
         window.dispatchEvent(
-          new CustomEvent("notework:note-content-changed", {
+          new CustomEvent("openobsidian:note-content-changed", {
             detail: { path, content },
           }),
         );
@@ -4154,7 +4154,7 @@ export default function App() {
         activeTab.path.toLowerCase().endsWith(".md")
       ) {
         window.dispatchEvent(
-          new CustomEvent("notework:note-content-changed", {
+          new CustomEvent("openobsidian:note-content-changed", {
             detail: { path: activeTab.path, content },
           }),
         );
@@ -4176,7 +4176,7 @@ export default function App() {
           await api.writeFile(tab.path, content);
           if (tab.path.toLowerCase().endsWith(".md")) {
             window.dispatchEvent(
-              new CustomEvent("notework:note-content-changed", {
+              new CustomEvent("openobsidian:note-content-changed", {
                 detail: { path: tab.path, content },
               }),
             );

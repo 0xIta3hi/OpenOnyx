@@ -210,7 +210,7 @@ async function ensureLoaded(): Promise<void> {
  */
 function tryMigrateFromLocalStorage(): void {
   try {
-    const raw = localStorage.getItem("notework-embeddings-v2");
+    const raw = localStorage.getItem("openobsidian-embeddings-v2");
     if (!raw) return;
     const data: { entries: StoredEmbedding[] } = JSON.parse(raw);
     for (const e of data.entries) {
@@ -219,7 +219,7 @@ function tryMigrateFromLocalStorage(): void {
     // Persist to disk
     persistAllToDisk();
     // Remove from localStorage after migration
-    localStorage.removeItem("notework-embeddings-v2");
+    localStorage.removeItem("openobsidian-embeddings-v2");
     console.log(`[Embeddings] Migrated ${data.entries.length} entries from localStorage to disk`);
   } catch { /* silent */ }
 }
@@ -476,8 +476,8 @@ export interface TransitionMap {
 }
 
 // Suggestion history is small — keep in localStorage for now
-const SUGGESTION_HISTORY_KEY = "notework-suggestion-history-v1";
-const TRANSITION_MAP_KEY = "notework-suggestion-transitions-v1";
+const SUGGESTION_HISTORY_KEY = "openobsidian-suggestion-history-v1";
+const TRANSITION_MAP_KEY = "openobsidian-suggestion-transitions-v1";
 
 function normalizeTransitionConcept(value: string): string {
   return value

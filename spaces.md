@@ -43,7 +43,7 @@ When a user asks a question inside a Space, the AI uses a local-first retrieval 
 
 To ensure seamless coordination between offline and online states, both the local database (IndexedDB) and the remote database (Supabase) share structurally symmetric schemas.
 
-### A. Local IndexedDB Schema (`notework-local`)
+### A. Local IndexedDB Schema (`openobsidian-local`)
 Defined in [localdb.ts](file:///home/varshith/VOLT/notework/src/lib/localdb.ts), the database consists of several primary object stores:
 * **`spaces`**: Keyed by `id` (UUID). Contains `title`, `description`, `helps_with` (tags), `note_count`, `visibility` ('local' | 'private' | 'public'), `owner_id`, `created_at`, and `updated_at`.
 * **`notes`**: Keyed by `id` (UUID). Tracks note-level metadata, including the parent `space_id`, `title`, `pinned`, `is_canvas`, and `deleted` (for soft-deletions).

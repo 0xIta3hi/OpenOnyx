@@ -1,7 +1,7 @@
 /**
  * AI Settings - Configuration for AI providers and models
  * 
- * Adapted from nodepad's ai-settings to work within the notework
+ * Adapted from nodepad's ai-settings to work within the OpenObsidian
  * Electron + Vite architecture. Uses localStorage for persistence.
  */
 
@@ -156,7 +156,7 @@ export interface AISettings {
   customModelId?: string;
 }
 
-const STORAGE_KEY = "notework-ai-settings";
+const STORAGE_KEY = "openobsidian-ai-settings";
 
 export function loadSettings(): AISettings {
   try {
@@ -205,7 +205,7 @@ export function getProviderHeaders(config: AIConfig): Record<string, string> {
   };
   if (config.provider === "openrouter") {
     base["HTTP-Referer"] = "http://localhost:5173";
-    base["X-Title"] = "NoteworkLocal";
+    base["X-Title"] = "OpenObsidianLocal";
   }
   return base;
 }

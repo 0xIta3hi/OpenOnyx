@@ -173,7 +173,7 @@ export async function exportSpace(options: {
   // Load annotations from cache
   const annotations: SpaceAnnotation[] = [];
   try {
-    const cacheRaw = localStorage.getItem("notework-ai-cache-v2");
+    const cacheRaw = localStorage.getItem("openobsidian-ai-cache-v2");
     if (cacheRaw) {
       const cache = JSON.parse(cacheRaw);
       for (const [noteId, data] of Object.entries(cache.annotations || {})) {
@@ -190,7 +190,7 @@ export async function exportSpace(options: {
   // Load synthesis results from cache
   const syntheses: SpaceSynthesis[] = [];
   try {
-    const synthRaw = localStorage.getItem("notework-synthesis-cache-v1");
+    const synthRaw = localStorage.getItem("openobsidian-synthesis-cache-v1");
     if (synthRaw) {
       const synthCache = JSON.parse(synthRaw);
       let idx = 0;
@@ -355,7 +355,7 @@ export async function importSpace(file: File): Promise<ImportResult> {
     // Restore annotations
     if (manifest.annotations.length > 0) {
       try {
-        const cacheRaw = localStorage.getItem("notework-ai-cache-v2");
+        const cacheRaw = localStorage.getItem("openobsidian-ai-cache-v2");
         const cache = cacheRaw ? JSON.parse(cacheRaw) : { annotations: {}, syntheses: {} };
         for (const ann of manifest.annotations) {
           cache.annotations[ann.noteId] = {
@@ -364,14 +364,14 @@ export async function importSpace(file: File): Promise<ImportResult> {
             createdAt: new Date(ann.createdAt).getTime(),
           };
         }
-        localStorage.setItem("notework-ai-cache-v2", JSON.stringify(cache));
+        localStorage.setItem("openobsidian-ai-cache-v2", JSON.stringify(cache));
       } catch { /* silent */ }
     }
 
     // Restore synthesis insights
     if (manifest.syntheses.length > 0) {
       try {
-        const synthRaw = localStorage.getItem("notework-synthesis-cache-v1");
+        const synthRaw = localStorage.getItem("openobsidian-synthesis-cache-v1");
         const synthCache = synthRaw ? JSON.parse(synthRaw) : {};
         for (const synth of manifest.syntheses) {
           const key = synth.noteIds.sort().join("|");
@@ -381,7 +381,7 @@ export async function importSpace(file: File): Promise<ImportResult> {
             createdAt: new Date(synth.createdAt).getTime(),
           };
         }
-        localStorage.setItem("notework-synthesis-cache-v1", JSON.stringify(synthCache));
+        localStorage.setItem("openobsidian-synthesis-cache-v1", JSON.stringify(synthCache));
       } catch { /* silent */ }
     }
 

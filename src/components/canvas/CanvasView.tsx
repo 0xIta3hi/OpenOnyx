@@ -95,9 +95,9 @@ const MIN_MD_PREVIEW_SCREEN_WIDTH = 240;
 const MIN_MD_PREVIEW_SCREEN_HEIGHT = 140;
 const MD_PREVIEW_RESUME_DELAY_MS = 160;
 const MD_PREVIEW_REFRESH_INTERVAL_MS = 1200;
-const CANVAS_SCRIBBLES_KEY = "noteworkScribblesV1";
-const CANVAS_CUSTOMIZATION_KEY = "noteworkCanvasCustomizationV1";
-const CANVAS_VIEWPORT_KEY = "noteworkCanvasViewportV1";
+const CANVAS_SCRIBBLES_KEY = "openobsidianScribblesV1";
+const CANVAS_CUSTOMIZATION_KEY = "openobsidianCanvasCustomizationV1";
+const CANVAS_VIEWPORT_KEY = "openobsidianCanvasViewportV1";
 const DEFAULT_SCRIBBLE_WIDTH = 2.4;
 const MIN_SCRIBBLE_WIDTH = 0.8;
 const MAX_SCRIBBLE_WIDTH = 48;
@@ -4915,7 +4915,7 @@ function EmbeddedFileNode({
     };
 
     window.addEventListener(
-      "notework:note-content-changed",
+      "openobsidian:note-content-changed",
       onLiveNoteChange as EventListener,
     );
 
@@ -4928,7 +4928,7 @@ function EmbeddedFileNode({
         clearInterval(refreshTimer);
       }
       window.removeEventListener(
-        "notework:note-content-changed",
+        "openobsidian:note-content-changed",
         onLiveNoteChange as EventListener,
       );
     };

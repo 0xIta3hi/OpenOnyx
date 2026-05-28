@@ -40,12 +40,12 @@ async function loadSynthesisCache(): Promise<Record<string, SynthesisCacheEntry>
 
   // Migrate from localStorage
   try {
-    const raw = localStorage.getItem("notework-synthesis-cache-v1");
+    const raw = localStorage.getItem("openobsidian-synthesis-cache-v1");
     if (raw) {
       _synthCache = JSON.parse(raw);
       _synthCacheLoaded = true;
       await writeData("synthesis.json", _synthCache);
-      localStorage.removeItem("notework-synthesis-cache-v1");
+      localStorage.removeItem("openobsidian-synthesis-cache-v1");
       return _synthCache!;
     }
   } catch { /* silent */ }

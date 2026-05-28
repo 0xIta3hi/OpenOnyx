@@ -52,13 +52,13 @@ async function loadCache(): Promise<AICache> {
 
   // Migrate from localStorage if exists
   try {
-    const raw = localStorage.getItem("notework-ai-cache-v2");
+    const raw = localStorage.getItem("openobsidian-ai-cache-v2");
     if (raw) {
       _cache = JSON.parse(raw);
       _cacheLoaded = true;
       // Persist to disk and remove from localStorage
       await writeData("annotations.json", _cache);
-      localStorage.removeItem("notework-ai-cache-v2");
+      localStorage.removeItem("openobsidian-ai-cache-v2");
       console.log("[AI Core] Migrated cache from localStorage to disk");
       return _cache!;
     }

@@ -8,7 +8,7 @@ export type AuthState = {
 };
 
 /**
- * Auth module — wraps Supabase Auth for the Notework app.
+ * Auth module — wraps Supabase Auth for the OpenObsidian app.
  *
  * Rules:
  * - Users can use the app WITHOUT login (local-only mode)

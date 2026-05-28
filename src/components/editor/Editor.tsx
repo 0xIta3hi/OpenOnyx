@@ -2023,7 +2023,7 @@ export function Editor({
 
   const readVimModeSetting = useCallback((): boolean => {
     try {
-      const saved = localStorage.getItem("notework-settings");
+      const saved = localStorage.getItem("openobsidian-settings");
       if (!saved) return false;
       const parsed = JSON.parse(saved) as { vimMode?: boolean };
       return !!parsed.vimMode;

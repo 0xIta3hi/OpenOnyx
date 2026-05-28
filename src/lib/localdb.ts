@@ -91,7 +91,7 @@ export interface LocalGroup {
   layout_state: any;
 }
 
-interface NoteworkDB extends DBSchema {
+interface OpenObsidianDB extends DBSchema {
   vaults: {
     key: string;
     value: LocalVault;
@@ -141,11 +141,11 @@ interface NoteworkDB extends DBSchema {
   };
 }
 
-let dbPromise: Promise<IDBPDatabase<NoteworkDB>>;
+let dbPromise: Promise<IDBPDatabase<OpenObsidianDB>>;
 
 export function getLocalDB() {
   if (!dbPromise) {
-    dbPromise = openDB<NoteworkDB>('notework-local', 5, {
+    dbPromise = openDB<OpenObsidianDB>('openobsidian-local', 5, {
       upgrade(db, oldVersion, newVersion, transaction) {
         if (oldVersion < 1) {
           const spaceStore = db.createObjectStore('spaces', { keyPath: 'id' });
