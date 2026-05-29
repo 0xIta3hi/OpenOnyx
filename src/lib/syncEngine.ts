@@ -244,19 +244,51 @@ export class SyncEngine {
       });
 
       try {
-        if (op === 'insert' || op === 'update') {
-          const { error } = await client.from(table as any).upsert(payloads);
-          if (error) throw error;
-        } else if (op === 'delete') {
-          // Soft-delete: upsert with deleted=true
-          const { error } = await client.from(table as any).upsert(payloads);
-          if (error) throw error;
+        const pushedItemIds = new Set<string>();
+
+        if (op === 'insert' || op === 'update' || op === 'delete') {
+          const finalPayloads = [];
+          for (let i = 0; i < payloads.length; i++) {
+            const payload = payloads[i];
+            const originalItem = items[i];
+
+            if (table === 'notes') {
+              try {
+                const { data: remote } = await client
+                  .from('notes')
+                  .select('updated_at')
+                  .eq('id', payload.id)
+                  .maybeSingle();
+
+                if (remote) {
+                  const remoteTime = new Date(remote.updated_at).getTime();
+                  const localTime = new Date(payload.updated_at).getTime();
+                  if (remoteTime > localTime) {
+                    console.warn(`[SyncEngine] Conflict detected for note ${payload.id}: remote is newer (${remote.updated_at} > ${payload.updated_at}). Skipping push to let pull take precedence.`);
+                    // Remove from sync queue so we can pull the newer version
+                    await localDB.removeSyncItem(originalItem.id);
+                    count++;
+                    continue;
+                  }
+                }
+              } catch (e) {
+                console.warn('[SyncEngine] Client-side LWW check failed:', e);
+              }
+            }
+            finalPayloads.push(payload);
+            pushedItemIds.add(originalItem.id);
+          }
+
+          if (finalPayloads.length > 0) {
+            const { error } = await client.from(table as any).upsert(finalPayloads);
+            if (error) throw error;
+            count += finalPayloads.length;
+          }
         }
-        count += payloads.length;
 
         // Remove successfully pushed items from queue
-        for (const item of items) {
-          await localDB.removeSyncItem(item.id);
+        for (const itemId of pushedItemIds) {
+          await localDB.removeSyncItem(itemId);
         }
       } catch (err) {
         console.error(`[SyncEngine] Push failed for ${table}:`, err);
@@ -264,7 +296,11 @@ export class SyncEngine {
         // survive indefinitely until connectivity is restored. The retry
         // count is used for exponential backoff, not as a hard limit.
         for (const item of items) {
-          await localDB.putSyncItem({ ...item, retry_count: item.retry_count + 1 });
+          // Only increment retry if it was not skipped by the LWW check
+          const inQueue = (await localDB.getSyncQueue()).some(q => q.id === item.id);
+          if (inQueue) {
+            await localDB.putSyncItem({ ...item, retry_count: item.retry_count + 1 });
+          }
         }
       }
     }

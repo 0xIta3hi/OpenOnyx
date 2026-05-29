@@ -4725,6 +4725,26 @@ export default function App() {
         try {
           clearAutoSaveTimer();
 
+          // Propagate delete to collaboration database & sync queue
+          const spaceId = collaborationEngine.activeSpaceId;
+          if (spaceId) {
+            if (isDir) {
+              const notes = await localDB.getNotes(spaceId);
+              const dirPrefix = filePath.endsWith('/') ? filePath : `${filePath}/`;
+              for (const note of notes) {
+                if (note.path === filePath || note.path.startsWith(dirPrefix)) {
+                  await localDB.deleteNote(note.id, true);
+                }
+              }
+            } else {
+              const note = await localDB.getNoteByPath(spaceId, filePath);
+              if (note) {
+                await localDB.deleteNote(note.id, true);
+              }
+            }
+            syncEngine.triggerPush();
+          }
+
           if (isDir) {
             await api.deleteDirectory(filePath);
             const store = loadStore();
@@ -4791,6 +4811,39 @@ export default function App() {
         : `${raw}${inferredExt}`;
     const newPath = dir + normalized;
 
+    // Propagate rename to collaboration database & sync queue
+    const spaceId = collaborationEngine.activeSpaceId;
+    if (spaceId) {
+      if (isDirectory) {
+        const notes = await localDB.getNotes(spaceId);
+        const oldPrefix = oldPath.endsWith('/') ? oldPath : `${oldPath}/`;
+        const newPrefix = newPath.endsWith('/') ? newPath : `${newPath}/`;
+        for (const note of notes) {
+          if (note.path === oldPath) {
+            note.path = newPath;
+            note.title = newPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || newPath;
+            note.updated_at = new Date().toISOString();
+            await localDB.putNote(note, true);
+          } else if (note.path.startsWith(oldPrefix)) {
+            const nextPath = `${newPrefix}${note.path.slice(oldPrefix.length)}`;
+            note.path = nextPath;
+            note.title = nextPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || nextPath;
+            note.updated_at = new Date().toISOString();
+            await localDB.putNote(note, true);
+          }
+        }
+      } else {
+        const note = await localDB.getNoteByPath(spaceId, oldPath);
+        if (note) {
+          note.path = newPath;
+          note.title = newPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || newPath;
+          note.updated_at = new Date().toISOString();
+          await localDB.putNote(note, true);
+        }
+      }
+      syncEngine.triggerPush();
+    }
+
     await api.renameFile(oldPath, newPath);
 
     const store = loadStore();
@@ -4837,6 +4890,41 @@ export default function App() {
     clearAutoSaveTimer();
 
     try {
+      // Propagate move/rename to collaboration database & sync queue
+      const spaceId = collaborationEngine.activeSpaceId;
+      if (spaceId) {
+        const isFile = oldPath.toLowerCase().endsWith(".md") || oldPath.toLowerCase().endsWith(".canvas");
+        if (isFile) {
+          const note = await localDB.getNoteByPath(spaceId, oldPath);
+          if (note) {
+            note.path = newPath;
+            note.title = newPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || newPath;
+            note.updated_at = new Date().toISOString();
+            await localDB.putNote(note, true);
+          }
+        } else {
+          // Folder move
+          const notes = await localDB.getNotes(spaceId);
+          const oldPrefix = oldPath.endsWith('/') ? oldPath : `${oldPath}/`;
+          const newPrefix = newPath.endsWith('/') ? newPath : `${newPath}/`;
+          for (const note of notes) {
+            if (note.path === oldPath) {
+              note.path = newPath;
+              note.title = newPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || newPath;
+              note.updated_at = new Date().toISOString();
+              await localDB.putNote(note, true);
+            } else if (note.path.startsWith(oldPrefix)) {
+              const nextPath = `${newPrefix}${note.path.slice(oldPrefix.length)}`;
+              note.path = nextPath;
+              note.title = nextPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || nextPath;
+              note.updated_at = new Date().toISOString();
+              await localDB.putNote(note, true);
+            }
+          }
+        }
+        syncEngine.triggerPush();
+      }
+
       await api.renameFile(oldPath, newPath);
 
       // Update embeddings

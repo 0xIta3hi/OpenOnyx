@@ -9,6 +9,9 @@ import type { EnrichedSuggestion } from "../utils/suggestion-enrichment";
 import { authManager } from "../lib/auth";
 import { collaborationEngine } from "../lib/collaborationEngine";
 import { syncEngine } from "../lib/syncEngine";
+import { localDB } from "../lib/localdb";
+import { supabase } from "../lib/supabase";
+import { getUserSupabaseClient } from "../lib/userDatabase";
 import type { CollabOperation, CursorPresence } from "../utils/collabOperations";
 import { operationToChangeSpec, clampOperation } from "../utils/collabOperations";
 import { setCursorsEffect } from "../utils/remoteCursorsPlugin";
@@ -400,6 +403,76 @@ export function LeafPaneEditor({
 
     return unsub;
   }, [activeTab.path, onContentChangeGlobal]);
+
+  // Re-sync active note upon network reconnection or page focus
+  useEffect(() => {
+    if (activeTab.path === "__new_tab__") return;
+    if (!collaborationEngine.activeSpaceId) return;
+
+    const handleReSync = async () => {
+      // Only pull if there are no pending unsaved local edits
+      if (dbSyncTimer.current !== null) return;
+      try {
+        const spaceId = collaborationEngine.activeSpaceId;
+        if (!spaceId) return;
+
+        const queue = await localDB.getSyncQueue();
+        const hasPendingEdit = queue.some(item => item.table === 'notes' && item.payload?.path === activeTab.path);
+        if (hasPendingEdit) return; // Keep unsaved local edits
+
+        // Fetch the remote note from Supabase directly
+        const client = getUserSupabaseClient() || supabase;
+        const { data: remote } = await client
+          .from('notes')
+          .select('content, updated_at')
+          .eq('space_id', spaceId)
+          .eq('path', activeTab.path)
+          .maybeSingle();
+
+        if (remote) {
+          const localNote = await localDB.getNoteByPath(spaceId, activeTab.path);
+          const remoteTime = new Date(remote.updated_at).getTime();
+          const localTime = localNote ? new Date(localNote.updated_at).getTime() : 0;
+
+          if (remoteTime > localTime) {
+            console.log(`[Collab] Reconnection resync: Remote is newer. Updating editor for ${activeTab.path}.`);
+            
+            // Remote is newer, update IndexedDB, disk and editor!
+            if (localNote) {
+              localNote.content = remote.content;
+              localNote.updated_at = remote.updated_at;
+              await localDB.putNote(localNote, false);
+            }
+            await api.writeFile(activeTab.path, remote.content || '');
+
+            const view = editorViewRef.current;
+            if (view) {
+              const currentDoc = view.state.doc.toString();
+              if (currentDoc !== remote.content) {
+                view.dispatch({
+                  changes: { from: 0, to: currentDoc.length, insert: remote.content },
+                  annotations: Transaction.remote.of(true),
+                });
+              }
+            } else {
+              setContent(remote.content);
+              onContentChangeGlobal(activeTab.path, remote.content);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[Collab] Reconnection resync failed:", err);
+      }
+    };
+
+    window.addEventListener('online', handleReSync);
+    window.addEventListener('focus', handleReSync);
+
+    return () => {
+      window.removeEventListener('online', handleReSync);
+      window.removeEventListener('focus', handleReSync);
+    };
+  }, [activeTab.path]);
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
 
