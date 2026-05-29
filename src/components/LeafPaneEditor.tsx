@@ -357,8 +357,13 @@ export function LeafPaneEditor({
   useEffect(() => {
     if (activeTab.path === "__new_tab__") return;
 
-    const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId) => {
+    const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId, isBroadcast) => {
       if (path !== activeTab.path) return;
+
+      // If this is a background database replication change (not a real-time broadcast),
+      // IGNORE the full-document replacement to avoid overwriting concurrent local edits.
+      // Real-time synchronization is handled natively via 'doc-ops' and 'doc-full' broadcasts.
+      if (!isBroadcast) return;
 
       const view = editorViewRef.current;
       if (view) {

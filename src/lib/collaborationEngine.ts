@@ -158,7 +158,7 @@ async function retryAsync<T>(
 type StatusListener = (status: CollabStatus) => void;
 type ActiveUsersListener = (users: ActiveUser[]) => void;
 type RemoteChangeListener = (table: string, payload: any) => void;
-type RemoteDocUpdateListener = (path: string, content: string, senderClientId: string) => void;
+type RemoteDocUpdateListener = (path: string, content: string, senderClientId: string, isBroadcast: boolean) => void;
 type RemoteOperationListener = (path: string, ops: CollabOperation[]) => void;
 type RemoteCursorListener = (presence: CursorPresence) => void;
 
@@ -993,14 +993,15 @@ class CollaborationEngine {
         // with self:false but guard defensively), or if clientId is empty.
         if (!path || !ops) return;
         if (senderClientId && this.clientId && senderClientId === this.clientId) return;
-        const lastTs = this.lastAppliedTimestamps.get(path) || 0;
+        const clientPathKey = `${senderClientId || 'unknown'}:${path}`;
+        const lastTs = this.lastAppliedTimestamps.get(clientPathKey) || 0;
         // Filter stale operations
         const freshOps = (ops as CollabOperation[]).filter(
           op => op.timestamp > lastTs,
         );
         if (freshOps.length > 0) {
           const maxTs = Math.max(lastTs, ...freshOps.map(op => op.timestamp));
-          this.lastAppliedTimestamps.set(path, maxTs);
+          this.lastAppliedTimestamps.set(clientPathKey, maxTs);
           this.remoteOpListeners.forEach(fn => fn(path, freshOps));
         }
       })
@@ -1010,7 +1011,7 @@ class CollaborationEngine {
         const { path, content, clientId: senderClientId } = msg.payload || {};
         if (!path || content === undefined) return;
         if (senderClientId && this.clientId && senderClientId === this.clientId) return;
-        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || ''));
+        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || '', true));
       })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
@@ -1178,7 +1179,7 @@ class CollaborationEngine {
 
     // Notify remote doc listeners so the editor can refresh the open file
     if (remoteNote.path && !remoteNote.deleted) {
-      this.remoteDocListeners.forEach(fn => fn(remoteNote.path, remoteNote.content || '', remoteNote.last_client_id || ''));
+      this.remoteDocListeners.forEach(fn => fn(remoteNote.path, remoteNote.content || '', remoteNote.last_client_id || '', false));
     }
 
     // Notify listeners (for editor refresh)
