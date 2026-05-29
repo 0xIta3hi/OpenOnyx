@@ -29,6 +29,7 @@ import { localDB } from './localdb';
 import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
 import type { CollabOperation, CursorPresence } from '../utils/collabOperations';
+import { normalizeVersion, sha256Hex } from '../utils/collabDocument';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,7 +159,20 @@ async function retryAsync<T>(
 type StatusListener = (status: CollabStatus) => void;
 type ActiveUsersListener = (users: ActiveUser[]) => void;
 type RemoteChangeListener = (table: string, payload: any) => void;
-type RemoteDocUpdateListener = (path: string, content: string, senderClientId: string, isBroadcast: boolean) => void;
+export interface RemoteDocumentMeta {
+  version: number;
+  last_modified?: string;
+  client_id?: string | null;
+  content_hash?: string;
+}
+
+type RemoteDocUpdateListener = (
+  path: string,
+  content: string,
+  senderClientId: string,
+  isBroadcast: boolean,
+  meta?: RemoteDocumentMeta,
+) => void;
 type RemoteOperationListener = (path: string, ops: CollabOperation[]) => void;
 type RemoteCursorListener = (presence: CursorPresence) => void;
 
@@ -181,6 +195,9 @@ class CollaborationEngine {
   private reconnectingSpaceId: string | null = null;
   private lastPresenceNoteId: string | null = null;
   private lastPresenceTyping = false;
+  private incomingOperationQueues = new Map<string, CollabOperation[]>();
+  private incomingOperationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private appliedOperationIds = new Set<string>();
   constructor() {
     this._collabPaused = typeof localStorage !== 'undefined' ? localStorage.getItem('collab_paused') === 'true' : false;
     
@@ -392,9 +409,14 @@ class CollaborationEngine {
       let uploaded = 0;
 
       for (let i = 0; i < files.length; i += BATCH_SIZE) {
-        const batch = files.slice(i, i + BATCH_SIZE).map(f => ({
+        const batchFiles = files.slice(i, i + BATCH_SIZE);
+        const batch = await Promise.all(batchFiles.map(async f => ({
           id: uuidv4(),
           space_id: spaceId,
+          version: 0,
+          last_modified: now,
+          client_id: this.clientId,
+          content_hash: await sha256Hex(f.content),
           title: f.title,
           path: f.path,
           content: f.content,
@@ -403,7 +425,7 @@ class CollaborationEngine {
           deleted: false,
           created_at: now,
           updated_at: now,
-        }));
+        })));
 
         try {
           const { error: insertErr } = await client.from('notes').insert(batch);
@@ -733,6 +755,10 @@ class CollaborationEngine {
           space_id: spaceId,
           vault_id: null,
           last_client_id: null,
+          version: normalizeVersion(note.version),
+          last_modified: note.last_modified || note.updated_at,
+          client_id: note.client_id || note.last_client_id || null,
+          content_hash: note.content_hash || await sha256Hex(note.content || ''),
           title: note.title,
           path: filePath,
           content: note.content || '',
@@ -1015,25 +1041,44 @@ class CollaborationEngine {
         // with self:false but guard defensively), or if clientId is empty.
         if (!path || !ops) return;
         if (senderClientId && this.clientId && senderClientId === this.clientId) return;
-        const clientPathKey = `${senderClientId || 'unknown'}:${path}`;
+        const normalizedOps = (ops as CollabOperation[])
+          .filter(op => {
+            const opClientId = op.client_id || op.clientId || senderClientId;
+            if (opClientId && this.clientId && opClientId === this.clientId) return false;
+            if (!op.operation_id) {
+              console.warn('[Collab][op_rejected] missing operation_id', { path, senderClientId });
+              return false;
+            }
+            if (this.appliedOperationIds.has(op.operation_id)) {
+              console.info('[Collab][op_duplicate] skipping already applied operation', { path, operation_id: op.operation_id });
+              return false;
+            }
+            return true;
+          });
+
+        if (normalizedOps.length === 0) return;
+
+        const clientPathKey = `${senderClientId || normalizedOps[0]?.client_id || 'unknown'}:${path}`;
         const lastTs = this.lastAppliedTimestamps.get(clientPathKey) || 0;
-        // Filter stale operations
-        const freshOps = (ops as CollabOperation[]).filter(
-          op => op.timestamp > lastTs,
-        );
+        const freshOps = normalizedOps;
         if (freshOps.length > 0) {
           const maxTs = Math.max(lastTs, ...freshOps.map(op => op.timestamp));
           this.lastAppliedTimestamps.set(clientPathKey, maxTs);
-          this.remoteOpListeners.forEach(fn => fn(path, freshOps));
+          this.enqueueIncomingOperations(path, freshOps);
         }
       })
       // Listen for full-document sync via Broadcast (fallback for large edits)
       .on('broadcast', { event: 'doc-full' }, (msg) => {
         if (this._collabPaused) return;
-        const { path, content, clientId: senderClientId } = msg.payload || {};
+        const { path, content, clientId: senderClientId, version, last_modified, client_id, content_hash } = msg.payload || {};
         if (!path || content === undefined) return;
         if (senderClientId && this.clientId && senderClientId === this.clientId) return;
-        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || '', true));
+        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || client_id || '', true, {
+          version: normalizeVersion(version),
+          last_modified,
+          client_id: client_id || senderClientId || null,
+          content_hash,
+        }));
       })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
@@ -1143,6 +1188,98 @@ class CollaborationEngine {
     }));
   }
 
+  private enqueueIncomingOperations(path: string, ops: CollabOperation[]) {
+    const queue = this.incomingOperationQueues.get(path) || [];
+    queue.push(...ops);
+    queue.sort((a, b) => {
+      const versionDelta = normalizeVersion(a.version) - normalizeVersion(b.version);
+      if (versionDelta !== 0) return versionDelta;
+      return a.timestamp - b.timestamp;
+    });
+    this.incomingOperationQueues.set(path, queue);
+
+    if (this.incomingOperationTimers.has(path)) return;
+    const timer = setTimeout(() => {
+      this.incomingOperationTimers.delete(path);
+      const pending = this.incomingOperationQueues.get(path) || [];
+      this.incomingOperationQueues.delete(path);
+      if (pending.length === 0) return;
+      this.remoteOpListeners.forEach(fn => fn(path, pending));
+    }, 0);
+    this.incomingOperationTimers.set(path, timer);
+  }
+
+  markOperationApplied(operationId: string) {
+    if (!operationId) return;
+    this.appliedOperationIds.add(operationId);
+    if (this.appliedOperationIds.size > 5000) {
+      const recent = [...this.appliedOperationIds].slice(-2500);
+      this.appliedOperationIds = new Set(recent);
+    }
+  }
+
+  async triggerSafeResync(path: string, localVersion: number): Promise<void> {
+    const spaceId = this._activeSpaceId;
+    if (!spaceId) return;
+
+    console.warn('[Collab][resync_triggered]', { path, localVersion, spaceId });
+    const client = getClient();
+    const { data: remote, error } = await client
+      .from('notes')
+      .select('id, space_id, vault_id, last_client_id, version, last_modified, client_id, content_hash, title, path, content, pinned, created_at, updated_at, deleted, is_canvas')
+      .eq('space_id', spaceId)
+      .eq('path', path)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[Collab][resync_failed]', { path, message: error.message });
+      return;
+    }
+    if (!remote) return;
+
+    const remoteVersion = normalizeVersion((remote as any).version);
+    if (remoteVersion <= localVersion) {
+      console.info('[Collab][resync_kept_local]', { path, localVersion, remoteVersion });
+      return;
+    }
+    const remoteHash = (remote as any).content_hash || await sha256Hex(remote.content || '');
+
+    await localDB.putNote({
+      id: remote.id,
+      space_id: remote.space_id,
+      vault_id: remote.vault_id || null,
+      last_client_id: remote.last_client_id || null,
+      version: remoteVersion,
+      last_modified: (remote as any).last_modified || remote.updated_at,
+      client_id: (remote as any).client_id || remote.last_client_id || null,
+      content_hash: remoteHash,
+      title: remote.title,
+      path: remote.path || '',
+      content: remote.content || '',
+      pinned: !!remote.pinned,
+      created_at: remote.created_at,
+      updated_at: remote.updated_at,
+      deleted: !!remote.deleted,
+      is_canvas: !!remote.is_canvas,
+    }, false);
+
+    if (remote.path && !remote.deleted) {
+      const api = getAPI();
+      if (remote.path.includes('/')) {
+        const parentDir = remote.path.split('/').slice(0, -1).join('/');
+        try { await api.createDirectory(parentDir); } catch { /* exists */ }
+      }
+      await api.writeFile(remote.path, remote.content || '');
+    }
+
+    this.remoteDocListeners.forEach(fn => fn(remote.path || path, remote.content || '', (remote as any).client_id || remote.last_client_id || '', false, {
+      version: remoteVersion,
+      last_modified: (remote as any).last_modified || remote.updated_at,
+      client_id: (remote as any).client_id || remote.last_client_id || null,
+      content_hash: remoteHash,
+    }));
+  }
+
   private handlePresenceSync() {
     if (!this.realtimeChannel) return;
     if (this._collabPaused) {
@@ -1225,9 +1362,23 @@ class CollaborationEngine {
     // Last-Write-Wins
     const localNote = await localDB.getNote(remoteNote.id);
     if (localNote) {
-      const remoteTime = new Date(remoteNote.updated_at).getTime();
-      const localTime = new Date(localNote.updated_at).getTime();
-      if (remoteTime <= localTime) return; // Local is newer, skip
+      const remoteVersion = normalizeVersion(remoteNote.version);
+      const localVersion = normalizeVersion(localNote.version);
+      if (remoteVersion > 0 || localVersion > 0) {
+        if (remoteVersion <= localVersion) {
+          console.info('[Collab][overwrite_prevented]', {
+            path: remoteNote.path,
+            source: 'postgres_changes',
+            remoteVersion,
+            localVersion,
+          });
+          return;
+        }
+      } else {
+        const remoteTime = new Date(remoteNote.updated_at).getTime();
+        const localTime = new Date(localNote.updated_at).getTime();
+        if (remoteTime <= localTime) return; // Local is newer, skip
+      }
     }
 
     // Apply to IndexedDB (no sync enqueue -- this came from remote)
@@ -1236,6 +1387,10 @@ class CollaborationEngine {
       space_id: remoteNote.space_id,
       vault_id: remoteNote.vault_id || null,
       last_client_id: remoteNote.last_client_id || null,
+      version: normalizeVersion(remoteNote.version),
+      last_modified: remoteNote.last_modified || remoteNote.updated_at,
+      client_id: remoteNote.client_id || remoteNote.last_client_id || null,
+      content_hash: remoteNote.content_hash || await sha256Hex(remoteNote.content || ''),
       title: remoteNote.title,
       path: remoteNote.path || '',
       content: remoteNote.content || '',
@@ -1270,7 +1425,12 @@ class CollaborationEngine {
 
     // Notify remote doc listeners so the editor can refresh the open file
     if (remoteNote.path && !remoteNote.deleted) {
-      this.remoteDocListeners.forEach(fn => fn(remoteNote.path, remoteNote.content || '', remoteNote.last_client_id || '', false));
+      this.remoteDocListeners.forEach(fn => fn(remoteNote.path, remoteNote.content || '', remoteNote.client_id || remoteNote.last_client_id || '', false, {
+        version: normalizeVersion(remoteNote.version),
+        last_modified: remoteNote.last_modified || remoteNote.updated_at,
+        client_id: remoteNote.client_id || remoteNote.last_client_id || null,
+        content_hash: remoteNote.content_hash,
+      }));
     }
 
     // Notify listeners (for editor refresh)
@@ -1358,7 +1518,7 @@ class CollaborationEngine {
    * Used as a fallback for large edits (paste, AI generation) where
    * granular operations may fail to apply cleanly on diverged documents.
    */
-  broadcastFullDocument(path: string, content: string) {
+  async broadcastFullDocument(path: string, content: string, meta?: Partial<RemoteDocumentMeta>) {
     if (this._collabPaused) return;
     if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') {
       this.ensureRealtimeConnected();
@@ -1374,6 +1534,10 @@ class CollaborationEngine {
       payload: {
         path,
         content,
+        version: normalizeVersion(meta?.version),
+        last_modified: meta?.last_modified || new Date().toISOString(),
+        client_id: meta?.client_id || this.clientId,
+        content_hash: meta?.content_hash || await sha256Hex(content),
         clientId: this.clientId,
       },
     }).then((result: any) => {
@@ -1448,12 +1612,14 @@ class CollaborationEngine {
    *
    * Debounce this externally -- it does DB I/O on every call.
    */
-  async persistNoteEdit(path: string, content: string): Promise<void> {
+  async persistNoteEdit(path: string, content: string, meta?: Partial<RemoteDocumentMeta>): Promise<void> {
     if (this._collabPaused) return;
     const spaceId = this._activeSpaceId;
     if (!spaceId) return;
 
     const now = new Date().toISOString();
+    const version = meta?.version !== undefined ? normalizeVersion(meta.version) : undefined;
+    const contentHash = meta?.content_hash || await sha256Hex(content);
     const title = path.split('/').pop()?.replace(/\.(md|canvas)$/, '') || path;
     const isCanvas = path.endsWith('.canvas');
 
@@ -1465,6 +1631,10 @@ class CollaborationEngine {
         // Update existing note
         note.content = content;
         note.updated_at = now;
+        if (version !== undefined) note.version = version;
+        note.last_modified = meta?.last_modified || now;
+        note.client_id = meta?.client_id || this.clientId;
+        note.content_hash = contentHash;
         await localDB.putNote(note, true);
       } else {
         // Create a new note record (file was created locally)
@@ -1473,6 +1643,10 @@ class CollaborationEngine {
           space_id: spaceId,
           vault_id: null,
           last_client_id: null,
+          version,
+          last_modified: meta?.last_modified || now,
+          client_id: meta?.client_id || this.clientId,
+          content_hash: contentHash,
           title,
           path,
           content,

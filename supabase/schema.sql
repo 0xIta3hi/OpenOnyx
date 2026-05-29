@@ -89,6 +89,10 @@ CREATE TABLE IF NOT EXISTS public.notes (
   space_id uuid REFERENCES public.spaces(id) ON DELETE CASCADE,
   vault_id uuid REFERENCES public.vaults(id) ON DELETE CASCADE,
   last_client_id text,
+  version integer NOT NULL DEFAULT 0,
+  last_modified timestamptz NOT NULL DEFAULT now(),
+  client_id text,
+  content_hash text NOT NULL DEFAULT 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
   title text NOT NULL,
   path text NOT NULL DEFAULT '',
   content text NOT NULL DEFAULT '',
@@ -99,6 +103,10 @@ CREATE TABLE IF NOT EXISTS public.notes (
   is_canvas boolean NOT NULL DEFAULT false
 );
 ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS last_modified timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS client_id text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS content_hash text NOT NULL DEFAULT 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
 -- 5. Note chunks table (for embeddings / RAG)
 CREATE TABLE IF NOT EXISTS public.note_chunks (
@@ -189,6 +197,7 @@ ALTER TABLE public.linked_vaults ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_spaces_owner_updated ON public.spaces (owner_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_spaces_visibility ON public.spaces (visibility);
 CREATE INDEX IF NOT EXISTS idx_notes_space_updated ON public.notes (space_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_notes_space_path_version ON public.notes (space_id, path, version);
 CREATE INDEX IF NOT EXISTS idx_notes_deleted ON public.notes (deleted) WHERE deleted = true;
 CREATE INDEX IF NOT EXISTS idx_note_chunks_note_updated ON public.note_chunks (note_id, updated_at);
 

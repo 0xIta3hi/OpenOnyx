@@ -109,6 +109,10 @@ export type Database = {
           id: string
           is_canvas: boolean
           last_client_id: string | null
+          version: number
+          last_modified: string
+          client_id: string | null
+          content_hash: string
           path: string
           pinned: boolean
           space_id: string | null
@@ -123,6 +127,10 @@ export type Database = {
           id?: string
           is_canvas?: boolean
           last_client_id?: string | null
+          version?: number
+          last_modified?: string
+          client_id?: string | null
+          content_hash?: string
           path?: string
           pinned?: boolean
           space_id?: string | null
@@ -137,6 +145,10 @@ export type Database = {
           id?: string
           is_canvas?: boolean
           last_client_id?: string | null
+          version?: number
+          last_modified?: string
+          client_id?: string | null
+          content_hash?: string
           path?: string
           pinned?: boolean
           space_id?: string | null

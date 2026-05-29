@@ -10,6 +10,13 @@
 
 import type { ChangeSet, ChangeSpec } from '@codemirror/state';
 
+function generateOperationId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 // ── Wire Types ──────────────────────────────────────────────────────────────
 
 /**
@@ -17,6 +24,8 @@ import type { ChangeSet, ChangeSpec } from '@codemirror/state';
  * and broadcast to peers via Supabase Broadcast.
  */
 export interface CollabOperation {
+  /** Globally unique operation id, used for duplicate suppression. */
+  operation_id: string;
   type: 'insert' | 'delete' | 'replace';
   /** Character offset where the operation starts (in the OLD document). */
   from: number;
@@ -27,6 +36,14 @@ export interface CollabOperation {
   text?: string;
   /** High-resolution timestamp for ordering. */
   timestamp: number;
+  /** Version the sender had before this operation was applied. */
+  base_version: number;
+  /** Version after this operation is applied on the sender. */
+  version: number;
+  /** SHA-256 hash of the sender document after this operation batch. */
+  content_hash?: string;
+  /** The client that produced this operation. */
+  client_id: string;
   /** The client that produced this operation (for echo prevention). */
   clientId: string;
   /** The user ID that produced this operation. */
@@ -42,6 +59,7 @@ export interface CursorPresence {
   cursor: { from: number; to: number };
   name: string;
   color: string;
+  doc_version?: number;
 }
 
 // ── Extraction ──────────────────────────────────────────────────────────────
@@ -60,6 +78,9 @@ export function extractOperations(
   changes: ChangeSet,
   clientId: string,
   userId?: string,
+  baseVersion: number = 0,
+  version: number = baseVersion + 1,
+  contentHash?: string,
 ): CollabOperation[] {
   const ops: CollabOperation[] = [];
   const ts = Date.now();
@@ -71,30 +92,45 @@ export function extractOperations(
 
     if (isInsert) {
       ops.push({
+        operation_id: generateOperationId(),
         type: 'insert',
         from: fromA,
         text: insertedText,
         timestamp: ts,
+        base_version: baseVersion,
+        version,
+        content_hash: contentHash,
+        client_id: clientId,
         clientId,
         user_id: userId,
       });
     } else if (isDelete) {
       ops.push({
+        operation_id: generateOperationId(),
         type: 'delete',
         from: fromA,
         to: toA,
         timestamp: ts,
+        base_version: baseVersion,
+        version,
+        content_hash: contentHash,
+        client_id: clientId,
         clientId,
         user_id: userId,
       });
     } else {
       // Replace: some text was deleted and new text inserted at the same position
       ops.push({
+        operation_id: generateOperationId(),
         type: 'replace',
         from: fromA,
         to: toA,
         text: insertedText,
         timestamp: ts,
+        base_version: baseVersion,
+        version,
+        content_hash: contentHash,
+        client_id: clientId,
         clientId,
         user_id: userId,
       });
@@ -136,4 +172,12 @@ export function clampOperation(
   const from = Math.min(op.from, docLength);
   const to = op.to !== undefined ? Math.min(op.to, docLength) : undefined;
   return { ...op, from, to };
+}
+
+export function rangesOverlap(aFrom: number, aTo: number, bFrom: number, bTo: number): boolean {
+  const leftFrom = Math.min(aFrom, aTo);
+  const leftTo = Math.max(aFrom, aTo);
+  const rightFrom = Math.min(bFrom, bTo);
+  const rightTo = Math.max(bFrom, bTo);
+  return Math.max(leftFrom, rightFrom) <= Math.min(leftTo, rightTo);
 }

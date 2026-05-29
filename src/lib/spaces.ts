@@ -6,6 +6,7 @@ import { indexSpaceMetadata } from './explore';
 import { v4 as uuidv4 } from 'uuid';
 import { indexNote } from './vector';
 import { getAPI } from '../utils/api';
+import { sha256Hex } from '../utils/collabDocument';
 
 export type SpaceVisibility = 'local' | 'private' | 'public';
 
@@ -233,6 +234,10 @@ export async function forkSpace(originalSpaceId: string): Promise<string> {
       space_id: newSpaceId,
       vault_id: null,
       last_client_id: null,
+      version: 0,
+      last_modified: new Date().toISOString(),
+      client_id: null,
+      content_hash: await sha256Hex(originalNote.content || ''),
       title: originalNote.title,
       path: notePath,
       content: originalNote.content,

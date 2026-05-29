@@ -93,6 +93,7 @@ interface EditorProps {
   onEditorViewReady?: (view: import("@codemirror/view").EditorView | null) => void;
   getViewState?: (path: string) => { scroll?: number; cursor?: number } | undefined;
   onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number }) => void;
+  readOnly?: boolean;
 }
 
 /**
@@ -1935,6 +1936,7 @@ export function Editor({
   onEditorViewReady,
   getViewState,
   onViewStateChange,
+  readOnly = false,
 }: EditorProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activePath = activeTab?.path;
@@ -2819,6 +2821,7 @@ export function Editor({
         }),
         // Remote collaborator cursor decorations
         remoteCursorsExtension(),
+        EditorView.editable.of(!readOnly),
         EditorView.theme({
           "&": {
             height: "100%",
@@ -2935,7 +2938,7 @@ export function Editor({
       viewRef.current = null;
       onEditorViewReady?.(null);
     };
-  }, [activeTabId, isSpecialTab]); // Re-create when tab changes
+  }, [activeTabId, isSpecialTab, readOnly]); // Re-create when tab changes or read-only mode flips
 
   useEffect(() => {
     if (isSpecialTab) return;

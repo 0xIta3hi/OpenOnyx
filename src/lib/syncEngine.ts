@@ -4,6 +4,7 @@ import { authManager } from './auth';
 import { getUserSupabaseClient } from './userDatabase';
 import { collaborationEngine } from './collaborationEngine';
 import { getAPI } from '../utils/api';
+import { normalizeVersion } from '../utils/collabDocument';
 
 /**
  * Get the active Supabase client -- either the user's own instance
@@ -19,6 +20,10 @@ function toLocalNote(note: any): LocalNote {
     space_id: note.space_id,
     vault_id: note.vault_id || null,
     last_client_id: note.last_client_id || null,
+    version: normalizeVersion(note.version),
+    last_modified: note.last_modified || note.updated_at,
+    client_id: note.client_id || note.last_client_id || null,
+    content_hash: note.content_hash || '',
     title: note.title,
     path: note.path || '',
     content: note.content || '',
@@ -256,14 +261,42 @@ export class SyncEngine {
               try {
                 const { data: remote } = await client
                   .from('notes')
-                  .select('updated_at')
+                  .select('updated_at, version, content_hash, client_id')
                   .eq('id', payload.id)
                   .maybeSingle();
 
                 if (remote) {
+                  const remoteVersion = normalizeVersion((remote as any).version);
+                  const localVersion = normalizeVersion(payload.version);
+                  if (remoteVersion > localVersion) {
+                    console.warn('[SyncEngine][push_rejected_version]', {
+                      noteId: payload.id,
+                      remoteVersion,
+                      localVersion,
+                    });
+                    await localDB.removeSyncItem(originalItem.id);
+                    count++;
+                    continue;
+                  }
+                  if (
+                    remoteVersion > 0 &&
+                    remoteVersion === localVersion &&
+                    (remote as any).content_hash &&
+                    payload.content_hash &&
+                    (remote as any).content_hash !== payload.content_hash &&
+                    (remote as any).client_id !== payload.client_id
+                  ) {
+                    console.warn('[SyncEngine][push_rejected_equal_version_hash_conflict]', {
+                      noteId: payload.id,
+                      version: localVersion,
+                    });
+                    await localDB.removeSyncItem(originalItem.id);
+                    count++;
+                    continue;
+                  }
                   const remoteTime = new Date(remote.updated_at).getTime();
                   const localTime = new Date(payload.updated_at).getTime();
-                  if (remoteTime > localTime) {
+                  if (remoteVersion === 0 && remoteTime > localTime) {
                     console.warn(`[SyncEngine] Conflict detected for note ${payload.id}: remote is newer (${remote.updated_at} > ${payload.updated_at}). Skipping push to let pull take precedence.`);
                     // Remove from sync queue so we can pull the newer version
                     await localDB.removeSyncItem(originalItem.id);
@@ -341,9 +374,22 @@ export class SyncEngine {
 
         // LWW: only apply if remote is newer
         if (local) {
+          const remoteVersion = normalizeVersion((remote as any).version);
+          const localVersion = normalizeVersion(local.version);
+          if (remoteVersion > 0 || localVersion > 0) {
+            if (remoteVersion <= localVersion) {
+              console.info('[SyncEngine][pull_overwrite_prevented]', {
+                path: remote.path,
+                remoteVersion,
+                localVersion,
+              });
+              continue;
+            }
+          } else {
           const remoteTime = new Date(remote.updated_at).getTime();
           const localTime = new Date(local.updated_at).getTime();
           if (remoteTime <= localTime) continue;
+          }
         }
 
         // Apply to IndexedDB (no sync enqueue -- this came from remote)

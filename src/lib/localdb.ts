@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { v4 as uuidv4 } from 'uuid';
+import { EMPTY_DOCUMENT_HASH, normalizeVersion, sha256Hex } from '../utils/collabDocument';
 
 export interface LocalVault {
   id: string;
@@ -51,6 +52,10 @@ export interface LocalNote {
   space_id: string | null;
   vault_id: string | null;
   last_client_id: string | null;
+  version?: number;
+  last_modified?: string;
+  client_id?: string | null;
+  content_hash?: string;
   title: string;
   path: string;
   content: string;
@@ -142,6 +147,37 @@ interface OpenObsidianDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<OpenObsidianDB>>;
+
+async function normalizeNoteMetadata(
+  note: LocalNote,
+  existing: LocalNote | undefined,
+  enqueueSync: boolean,
+  clientId?: string,
+): Promise<LocalNote> {
+  const now = note.updated_at || new Date().toISOString();
+  const content = note.content || '';
+  const currentHash = enqueueSync ? await sha256Hex(content) : (note.content_hash || await sha256Hex(content));
+  const currentVersion = normalizeVersion(note.version ?? existing?.version);
+
+  if (!enqueueSync) {
+    return {
+      ...note,
+      version: currentVersion,
+      last_modified: note.last_modified || note.updated_at || existing?.last_modified || now,
+      client_id: note.client_id ?? note.last_client_id ?? existing?.client_id ?? null,
+      content_hash: currentHash || EMPTY_DOCUMENT_HASH,
+    };
+  }
+
+  const nextVersion = Math.max(currentVersion, normalizeVersion(existing?.version) + 1);
+  return {
+    ...note,
+    version: nextVersion,
+    last_modified: now,
+    client_id: clientId || note.client_id || note.last_client_id || null,
+    content_hash: currentHash || EMPTY_DOCUMENT_HASH,
+  };
+}
 
 export function getLocalDB() {
   if (!dbPromise) {
@@ -411,6 +447,9 @@ export const localDB = {
     if (enqueueSync) {
       const clientId = await this.getClientId();
       note.last_client_id = clientId;
+      note = await normalizeNoteMetadata(note, isExisting, true, clientId);
+    } else {
+      note = await normalizeNoteMetadata(note, isExisting, false);
     }
 
     await db.put('notes', note);
@@ -428,10 +467,11 @@ export const localDB = {
       if (enqueueSync) {
         note.last_client_id = await this.getClientId();
       }
-      await db.put('notes', note);
+      const normalized = await normalizeNoteMetadata(note, note, enqueueSync, note.last_client_id || undefined);
+      await db.put('notes', normalized);
       
       if (enqueueSync) {
-        await this.enqueueChange('notes', 'delete', id, note);
+        await this.enqueueChange('notes', 'delete', id, normalized);
       }
     }
   },

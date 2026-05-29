@@ -7,14 +7,15 @@ import { getAPI } from "../utils/api";
 import { type LinkType } from "./SuggestionBanner";
 import type { EnrichedSuggestion } from "../utils/suggestion-enrichment";
 import { authManager } from "../lib/auth";
-import { collaborationEngine } from "../lib/collaborationEngine";
+import { collaborationEngine, type RemoteDocumentMeta } from "../lib/collaborationEngine";
 import { syncEngine } from "../lib/syncEngine";
 import { localDB } from "../lib/localdb";
 import { supabase } from "../lib/supabase";
 import { getUserSupabaseClient } from "../lib/userDatabase";
 import type { CollabOperation, CursorPresence } from "../utils/collabOperations";
-import { operationToChangeSpec, clampOperation } from "../utils/collabOperations";
+import { operationToChangeSpec, clampOperation, rangesOverlap } from "../utils/collabOperations";
 import { setCursorsEffect } from "../utils/remoteCursorsPlugin";
+import { normalizeVersion, sha256Hex } from "../utils/collabDocument";
 import { Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
@@ -86,6 +87,13 @@ export function LeafPaneEditor({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const remotePersistTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const fullDocumentBroadcastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const docVersionRef = useRef<number>(0);
+  const docHashRef = useRef<string>("");
+  const pendingLocalVersionRef = useRef<{ base: number; next: number } | null>(null);
+  const recentLocalEditsRef = useRef<Array<{ from: number; to: number; at: number }>>([]);
+  const desyncCountRef = useRef<number>(0);
+  const [collabFailSafe, setCollabFailSafe] = useState<boolean>(false);
 
   // Ref to the CodeMirror EditorView -- needed to apply remote operations
   // directly without going through React state (which would cause full-doc replace).
@@ -123,6 +131,16 @@ export function LeafPaneEditor({
         }
         const c = await api.readFile(activeTab.path);
         if (!isActive) return;
+        const spaceId = collaborationEngine.activeSpaceId;
+        if (spaceId) {
+          const note = await localDB.getNoteByPath(spaceId, activeTab.path);
+          if (!isActive) return;
+          docVersionRef.current = normalizeVersion(note?.version);
+          docHashRef.current = note?.content_hash || await sha256Hex(c);
+        } else {
+          docVersionRef.current = 0;
+          docHashRef.current = await sha256Hex(c);
+        }
         setContent(c);
         setIsLoading(false);
       } catch (err) {
@@ -154,7 +172,26 @@ export function LeafPaneEditor({
     if (!isUserEdit) return;
 
     // Presence: mark as typing
-    const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused;
+    const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused && !collabFailSafe;
+    let localEditMeta: RemoteDocumentMeta | null = null;
+    if (isCollabSpace && !collabFailSafe) {
+      const base = docVersionRef.current;
+      const next = base + 1;
+      docVersionRef.current = next;
+      pendingLocalVersionRef.current = { base, next };
+      localEditMeta = {
+        version: next,
+        last_modified: new Date().toISOString(),
+        client_id: collaborationEngine.currentClientId,
+        content_hash: docHashRef.current,
+      };
+      void sha256Hex(newContent).then((hash) => {
+        if (docVersionRef.current === next) {
+          docHashRef.current = hash;
+        }
+      });
+    }
+
     if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       setIsSelfTyping(true);
       collaborationEngine.updatePresenceNote(activeTab.path, true);
@@ -184,21 +221,50 @@ export function LeafPaneEditor({
 
     // Persist to IndexedDB + enqueue for sync to Supabase (debounced).
     // Lower debounce than disk save so cloud sync starts sooner.
-    if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
+    if (isCollabSpace && !collabFailSafe && activeTab.path && activeTab.path !== "__new_tab__") {
       if (dbSyncTimer.current) {
         clearTimeout(dbSyncTimer.current);
       }
       dbSyncTimer.current = setTimeout(async () => {
         dbSyncTimer.current = null;
         try {
-          await collaborationEngine.persistNoteEdit(activeTab.path, newContent);
+          const hash = await sha256Hex(newContent);
+          docHashRef.current = hash;
+          await collaborationEngine.persistNoteEdit(activeTab.path, newContent, {
+            version: docVersionRef.current,
+            last_modified: localEditMeta?.last_modified || new Date().toISOString(),
+            client_id: collaborationEngine.currentClientId,
+            content_hash: hash,
+          });
           syncEngine.triggerPush();
         } catch (err) {
           console.error("[Collab] DB sync failed:", err);
         }
       }, 800);
     }
-  }, [activeTab.path, onContentChangeGlobal]);
+  }, [activeTab.path, onContentChangeGlobal, collabFailSafe]);
+
+  const scheduleFullDocumentBroadcast = useCallback((contentToBroadcast: string, delay = 400) => {
+    if (!collaborationEngine.activeSpaceId) return;
+    if (collabFailSafe) return;
+    if (!activeTab.path || activeTab.path === "__new_tab__") return;
+
+    if (fullDocumentBroadcastTimerRef.current) {
+      clearTimeout(fullDocumentBroadcastTimerRef.current);
+    }
+
+    fullDocumentBroadcastTimerRef.current = setTimeout(async () => {
+      fullDocumentBroadcastTimerRef.current = null;
+      const hash = await sha256Hex(contentToBroadcast);
+      docHashRef.current = hash;
+      await collaborationEngine.broadcastFullDocument(activeTab.path, contentToBroadcast, {
+        version: docVersionRef.current,
+        last_modified: new Date().toISOString(),
+        client_id: collaborationEngine.currentClientId,
+        content_hash: hash,
+      });
+    }, delay);
+  }, [activeTab.path, collabFailSafe]);
 
   // ── Operation-Based Broadcast ───────────────────────────────────────────────
 
@@ -209,26 +275,57 @@ export function LeafPaneEditor({
    */
   const handleCollabOperations = useCallback((ops: CollabOperation[]) => {
     if (!collaborationEngine.activeSpaceId) return;
+    if (collabFailSafe) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
+
+    const versionMeta = pendingLocalVersionRef.current || {
+      base: Math.max(0, docVersionRef.current - 1),
+      next: docVersionRef.current,
+    };
+    pendingLocalVersionRef.current = null;
 
     // For large edits (paste, AI generation), broadcast ONLY the full document.
     // Sending both granular ops AND a full-doc causes double-application on the
     // receiver side. Granular ops are only useful for small, incremental edits.
     const totalInserted = ops.reduce((sum, op) => sum + (op.text?.length || 0), 0);
+    const now = Date.now();
+    for (const op of ops) {
+      recentLocalEditsRef.current.push({
+        from: op.from,
+        to: op.to ?? op.from + (op.text?.length || 0),
+        at: now,
+      });
+    }
+    recentLocalEditsRef.current = recentLocalEditsRef.current.filter(edit => now - edit.at < 5000);
+
     if (totalInserted > 500) {
       const view = editorViewRef.current;
       if (view) {
-        collaborationEngine.broadcastFullDocument(activeTab.path, view.state.doc.toString());
+        scheduleFullDocumentBroadcast(view.state.doc.toString(), 400);
       }
     } else {
-      collaborationEngine.broadcastOperations(activeTab.path, ops);
+      void (async () => {
+        const view = editorViewRef.current;
+        const hash = await sha256Hex(view?.state.doc.toString() || content);
+        docHashRef.current = hash;
+        const enrichedOps = ops.map(op => ({
+          ...op,
+          base_version: versionMeta.base,
+          version: versionMeta.next,
+          content_hash: hash,
+          client_id: collaborationEngine.currentClientId,
+          clientId: collaborationEngine.currentClientId,
+        }));
+        collaborationEngine.broadcastOperations(activeTab.path, enrichedOps);
+      })();
     }
-  }, [activeTab.path]);
+  }, [activeTab.path, collabFailSafe, content, scheduleFullDocumentBroadcast]);
 
   // ── Cursor Presence Broadcast ───────────────────────────────────────────────
 
   const handleCursorChange = useCallback((cursor: { from: number; to: number }) => {
     if (!collaborationEngine.activeSpaceId) return;
+    if (collabFailSafe) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
 
     // Debounce cursor presence updates (150ms). The collaboration engine
@@ -249,11 +346,22 @@ export function LeafPaneEditor({
         cursor,
         name: user.email?.split('@')[0] || 'Anonymous',
         color: getColorForUser(userId),
+        doc_version: docVersionRef.current,
       });
     }, 150);
+  }, [activeTab.path, collabFailSafe]);
+
+  const enterFailSafeMode = useCallback((reason: string) => {
+    desyncCountRef.current += 1;
+    console.warn("[Collab][fail_safe_check]", { path: activeTab.path, reason, desyncCount: desyncCountRef.current });
+    if (desyncCountRef.current >= 3) {
+      console.error("[Collab][fail_safe_enabled]", { path: activeTab.path, reason });
+      setCollabFailSafe(true);
+      collaborationEngine.setCollabPaused(true);
+    }
   }, [activeTab.path]);
 
-  const scheduleRemoteContentPersist = useCallback((path: string, remoteContent: string) => {
+  const scheduleRemoteContentPersist = useCallback((path: string, remoteContent: string, meta?: RemoteDocumentMeta) => {
     if (!collaborationEngine.activeSpaceId || path === "__new_tab__") return;
 
     if (remotePersistTimerRef.current) {
@@ -270,10 +378,15 @@ export function LeafPaneEditor({
 
         const note = await localDB.getNoteByPath(spaceId, path);
         if (note) {
+          const hash = meta?.content_hash || await sha256Hex(remoteContent);
           await localDB.putNote({
             ...note,
             content: remoteContent,
-            updated_at: new Date().toISOString(),
+            version: normalizeVersion(meta?.version ?? docVersionRef.current),
+            last_modified: meta?.last_modified || new Date().toISOString(),
+            client_id: meta?.client_id || null,
+            content_hash: hash,
+            updated_at: meta?.last_modified || new Date().toISOString(),
           }, false);
         }
       } catch (err) {
@@ -289,6 +402,7 @@ export function LeafPaneEditor({
 
     const unsub = collaborationEngine.onRemoteOperation((path, ops) => {
       if (path !== activeTab.path) return;
+      if (collabFailSafe) return;
 
       const view = editorViewRef.current;
       if (!view) return;
@@ -297,7 +411,39 @@ export function LeafPaneEditor({
       // length, so we must re-read doc.length after each one. Batching them
       // all against a single stale snapshot causes position corruption on the
       // 2nd+ operation.
-      for (const op of ops) {
+      let expectedBaseVersion = docVersionRef.current;
+      let batchNextVersion = expectedBaseVersion;
+      for (let index = 0; index < ops.length; index++) {
+        const op = ops[index];
+        const baseVersion = normalizeVersion(op.base_version);
+        const incomingVersion = normalizeVersion(op.version);
+        const opTo = op.to ?? op.from + (op.text?.length || 0);
+        const hasLocalOverlap = recentLocalEditsRef.current.some(edit =>
+          rangesOverlap(op.from, opTo, edit.from, edit.to),
+        );
+
+        if (baseVersion !== expectedBaseVersion) {
+          console.warn("[Collab][op_rejected_version_mismatch]", {
+            path,
+            operation_id: op.operation_id,
+            baseVersion,
+            currentVersion: expectedBaseVersion,
+            incomingVersion,
+          });
+
+          if (hasLocalOverlap) {
+            console.warn("[Collab][op_conflict_overlap]", {
+              path,
+              operation_id: op.operation_id,
+              range: [op.from, opTo],
+            });
+          }
+
+          enterFailSafeMode("remote operation version mismatch");
+          void collaborationEngine.triggerSafeResync(path, expectedBaseVersion);
+          return;
+        }
+
         const docLen = view.state.doc.length;
         const clamped = clampOperation(op, docLen);
         const change = operationToChangeSpec(clamped);
@@ -307,16 +453,43 @@ export function LeafPaneEditor({
           // as a non-user edit (isUserEvent("input"/"delete"/etc.) returns false).
           annotations: Transaction.remote.of(true),
         });
+        batchNextVersion = Math.max(batchNextVersion, incomingVersion || expectedBaseVersion + 1);
+        collaborationEngine.markOperationApplied(op.operation_id);
+        const nextOp = ops[index + 1];
+        if (!nextOp || normalizeVersion(nextOp.base_version) !== baseVersion) {
+          expectedBaseVersion = batchNextVersion;
+        }
       }
+      docVersionRef.current = batchNextVersion;
 
       const nextContent = view.state.doc.toString();
-      setContent(nextContent);
-      onContentChangeGlobal(activeTab.path, nextContent);
-      scheduleRemoteContentPersist(activeTab.path, nextContent);
+      const lastOp = ops[ops.length - 1];
+      void sha256Hex(nextContent).then((hash) => {
+        docHashRef.current = hash;
+        if (lastOp?.content_hash && lastOp.content_hash !== hash) {
+          console.warn("[Collab][hash_mismatch_after_ops]", {
+            path,
+            expected: lastOp.content_hash,
+            actual: hash,
+            version: docVersionRef.current,
+          });
+          enterFailSafeMode("hash mismatch after remote operations");
+          void collaborationEngine.triggerSafeResync(path, docVersionRef.current);
+          return;
+        }
+        setContent(nextContent);
+        onContentChangeGlobal(activeTab.path, nextContent);
+        scheduleRemoteContentPersist(activeTab.path, nextContent, {
+          version: docVersionRef.current,
+          last_modified: new Date().toISOString(),
+          client_id: lastOp?.client_id || lastOp?.clientId || null,
+          content_hash: hash,
+        });
+      });
     });
 
     return unsub;
-  }, [activeTab.path, onContentChangeGlobal, scheduleRemoteContentPersist]);
+  }, [activeTab.path, onContentChangeGlobal, scheduleRemoteContentPersist, enterFailSafeMode, collabFailSafe]);
 
   // ── Receive Remote Cursor Presence ──────────────────────────────────────────
 
@@ -395,13 +568,47 @@ export function LeafPaneEditor({
   useEffect(() => {
     if (activeTab.path === "__new_tab__") return;
 
-    const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId, isBroadcast) => {
+    const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId, isBroadcast, meta) => {
       if (path !== activeTab.path) return;
+      if (collabFailSafe) return;
 
-      // If this is a background database replication change (not a real-time broadcast),
-      // IGNORE the full-document replacement to avoid overwriting concurrent local edits.
-      // Real-time synchronization is handled natively via 'doc-ops' and 'doc-full' broadcasts.
-      if (!isBroadcast) return;
+      const incomingVersion = normalizeVersion(meta?.version);
+      const currentVersion = docVersionRef.current;
+      if (incomingVersion <= currentVersion) {
+        console.info("[Collab][full_doc_ignored_stale]", {
+          path,
+          isBroadcast,
+          incomingVersion,
+          currentVersion,
+        });
+        return;
+      }
+
+      if (dbSyncTimer.current !== null) {
+        console.warn("[Collab][full_doc_delayed_local_pending]", {
+          path,
+          incomingVersion,
+          currentVersion,
+        });
+        void collaborationEngine.triggerSafeResync(path, currentVersion);
+        return;
+      }
+
+      void sha256Hex(remoteContent).then((hash) => {
+        if (meta?.content_hash && meta.content_hash !== hash) {
+          console.warn("[Collab][full_doc_hash_mismatch]", {
+            path,
+            incomingVersion,
+            expected: meta.content_hash,
+            actual: hash,
+          });
+          enterFailSafeMode("full document hash mismatch");
+          void collaborationEngine.triggerSafeResync(path, currentVersion);
+          return;
+        }
+
+        docVersionRef.current = incomingVersion;
+        docHashRef.current = hash;
 
       const view = editorViewRef.current;
       if (view) {
@@ -437,7 +644,11 @@ export function LeafPaneEditor({
               await localDB.putNote({
                 ...note,
                 content: remoteContent,
-                updated_at: new Date().toISOString(),
+                version: incomingVersion,
+                last_modified: meta?.last_modified || new Date().toISOString(),
+                client_id: meta?.client_id || null,
+                content_hash: hash,
+                updated_at: meta?.last_modified || new Date().toISOString(),
               }, false);
             }
           }
@@ -445,10 +656,11 @@ export function LeafPaneEditor({
           console.error("[Collab] Failed to write remote content to disk:", err);
         }
       }, 1000);
+      });
     });
 
     return unsub;
-  }, [activeTab.path, onContentChangeGlobal]);
+  }, [activeTab.path, onContentChangeGlobal, collabFailSafe, enterFailSafeMode]);
 
   // Re-sync active note upon network reconnection or page focus
   useEffect(() => {
@@ -470,23 +682,32 @@ export function LeafPaneEditor({
         const client = getUserSupabaseClient() || supabase;
         const { data: remote } = await client
           .from('notes')
-          .select('content, updated_at')
+          .select('content, updated_at, version, last_modified, client_id, content_hash')
           .eq('space_id', spaceId)
           .eq('path', activeTab.path)
           .maybeSingle();
 
         if (remote) {
           const localNote = await localDB.getNoteByPath(spaceId, activeTab.path);
+          const remoteVersion = normalizeVersion((remote as any).version);
+          const localVersion = normalizeVersion(localNote?.version ?? docVersionRef.current);
           const remoteTime = new Date(remote.updated_at).getTime();
           const localTime = localNote ? new Date(localNote.updated_at).getTime() : 0;
 
-          if (remoteTime > localTime) {
+          if (remoteVersion > localVersion || (remoteVersion === 0 && remoteTime > localTime)) {
             console.log(`[Collab] Reconnection resync: Remote is newer. Updating editor for ${activeTab.path}.`);
+            const hash = (remote as any).content_hash || await sha256Hex(remote.content || '');
+            docVersionRef.current = remoteVersion;
+            docHashRef.current = hash;
             
             // Remote is newer, update IndexedDB, disk and editor!
             if (localNote) {
               localNote.content = remote.content;
               localNote.updated_at = remote.updated_at;
+              localNote.version = remoteVersion;
+              localNote.last_modified = (remote as any).last_modified || remote.updated_at;
+              localNote.client_id = (remote as any).client_id || null;
+              localNote.content_hash = hash;
               await localDB.putNote(localNote, false);
             }
             await api.writeFile(activeTab.path, remote.content || '');
@@ -521,6 +742,7 @@ export function LeafPaneEditor({
         if (view) {
           const sel = view.state.selection.main;
           handleCursorChange({ from: sel.from, to: sel.to });
+          scheduleFullDocumentBroadcast(view.state.doc.toString(), 400);
         }
       }
     };
@@ -531,7 +753,7 @@ export function LeafPaneEditor({
       window.removeEventListener('focus', handleReSync);
       window.removeEventListener('collaboration:realtime', handleRealtimeEvent);
     };
-  }, [activeTab.path, handleCursorChange]);
+  }, [activeTab.path, handleCursorChange, scheduleFullDocumentBroadcast]);
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
 
@@ -550,6 +772,10 @@ export function LeafPaneEditor({
       if (remotePersistTimerRef.current) {
         clearTimeout(remotePersistTimerRef.current);
         remotePersistTimerRef.current = null;
+      }
+      if (fullDocumentBroadcastTimerRef.current) {
+        clearTimeout(fullDocumentBroadcastTimerRef.current);
+        fullDocumentBroadcastTimerRef.current = null;
       }
     };
   }, []);
@@ -600,7 +826,7 @@ export function LeafPaneEditor({
 
   const currentUser = authManager.getUser();
   const currentUserId = currentUser?.id;
-  const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused;
+  const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused && !collabFailSafe;
 
   const activeEditors = [...(activeUsers || []).filter(u => u.activeNoteId === activeTab.path && u.isEditing)];
   
@@ -673,6 +899,18 @@ export function LeafPaneEditor({
           onClose={() => onTabClose(activeTab.id)}
         />
       ) : (
+        <>
+        {collabFailSafe && (
+          <div style={{
+            padding: "8px 12px",
+            borderBottom: "1px solid var(--border-color)",
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+            fontSize: 12,
+          }}>
+            Realtime paused after repeated sync conflicts. This note is view-only until refresh.
+          </div>
+        )}
         <Editor
           tabs={leaf.tabs}
           activeTabId={activeTab.id}
@@ -703,7 +941,9 @@ export function LeafPaneEditor({
           onEditorViewReady={handleEditorViewReady}
           getViewState={getViewState}
           onViewStateChange={onViewStateChange}
+          readOnly={collabFailSafe}
         />
+        </>
       )}
     </div>
   );
