@@ -176,6 +176,11 @@ class CollaborationEngine {
   private clientId: string = '';
   private lastAppliedTimestamps = new Map<string, number>();
   private _collabPaused: boolean = false;
+  private realtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private realtimeReconnectAttempt = 0;
+  private reconnectingSpaceId: string | null = null;
+  private lastPresenceNoteId: string | null = null;
+  private lastPresenceTyping = false;
   constructor() {
     this._collabPaused = typeof localStorage !== 'undefined' ? localStorage.getItem('collab_paused') === 'true' : false;
     
@@ -189,6 +194,16 @@ class CollaborationEngine {
       this.clientId = stored;
     } else {
       this.clientId = this.generateUUID();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => this.ensureRealtimeConnected());
+      window.addEventListener('focus', () => this.ensureRealtimeConnected());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          this.ensureRealtimeConnected();
+        }
+      });
     }
     
     this.init();
@@ -949,8 +964,15 @@ class CollaborationEngine {
       return;
     }
 
-    // Already subscribed to this exact space with a live channel.
-    if (this.realtimeChannel && this._activeSpaceId === spaceId) {
+    this.clearRealtimeReconnect();
+
+    const currentState = this.realtimeChannel ? (this.realtimeChannel as any).state : null;
+    // Already subscribed/subscribing to this exact space with a usable channel.
+    if (
+      this.realtimeChannel &&
+      this._activeSpaceId === spaceId &&
+      (currentState === 'joined' || currentState === 'joining')
+    ) {
       return;
     }
 
@@ -1026,12 +1048,26 @@ class CollaborationEngine {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED' && !this._collabPaused) {
+          this.realtimeReconnectAttempt = 0;
+          this.reconnectingSpaceId = null;
           const user = authManager.getUser();
-          await this.realtimeChannel?.track({
-            user_id: userId,
-            email: user?.email || '',
-            online_at: new Date().toISOString(),
-          });
+          try {
+            await this.realtimeChannel?.track({
+              user_id: userId,
+              email: user?.email || '',
+              active_note_id: this.lastPresenceNoteId,
+              is_typing: this.lastPresenceTyping,
+              online_at: new Date().toISOString(),
+            });
+            this.dispatchRealtimeEvent('connected', spaceId);
+          } catch (err) {
+            console.error('[Collab] Failed to track presence after subscribe:', err);
+            this.scheduleRealtimeReconnect(spaceId);
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          this.dispatchRealtimeEvent('disconnected', spaceId);
+          console.warn('[Collab] Realtime channel status:', status);
+          this.scheduleRealtimeReconnect(spaceId);
         }
       });
   }
@@ -1058,8 +1094,53 @@ class CollaborationEngine {
    * the vault is actually being switched or the app is unmounting.
    */
   clearActiveSpace() {
+    this.clearRealtimeReconnect();
     this.unsubscribeFromSpace();
     this._activeSpaceId = null;
+  }
+
+  private ensureRealtimeConnected() {
+    if (this._collabPaused) return;
+    if (!this._activeSpaceId) return;
+    if (!authManager.getUserId()) return;
+
+    const state = this.realtimeChannel ? (this.realtimeChannel as any).state : null;
+    if (state === 'joined' || state === 'joining') return;
+    this.scheduleRealtimeReconnect(this._activeSpaceId, 0);
+  }
+
+  private scheduleRealtimeReconnect(spaceId: string, overrideDelay?: number) {
+    if (this._collabPaused) return;
+    if (!authManager.getUserId()) return;
+    if (this.realtimeReconnectTimer && this.reconnectingSpaceId === spaceId) return;
+
+    this.reconnectingSpaceId = spaceId;
+    const delay = overrideDelay ?? Math.min(30_000, 1_000 * Math.pow(2, this.realtimeReconnectAttempt));
+    this.realtimeReconnectAttempt += 1;
+
+    this.realtimeReconnectTimer = setTimeout(() => {
+      this.realtimeReconnectTimer = null;
+      if (this._activeSpaceId !== spaceId || this._collabPaused) return;
+      this.subscribeToSpace(spaceId).catch((err) => {
+        console.error('[Collab] Realtime reconnect failed:', err);
+        this.scheduleRealtimeReconnect(spaceId);
+      });
+    }, delay);
+  }
+
+  private clearRealtimeReconnect() {
+    if (this.realtimeReconnectTimer) {
+      clearTimeout(this.realtimeReconnectTimer);
+      this.realtimeReconnectTimer = null;
+    }
+    this.reconnectingSpaceId = null;
+  }
+
+  private dispatchRealtimeEvent(type: 'connected' | 'disconnected', spaceId: string) {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('collaboration:realtime', {
+      detail: { type, spaceId },
+    }));
   }
 
   private handlePresenceSync() {
@@ -1107,18 +1188,28 @@ class CollaborationEngine {
 
   async updatePresenceNote(noteId: string | null, isTyping: boolean = false) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel) return;
+    this.lastPresenceNoteId = noteId;
+    this.lastPresenceTyping = isTyping;
+    if (!this.realtimeChannel) {
+      this.ensureRealtimeConnected();
+      return;
+    }
     const userId = authManager.getUserId();
     if (!userId) return;
 
     const user = authManager.getUser();
-    await this.realtimeChannel.track({
-      user_id: userId,
-      email: user?.email || '',
-      active_note_id: noteId,
-      is_typing: isTyping,
-      online_at: new Date().toISOString(),
-    });
+    try {
+      await this.realtimeChannel.track({
+        user_id: userId,
+        email: user?.email || '',
+        active_note_id: noteId,
+        is_typing: isTyping,
+        online_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn('[Collab] Presence update failed; reconnecting realtime channel:', err);
+      if (this._activeSpaceId) this.scheduleRealtimeReconnect(this._activeSpaceId);
+    }
   }
 
   private async handleRemoteNoteChange(payload: any) {
@@ -1214,7 +1305,11 @@ class CollaborationEngine {
    */
   broadcastOperations(path: string, ops: CollabOperation[]) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel || ops.length === 0) return;
+    if (ops.length === 0) return;
+    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') {
+      this.ensureRealtimeConnected();
+      return;
+    }
 
     // Accumulate ops for this path
     const existing = this.opBatchBuffer.get(path) || [];
@@ -1231,12 +1326,13 @@ class CollaborationEngine {
     this.opBatchTimer = null;
     if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) {
       this.opBatchBuffer.clear();
+      this.ensureRealtimeConnected();
       return;
     }
 
     for (const [path, ops] of this.opBatchBuffer) {
       if (ops.length === 0) continue;
-      this.realtimeChannel.send({
+      void this.realtimeChannel.send({
         type: 'broadcast',
         event: 'doc-ops',
         payload: {
@@ -1244,6 +1340,14 @@ class CollaborationEngine {
           ops,
           clientId: this.clientId,
         },
+      }).then((result: any) => {
+        if (result !== 'ok') {
+          console.warn('[Collab] doc-ops broadcast failed:', result);
+          this.ensureRealtimeConnected();
+        }
+      }).catch((err: any) => {
+        console.warn('[Collab] doc-ops broadcast error:', err);
+        this.ensureRealtimeConnected();
       });
     }
     this.opBatchBuffer.clear();
@@ -1256,12 +1360,15 @@ class CollaborationEngine {
    */
   broadcastFullDocument(path: string, content: string) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') return;
+    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') {
+      this.ensureRealtimeConnected();
+      return;
+    }
 
     // Clear any pending ops for this path -- the full doc supersedes them
     this.opBatchBuffer.delete(path);
 
-    this.realtimeChannel.send({
+    void this.realtimeChannel.send({
       type: 'broadcast',
       event: 'doc-full',
       payload: {
@@ -1269,6 +1376,14 @@ class CollaborationEngine {
         content,
         clientId: this.clientId,
       },
+    }).then((result: any) => {
+      if (result !== 'ok') {
+        console.warn('[Collab] doc-full broadcast failed:', result);
+        this.ensureRealtimeConnected();
+      }
+    }).catch((err: any) => {
+      console.warn('[Collab] doc-full broadcast error:', err);
+      this.ensureRealtimeConnected();
     });
   }
 
@@ -1279,7 +1394,10 @@ class CollaborationEngine {
    */
   broadcastCursorPresence(presence: CursorPresence) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel) return;
+    if (!this.realtimeChannel) {
+      this.ensureRealtimeConnected();
+      return;
+    }
 
     this.pendingCursorPresence = presence;
 
@@ -1301,12 +1419,23 @@ class CollaborationEngine {
 
   private sendCursorPresence() {
     this.cursorThrottleTimer = null;
-    if (!this.pendingCursorPresence || !this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) return;
+    if (!this.pendingCursorPresence || !this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) {
+      this.ensureRealtimeConnected();
+      return;
+    }
 
-    this.realtimeChannel.send({
+    void this.realtimeChannel.send({
       type: 'broadcast',
       event: 'cursor-presence',
       payload: this.pendingCursorPresence,
+    }).then((result: any) => {
+      if (result !== 'ok') {
+        console.warn('[Collab] cursor broadcast failed:', result);
+        this.ensureRealtimeConnected();
+      }
+    }).catch((err: any) => {
+      console.warn('[Collab] cursor broadcast error:', err);
+      this.ensureRealtimeConnected();
     });
     this.lastCursorBroadcast = Date.now();
     this.pendingCursorPresence = null;
@@ -1366,6 +1495,7 @@ class CollaborationEngine {
     // Clear batch/throttle timers
     if (this.opBatchTimer) { clearTimeout(this.opBatchTimer); this.opBatchTimer = null; }
     if (this.cursorThrottleTimer) { clearTimeout(this.cursorThrottleTimer); this.cursorThrottleTimer = null; }
+    this.clearRealtimeReconnect();
     this.opBatchBuffer.clear();
     this.pendingCursorPresence = null;
 

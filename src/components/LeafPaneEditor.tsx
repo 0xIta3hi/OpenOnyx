@@ -85,6 +85,7 @@ export function LeafPaneEditor({
   const [isSelfTyping, setIsSelfTyping] = useState<boolean>(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const remotePersistTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Ref to the CodeMirror EditorView -- needed to apply remote operations
   // directly without going through React state (which would cause full-doc replace).
@@ -252,6 +253,35 @@ export function LeafPaneEditor({
     }, 150);
   }, [activeTab.path]);
 
+  const scheduleRemoteContentPersist = useCallback((path: string, remoteContent: string) => {
+    if (!collaborationEngine.activeSpaceId || path === "__new_tab__") return;
+
+    if (remotePersistTimerRef.current) {
+      clearTimeout(remotePersistTimerRef.current);
+    }
+
+    remotePersistTimerRef.current = setTimeout(async () => {
+      remotePersistTimerRef.current = null;
+      try {
+        await api.writeFile(path, remoteContent);
+
+        const spaceId = collaborationEngine.activeSpaceId;
+        if (!spaceId) return;
+
+        const note = await localDB.getNoteByPath(spaceId, path);
+        if (note) {
+          await localDB.putNote({
+            ...note,
+            content: remoteContent,
+            updated_at: new Date().toISOString(),
+          }, false);
+        }
+      } catch (err) {
+        console.error("[Collab] Failed to persist remote content:", err);
+      }
+    }, 250);
+  }, []);
+
   // ── Receive Remote Operations ───────────────────────────────────────────────
 
   useEffect(() => {
@@ -278,10 +308,15 @@ export function LeafPaneEditor({
           annotations: Transaction.remote.of(true),
         });
       }
+
+      const nextContent = view.state.doc.toString();
+      setContent(nextContent);
+      onContentChangeGlobal(activeTab.path, nextContent);
+      scheduleRemoteContentPersist(activeTab.path, nextContent);
     });
 
     return unsub;
-  }, [activeTab.path, onContentChangeGlobal]);
+  }, [activeTab.path, onContentChangeGlobal, scheduleRemoteContentPersist]);
 
   // ── Receive Remote Cursor Presence ──────────────────────────────────────────
 
@@ -395,6 +430,17 @@ export function LeafPaneEditor({
         autoSaveTimer.current = null;
         try {
           await api.writeFile(activeTab.path, remoteContent);
+          const spaceId = collaborationEngine.activeSpaceId;
+          if (spaceId) {
+            const note = await localDB.getNoteByPath(spaceId, activeTab.path);
+            if (note) {
+              await localDB.putNote({
+                ...note,
+                content: remoteContent,
+                updated_at: new Date().toISOString(),
+              }, false);
+            }
+          }
         } catch (err) {
           console.error("[Collab] Failed to write remote content to disk:", err);
         }
@@ -467,12 +513,25 @@ export function LeafPaneEditor({
 
     window.addEventListener('online', handleReSync);
     window.addEventListener('focus', handleReSync);
+    const handleRealtimeEvent = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.type === 'connected') {
+        handleReSync();
+        const view = editorViewRef.current;
+        if (view) {
+          const sel = view.state.selection.main;
+          handleCursorChange({ from: sel.from, to: sel.to });
+        }
+      }
+    };
+    window.addEventListener('collaboration:realtime', handleRealtimeEvent);
 
     return () => {
       window.removeEventListener('online', handleReSync);
       window.removeEventListener('focus', handleReSync);
+      window.removeEventListener('collaboration:realtime', handleRealtimeEvent);
     };
-  }, [activeTab.path]);
+  }, [activeTab.path, handleCursorChange]);
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
 
@@ -487,6 +546,10 @@ export function LeafPaneEditor({
       if (cursorDebounceRef.current) {
         clearTimeout(cursorDebounceRef.current);
         cursorDebounceRef.current = null;
+      }
+      if (remotePersistTimerRef.current) {
+        clearTimeout(remotePersistTimerRef.current);
+        remotePersistTimerRef.current = null;
       }
     };
   }, []);
