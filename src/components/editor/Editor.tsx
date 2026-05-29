@@ -2807,9 +2807,12 @@ export function Editor({
               }
             }
           }
-          // Cursor/selection change detection for presence broadcast
+          // Cursor/selection change detection for presence broadcast.
+          // Only broadcast when the selection change was NOT caused by a remote
+          // transaction -- otherwise we bounce cursor positions back to peers,
+          // creating feedback loops.
           const cursorCb = onCursorChangeRef.current;
-          if (update.selectionSet && cursorCb) {
+          if (update.selectionSet && cursorCb && !update.transactions.some(tr => tr.annotation(Transaction.remote))) {
             const sel = update.state.selection.main;
             cursorCb({ from: sel.from, to: sel.to });
           }

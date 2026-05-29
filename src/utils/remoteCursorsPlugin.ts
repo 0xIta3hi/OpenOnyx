@@ -85,8 +85,8 @@ function buildDecorations(
   const decorations: { from: number; to: number; value: Decoration }[] = [];
 
   for (const [, presence] of cursors) {
-    const from = Math.min(presence.cursor.from, docLength);
-    const to = Math.min(presence.cursor.to, docLength);
+    const from = Math.max(0, Math.min(presence.cursor.from, docLength));
+    const to = Math.max(0, Math.min(presence.cursor.to, docLength));
 
     // Cursor caret widget at the `from` position
     decorations.push({

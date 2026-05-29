@@ -11,6 +11,7 @@ import { collaborationEngine } from "../lib/collaborationEngine";
 import { syncEngine } from "../lib/syncEngine";
 import type { CollabOperation, CursorPresence } from "../utils/collabOperations";
 import { operationToChangeSpec, clampOperation } from "../utils/collabOperations";
+import { setCursorsEffect } from "../utils/remoteCursorsPlugin";
 import { Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
@@ -204,16 +205,18 @@ export function LeafPaneEditor({
   const handleCollabOperations = useCallback((ops: CollabOperation[]) => {
     if (!collaborationEngine.activeSpaceId) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
-    collaborationEngine.broadcastOperations(activeTab.path, ops);
 
-    // For large edits (paste, AI generation), also broadcast the full document
-    // as a fallback. Granular ops may fail to apply on diverged documents.
+    // For large edits (paste, AI generation), broadcast ONLY the full document.
+    // Sending both granular ops AND a full-doc causes double-application on the
+    // receiver side. Granular ops are only useful for small, incremental edits.
     const totalInserted = ops.reduce((sum, op) => sum + (op.text?.length || 0), 0);
     if (totalInserted > 500) {
       const view = editorViewRef.current;
       if (view) {
         collaborationEngine.broadcastFullDocument(activeTab.path, view.state.doc.toString());
       }
+    } else {
+      collaborationEngine.broadcastOperations(activeTab.path, ops);
     }
   }, [activeTab.path]);
 
@@ -254,13 +257,16 @@ export function LeafPaneEditor({
       const view = editorViewRef.current;
       if (!view) return;
 
-      // Convert operations to CodeMirror ChangeSpecs and apply them
-      const docLen = view.state.doc.length;
-      const changes = ops.map(op => operationToChangeSpec(clampOperation(op, docLen)));
-
-      if (changes.length > 0) {
+      // Apply each operation sequentially. Each dispatch changes the document
+      // length, so we must re-read doc.length after each one. Batching them
+      // all against a single stale snapshot causes position corruption on the
+      // 2nd+ operation.
+      for (const op of ops) {
+        const docLen = view.state.doc.length;
+        const clamped = clampOperation(op, docLen);
+        const change = operationToChangeSpec(clamped);
         view.dispatch({
-          changes,
+          changes: change,
           // Use 'remote' annotation so the CM update listener recognises this
           // as a non-user edit (isUserEvent("input"/"delete"/etc.) returns false).
           annotations: Transaction.remote.of(true),
@@ -273,6 +279,9 @@ export function LeafPaneEditor({
 
   // ── Receive Remote Cursor Presence ──────────────────────────────────────────
 
+  // Track when each remote cursor was last updated, so we can clean up stale ones
+  const cursorLastSeenRef = useRef<Map<string, number>>(new Map());
+
   useEffect(() => {
     if (activeTab.path === "__new_tab__") return;
 
@@ -281,8 +290,12 @@ export function LeafPaneEditor({
       if (presence.file_path !== activeTab.path) {
         // Remove this user's cursor if they moved to a different file
         setRemoteCursors(prev => prev.filter(c => c.user_id !== presence.user_id));
+        cursorLastSeenRef.current.delete(presence.user_id);
         return;
       }
+
+      // Update last-seen timestamp for stale cleanup
+      cursorLastSeenRef.current.set(presence.user_id, Date.now());
 
       setRemoteCursors(prev => {
         const existing = prev.findIndex(c => c.user_id === presence.user_id);
@@ -295,7 +308,45 @@ export function LeafPaneEditor({
       });
     });
 
-    return unsub;
+    // Clean up stale cursors every 10 seconds. If a user's cursor hasn't
+    // been updated in 15 seconds they are likely offline or on another file.
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const staleThreshold = 15_000;
+      const staleUserIds: string[] = [];
+      for (const [userId, lastSeen] of cursorLastSeenRef.current) {
+        if (now - lastSeen > staleThreshold) {
+          staleUserIds.push(userId);
+        }
+      }
+      if (staleUserIds.length > 0) {
+        for (const id of staleUserIds) {
+          cursorLastSeenRef.current.delete(id);
+        }
+        setRemoteCursors(prev => prev.filter(c => !staleUserIds.includes(c.user_id)));
+      }
+    }, 10_000);
+
+    // Also clean up cursors when users go offline (leave presence)
+    const unsubUsers = collaborationEngine.onActiveUsersChange((users) => {
+      const onlineUserIds = new Set(users.map(u => u.id));
+      setRemoteCursors(prev => {
+        const filtered = prev.filter(c => onlineUserIds.has(c.user_id));
+        // Also prune the lastSeen map
+        for (const [userId] of cursorLastSeenRef.current) {
+          if (!onlineUserIds.has(userId)) {
+            cursorLastSeenRef.current.delete(userId);
+          }
+        }
+        return filtered.length !== prev.length ? filtered : prev;
+      });
+    });
+
+    return () => {
+      unsub();
+      clearInterval(cleanupInterval);
+      unsubUsers();
+    };
   }, [activeTab.path]);
 
   // ── Full-Content Fallback (DB-level sync via postgres_changes) ──────────────
@@ -319,6 +370,11 @@ export function LeafPaneEditor({
         setContent(remoteContent);
         onContentChangeGlobal(activeTab.path, remoteContent);
       }
+
+      // Clear stale remote cursor positions -- after a full-doc replace, all
+      // absolute cursor positions from peers are invalid and must be refreshed
+      // by the next cursor-presence broadcast from each peer.
+      setRemoteCursors([]);
 
       // Write to local disk (debounced)
       if (autoSaveTimer.current) {
@@ -366,9 +422,15 @@ export function LeafPaneEditor({
     };
   }, [activeTab.path, isSelfTyping]);
 
-  // Clear remote cursors when switching files
+  // Clear remote cursors when switching files (both React state AND CodeMirror)
   useEffect(() => {
     setRemoteCursors([]);
+    const view = editorViewRef.current;
+    if (view) {
+      try {
+        view.dispatch({ effects: setCursorsEffect.of([]) });
+      } catch { /* view may be destroyed during tab switch */ }
+    }
   }, [activeTab.path]);
 
   // Restore viewMode state when tab changes

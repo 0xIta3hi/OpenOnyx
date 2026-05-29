@@ -354,7 +354,7 @@
   font-size: 10px;
 }
 
-/* ── Remote Cursor: CodeMirror Decorations ───────────────────────────────── */
+/* ── Remote Cursor: CodeMirror Decorations ───────────────────────────── */
 
 .cm-collab-cursor-wrapper {
   display: inline;
@@ -384,12 +384,25 @@
   color: #fff;
   white-space: nowrap;
   pointer-events: none;
-  opacity: 1;
-  transition: opacity 0.3s ease;
   z-index: 100;
   line-height: 1.4;
   letter-spacing: 0.02em;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  /* Auto-fade after 3s so the label doesn't permanently obscure text */
+  animation: collab-label-fade 4s ease forwards;
+}
+
+/* Re-show the label when the user hovers near the cursor area.
+   We set pointer-events on the wrapper only on hover so the label
+   becomes visible again on mouseover. */
+.cm-collab-cursor-wrapper:hover .cm-collab-cursor-label {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes collab-label-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* Selection highlight for remote users */
