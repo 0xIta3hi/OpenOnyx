@@ -62,13 +62,15 @@ import {
   recordIgnoredSuggestions,
   getTransitionBoost,
   recordTransition,
+  resetEmbeddingsStore,
   type EmbeddingStore,
 } from "./utils/embeddings";
 import { getAnnotation, getCachedAnnotation, generateFirstThoughtExpansion } from "./utils/ai-core";
-import { initializeVault, setQueueStatusCallback, type QueueStatus } from "./utils/background-queue";
+import { initializeVault, setQueueStatusCallback, resetQueueState, type QueueStatus } from "./utils/background-queue";
 import { type LinkType } from "./components/SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-enrichment";
-import { generateSynthesis } from "./utils/synthesis";
+import { generateSynthesis, resetSynthesisCache } from "./utils/synthesis";
+import { clearCache as clearSpacesCache } from "./utils/spaces-store";
 import { FileText, Layout } from "lucide-react";
 import { Tab, ViewMode, Theme, Command, FileEntry, PaneNode, PaneLeaf } from "./types";
 import {
@@ -943,6 +945,7 @@ import { v4 as uuidv4 } from "uuid";
 export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
+  const [previouslyOpenedVaults, setPreviouslyOpenedVaults] = useState<string[]>([]);
   const [collabStatus, setCollabStatus] = useState<CollabStatus>({ state: 'idle' });
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
@@ -1709,6 +1712,13 @@ export default function App() {
             handleOpenNewTab();
           }
         }
+
+        try {
+          const previous = await api.getPreviouslyOpenedVaults();
+          setPreviouslyOpenedVaults(previous || []);
+        } catch (prevErr) {
+          console.warn("Failed to load previously opened vaults:", prevErr);
+        }
       } catch (err) {
         console.error("Failed to auto-load vault:", err);
       }
@@ -2318,6 +2328,16 @@ export default function App() {
     (window as any).__oo_vault_path = vaultPath;
   }, [vaultPath]);
 
+  // ── Reset Caches and Queue on Vault Path Change ─────
+  useEffect(() => {
+    if (!vaultPath) return;
+
+    resetQueueState();
+    resetEmbeddingsStore();
+    clearSpacesCache();
+    resetSynthesisCache();
+  }, [vaultPath]);
+
   // ── Initialize Core Systems ────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -2595,40 +2615,60 @@ export default function App() {
     };
   }, [activeTabId, tabs, currentContent, paneTree]);
 
-  // ── Vault Operations ────────────────────────────────
+  const loadVaultData = async (path: string) => {
+    await api.setVaultPath(path);
+    setVaultPath(path);
+    (window as any).__oo_vault_path = path;
+    setShowSidebar(true);
+    const tree = await api.getFileTree();
+    setFileTree(tree);
+    // Trigger background vault initialization for new vault
+    runVaultInit(tree);
+    
+    try {
+      const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
+      if (workspaceData && workspaceData.paneTree) {
+        setPaneTree(workspaceData.paneTree);
+        setTabs(collectAllTabs(workspaceData.paneTree));
+        if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
+        if (workspaceData.focusedLeafId) setFocusedLeafId(workspaceData.focusedLeafId);
+      } else {
+        handleOpenNewTab();
+      }
+    } catch (err) {
+      handleOpenNewTab();
+    }
+
+    try {
+      const previous = await api.getPreviouslyOpenedVaults();
+      setPreviouslyOpenedVaults(previous || []);
+    } catch (prevErr) {
+      console.warn("Failed to load previously opened vaults:", prevErr);
+    }
+  };
+
   const handleOpenVault = async (): Promise<boolean> => {
     try {
       const path = await api.openVaultDialog();
       if (path) {
-        await api.setVaultPath(path);
-        setVaultPath(path);
-        (window as any).__oo_vault_path = path;
-        setShowSidebar(true);
-        const tree = await api.getFileTree();
-        setFileTree(tree);
-        // Trigger background vault initialization for new vault
-        runVaultInit(tree);
-        
-        try {
-          const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
-          if (workspaceData && workspaceData.paneTree) {
-            setPaneTree(workspaceData.paneTree);
-            setTabs(collectAllTabs(workspaceData.paneTree));
-            if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
-            if (workspaceData.focusedLeafId) setFocusedLeafId(workspaceData.focusedLeafId);
-          } else {
-            handleOpenNewTab();
-          }
-        } catch (err) {
-          handleOpenNewTab();
-        }
-        
+        await loadVaultData(path);
         return true;
       }
       return false;
     } catch (e) {
       console.error("Failed to open vault:", e);
       alert("Failed to open vault. It may be too large or inaccessible.");
+      return false;
+    }
+  };
+
+  const handleSwitchVault = async (path: string): Promise<boolean> => {
+    try {
+      await loadVaultData(path);
+      return true;
+    } catch (e) {
+      console.error("Failed to switch vault:", e);
+      alert("Failed to switch vault. It may be too large or inaccessible.");
       return false;
     }
   };
@@ -5980,6 +6020,8 @@ export default function App() {
             }}
             vaultPath={vaultPath}
             onOpenVault={handleOpenVault}
+            previouslyOpenedVaults={previouslyOpenedVaults}
+            onSwitchVault={handleSwitchVault}
             onSettings={() => setShowSettings(true)}
             pluginViews={leftPluginViews}
             onClosePluginView={(viewType) => {

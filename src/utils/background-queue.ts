@@ -250,6 +250,15 @@ export function cancelProcessing(): void {
   writeData("queue.json", { jobs: [], processedCount: 0, totalCount: 0, lastUpdated: Date.now() });
 }
 
+export function resetQueueState(): void {
+  _queue = [];
+  _isProcessing = false;
+  _processedCount = 0;
+  _totalCount = 0;
+  _queueLoaded = false;
+  reportStatus("");
+}
+
 export function getQueueLength(): number {
   return _queue.length;
 }

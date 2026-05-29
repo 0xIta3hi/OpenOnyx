@@ -315,16 +315,42 @@ app.whenReady().then(async () => {
   const config = loadConfig();
   if (config.lastVaultPath && fs.existsSync(config.lastVaultPath)) {
     fsManager.setVaultPath(config.lastVaultPath);
+    
+    // Ensure startup vault is in previouslyOpenedVaults
+    const previouslyOpened = config.previouslyOpenedVaults || [];
+    if (!previouslyOpened.includes(config.lastVaultPath)) {
+      previouslyOpened.push(config.lastVaultPath);
+      config.previouslyOpenedVaults = previouslyOpened;
+      saveConfig(config);
+    }
+
     // Initial index build for the auto-loaded vault
     await searchEngine.buildIndex(fsManager);
   }
 
   // Register all IPC handlers for renderer communication
-  registerIpcHandlers(ipcMain, fsManager, searchEngine, () => mainWindow, (vaultPath) => {
-    const config = loadConfig();
-    config.lastVaultPath = vaultPath;
-    saveConfig(config);
-  });
+  registerIpcHandlers(
+    ipcMain,
+    fsManager,
+    searchEngine,
+    () => mainWindow,
+    (vaultPath) => {
+      const config = loadConfig();
+      config.lastVaultPath = vaultPath;
+      
+      const previouslyOpened = config.previouslyOpenedVaults || [];
+      if (!previouslyOpened.includes(vaultPath)) {
+        previouslyOpened.push(vaultPath);
+        config.previouslyOpenedVaults = previouslyOpened;
+      }
+      
+      saveConfig(config);
+    },
+    () => {
+      const config = loadConfig();
+      return config.previouslyOpenedVaults || [];
+    }
+  );
 
   // Handle vault directory selection dialog
   ipcMain.handle('dialog:openDirectory', async () => {

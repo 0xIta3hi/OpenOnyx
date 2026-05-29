@@ -239,9 +239,20 @@ export function createMockAPI(): ElectronAPI {
     },
     setVaultPath: async (path: string) => {
       mockVaultPath = path;
+      const stored = localStorage.getItem("mock-previously-opened-vaults");
+      const list = stored ? JSON.parse(stored) : [];
+      if (!list.includes(path)) {
+        list.push(path);
+        localStorage.setItem("mock-previously-opened-vaults", JSON.stringify(list));
+      }
       return true;
     },
     getVaultPath: async () => mockVaultPath,
+    getPreviouslyOpenedVaults: async () => {
+      const stored = localStorage.getItem("mock-previously-opened-vaults");
+      if (stored) return JSON.parse(stored);
+      return mockVaultPath ? [mockVaultPath] : [];
+    },
 
     // File operations
     listFiles: async (dirPath?: string) => {

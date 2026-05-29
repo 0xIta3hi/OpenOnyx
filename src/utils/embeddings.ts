@@ -278,6 +278,13 @@ export function saveStore(_store: EmbeddingStore): void {
   // This maintains backward API compatibility
 }
 
+export function resetEmbeddingsStore(): void {
+  _memoryStore = { entries: new Map() };
+  _isLoaded = false;
+  _isLoading = false;
+  _loadPromise = null;
+}
+
 /**
  * Embed a note if its content has changed.
  */

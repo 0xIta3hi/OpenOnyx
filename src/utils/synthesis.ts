@@ -461,3 +461,8 @@ export function findSynthesisCandidates(
   const clusters = detectClusters(store, threshold, minGroupSize);
   return clusters.filter((c) => c.confidence >= 0.3);
 }
+
+export function resetSynthesisCache(): void {
+  _synthCache = null;
+  _synthCacheLoaded = false;
+}

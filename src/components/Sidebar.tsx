@@ -57,6 +57,8 @@ interface SidebarProps {
   onCollapse: () => void;
   vaultPath?: string;
   onOpenVault?: () => void;
+  previouslyOpenedVaults?: string[];
+  onSwitchVault?: (path: string) => void;
   onSettings?: () => void;
   pluginViews?: Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string }>;
   onClosePluginView?: (viewType: string) => void;
@@ -145,6 +147,8 @@ export function Sidebar({
   onCollapse,
   vaultPath,
   onOpenVault,
+  previouslyOpenedVaults = [],
+  onSwitchVault,
   onSettings,
   pluginViews,
   onClosePluginView,
@@ -211,6 +215,7 @@ export function Sidebar({
   }, [showVaultMenu]);
 
   const vaultName = vaultPath ? vaultPath.split(/[/\\]/).pop() : "Vault";
+  const otherVaults = previouslyOpenedVaults.filter((p) => p !== vaultPath);
 
   // Process file tree: filter then sort
   const processedTree = useMemo(() => {
@@ -702,6 +707,28 @@ export function Sidebar({
             
             {showVaultMenu && (
               <div className="vault-menu" ref={vaultMenuRef}>
+                {otherVaults.length > 0 && (
+                  <>
+                    <div className="vault-menu-header">Recent vaults</div>
+                    {otherVaults.map((path) => {
+                      const name = path.split(/[/\\]/).pop() || path;
+                      return (
+                        <button
+                          key={path}
+                          className="vault-menu-item"
+                          onClick={() => {
+                            setShowVaultMenu(false);
+                            onSwitchVault?.(path);
+                          }}
+                          title={path}
+                        >
+                          <span className="vault-name">{name}</span>
+                        </button>
+                      );
+                    })}
+                    <div className="vault-menu-separator" />
+                  </>
+                )}
                 <div className="vault-menu-header">Current vault</div>
                 <button className="vault-menu-item current">
                   <span className="vault-name">{vaultName}</span>

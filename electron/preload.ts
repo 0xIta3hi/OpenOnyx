@@ -19,6 +19,9 @@ const electronAPI = {
   getVaultPath: (): Promise<string | null> =>
     ipcRenderer.invoke('vault:getPath'),
 
+  getPreviouslyOpenedVaults: (): Promise<string[]> =>
+    ipcRenderer.invoke('vault:getPreviousPaths'),
+
   // ── File Operations ───────────────────────────────
   listFiles: (dirPath?: string): Promise<any[]> =>
     ipcRenderer.invoke('fs:listFiles', dirPath),

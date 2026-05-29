@@ -14,7 +14,8 @@ export function registerIpcHandlers(
   fsManager: FileSystemManager,
   searchEngine: SearchEngine,
   getMainWindow: () => BrowserWindow | null,
-  onVaultPathChange?: (vaultPath: string) => void
+  onVaultPathChange?: (vaultPath: string) => void,
+  getPreviousPaths?: () => string[]
 ): void {
 
   // ── Vault Operations ──────────────────────────────
@@ -38,6 +39,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle('vault:getPath', () => {
     return fsManager.getVaultPath();
+  });
+
+  ipcMain.handle('vault:getPreviousPaths', () => {
+    if (getPreviousPaths) return getPreviousPaths();
+    return [];
   });
 
   // ── File Operations ───────────────────────────────
