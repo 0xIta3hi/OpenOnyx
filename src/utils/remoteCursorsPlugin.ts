@@ -154,9 +154,12 @@ export const remoteCursorsField = StateField.define<Map<string, CursorPresence>>
     if (tr.docChanged && !changed) {
       // Map cursor positions through the changes
       const mapped = new Map<string, CursorPresence>();
+      const startLen = tr.startState.doc.length;
       for (const [id, p] of (next === cursors ? cursors : next)) {
-        const newFrom = tr.changes.mapPos(p.cursor.from, 1);
-        const newTo = tr.changes.mapPos(p.cursor.to, 1);
+        const safeFrom = Math.max(0, Math.min(p.cursor.from, startLen));
+        const safeTo = Math.max(0, Math.min(p.cursor.to, startLen));
+        const newFrom = tr.changes.mapPos(safeFrom, 1);
+        const newTo = tr.changes.mapPos(safeTo, 1);
         mapped.set(id, {
           ...p,
           cursor: { from: newFrom, to: newTo },

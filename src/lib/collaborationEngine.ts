@@ -173,6 +173,7 @@ class CollaborationEngine {
   private _activeSpaceId: string | null = null;
   private _activeUsers: ActiveUser[] = [];
   private realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+  private isSubscribed: boolean = false;
   private clientId: string = '';
   private lastAppliedTimestamps = new Map<string, number>();
   private _collabPaused: boolean = false;
@@ -1010,18 +1011,24 @@ class CollaborationEngine {
         this.handlePresenceSync();
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && !this._collabPaused) {
-          const user = authManager.getUser();
-          await this.realtimeChannel?.track({
-            user_id: userId,
-            email: user?.email || '',
-            online_at: new Date().toISOString(),
-          });
+        if (status === 'SUBSCRIBED') {
+          this.isSubscribed = true;
+          if (!this._collabPaused) {
+            const user = authManager.getUser();
+            await this.realtimeChannel?.track({
+              user_id: userId,
+              email: user?.email || '',
+              online_at: new Date().toISOString(),
+            });
+          }
+        } else {
+          this.isSubscribed = false;
         }
       });
   }
 
   unsubscribeFromSpace() {
+    this.isSubscribed = false;
     if (this.realtimeChannel) {
       // Clean up our presence entry before destroying the channel
       // to prevent ghost avatar lingering.
@@ -1214,7 +1221,7 @@ class CollaborationEngine {
 
   private flushOpBatch() {
     this.opBatchTimer = null;
-    if (!this.realtimeChannel || this._collabPaused) {
+    if (!this.realtimeChannel || !this.isSubscribed || this._collabPaused) {
       this.opBatchBuffer.clear();
       return;
     }
@@ -1241,7 +1248,7 @@ class CollaborationEngine {
    */
   broadcastFullDocument(path: string, content: string) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel) return;
+    if (!this.realtimeChannel || !this.isSubscribed) return;
 
     // Clear any pending ops for this path -- the full doc supersedes them
     this.opBatchBuffer.delete(path);
@@ -1286,7 +1293,7 @@ class CollaborationEngine {
 
   private sendCursorPresence() {
     this.cursorThrottleTimer = null;
-    if (!this.pendingCursorPresence || !this.realtimeChannel || this._collabPaused) return;
+    if (!this.pendingCursorPresence || !this.realtimeChannel || !this.isSubscribed || this._collabPaused) return;
 
     this.realtimeChannel.send({
       type: 'broadcast',
