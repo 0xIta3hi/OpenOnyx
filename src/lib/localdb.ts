@@ -222,11 +222,18 @@ export function getLocalDB() {
 export const localDB = {
   // ── Client Identity ─────────────────────────────────────
   async getClientId(): Promise<string> {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('collab_client_id');
+      if (stored) return stored;
+    }
     const db = await getLocalDB();
     let clientId = await db.get('metadata', 'client_id');
     if (!clientId) {
       clientId = uuidv4();
       await db.put('metadata', clientId, 'client_id');
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('collab_client_id', clientId);
     }
     return clientId;
   },

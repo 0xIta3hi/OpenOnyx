@@ -173,12 +173,24 @@ class CollaborationEngine {
   private _activeSpaceId: string | null = null;
   private _activeUsers: ActiveUser[] = [];
   private realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
-  private isSubscribed: boolean = false;
   private clientId: string = '';
   private lastAppliedTimestamps = new Map<string, number>();
   private _collabPaused: boolean = false;
   constructor() {
     this._collabPaused = typeof localStorage !== 'undefined' ? localStorage.getItem('collab_paused') === 'true' : false;
+    
+    // Synchronously initialize client ID to avoid async race conditions
+    if (typeof localStorage !== 'undefined') {
+      let stored = localStorage.getItem('collab_client_id');
+      if (!stored) {
+        stored = this.generateUUID();
+        localStorage.setItem('collab_client_id', stored);
+      }
+      this.clientId = stored;
+    } else {
+      this.clientId = this.generateUUID();
+    }
+    
     this.init();
   }
 
@@ -224,6 +236,7 @@ class CollaborationEngine {
   }
 
   async init() {
+    // Already populated synchronously, but make sure to sync with DB just in case
     this.clientId = await localDB.getClientId();
   }
 
@@ -1011,24 +1024,18 @@ class CollaborationEngine {
         this.handlePresenceSync();
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          this.isSubscribed = true;
-          if (!this._collabPaused) {
-            const user = authManager.getUser();
-            await this.realtimeChannel?.track({
-              user_id: userId,
-              email: user?.email || '',
-              online_at: new Date().toISOString(),
-            });
-          }
-        } else {
-          this.isSubscribed = false;
+        if (status === 'SUBSCRIBED' && !this._collabPaused) {
+          const user = authManager.getUser();
+          await this.realtimeChannel?.track({
+            user_id: userId,
+            email: user?.email || '',
+            online_at: new Date().toISOString(),
+          });
         }
       });
   }
 
   unsubscribeFromSpace() {
-    this.isSubscribed = false;
     if (this.realtimeChannel) {
       // Clean up our presence entry before destroying the channel
       // to prevent ghost avatar lingering.
@@ -1221,7 +1228,7 @@ class CollaborationEngine {
 
   private flushOpBatch() {
     this.opBatchTimer = null;
-    if (!this.realtimeChannel || !this.isSubscribed || this._collabPaused) {
+    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) {
       this.opBatchBuffer.clear();
       return;
     }
@@ -1248,7 +1255,7 @@ class CollaborationEngine {
    */
   broadcastFullDocument(path: string, content: string) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel || !this.isSubscribed) return;
+    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') return;
 
     // Clear any pending ops for this path -- the full doc supersedes them
     this.opBatchBuffer.delete(path);
@@ -1293,7 +1300,7 @@ class CollaborationEngine {
 
   private sendCursorPresence() {
     this.cursorThrottleTimer = null;
-    if (!this.pendingCursorPresence || !this.realtimeChannel || !this.isSubscribed || this._collabPaused) return;
+    if (!this.pendingCursorPresence || !this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) return;
 
     this.realtimeChannel.send({
       type: 'broadcast',
@@ -1368,6 +1375,17 @@ class CollaborationEngine {
     this.remoteDocListeners.clear();
     this.remoteOpListeners.clear();
     this.remoteCursorListeners.clear();
+  }
+
+  private generateUUID(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 }
 
