@@ -43,12 +43,15 @@ interface RenderNode {
   x: number;
   y: number;
   connections: number;
+  color?: number;
 }
 
 interface RenderEdge {
   source: string;
   target: string;
   directed?: boolean;
+  similarity?: number;
+  hiddenConnection?: boolean;
 }
 
 interface InputNode {
@@ -58,12 +61,15 @@ interface InputNode {
   x?: number;
   y?: number;
   connections?: number;
+  color?: number;
 }
 
 interface InputEdge {
   source: string;
   target: string;
   directed?: boolean;
+  similarity?: number;
+  hiddenConnection?: boolean;
 }
 
 // Helper to convert hex number to CSS color string
@@ -90,6 +96,12 @@ export class GraphRenderer {
 
   private selectedNodeId: string | null = null;
   private hoveredNodeId: string | null = null;
+  public selectedEdge: RenderEdge | null = null;
+  public highlightedPathNodeIds: Set<string> | null = null;
+  public highlightedPathEdges: Set<string> | null = null;
+
+  private onNodeClick?: (nodeId: string) => void;
+  private onEdgeClick?: (sourceId: string, targetId: string) => void;
 
   private width: number;
   private height: number;
@@ -140,7 +152,6 @@ export class GraphRenderer {
     threshold: 0.4,
   };
 
-  private onNodeClick?: (nodeId: string) => void;
   private onNodeDrag?: (
     nodeId: string,
     x: number,
@@ -374,11 +385,22 @@ export class GraphRenderer {
       const node = this.getNodeAtPosition(x, y);
       if (node) {
         this.selectedNodeId = node.id;
+        this.selectedEdge = null;
         this.render();
         this.onNodeClick?.(node.id);
-      } else if (this.selectedNodeId) {
-        this.selectedNodeId = null;
-        this.render();
+      } else {
+        const edge = this.getEdgeAtPosition(x, y);
+        if (edge) {
+          this.selectedEdge = edge;
+          this.selectedNodeId = null;
+          this.render();
+          this.onEdgeClick?.(edge.source, edge.target);
+        } else if (this.selectedNodeId || this.selectedEdge) {
+          this.selectedNodeId = null;
+          this.selectedEdge = null;
+          this.render();
+          this.onEdgeClick?.("", "");
+        }
       }
     }
 
@@ -395,6 +417,66 @@ export class GraphRenderer {
       this.hoveredNodeId = null;
       this.render();
     }
+  }
+
+  private getEdgeAtPosition(
+    screenX: number,
+    screenY: number,
+  ): RenderEdge | null {
+    const worldX = (screenX - this.offsetX) / this.scale;
+    const worldY = (screenY - this.offsetY) / this.scale;
+
+    const hitThreshold = 8 / this.scale;
+    let closest: RenderEdge | null = null;
+    let closestDist = hitThreshold;
+
+    const distanceToSegment = (
+      x: number, y: number,
+      x1: number, y1: number,
+      x2: number, y2: number
+    ): number => {
+      const A = x - x1;
+      const B = y - y1;
+      const C = x2 - x1;
+      const D = y2 - y1;
+
+      const dot = A * C + B * D;
+      const lenSq = C * C + D * D;
+      let param = -1;
+      if (lenSq !== 0) {
+        param = dot / lenSq;
+      }
+
+      let xx, yy;
+      if (param < 0) {
+        xx = x1;
+        yy = y1;
+      } else if (param > 1) {
+        xx = x2;
+        yy = y2;
+      } else {
+        xx = x1 + param * C;
+        yy = y1 + param * D;
+      }
+
+      const dx = x - xx;
+      const dy = y - yy;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    for (const edge of this.edges) {
+      const sourceNode = this.nodes.get(edge.source);
+      const targetNode = this.nodes.get(edge.target);
+      if (!sourceNode || !targetNode) continue;
+
+      const dist = distanceToSegment(worldX, worldY, sourceNode.x, sourceNode.y, targetNode.x, targetNode.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = edge;
+      }
+    }
+
+    return closest;
   }
 
   private getNodeAtPosition(
@@ -422,7 +504,7 @@ export class GraphRenderer {
   }
 
   /** Mark the renderer as needing a redraw. Actual drawing happens in the animation loop. */
-  private render(): void {
+  public render(): void {
     this.needsRender = true;
   }
 
@@ -475,47 +557,45 @@ export class GraphRenderer {
     const zoomAlphaFactor = Math.max(0, Math.min(1, 2 * (this.scale - 0.3)));
     const lineThickness = this.edgeStyle.width / this.scale;
 
-    // Batch edges by visual state for fewer draw calls
-    // Two passes: first normal/dimmed edges, then highlighted edges on top
     ctx.lineCap = "butt";
-    ctx.lineWidth = lineThickness;
 
     for (let pass = 0; pass < 2; pass++) {
       const isHighlightPass = pass === 1;
-      let currentAlpha = -1;
-      let currentColor = -1;
-      let pathStarted = false;
 
       for (const edge of this.edges) {
         const sourceNode = this.nodes.get(edge.source);
         const targetNode = this.nodes.get(edge.target);
         if (!sourceNode || !targetNode) continue;
 
-        const isHighlighted =
-          edge.source === highlightNode ||
-          edge.target === highlightNode;
+        const isSelectedEdge = this.selectedEdge && (
+          (edge.source === this.selectedEdge.source && edge.target === this.selectedEdge.target) ||
+          (edge.source === this.selectedEdge.target && edge.target === this.selectedEdge.source)
+        );
+
+        const isPathEdgeHighlighted = this.highlightedPathEdges && (
+          this.highlightedPathEdges.has(edge.source + "::" + edge.target) ||
+          this.highlightedPathEdges.has(edge.target + "::" + edge.source)
+        );
+
+        const isHighlighted = this.highlightedPathEdges
+          ? Boolean(isPathEdgeHighlighted)
+          : Boolean(
+              edge.source === highlightNode ||
+              edge.target === highlightNode ||
+              isSelectedEdge
+            );
 
         // Skip edges not belonging to this pass
-        if (isHighlightPass !== isHighlighted && highlightNode) continue;
+        if (isHighlightPass !== isHighlighted && (highlightNode || this.highlightedPathEdges)) continue;
 
         let baseAlpha = fQ;
-        if (!highlightNode || isHighlighted) baseAlpha = 1;
+        if ((!highlightNode && !this.highlightedPathEdges) || isHighlighted) baseAlpha = 1;
 
         const color = isHighlighted
           ? this.edgeStyle.highlightColor
           : this.edgeStyle.color;
         const alpha = baseAlpha * this.edgeStyle.alpha;
         if (alpha < 0.001) continue;
-
-        // Flush if color/alpha changed
-        if (alpha !== currentAlpha || color !== currentColor) {
-          if (pathStarted) ctx.stroke();
-          ctx.strokeStyle = hexToColor(color, alpha);
-          ctx.beginPath();
-          pathStarted = true;
-          currentAlpha = alpha;
-          currentColor = color;
-        }
 
         // Use cached radii
         const sourceRadius = this.cachedNodeRadii.get(edge.source) || 0;
@@ -536,23 +616,24 @@ export class GraphRenderer {
 
         if (length - sourceRadius - targetRadius < 0.5) continue;
 
+        ctx.strokeStyle = hexToColor(color, alpha);
+        const similarityFactor = edge.similarity ? (edge.similarity * 2.2) : 1.0;
+        ctx.lineWidth = lineThickness * similarityFactor;
+
+        if (edge.hiddenConnection) {
+          ctx.setLineDash([4 / this.scale, 4 / this.scale]);
+        } else {
+          ctx.setLineDash([]);
+        }
+
+        ctx.beginPath();
         ctx.moveTo(startX, startY);
         ctx.lineTo(endX, endY);
-
-        // Arrows for directed edges
-        if (edge.directed) {
-          const arrowAlpha = baseAlpha * zoomAlphaFactor;
-          if (arrowAlpha > 0.001) {
-            const arrowScale = 2 * Math.sqrt(this.edgeStyle.width) / this.scale;
-            const ax = -ux;
-            const ay = -uy;
-            // Draw arrow as part of a separate fill after the stroke
-          }
-        }
+        ctx.stroke();
       }
-
-      if (pathStarted) ctx.stroke();
     }
+    // Clean up dash
+    ctx.setLineDash([]);
   }
 
   private drawNodes(ctx: CanvasRenderingContext2D): void {
@@ -570,9 +651,12 @@ export class GraphRenderer {
       const isHighlightNode = isSelected || isHovered;
       const isConnected = connectedToHighlight?.has(node.id) ?? false;
 
-      const isDimmed = highlightNode && !isHighlightNode && !isConnected;
+      let isDimmed = highlightNode && !isHighlightNode && !isConnected;
+      if (this.highlightedPathNodeIds) {
+        isDimmed = !this.highlightedPathNodeIds.has(node.id);
+      }
 
-      let color = this.nodeStyle.color;
+      let color = node.color ?? this.nodeStyle.color;
       if (isSelected) color = this.nodeStyle.selectedColor;
       else if (isHovered) color = this.nodeStyle.hoveredColor;
       else if (isConnected) color = this.nodeStyle.connectedColor;
@@ -590,9 +674,9 @@ export class GraphRenderer {
       ctx.fill();
 
       // Obsidian draws a highlight ring around the hovered/selected node
-      if (isHighlightNode) {
+      if (isHighlightNode || (this.highlightedPathNodeIds && this.highlightedPathNodeIds.has(node.id) && !isDimmed)) {
         const ringWidth = Math.max(1, Math.sqrt(this.scale) / this.scale);
-        ctx.strokeStyle = hexToColor(this.edgeStyle.highlightColor, 0.8);
+        ctx.strokeStyle = hexToColor(isHighlightNode ? this.edgeStyle.highlightColor : color, 0.8);
         ctx.lineWidth = ringWidth;
         ctx.beginPath();
         ctx.arc(node.x, node.y, size + ringWidth / 2, 0, Math.PI * 2);
@@ -649,7 +733,12 @@ export class GraphRenderer {
       // Dim labels for unrelated nodes (matching edge/node dimming logic)
       const isHighlightNode = node.id === this.hoveredNodeId || node.id === this.selectedNodeId;
       const isConnected = connectedToHighlight?.has(node.id) ?? false;
-      if (highlightNode && !isHighlightNode && !isConnected) {
+      
+      if (this.highlightedPathNodeIds) {
+        if (!this.highlightedPathNodeIds.has(node.id)) {
+          alpha *= fQ;
+        }
+      } else if (highlightNode && !isHighlightNode && !isConnected) {
         alpha *= fQ;
       }
 
@@ -665,6 +754,7 @@ export class GraphRenderer {
 
   setCallbacks(callbacks: {
     onNodeClick?: (nodeId: string) => void;
+    onEdgeClick?: (sourceId: string, targetId: string) => void;
     onNodeDrag?: (
       nodeId: string,
       x: number,
@@ -674,6 +764,7 @@ export class GraphRenderer {
     onViewportChange?: (x: number, y: number, scale: number) => void;
   }): void {
     this.onNodeClick = callbacks.onNodeClick;
+    this.onEdgeClick = callbacks.onEdgeClick;
     this.onNodeDrag = callbacks.onNodeDrag;
     this.onViewportChange = callbacks.onViewportChange;
   }
@@ -708,6 +799,7 @@ export class GraphRenderer {
         x: node.x || 0,
         y: node.y || 0,
         connections,
+        color: node.color,
       });
     }
 
@@ -715,6 +807,8 @@ export class GraphRenderer {
       source: e.source,
       target: e.target,
       directed: Boolean(e.directed),
+      similarity: e.similarity,
+      hiddenConnection: e.hiddenConnection,
     }));
     this.render();
   }
@@ -788,6 +882,22 @@ export class GraphRenderer {
       this.targetOffsetY,
       this.targetScale,
     );
+  }
+
+  centerNode(nodeId: string): void {
+    const node = this.nodes.get(nodeId);
+    if (!node) return;
+
+    this.targetScale = Math.max(this.scale, 0.85); // Zoom to a readable scale
+    this.targetOffsetX = this.width / 2 - node.x * this.targetScale;
+    this.targetOffsetY = this.height / 2 - node.y * this.targetScale;
+
+    this.onViewportChange?.(
+      this.targetOffsetX,
+      this.targetOffsetY,
+      this.targetScale,
+    );
+    this.render();
   }
 
   resize(width: number, height: number): void {

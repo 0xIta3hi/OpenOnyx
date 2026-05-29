@@ -16,6 +16,8 @@ interface AIKnowledgeGraphFTUXProps {
   localNodePath?: string;
   initialAIView?: boolean;
   onAIViewChange?: (enabled: boolean) => void;
+  onCreateGroupFromPaths?: (name: string, color: string, paths: string[]) => void;
+  onOpenPathsAsGroup?: (paths: string[]) => void;
 }
 
 export function AIKnowledgeGraphFTUX({
@@ -28,6 +30,8 @@ export function AIKnowledgeGraphFTUX({
   localNodePath,
   initialAIView = false,
   onAIViewChange,
+  onCreateGroupFromPaths,
+  onOpenPathsAsGroup,
 }: AIKnowledgeGraphFTUXProps) {
   const [aiViewEnabled, setAiViewEnabled] = useState(initialAIView);
   const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
@@ -125,6 +129,8 @@ export function AIKnowledgeGraphFTUX({
           theme={theme}
           vaultPath={vaultPath}
           localNodePath={localNodePath}
+          onCreateGroupFromPaths={onCreateGroupFromPaths}
+          onOpenPathsAsGroup={onOpenPathsAsGroup}
         />
       ) : (
         <GraphView

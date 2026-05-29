@@ -125,6 +125,16 @@ async function callLLM(
   return content.trim();
 }
 
+export async function askAI(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens = 600,
+  temperature = 0.3,
+): Promise<string> {
+  return callLLM(systemPrompt, userPrompt, maxTokens, temperature);
+}
+
+
 // ── Utility ──────────────────────────────────────────────────────────────────
 
 function parseInsight(rawText: string): string {

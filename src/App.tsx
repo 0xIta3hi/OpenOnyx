@@ -2923,8 +2923,68 @@ export default function App() {
 
     setActiveGroupId(groupId);
     setHasUnsavedChanges(false);
-    showToast(`Switched to ${group.name}`, "success");
   }, [groups, tabs, showToast, api]);
+
+  const handleCreateGroupFromPaths = useCallback(async (name: string, color: string, paths: string[]) => {
+    if (!vaultPath) return null;
+
+    const newGroupId = "group-" + generateId();
+    
+    // Construct tabs list
+    const groupTabs: Tab[] = paths.map((path) => ({
+      id: "tab-" + generateId(),
+      path,
+      name: getNoteName(path),
+      isModified: false,
+      groupId: newGroupId,
+    }));
+
+    const leafId = "leaf-" + generateId();
+    const groupPaneTree: PaneLeaf = {
+      type: "leaf",
+      id: leafId,
+      tabs: groupTabs,
+      activeTabId: groupTabs[0]?.id || null,
+    };
+
+    const newGroup: LocalGroup = {
+      id: newGroupId,
+      vault_path: vaultPath,
+      name,
+      color,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      auto_save_enabled: true,
+      layout_state: {
+        paneTree: groupPaneTree,
+        activeTabId: groupTabs[0]?.id || null,
+        focusedLeafId: leafId,
+        scrollPositions: {},
+        cursorPositions: {},
+        viewModes: {},
+      },
+    };
+
+    try {
+      await localDB.putGroup(newGroup);
+      setGroups((prev) => [...prev, newGroup]);
+      showToast(`Created group ${name} from cluster`, "success");
+      return newGroupId;
+    } catch (err) {
+      console.error("Failed to create group from paths:", err);
+      return null;
+    }
+  }, [vaultPath, generateId, showToast]);
+
+  const handleOpenPathsAsGroup = useCallback(async (paths: string[]) => {
+    const name = `Group (${paths.length} notes)`;
+    const color = "#3b82f6";
+    const newGroupId = await handleCreateGroupFromPaths(name, color, paths);
+    if (newGroupId) {
+      await handleRestoreGroup(newGroupId);
+    }
+  }, [handleCreateGroupFromPaths, handleRestoreGroup]);
+
 
   const handleUpdateActiveGroup = async (groupId?: string) => {
     const targetGroupId = groupId || activeGroupId;
@@ -5910,6 +5970,8 @@ export default function App() {
               localNodePath={undefined}
               initialAIView={graphMode === "ai"}
               onAIViewChange={(enabled: boolean) => setGraphMode(enabled ? "ai" : "manual")}
+              onCreateGroupFromPaths={handleCreateGroupFromPaths}
+              onOpenPathsAsGroup={handleOpenPathsAsGroup}
             />
           </div>
         )}
