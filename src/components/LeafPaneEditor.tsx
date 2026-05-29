@@ -178,7 +178,8 @@ export function LeafPaneEditor({
       }
     }, 2000);
 
-    // Persist to IndexedDB + enqueue for sync to Supabase (debounced)
+    // Persist to IndexedDB + enqueue for sync to Supabase (debounced).
+    // Lower debounce than disk save so cloud sync starts sooner.
     if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       if (dbSyncTimer.current) {
         clearTimeout(dbSyncTimer.current);
@@ -191,7 +192,7 @@ export function LeafPaneEditor({
         } catch (err) {
           console.error("[Collab] DB sync failed:", err);
         }
-      }, 1500);
+      }, 800);
     }
   }, [activeTab.path, onContentChangeGlobal]);
 
@@ -226,7 +227,9 @@ export function LeafPaneEditor({
     if (!collaborationEngine.activeSpaceId) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
 
-    // Debounce cursor presence updates (50ms)
+    // Debounce cursor presence updates (150ms). The collaboration engine
+    // also throttles at 100ms, but debouncing here avoids creating
+    // unnecessary CursorPresence objects on every keystroke.
     if (cursorDebounceRef.current) {
       clearTimeout(cursorDebounceRef.current);
     }
@@ -243,7 +246,7 @@ export function LeafPaneEditor({
         name: user.email?.split('@')[0] || 'Anonymous',
         color: getColorForUser(userId),
       });
-    }, 50);
+    }, 150);
   }, [activeTab.path]);
 
   // ── Receive Remote Operations ───────────────────────────────────────────────

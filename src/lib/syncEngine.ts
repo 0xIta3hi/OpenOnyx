@@ -51,6 +51,9 @@ export class SyncEngine {
   private activeVaultPath: string | null = null;
   private clientId: string = '';
 
+  /** Track whether we believe the network is available. */
+  private isOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
   constructor() {
     this.init();
   }
@@ -78,26 +81,48 @@ export class SyncEngine {
       this.activeSpaceId = null;
     }
 
-    // If there's an active space, do an initial pull
+    // If there's an active space, do an initial sync (push + pull)
     if (this.activeSpaceId) {
       this.sync();
     }
   }
 
   private startAutoSync() {
-    // Periodic pull as a fallback (realtime handles the fast path)
+    // Periodic sync -- both push AND pull. The push ensures queued offline
+    // edits eventually reach the server even if the user is idle.
     this.syncInterval = setInterval(() => {
-      if (this.activeSpaceId) {
-        this.pullChanges();
+      if (this.activeSpaceId && this.isOnline) {
+        this.sync();
       }
-    }, 30000); // 30s interval
+    }, 15_000); // 15s interval (was 30s pull-only)
 
     if (typeof window !== 'undefined') {
+      // On focus: do a full sync (user may have been away / on another device)
       window.addEventListener('focus', () => {
-        if (this.activeSpaceId) this.pullChanges();
-      });
-      window.addEventListener('online', () => {
         if (this.activeSpaceId) this.sync();
+      });
+
+      // On reconnect: immediately flush all queued edits + pull latest
+      window.addEventListener('online', () => {
+        console.log('[SyncEngine] Network online -- triggering full sync');
+        this.isOnline = true;
+        if (this.activeSpaceId) {
+          // Reset retry counts for all queued items so offline edits get
+          // another fair chance now that connectivity is restored.
+          this.resetRetryCountsAndSync();
+        }
+      });
+
+      window.addEventListener('offline', () => {
+        console.log('[SyncEngine] Network offline -- pausing sync');
+        this.isOnline = false;
+      });
+
+      // Visibility change: sync when tab becomes active
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.activeSpaceId && this.isOnline) {
+          this.sync();
+        }
       });
     }
 
@@ -106,6 +131,25 @@ export class SyncEngine {
         this.sync();
       }
     });
+  }
+
+  /**
+   * Reset all retry counts in the sync queue and then do a full sync.
+   * Called on reconnection so that offline edits don't remain stuck at
+   * high retry counts.
+   */
+  private async resetRetryCountsAndSync() {
+    try {
+      const queue = await localDB.getSyncQueue();
+      for (const item of queue) {
+        if (item.retry_count > 0) {
+          await localDB.putSyncItem({ ...item, retry_count: 0 });
+        }
+      }
+    } catch (err) {
+      console.error('[SyncEngine] Failed to reset retry counts:', err);
+    }
+    this.sync();
   }
 
   /**
@@ -216,14 +260,11 @@ export class SyncEngine {
         }
       } catch (err) {
         console.error(`[SyncEngine] Push failed for ${table}:`, err);
-        // Increment retry count, drop after 3 failures
+        // Increment retry count but NEVER drop items. Offline edits must
+        // survive indefinitely until connectivity is restored. The retry
+        // count is used for exponential backoff, not as a hard limit.
         for (const item of items) {
-          if (item.retry_count >= 3) {
-            console.warn(`[SyncEngine] Dropping item after 3 retries: ${item.id}`);
-            await localDB.removeSyncItem(item.id);
-          } else {
-            await localDB.putSyncItem({ ...item, retry_count: item.retry_count + 1 });
-          }
+          await localDB.putSyncItem({ ...item, retry_count: item.retry_count + 1 });
         }
       }
     }

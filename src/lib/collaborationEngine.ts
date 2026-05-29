@@ -1174,21 +1174,64 @@ class CollaborationEngine {
   // ── Broadcast: Operation-Based Sync ──────────────────────────────────────
 
   /**
+   * Internal state for operation batching. Instead of sending one broadcast
+   * per keystroke (which overwhelms Supabase rate limits during fast typing),
+   * we accumulate operations for up to 50ms and flush them in a single message.
+   */
+  private opBatchBuffer = new Map<string, CollabOperation[]>();
+  private opBatchTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly OP_BATCH_INTERVAL = 50; // ms
+
+  /**
+   * Internal state for cursor presence throttling. Cursor positions are
+   * broadcast at most once per 100ms to avoid competing with ops for
+   * channel bandwidth.
+   */
+  private cursorThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingCursorPresence: CursorPresence | null = null;
+  private lastCursorBroadcast = 0;
+  private static readonly CURSOR_THROTTLE_MS = 100;
+
+  /**
    * Broadcast granular editing operations to all connected peers.
+   * Operations are batched in a 50ms window to reduce broadcast frequency.
    * This is ephemeral -- it does NOT write to the database.
    */
   broadcastOperations(path: string, ops: CollabOperation[]) {
     if (this._collabPaused) return;
     if (!this.realtimeChannel || ops.length === 0) return;
-    this.realtimeChannel.send({
-      type: 'broadcast',
-      event: 'doc-ops',
-      payload: {
-        path,
-        ops,
-        clientId: this.clientId,
-      },
-    });
+
+    // Accumulate ops for this path
+    const existing = this.opBatchBuffer.get(path) || [];
+    existing.push(...ops);
+    this.opBatchBuffer.set(path, existing);
+
+    // Schedule flush if not already pending
+    if (!this.opBatchTimer) {
+      this.opBatchTimer = setTimeout(() => this.flushOpBatch(), CollaborationEngine.OP_BATCH_INTERVAL);
+    }
+  }
+
+  private flushOpBatch() {
+    this.opBatchTimer = null;
+    if (!this.realtimeChannel || this._collabPaused) {
+      this.opBatchBuffer.clear();
+      return;
+    }
+
+    for (const [path, ops] of this.opBatchBuffer) {
+      if (ops.length === 0) continue;
+      this.realtimeChannel.send({
+        type: 'broadcast',
+        event: 'doc-ops',
+        payload: {
+          path,
+          ops,
+          clientId: this.clientId,
+        },
+      });
+    }
+    this.opBatchBuffer.clear();
   }
 
   /**
@@ -1199,6 +1242,10 @@ class CollaborationEngine {
   broadcastFullDocument(path: string, content: string) {
     if (this._collabPaused) return;
     if (!this.realtimeChannel) return;
+
+    // Clear any pending ops for this path -- the full doc supersedes them
+    this.opBatchBuffer.delete(path);
+
     this.realtimeChannel.send({
       type: 'broadcast',
       event: 'doc-full',
@@ -1212,15 +1259,42 @@ class CollaborationEngine {
 
   /**
    * Broadcast cursor position / selection to all connected peers.
+   * Throttled to at most once per 100ms to avoid overwhelming the channel
+   * during fast typing (when both ops and cursors compete for bandwidth).
    */
   broadcastCursorPresence(presence: CursorPresence) {
     if (this._collabPaused) return;
     if (!this.realtimeChannel) return;
+
+    this.pendingCursorPresence = presence;
+
+    const now = Date.now();
+    const elapsed = now - this.lastCursorBroadcast;
+
+    if (elapsed >= CollaborationEngine.CURSOR_THROTTLE_MS) {
+      // Enough time has passed -- send immediately
+      this.sendCursorPresence();
+    } else if (!this.cursorThrottleTimer) {
+      // Schedule for later
+      this.cursorThrottleTimer = setTimeout(
+        () => this.sendCursorPresence(),
+        CollaborationEngine.CURSOR_THROTTLE_MS - elapsed,
+      );
+    }
+    // else: already scheduled, the latest position will be sent when timer fires
+  }
+
+  private sendCursorPresence() {
+    this.cursorThrottleTimer = null;
+    if (!this.pendingCursorPresence || !this.realtimeChannel || this._collabPaused) return;
+
     this.realtimeChannel.send({
       type: 'broadcast',
       event: 'cursor-presence',
-      payload: presence,
+      payload: this.pendingCursorPresence,
     });
+    this.lastCursorBroadcast = Date.now();
+    this.pendingCursorPresence = null;
   }
 
   /**
@@ -1274,6 +1348,12 @@ class CollaborationEngine {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   dispose() {
+    // Clear batch/throttle timers
+    if (this.opBatchTimer) { clearTimeout(this.opBatchTimer); this.opBatchTimer = null; }
+    if (this.cursorThrottleTimer) { clearTimeout(this.cursorThrottleTimer); this.cursorThrottleTimer = null; }
+    this.opBatchBuffer.clear();
+    this.pendingCursorPresence = null;
+
     this.clearActiveSpace();
     this.listeners.clear();
     this.activeUsersListeners.clear();
