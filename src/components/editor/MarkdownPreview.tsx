@@ -175,9 +175,9 @@ export function MarkdownPreview({
   // Universal Embed Registry: Rules for transforming links and applying themes
   const getSmartEmbed = useCallback((url: string, currentTheme: string) => {
     const isDark = currentTheme === "dark";
-    
+
     // 1. YouTube
-    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?]+)/);
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?]+)/);
     if (ytMatch) {
       return {
         src: `https://www.youtube.com/embed/${ytMatch[1]}?vq=hd1080&rel=0`,
@@ -194,11 +194,72 @@ export function MarkdownPreview({
       };
     }
 
-    // 3. Twitter / X (Handled via blockquote + script)
-    // Note: Twitter's script reads data-theme on the blockquote
-    
-    return null;
+    // 3. Vimeo
+    const vimeoMatch = url.match(/(?:vimeo\.com\/video\/|vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/);
+    if (vimeoMatch) {
+      return {
+        src: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
+        attrs: `allow="fullscreen; autoplay; picture-in-picture" allowfullscreen`
+      };
+    }
+
+    // 4. Generic URL Fallback
+    return {
+      src: url,
+      attrs: `allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen`
+    };
   }, []);
+
+  // Generate premium HTML wrapper card for URL previews
+  const getUrlPreviewMarkup = useCallback((url: string, currentTheme: string) => {
+    let domain = "";
+    try {
+      domain = new URL(url).hostname;
+    } catch (e) {
+      domain = url;
+    }
+
+    const displayDomain = domain.replace(/^www\./, "");
+    
+    // Determine category badge
+    let badge = "Web Page";
+    if (url.match(/(?:youtube\.com|youtu\.be)/)) {
+      badge = "YouTube";
+    } else if (url.includes("spotify.com")) {
+      badge = "Spotify";
+    } else if (url.includes("vimeo.com")) {
+      badge = "Vimeo";
+    } else if (url.endsWith(".pdf") || url.includes(".pdf?")) {
+      badge = "PDF";
+    } else if (url.match(/\.(mp4|webm|ogg)(?:\?.*)?$/i)) {
+      badge = "Video Player";
+    } else if (url.match(/\.(mp3|wav|ogg|m4a)(?:\?.*)?$/i)) {
+      badge = "Audio Player";
+    }
+
+    const config = getSmartEmbed(url, currentTheme);
+    const embedSrc = config.src;
+    const embedAttrs = config.attrs;
+    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+
+    return `<div class="url-preview-card" data-url="${url}">
+      <div class="url-preview-header">
+        <div class="url-preview-info">
+          <img class="url-preview-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">
+          <span class="url-preview-title">${displayDomain}</span>
+        </div>
+        <div class="url-preview-actions">
+          <span class="url-preview-badge">${badge}</span>
+          <a class="url-preview-action-btn" href="${url}" target="_blank" rel="noopener noreferrer" title="Open in new tab">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          </a>
+        </div>
+      </div>
+      <div class="url-preview-body">
+        <iframe class="url-preview-iframe" src="${embedSrc}" ${embedAttrs} style="height:100%; width:100%; aspect-ratio: 16 / 9; border: none;"></iframe>
+      </div>
+    </div>`;
+  }, [getSmartEmbed]);
 
   // Configure marked for GFM (GitHub Flavored Markdown) support
   const renderedHtml = useMemo(() => {
@@ -206,9 +267,17 @@ export function MarkdownPreview({
 
     let processed = content;
 
-    // ... (rest of the processing logic) ...
-    // Note: I will only replace the relevant sections below for brevity in the tool call
-    
+    // Convert url to preview (iframe) - standalone URLs or markdown links to ANY URL
+    processed = processed.replace(
+      /^(?:[ \t]*)(https?:\/\/[^\s]+)(?:[ \t]*)$/gm,
+      (match, url) => `<div class="url-preview-placeholder" data-url="${url.trim()}"></div>`
+    );
+
+    processed = processed.replace(
+      /^(?:[ \t]*)\[[^\]]*\]\((https?:\/\/[^\s)]+)\)(?:[ \t]*)$/gm,
+      (match, url) => `<div class="url-preview-placeholder" data-url="${url.trim()}"></div>`
+    );
+
     // Process embeds ![[note]] before other processing
     processed = processed.replace(
       /!\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g,
@@ -285,27 +354,34 @@ export function MarkdownPreview({
     // --- Unified Smart Embed Resolver ---
     // Handle both raw iframes and Twitter blockquotes
     const themeValue = document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light");
-    
+
     // Fix Twitter theme in the HTML string itself
     html = html.replace(/<blockquote class="twitter-tweet"/g, `<blockquote class="twitter-tweet" data-theme="${themeValue}"`);
 
-    // Handle all other iframes via the registry
-    html = html.replace(/<iframe\s+([^>]*src="([^"]+)"[^>]*)><\/iframe>/g, (match, attrs, src) => {
-      const config = getSmartEmbed(src, theme || "dark");
-      if (config) {
-        return `<iframe src="${config.src}" ${config.attrs} style="height:100%;width:100%; aspect-ratio: 16 / 9; border: none; border-radius: var(--radius-md);"></iframe>`;
+    // Parse URL preview placeholders into premium cards and strip any wrapping paragraphs
+    html = html.replace(
+      /(?:<p>)?<div class="url-preview-placeholder" data-url="([^"]+)"><\/div>(?:<\/p>)?/g,
+      (match, url) => {
+        return getUrlPreviewMarkup(url, theme || "dark");
       }
-      return match;
+    );
+
+    // Handle all other raw empty iframes via the registry (ignore already-wrapped ones)
+    html = html.replace(/<iframe\s+([^>]*src="([^"]+)"[^>]*)><\/iframe>/g, (match, attrs, src) => {
+      if (attrs.includes("url-preview-iframe")) {
+        return match;
+      }
+      return getUrlPreviewMarkup(src, theme || "dark");
     });
 
     // Sanitize
     return DOMPurify.sanitize(html, {
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|vault):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "data-video-id", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src", "onmouseover", "onmouseout", "onerror", "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "cx", "cy", "r", "x", "y", "rx", "ry", "x1", "y1", "x2", "y2", "d"],
-      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path", "circle", "line", "rect"],
+      ADD_ATTR: ["data-link", "data-tag", "data-line", "data-heading", "data-embed", "data-callout", "data-foldable", "data-collapsed", "data-theme", "data-video-id", "data-url", "data-active-player", "checked", "type", "style", "frameborder", "allow", "allowfullscreen", "scrolling", "width", "height", "sandbox", "src", "onmouseover", "onmouseout", "onerror", "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "cx", "cy", "r", "x", "y", "rx", "ry", "x1", "y1", "x2", "y2", "d"],
+      ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path", "circle", "line", "rect", "polyline"],
       ADD_DATA_URI_TAGS: ["img"],
     });
-  }, [content, onEmbed, theme, getSmartEmbed]);
+  }, [content, onEmbed, theme, getSmartEmbed, getUrlPreviewMarkup]);
 
   // Handle clicks on wiki-links, tags, and checkboxes
   useEffect(() => {
@@ -316,7 +392,7 @@ export function MarkdownPreview({
       const target = e.target as HTMLElement;
 
       // Handle image click for fullscreen preview
-      if (target.tagName === "IMG" && onImageClick) {
+      if (target.tagName === "IMG" && !target.classList.contains("yt-poster-img") && onImageClick) {
         const image = target as HTMLImageElement;
         if (image.src) {
           e.preventDefault();
@@ -443,7 +519,7 @@ export function MarkdownPreview({
   // Manually update the DOM and upgrade iframes injected by plugins
   useEffect(() => {
     if (!previewRef.current) return;
-    
+
     if (lastHtmlRef.current !== renderedHtml) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
@@ -474,34 +550,34 @@ export function MarkdownPreview({
     const upgradeYouTubeIframe = (iframe: HTMLIFrameElement) => {
       const src = iframe.src || "";
       if (!src.includes("youtube.com") && !src.includes("youtu.be")) return;
-      if (iframe.dataset.hdPosterApplied) return;
-      
+      if (iframe.dataset.hdPosterApplied || iframe.dataset.activePlayer === "true") return;
+
       const videoId = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?]+)/)?.[1];
       if (!videoId) return;
 
       iframe.dataset.hdPosterApplied = "true";
-      
+
       const hdThumb = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
       const hqThumb = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      
+
       const wrapper = document.createElement("div");
       wrapper.className = "yt-hd-poster";
       wrapper.style.cssText = "position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; cursor: pointer; margin: 16px 0;";
-      
+
       wrapper.innerHTML = `
-        <img src="${hdThumb}" onerror="this.src='${hqThumb}'" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s;">
+        <img class="yt-poster-img" src="${hdThumb}" onerror="this.src='${hqThumb}'" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s;">
         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 68px; height: 48px; background: rgba(255, 0, 0, 0.9); border-radius: 12px; display: flex; align-items: center; justify-content: center; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
           <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; fill: white;"><path d="M8 5v14l11-7z"/></svg>
         </div>
       `;
-      
+
       wrapper.onmouseover = () => { (wrapper.querySelector('img') as HTMLImageElement).style.opacity = '0.8'; };
       wrapper.onmouseout = () => { (wrapper.querySelector('img') as HTMLImageElement).style.opacity = '1'; };
-      
+
       wrapper.onclick = () => {
-        wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&vq=hd1080" allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen style="width:100%; height:100%; border:none; border-radius: 12px;"></iframe>`;
+        wrapper.innerHTML = `<iframe data-active-player="true" class="url-preview-iframe" src="https://www.youtube.com/embed/${videoId}?autoplay=1&vq=hd1080" allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen style="width:100%; height:100%; border:none; border-radius: 12px;"></iframe>`;
       };
-      
+
       if (iframe.parentNode) {
         iframe.parentNode.replaceChild(wrapper, iframe);
       }

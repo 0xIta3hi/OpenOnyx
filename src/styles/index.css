@@ -2753,6 +2753,107 @@ body.is-dragging .plugin-view-panel {
   image-rendering: -webkit-optimize-contrast;
 }
 
+/* Premium URL Preview Card Integration */
+.markdown-preview .url-preview-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+  margin: var(--space-6) 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.markdown-preview .url-preview-card:hover {
+  border-color: var(--border-medium);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.markdown-preview .url-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in srgb, var(--bg-secondary) 95%, var(--text-primary) 5%);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.markdown-preview .url-preview-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0; /* Enable truncation */
+}
+
+.markdown-preview .url-preview-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.markdown-preview .url-preview-title {
+  font-weight: 550;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.markdown-preview .url-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.markdown-preview .url-preview-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px var(--space-2);
+  background: color-mix(in srgb, var(--bg-primary) 90%, var(--text-secondary) 10%);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.markdown-preview .url-preview-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: color 0.15s, transform 0.15s;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.markdown-preview .url-preview-action-btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-secondary) 85%, var(--text-primary) 15%);
+  transform: translateY(-1px);
+}
+
+.markdown-preview .url-preview-body {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000; /* Dark backdrop for media elements */
+}
+
+.markdown-preview .url-preview-body iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
 .markdown-preview table {
   width: 100%;
   border-collapse: collapse;
