@@ -1895,9 +1895,7 @@ export function CanvasView({
       e.stopPropagation();
       setDropzoneActive(false);
 
-      const path =
-        e.dataTransfer.getData("application/x-openobsidian-tab") ||
-        e.dataTransfer.getData("text/plain");
+      const path = e.dataTransfer.getData("text/plain");
 
       if (!path) return;
 
@@ -1905,6 +1903,8 @@ export function CanvasView({
       const isCanvas = path.endsWith(".canvas");
       const isUrl =
         path.startsWith("http://") || path.startsWith("https://");
+
+      if (!isMd && !isCanvas && !isUrl) return;
 
       const isDropZone = (e.currentTarget as HTMLElement).classList.contains("cv-dropzone");
       const p = isDropZone ? viewCenter() : s2c(e.clientX, e.clientY);
@@ -4629,7 +4629,7 @@ export function CanvasView({
                       Drag note here to add to canvas
                     </span>
                     <span className="cv-dropzone-subtext">
-                      Drop from sidebar explorer or editor tabs
+                      Drop from sidebar explorer
                     </span>
                   </div>
                 </div>
