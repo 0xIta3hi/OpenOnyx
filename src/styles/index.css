@@ -11876,6 +11876,86 @@ body.is-dragging .plugin-view-panel {
   max-height: 200px;
 }
 
+.cv-modal-lg {
+  width: 680px;
+  max-height: 480px;
+  height: 480px;
+}
+
+/* Interior Split Dropzone styles */
+.cv-modal-split {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.cv-modal-col-left {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cv-modal-col-right {
+  flex: 0.8;
+  display: flex;
+  flex-direction: column;
+}
+
+.cv-dropzone {
+  flex: 1;
+  border: 2px dashed var(--cv-ctrl-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cv-ctrl-bg) 92%, var(--text-accent, var(--interactive-accent, #1a73e8)) 8%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  gap: 12px;
+  user-select: none;
+}
+
+.cv-dropzone.drag-active {
+  border-color: var(--interactive-accent, #1a73e8);
+  background: color-mix(in srgb, var(--cv-ctrl-bg) 84%, var(--text-accent, var(--interactive-accent, #1a73e8)) 16%);
+  color: var(--text-primary);
+  transform: scale(1.02);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--interactive-accent, #1a73e8) 25%, transparent);
+}
+
+.cv-dropzone-icon {
+  color: var(--text-muted);
+  transition: color 0.2s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cv-dropzone.drag-active .cv-dropzone-icon {
+  color: var(--interactive-accent, #1a73e8);
+  transform: translateY(-4px) scale(1.1);
+}
+
+.cv-dropzone-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.cv-dropzone-subtext {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
 @keyframes cv-modal-in {
   from {
     opacity: 0;

@@ -273,6 +273,7 @@ export function TitleBar({
     e.dataTransfer.effectAllowed = "move";
     const tabObj = tabs.find(t => t.id === tabId);
     if (tabObj) {
+      e.dataTransfer.setData("application/x-openobsidian-tab", tabObj.path);
       setDragCtx({
         type: 'tab',
         tab: tabObj

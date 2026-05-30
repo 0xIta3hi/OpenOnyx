@@ -110,8 +110,74 @@ export function LeafPaneEditor({
   // Remote cursor presence state for the current file
   const [remoteCursors, setRemoteCursors] = useState<CursorPresence[]>([]);
 
+  // Stable ref for auto-save and sync tracking to prevent tab-switch race conditions
+  const pendingSaveRef = useRef<{
+    path: string;
+    content: string;
+    collabMeta: {
+      version: number;
+      last_modified?: string;
+      client_id?: string | null;
+    } | null;
+  } | null>(null);
+
+  // Unified callback to immediately flush any pending save
+  const flushSave = useCallback(async () => {
+    // 1. Clear auto-save timer if active
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+
+    // 2. Clear collab DB sync timer if active
+    if (dbSyncTimer.current) {
+      clearTimeout(dbSyncTimer.current);
+      dbSyncTimer.current = null;
+    }
+
+    const pending = pendingSaveRef.current;
+    if (pending) {
+      pendingSaveRef.current = null;
+      const { path, content, collabMeta } = pending;
+
+      if (path && path !== "__new_tab__") {
+        // Run disk save immediately
+        try {
+          await api.writeFile(path, content);
+          window.dispatchEvent(
+            new CustomEvent("openobsidian:note-saved", {
+              detail: { path },
+            })
+          );
+        } catch (err) {
+          console.error("Flush disk save failed:", err);
+        }
+
+        // Run collab DB sync immediately if applicable
+        if (collabMeta) {
+          try {
+            const hash = await sha256Hex(content);
+            await collaborationEngine.persistNoteEdit(path, content, {
+              version: collabMeta.version,
+              last_modified: collabMeta.last_modified || new Date().toISOString(),
+              client_id: collabMeta.client_id || null,
+              content_hash: hash,
+            });
+            syncEngine.triggerPush();
+          } catch (err) {
+            console.error("[Collab] Flush DB sync failed:", err);
+          }
+        }
+      }
+    }
+  }, []);
+
+
   // Load content when the active tab changes
   useEffect(() => {
+    // Flush any pending changes of the previous note before switching tabs or loading new content
+    void flushSave();
+
     let isActive = true;
     
     // Set loading state to prevent Editor from mounting with old content
@@ -162,7 +228,7 @@ export function LeafPaneEditor({
     return () => {
       isActive = false;
     };
-  }, [activeTab.path]);
+  }, [activeTab.path, flushSave]);
 
   // ── Content Change Handler ──────────────────────────────────────────────────
 
@@ -196,6 +262,17 @@ export function LeafPaneEditor({
       });
     }
 
+    // Set the stable pendingSaveRef values to prevent any race condition on tab switch
+    pendingSaveRef.current = {
+      path: activeTab.path,
+      content: newContent,
+      collabMeta: localEditMeta ? {
+        version: localEditMeta.version,
+        last_modified: localEditMeta.last_modified,
+        client_id: localEditMeta.client_id,
+      } : null,
+    };
+
     if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
       setIsSelfTyping(true);
       collaborationEngine.updatePresenceNote(activeTab.path, true);
@@ -216,10 +293,23 @@ export function LeafPaneEditor({
     }
     autoSaveTimer.current = setTimeout(async () => {
       autoSaveTimer.current = null;
+      const pending = pendingSaveRef.current;
+      if (!pending) return;
+
       try {
-        await api.writeFile(activeTab.path, newContent);
+        await api.writeFile(pending.path, pending.content);
+        window.dispatchEvent(
+          new CustomEvent("openobsidian:note-saved", {
+            detail: { path: pending.path },
+          }),
+        );
       } catch (err) {
         console.error("Auto-save failed:", err);
+      }
+
+      // Only clear pendingSaveRef if the sync timer is not running
+      if (!dbSyncTimer.current) {
+        pendingSaveRef.current = null;
       }
     }, 2000);
 
@@ -231,18 +321,26 @@ export function LeafPaneEditor({
       }
       dbSyncTimer.current = setTimeout(async () => {
         dbSyncTimer.current = null;
+        const pending = pendingSaveRef.current;
+        if (!pending || !pending.collabMeta) return;
+
         try {
-          const hash = await sha256Hex(newContent);
+          const hash = await sha256Hex(pending.content);
           docHashRef.current = hash;
-          await collaborationEngine.persistNoteEdit(activeTab.path, newContent, {
-            version: docVersionRef.current,
-            last_modified: localEditMeta?.last_modified || new Date().toISOString(),
-            client_id: collaborationEngine.currentClientId,
+          await collaborationEngine.persistNoteEdit(pending.path, pending.content, {
+            version: pending.collabMeta.version,
+            last_modified: pending.collabMeta.last_modified || new Date().toISOString(),
+            client_id: pending.collabMeta.client_id || null,
             content_hash: hash,
           });
           syncEngine.triggerPush();
         } catch (err) {
           console.error("[Collab] DB sync failed:", err);
+        }
+
+        // Only clear pendingSaveRef if the auto-save timer is not running
+        if (!autoSaveTimer.current) {
+          pendingSaveRef.current = null;
         }
       }, 800);
     }
@@ -763,7 +861,7 @@ export function LeafPaneEditor({
 
   useEffect(() => {
     return () => {
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      void flushSave();
       if (dbSyncTimer.current) clearTimeout(dbSyncTimer.current);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -782,7 +880,7 @@ export function LeafPaneEditor({
         fullDocumentBroadcastTimerRef.current = null;
       }
     };
-  }, []);
+  }, [flushSave]);
 
   useEffect(() => {
     return () => {

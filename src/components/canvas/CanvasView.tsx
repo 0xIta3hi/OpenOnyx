@@ -662,6 +662,8 @@ export function CanvasView({
     handle: EdgeStretchHandle;
   } | null>(null);
   const [fileModal, setFileModal] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [dropzoneActive, setDropzoneActive] = useState(false);
   const [linkModal, setLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [alignLines, setAlignLines] = useState<{ x: number[]; y: number[] }>({
@@ -1874,6 +1876,74 @@ export function CanvasView({
       setSaveState("error");
     }
   }, [canvasFilePath, push]);
+
+  const handleDragEnterZone = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropzoneActive(true);
+  }, []);
+
+  const handleDragLeaveZone = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropzoneActive(false);
+  }, []);
+
+  const handleCanvasDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDropzoneActive(false);
+
+      const path =
+        e.dataTransfer.getData("application/x-openobsidian-tab") ||
+        e.dataTransfer.getData("text/plain");
+
+      if (!path) return;
+
+      const isMd = path.endsWith(".md");
+      const isCanvas = path.endsWith(".canvas");
+      const isUrl =
+        path.startsWith("http://") || path.startsWith("https://");
+
+      const isDropZone = (e.currentTarget as HTMLElement).classList.contains("cv-dropzone");
+      const p = isDropZone ? viewCenter() : s2c(e.clientX, e.clientY);
+      const w = DEFAULT_NODE_WIDTH;
+      const h = isMd ? 80 : 100;
+
+      const base = {
+        id: generateId(),
+        x: snap(p.x - w / 2),
+        y: snap(p.y - h / 2),
+        width: w,
+        height: h,
+        color: defaultNodeColor || undefined,
+      };
+
+      let n: CanvasNode;
+      if (isMd || isCanvas) {
+        n = { ...base, type: "file", file: path } as CanvasFileNode;
+      } else if (isUrl) {
+        n = { ...base, type: "link", url: path } as CanvasLinkNode;
+      } else {
+        return;
+      }
+
+      const sorted = [...nodes, n];
+      setNodes(sorted);
+      setSelNodes(new Set([n.id]));
+      setSelEdges(new Set());
+      setSelectedScribbleIds(new Set());
+      setLassoPoints([]);
+      push(sorted, edges);
+
+      if (isDropZone) {
+        setFileModal(false);
+        setFileSearchQuery("");
+      }
+    },
+    [s2c, viewCenter, snap, defaultNodeColor, nodes, edges, push],
+  );
 
   /* ═══ MOUSE: DOWN ═══ */
   const onAreaDown = useCallback(
@@ -3165,6 +3235,16 @@ export function CanvasView({
     return go(fileTree);
   }, [fileTree]);
 
+  const filteredFlatFiles = useMemo(() => {
+    if (!fileSearchQuery.trim()) return flatFiles;
+    const query = fileSearchQuery.toLowerCase();
+    return flatFiles.filter(
+      (f) =>
+        f.name.toLowerCase().includes(query) ||
+        f.path.toLowerCase().includes(query),
+    );
+  }, [flatFiles, fileSearchQuery]);
+
   /* ═══ CURSOR ═══ */
   const cursor =
     drag.type === "pan"
@@ -3483,6 +3563,8 @@ export function CanvasView({
         className="cv-area"
         onMouseDown={onAreaDown}
         onContextMenu={(e) => e.preventDefault()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleCanvasDrop}
       >
         {/* Dot-pattern background (SVG stays in viewport space) */}
         {grid && (
@@ -4475,32 +4557,83 @@ export function CanvasView({
 
       {/* ══ File modal ══ */}
       {fileModal && (
-        <div className="cv-overlay" onClick={() => setFileModal(false)}>
-          <div className="cv-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cv-overlay" onClick={() => { setFileModal(false); setFileSearchQuery(""); }}>
+          <div className="cv-modal cv-modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="cv-modal-head">
               <span>Select a note</span>
-              <button onClick={() => setFileModal(false)}>
+              <button onClick={() => { setFileModal(false); setFileSearchQuery(""); }}>
                 <X size={14} />
               </button>
             </div>
-            <div className="cv-modal-body">
-              {flatFiles.length === 0 ? (
-                <p className="cv-modal-empty">No notes found</p>
-              ) : (
-                flatFiles.map((f, i) => (
-                  <button
-                    key={i}
-                    className="cv-file-row"
-                    onClick={() => {
-                      addNode("file", { file: f.path });
-                      setFileModal(false);
+            <div className="cv-modal-body" style={{ display: "flex", flexDirection: "column", height: "calc(100% - 50px)" }}>
+              <div className="cv-modal-split" style={{ display: "flex", gap: "16px", flex: 1, minHeight: 0 }}>
+                {/* Left Column: Search & Notes */}
+                <div className="cv-modal-col-left" style={{ flex: 1.2, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                  <input
+                    type="text"
+                    className="cv-search-input"
+                    placeholder="Search notes..."
+                    value={fileSearchQuery}
+                    onChange={(e) => setFileSearchQuery(e.target.value)}
+                    autoFocus
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border-subtle)",
+                      backgroundColor: "var(--bg-secondary, var(--background-secondary, #1e1e2e))",
+                      color: "var(--text-primary)",
+                      marginBottom: "12px",
+                      fontSize: "13px",
+                      outline: "none"
                     }}
+                  />
+                  <div style={{ flex: 1, overflowY: "auto" }}>
+                    {filteredFlatFiles.length === 0 ? (
+                      <p className="cv-modal-empty">No notes found</p>
+                    ) : (
+                      filteredFlatFiles.map((f, i) => (
+                        <button
+                          key={i}
+                          className="cv-file-row"
+                          onClick={() => {
+                            addNode("file", { file: f.path });
+                            setFileModal(false);
+                            setFileSearchQuery("");
+                          }}
+                        >
+                          <FileText size={14} />
+                          {f.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Vertical Divider */}
+                <div style={{ width: "1px", backgroundColor: "var(--border-subtle)", alignSelf: "stretch" }} />
+
+                {/* Right Column: Dropzone */}
+                <div className="cv-modal-col-right" style={{ flex: 0.8, display: "flex", flexDirection: "column" }}>
+                  <div
+                    className={`cv-dropzone ${dropzoneActive ? "drag-active" : ""}`}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragEnter={handleDragEnterZone}
+                    onDragLeave={handleDragLeaveZone}
+                    onDrop={handleCanvasDrop}
                   >
-                    <FileText size={14} />
-                    {f.name}
-                  </button>
-                ))
-              )}
+                    <div className="cv-dropzone-icon">
+                      <FileText size={32} strokeWidth={1.5} />
+                    </div>
+                    <span className="cv-dropzone-text">
+                      Drag note here to add to canvas
+                    </span>
+                    <span className="cv-dropzone-subtext">
+                      Drop from sidebar explorer or editor tabs
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

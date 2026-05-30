@@ -4645,6 +4645,16 @@ export default function App() {
       selectRelativeTab(-1);
     };
 
+    const onNoteSaved = (event: Event) => {
+      const customEvent = event as CustomEvent<{ path: string }>;
+      const path = customEvent.detail?.path;
+      if (path) {
+        setTabs((prev) =>
+          prev.map((t) => (t.path === path ? { ...t, isModified: false } : t))
+        );
+      }
+    };
+
     window.addEventListener("oo:save", onSave as EventListener);
     window.addEventListener("oo:close-tab", onCloseTab as EventListener);
     window.addEventListener("oo:new-note", onNewNote as EventListener);
@@ -4658,6 +4668,7 @@ export default function App() {
     window.addEventListener("oo:command-palette", onCommandPalette as EventListener);
     window.addEventListener("oo:next-tab", onNextTab as EventListener);
     window.addEventListener("oo:prev-tab", onPrevTab as EventListener);
+    window.addEventListener("openobsidian:note-saved", onNoteSaved as EventListener);
 
     return () => {
       window.removeEventListener("oo:save", onSave as EventListener);
@@ -4673,6 +4684,7 @@ export default function App() {
       window.removeEventListener("oo:command-palette", onCommandPalette as EventListener);
       window.removeEventListener("oo:next-tab", onNextTab as EventListener);
       window.removeEventListener("oo:prev-tab", onPrevTab as EventListener);
+      window.removeEventListener("openobsidian:note-saved", onNoteSaved as EventListener);
     };
   }, [
     activeTabId,
