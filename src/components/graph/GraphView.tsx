@@ -57,21 +57,86 @@ interface GraphSettings {
 
 // Default colors matching app theme
 export const getDefaultSettings = (theme: Theme): GraphSettings => {
-  const isLight = theme === "light";
-  const isOceanic = theme === "oceanic";
-  const isPeach = theme === "peach-white";
+  // Determine standard theme parameters based on Obsidian-aligned color palettes
+  let backgroundColor = "#121212";
+  let nodeColor = "#d5d1d1";
+  let connectedColor = "#c0c0c0";
+  let edgeColor = "#5d5d5d";
+  let textColor = "#e5e5e5";
+  let nodeSize = 6;
+
+  switch (theme) {
+    case "light":
+      backgroundColor = "#fcfbf9";
+      nodeColor = "#4a4a4a";
+      connectedColor = "#3a3a3a";
+      edgeColor = "#404040";
+      textColor = "#554d42";
+      nodeSize = 8;
+      break;
+    case "oceanic":
+      backgroundColor = "#0f1215";
+      nodeColor = "#ffffff";
+      connectedColor = "#7dd3fc";
+      edgeColor = "#878787";
+      textColor = "#c9dcf0";
+      nodeSize = 6;
+      break;
+    case "dark-plus":
+      backgroundColor = "#000000";
+      nodeColor = "#d5d1d1";
+      connectedColor = "#c0c0c0";
+      edgeColor = "#5d5d5d";
+      textColor = "#ffffff";
+      nodeSize = 6;
+      break;
+    case "blue-night":
+      backgroundColor = "#06080e";
+      nodeColor = "#d5d1d1";
+      connectedColor = "#c0c0c0";
+      edgeColor = "#5d5d5d";
+      textColor = "#e2e8f0";
+      nodeSize = 6;
+      break;
+    case "night-light":
+      backgroundColor = "#f1f5f9";
+      nodeColor = "#4a4a4a";
+      connectedColor = "#3a3a3a";
+      edgeColor = "#cbd5e1";
+      textColor = "#334155";
+      nodeSize = 8;
+      break;
+    case "peach-white":
+      backgroundColor = "#fcfbf9";
+      nodeColor = "#4a4a4a";
+      connectedColor = "#3a3a3a";
+      edgeColor = "#cbd5e1";
+      textColor = "#334155";
+      nodeSize = 8;
+      break;
+    case "custom":
+    case "dark":
+    default:
+      backgroundColor = "#121212";
+      nodeColor = "#d5d1d1";
+      connectedColor = "#c0c0c0";
+      edgeColor = "#5d5d5d";
+      textColor = "#e5e5e5";
+      nodeSize = 6;
+      break;
+  }
 
   return {
     searchTerm: "",
     existingFilesOnly: false,
     showOrphans: true,
-    backgroundColor: isOceanic ? "#14161a" : isPeach ? "#fcfbf9" : isLight ? "#fff7ed" : "#1f1f1f",
-    nodeColor: isOceanic ? "#ffffff" : isPeach ? "#b86e5c" : isLight ? "#4a4a4a" : "#d5d1d1",
-    connectedColor: isOceanic ? "#7dd3fc" : isPeach ? "#d88f7b" : isLight ? "#3a3a3a" : "#c0c0c0",
-    edgeColor: isOceanic ? "#878787" : isPeach ? "#d4cdbf" : isLight ? "#404040" : "#5d5d5d",
-    nodeSize: isLight || isPeach ? 8 : 6,
+    backgroundColor,
+    nodeColor,
+    connectedColor,
+    edgeColor,
+    nodeSize,
     linkWidth: 1,
-    textColor: isOceanic ? "#a2aab4" : isPeach ? "#554d42" : isLight ? "#606060" : "#a0a0a0",
+    textColor,
     textSize: 18,
     showLabels: true,
     labelThreshold: 0.5,
@@ -294,17 +359,14 @@ export function GraphView({
   const [loading, setLoading] = useState(true);
   const [reinitCounter, setReinitCounter] = useState(0); // Force re-init on filter/theme change
 
-  const isDark = theme === "dark" || theme === "oceanic" || theme === "dark-plus";
+  const isDark = theme === "dark" || theme === "oceanic" || theme === "dark-plus" || theme === "blue-night";
   const vaultHash = useMemo(
     () => getVaultHash(vaultPath || "default"),
     [vaultPath],
   );
 
-  // Separate settings keys for different themes (v8: fixed force defaults to match Obsidian)
-  let settingsKey = `openobsidian-graph-settings-v8-dark-${vaultHash}`;
-  if (theme === "light") settingsKey = `openobsidian-graph-settings-v8-light-${vaultHash}`;
-  if (theme === "oceanic") settingsKey = `openobsidian-graph-settings-v8-oceanic-${vaultHash}`;
-  if (theme === "peach-white") settingsKey = `openobsidian-graph-settings-v8-peach-white-${vaultHash}`;
+  // Dynamic theme settings keys
+  const settingsKey = `openobsidian-graph-settings-v8-${theme}-${vaultHash}`;
   const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
 
   const [settings, setSettings] = useState<GraphSettings>(() => {
@@ -335,7 +397,7 @@ export function GraphView({
       if (renderer && renderer.isInitialized()) {
         renderer.setBackgroundColor(
           hexToNumber(
-            settings.backgroundColor || (isDark ? "#101010" : "#f0f0f6"),
+            settings.backgroundColor || (isDark ? "#121212" : "#fcfbf9"),
           ),
         );
       }
@@ -469,7 +531,7 @@ export function GraphView({
       if (context) {
         context.setTransform(1, 0, 0, 1, 0, 0);
         context.fillStyle =
-          settings.backgroundColor || (isDark ? "#101010" : "#f0f0f6");
+          settings.backgroundColor || (isDark ? "#121212" : "#fcfbf9");
         context.fillRect(0, 0, width, height);
       }
 
@@ -497,7 +559,7 @@ export function GraphView({
 
     // Use app theme background colors
     const bgColor = hexToNumber(
-      settings.backgroundColor || (isDark ? "#101010" : "#f0f0f6"),
+      settings.backgroundColor || (isDark ? "#121212" : "#fcfbf9"),
     );
 
     const renderer = new GraphRenderer(canvas, {
@@ -808,7 +870,7 @@ export function GraphView({
               <ColorPicker
                 label="Background"
                 value={
-                  settings.backgroundColor || (isDark ? "#101010" : "#f0f0f6")
+                  settings.backgroundColor || (isDark ? "#121212" : "#fcfbf9")
                 }
                 onChange={(v) => {
                   setSettings((s) => ({ ...s, backgroundColor: v }));
@@ -817,7 +879,7 @@ export function GraphView({
                     renderer.setBackgroundColor(hexToNumber(v));
                   }
                 }}
-                presets={["#101010", "#151515", "#f0f0f6", "#ffffff"]}
+                presets={["#121212", "#151515", "#fcfbf9", "#ffffff"]}
               />
               <ColorPicker
                 label="Node color"
