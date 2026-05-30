@@ -12,7 +12,7 @@
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X, Lightbulb, BookOpen, Pen } from "lucide-react";
+import { X, Lightbulb, BookOpen, Pen, RefreshCw, Sparkles } from "lucide-react";
 import { Compartment, EditorState, Transaction, StateField } from "@codemirror/state";
 import {
   EditorView,
@@ -94,6 +94,8 @@ interface EditorProps {
   getViewState?: (path: string) => { scroll?: number; cursor?: number } | undefined;
   onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number }) => void;
   readOnly?: boolean;
+  onGenerateInsight?: () => void;
+  isGeneratingInsight?: boolean;
 }
 
 /**
@@ -1937,6 +1939,8 @@ export function Editor({
   getViewState,
   onViewStateChange,
   readOnly = false,
+  onGenerateInsight,
+  isGeneratingInsight = false,
 }: EditorProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activePath = activeTab?.path;
@@ -3401,18 +3405,77 @@ export function Editor({
       )}
 
       {/* Inline annotation content */}
-      {annotation && isInsightVisible && (
+      {isInsightVisible && (
         <div className="editor-annotation readable-insight">
           <div className="editor-annotation-header">
             <span className="editor-annotation-title">
               <Lightbulb size={14} style={{ marginRight: 6 }} />
               Note Insight
             </span>
-            <button className="editor-annotation-close" onClick={() => toggleInsight(false)} title="Close Insight">
-              <X size={14} />
-            </button>
+            <div className="editor-annotation-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {annotation && !isGeneratingInsight && (
+                <button
+                  className="editor-annotation-refresh"
+                  onClick={onGenerateInsight}
+                  title="Regenerate Insight"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted, #888)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '4px',
+                    borderRadius: '4px',
+                  }}
+                  onMouseOver={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
+                    (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
+                  }}
+                  onMouseOut={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'none';
+                    (e.currentTarget as HTMLElement).style.color = 'var(--text-muted, #888)';
+                  }}
+                >
+                  <RefreshCw size={14} />
+                </button>
+              )}
+              <button className="editor-annotation-close" onClick={() => toggleInsight(false)} title="Close Insight">
+                <X size={14} />
+              </button>
+            </div>
           </div>
-          <div className="editor-annotation-text">{annotation}</div>
+          <div className="editor-annotation-text">
+            {isGeneratingInsight ? (
+              <span style={{ color: 'var(--text-muted)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RefreshCw size={14} className="spin-animation" /> Generating insight...
+              </span>
+            ) : annotation ? (
+              annotation
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No insight generated yet for this note.</span>
+                <button
+                  onClick={onGenerateInsight}
+                  style={{
+                    background: 'var(--accent-color, #3b82f6)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 500,
+                  }}
+                >
+                  <Sparkles size={12} /> Generate Insight
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

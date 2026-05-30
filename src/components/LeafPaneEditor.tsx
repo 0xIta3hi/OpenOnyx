@@ -48,6 +48,8 @@ interface LeafPaneEditorProps {
   activeUsers?: any[];
   getViewState?: (path: string) => { scroll?: number; cursor?: number; viewMode?: ViewMode } | undefined;
   onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number; viewMode?: ViewMode }) => void;
+  onGenerateInsight?: () => void;
+  isGeneratingInsight?: boolean;
 }
 
 export function LeafPaneEditor({
@@ -76,6 +78,8 @@ export function LeafPaneEditor({
   activeUsers = [],
   getViewState,
   onViewStateChange,
+  onGenerateInsight,
+  isGeneratingInsight,
 }: LeafPaneEditorProps) {
   const [content, setContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(activeTab.path !== "__new_tab__");
@@ -942,6 +946,8 @@ export function LeafPaneEditor({
           getViewState={getViewState}
           onViewStateChange={onViewStateChange}
           readOnly={collabFailSafe}
+          onGenerateInsight={onGenerateInsight}
+          isGeneratingInsight={isGeneratingInsight}
         />
         </>
       )}

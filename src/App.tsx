@@ -1210,7 +1210,7 @@ export default function App() {
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
 
-  const [showInlineInsight, setShowInlineInsight] = useState(false);
+  const [showInlineInsightByTab, setShowInlineInsightByTab] = useState<Record<string, boolean>>({});
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [currentContent, setCurrentContent] = useState<string>("");
@@ -3653,7 +3653,7 @@ export default function App() {
     void getAnnotation(candidatePath, content)
       .then((annotation) => {
         if (annotation) {
-          setInlineAnnotation(annotation);
+          setInlineAnnotationByPath(prev => ({ ...prev, [candidatePath]: annotation }));
         }
       })
       .catch(() => {
@@ -3804,7 +3804,8 @@ export default function App() {
   const [nextStepSuggestions, setNextStepSuggestions] = useState<EnrichedSuggestion[]>([]);
   const [inlineSuggestionsByPath, setInlineSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
   const [nextStepSuggestionsByPath, setNextStepSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
-  const [inlineAnnotation, setInlineAnnotation] = useState<string | null>(null);
+  const [inlineAnnotationByPath, setInlineAnnotationByPath] = useState<Record<string, string | null>>({});
+  const [generatingInsightPaths, setGeneratingInsightPaths] = useState<Set<string>>(new Set());
   const ftuxConnectionSuggestion = useMemo(
     () =>
       inlineSuggestions
@@ -3997,7 +3998,7 @@ export default function App() {
 
   const refreshInlineAnnotation = useCallback((notePath: string) => {
     const cached = getCachedAnnotation(notePath);
-    setInlineAnnotation(cached);
+    setInlineAnnotationByPath(prev => ({ ...prev, [notePath]: cached }));
   }, []);
 
   // Track previous note for decay recording
@@ -4023,7 +4024,6 @@ export default function App() {
     } else {
       setInlineSuggestions([]);
       setNextStepSuggestions([]);
-      setInlineAnnotation(null);
     }
   }, [activeTabId, tabs, refreshInlineSuggestions, refreshInlineAnnotation]);
 
@@ -4173,14 +4173,45 @@ export default function App() {
         // Refresh inline suggestions after embedding updates
         refreshInlineSuggestions(path);
       }
-      // Auto-annotate (background, non-blocking)
-      getAnnotation(path, content).then((ann) => {
-        if (ann) setInlineAnnotation(ann);
-      }).catch(() => { /* silent */ });
     } catch (err) {
       console.warn("[Auto-embed] Failed:", err);
     }
   }, [refreshInlineSuggestions]);
+
+  const handleGenerateInsight = useCallback(async (path: string, tabId: string) => {
+    if (!path || isCanvasFile(path)) return;
+
+    setGeneratingInsightPaths((prev) => {
+      const next = new Set(prev);
+      next.add(path);
+      return next;
+    });
+
+    try {
+      let content = "";
+      if (activeTabId === tabId) {
+        content = currentContent;
+      } else {
+        content = await api.readFile(path);
+      }
+
+      const ann = await getAnnotation(path, content);
+      if (ann) {
+        setInlineAnnotationByPath((prev) => ({
+          ...prev,
+          [path]: ann,
+        }));
+      }
+    } catch (err) {
+      console.warn("[Insight] Generation failed:", err);
+    } finally {
+      setGeneratingInsightPaths((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+    }
+  }, [activeTabId, currentContent]);
 
   const handleSave = async () => {
     if (!activeTabId) return;
@@ -5959,8 +5990,8 @@ export default function App() {
         allNoteNames={allNoteNames}
         editorSuggestions={leafSuggestions}
         editorNextStepSuggestions={leafNextStepSuggestions}
-        inlineAnnotation={inlineAnnotation}
-        showInlineInsight={showInlineInsight}
+        inlineAnnotation={inlineAnnotationByPath[leafActiveTab.path] || getCachedAnnotation(leafActiveTab.path)}
+        showInlineInsight={!!showInlineInsightByTab[leafActiveTab.id]}
         ftuxConnectionPulse={ftuxConnectionPulse}
         isFocused={isThisFocused}
         onTabSelect={(leafId, tabId) => handlePaneTabSelect(leafId, tabId)}
@@ -5972,20 +6003,23 @@ export default function App() {
         onAcceptSuggestion={handleInlineAccept}
         onRejectSuggestion={handleInlineReject}
         onOpenNote={(path) => openFile(path)}
-        onToggleInsight={setShowInlineInsight}
+        onToggleInsight={(show) => setShowInlineInsightByTab((prev) => ({ ...prev, [leafActiveTab.id]: show }))}
         onContentChangeGlobal={handleContentChangeGlobal}
         activeUsers={activeUsers}
         getViewState={getViewState}
         onViewStateChange={handleScrollAndCursorChange}
+        onGenerateInsight={() => handleGenerateInsight(leafActiveTab.path, leafActiveTab.id)}
+        isGeneratingInsight={generatingInsightPaths.has(leafActiveTab.path)}
       />
     );
   }, [
     focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
     inlineSuggestions, nextStepSuggestions, inlineSuggestionsByPath, nextStepSuggestionsByPath,
-    activeTabId, tabs, inlineAnnotation, showInlineInsight, ftuxConnectionPulse,
+    activeTabId, tabs, inlineAnnotationByPath, showInlineInsightByTab, ftuxConnectionPulse,
     mainPluginViews, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
     ftuxSuggestionIdle, isFTUXFirstNote, isFTUXConnectionStage, showFTUXInsightPrompt, showFTUXGraphPrompt,
-    showTrajectorySuggestions, getViewState, handleScrollAndCursorChange
+    showTrajectorySuggestions, getViewState, handleScrollAndCursorChange, handleGenerateInsight,
+    generatingInsightPaths
   ]);
 
   // Render content for a single leaf pane in the split system

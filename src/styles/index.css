@@ -9497,6 +9497,10 @@ body.is-dragging .plugin-view-panel {
   transition: width 0.3s ease;
 }
 
+.spin-animation {
+  animation: spin 1.2s linear infinite;
+}
+
 /* Editor inline annotation */
 .editor-annotation {
   padding: 12px 16px;

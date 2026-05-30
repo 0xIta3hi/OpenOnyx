@@ -692,7 +692,8 @@ export class GraphRenderer {
     const n = Math.log(this.scale) / Math.log(2);
     const textAlpha = Math.max(0, Math.min(1, n + 1 - (1 - this.labelStyle.threshold)));
     
-    if (textAlpha <= 0) return;
+    // Draw labels if textAlpha is positive or if a node is currently hovered
+    if (textAlpha <= 0 && !this.hoveredNodeId) return;
 
     // Obsidian's font stack for graph labels
     ctx.font = `${this.labelStyle.size}px ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Inter", sans-serif`;
@@ -728,18 +729,34 @@ export class GraphRenderer {
         continue;
       }
 
+      const isHovered = node.id === this.hoveredNodeId;
+      const isConnectedToHovered = this.hoveredNodeId ? (connectedToHighlight?.has(node.id) ?? false) : false;
+      
+      // If we are zoomed out past threshold, only render the hovered node's and its connected nodes' labels
+      if (textAlpha <= 0 && !isHovered && !isConnectedToHovered) {
+        continue;
+      }
+
       let alpha = textAlpha;
+      if (isHovered) {
+        alpha = 1.0;
+      } else if (isConnectedToHovered) {
+        alpha = textAlpha <= 0 ? 0.8 : Math.max(textAlpha, 0.8);
+      }
 
       // Dim labels for unrelated nodes (matching edge/node dimming logic)
-      const isHighlightNode = node.id === this.hoveredNodeId || node.id === this.selectedNodeId;
+      const isSelected = node.id === this.selectedNodeId;
+      const isHighlightNode = isHovered || isSelected;
       const isConnected = connectedToHighlight?.has(node.id) ?? false;
       
-      if (this.highlightedPathNodeIds) {
-        if (!this.highlightedPathNodeIds.has(node.id)) {
+      if (!isHovered && !isConnectedToHovered) {
+        if (this.highlightedPathNodeIds) {
+          if (!this.highlightedPathNodeIds.has(node.id)) {
+            alpha *= fQ;
+          }
+        } else if (highlightNode && !isHighlightNode && !isConnected) {
           alpha *= fQ;
         }
-      } else if (highlightNode && !isHighlightNode && !isConnected) {
-        alpha *= fQ;
       }
 
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
