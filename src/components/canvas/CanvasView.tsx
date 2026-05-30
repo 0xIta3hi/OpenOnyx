@@ -65,6 +65,7 @@ import {
   resolveCanvasColor,
 } from "../../types/canvas";
 import { generateId, isDarkTheme } from "../../utils/helpers";
+import { getSmartEmbed, getDisplayDomain } from "../../utils/urlHelper";
 import { getAPI } from "../../utils/api";
 import { MarkdownPreview } from "../editor/MarkdownPreview";
 import {
@@ -3795,6 +3796,7 @@ export function CanvasView({
               onEditChange={setEditText}
               onEditBlur={commitEdit}
               onEditKeyDown={handleNodeEditKeyDown}
+              onUpdateNode={updateNode}
             />
           ))}
         </div>
@@ -5137,6 +5139,7 @@ interface NodeCardProps {
   onEditChange: (v: string) => void;
   onEditBlur: () => void;
   onEditKeyDown: (e: React.KeyboardEvent) => void;
+  onUpdateNode?: (id: string, props: any) => void;
 }
 
 function NodeCard({
@@ -5154,6 +5157,7 @@ function NodeCard({
   onEditChange,
   onEditBlur,
   onEditKeyDown,
+  onUpdateNode,
 }: NodeCardProps) {
   const isGroup = node.type === "group";
   const borderColor = resolveCanvasColor(node.color);
@@ -5276,8 +5280,16 @@ function NodeCard({
             autoFocus
           />
         ) : (
-          <div className="cv-node-body">
-            {(node as CanvasTextNode).text || (
+          <div className="cv-node-body cv-text-md-preview" data-cv-no-drag="true" style={{ overflowY: "auto", height: "100%" }}>
+            {(node as CanvasTextNode).text ? (
+              <MarkdownPreview
+                content={(node as CanvasTextNode).text || ""}
+                onLinkClick={() => {}}
+                onContentChange={(newText) => {
+                  onUpdateNode?.(node.id, { text: newText });
+                }}
+              />
+            ) : (
               <span className="cv-placeholder">Double-click to edit…</span>
             )}
           </div>
@@ -5291,19 +5303,82 @@ function NodeCard({
         />
       )}
 
-      {node.type === "link" && (
-        <div className="cv-node-body cv-link-body">
-          <span className="cv-link-host">
-            {(() => {
-              try {
-                return new URL((node as CanvasLinkNode).url).hostname;
-              } catch {
-                return (node as CanvasLinkNode).url;
+      {node.type === "link" && (() => {
+        const url = (node as CanvasLinkNode).url || "";
+        const isNoEmbed = url.includes("#no-embed");
+        const cleanUrl = url.replace(/#no-embed/g, "").trim();
+        const displayDomain = getDisplayDomain(cleanUrl);
+
+        if (isNoEmbed) {
+          return (
+            <div className="cv-node-body cv-link-body link-only-mode" style={{ height: "100%", display: "flex", flexDirection: "column", padding: "8px 12px" }}>
+              <div className="cv-link-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "6px", marginBottom: "8px" }} data-cv-no-drag="true">
+                <span style={{ fontSize: "11px", fontWeight: "bold", opacity: 0.7 }}>{displayDomain}</span>
+              </div>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }} data-cv-no-drag="true">
+                <a href={cleanUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-color)", textDecoration: "underline", wordBreak: "break-all", fontSize: "12px", textAlign: "center" }}>
+                  {cleanUrl}
+                </a>
+              </div>
+            </div>
+          );
+        }
+
+        const config = getSmartEmbed(cleanUrl);
+        const embedSrc = config.src;
+
+        return (
+          <div className="cv-node-body cv-link-body iframe-mode" style={{ height: "100%", width: "100%", overflow: "hidden", display: "flex", flexDirection: "column", padding: 0 }}>
+            <div className="cv-link-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-subtle)", fontSize: "11px" }} data-cv-no-drag="true">
+              <span style={{ fontWeight: "bold", opacity: 0.7 }}>{displayDomain} ({config.badge})</span>
+            </div>
+            <div style={{ flex: 1, width: "100%", height: "100%", position: "relative" }} data-cv-no-drag="true">
+              <iframe
+                src={embedSrc}
+                allow={config.attrs.allow}
+                allowFullScreen={config.attrs.allowFullScreen}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  backgroundColor: "var(--bg-primary)",
+                  pointerEvents: "auto",
+                  ...config.attrs.style
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Floating Toggle Button outside the frame for Link Nodes */}
+      {node.type === "link" && (() => {
+        const url = (node as CanvasLinkNode).url || "";
+        const isNoEmbed = url.includes("#no-embed");
+        const cleanUrl = url.replace(/#no-embed/g, "").trim();
+
+        return (
+          <button
+            className="url-preview-toggle-floating cv-link-embed-toggle"
+            title={isNoEmbed ? "Convert to Iframe Embed" : "Convert to Link only"}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isNoEmbed) {
+                onUpdateNode?.(node.id, { url: cleanUrl });
+              } else {
+                onUpdateNode?.(node.id, { url: cleanUrl + "#no-embed" });
               }
-            })()}
-          </span>
-        </div>
-      )}
+            }}
+            data-cv-no-drag="true"
+          >
+            {isNoEmbed ? (
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            )}
+          </button>
+        );
+      })()}
     </div>
   );
 }
@@ -5316,7 +5391,8 @@ function areNodeCardPropsEqual(prev: NodeCardProps, next: NodeCardProps) {
     prev.editing === next.editing &&
     prev.editText === next.editText &&
     prev.vaultPath === next.vaultPath &&
-    prev.enableMarkdownPreview === next.enableMarkdownPreview
+    prev.enableMarkdownPreview === next.enableMarkdownPreview &&
+    prev.onUpdateNode === next.onUpdateNode
   );
 }
 

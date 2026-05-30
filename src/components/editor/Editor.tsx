@@ -3555,6 +3555,7 @@ export function Editor({
                 onGetLinkPreview={onGetNoteContent}
                 onImageClick={handleOpenImageLightbox}
                 theme={theme}
+                onContentChange={onContentChange}
               />
             </div>
           </>

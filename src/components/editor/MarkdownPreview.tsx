@@ -24,6 +24,7 @@ import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import DOMPurify from "dompurify";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
+import { getSmartEmbed, getDisplayDomain, toggleUrlInMarkdown } from "../../utils/urlHelper";
 
 // Enable math formatting
 marked.use(markedKatex({ throwOnError: false }));
@@ -96,6 +97,7 @@ interface MarkdownPreviewProps {
   onGetLinkPreview?: (noteName: string) => string | null;
   onImageClick?: (src: string, alt: string) => void;
   theme?: string;
+  onContentChange?: (content: string) => void;
 }
 
 function parseImageRenderMeta(title?: string): {
@@ -130,6 +132,7 @@ export function MarkdownPreview({
   onGetLinkPreview,
   onImageClick,
   theme,
+  onContentChange,
 }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{
@@ -172,77 +175,53 @@ export function MarkdownPreview({
       .replace(/<\/blockquote>/g, "</div></div></blockquote>");
   };
 
-  // Universal Embed Registry: Rules for transforming links and applying themes
-  const getSmartEmbed = useCallback((url: string, currentTheme: string) => {
-    const isDark = currentTheme === "dark";
-
-    // 1. YouTube
-    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?]+)/);
-    if (ytMatch) {
-      return {
-        src: `https://www.youtube.com/embed/${ytMatch[1]}?vq=hd1080&rel=0`,
-        attrs: `allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen`
-      };
-    }
-
-    // 2. Spotify
-    if (url.includes('open.spotify.com/')) {
-      const embedUrl = url.includes('/embed/') ? url : url.replace('open.spotify.com/', 'open.spotify.com/embed/');
-      return {
-        src: embedUrl,
-        attrs: `allow="encrypted-media" style="border-radius:12px"`
-      };
-    }
-
-    // 3. Vimeo
-    const vimeoMatch = url.match(/(?:vimeo\.com\/video\/|vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/);
-    if (vimeoMatch) {
-      return {
-        src: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
-        attrs: `allow="fullscreen; autoplay; picture-in-picture" allowfullscreen`
-      };
-    }
-
-    // 4. Generic URL Fallback
-    return {
-      src: url,
-      attrs: `allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen`
-    };
-  }, []);
-
   // Generate premium HTML wrapper card for URL previews
   const getUrlPreviewMarkup = useCallback((url: string, currentTheme: string) => {
-    let domain = "";
-    try {
-      domain = new URL(url).hostname;
-    } catch (e) {
-      domain = url;
-    }
+    const isNoEmbed = url.includes("#no-embed");
+    const cleanUrl = url.replace(/#no-embed/g, "").trim();
 
-    const displayDomain = domain.replace(/^www\./, "");
+    const displayDomain = getDisplayDomain(cleanUrl);
     
-    // Determine category badge
-    let badge = "Web Page";
-    if (url.match(/(?:youtube\.com|youtu\.be)/)) {
-      badge = "YouTube";
-    } else if (url.includes("spotify.com")) {
-      badge = "Spotify";
-    } else if (url.includes("vimeo.com")) {
-      badge = "Vimeo";
-    } else if (url.endsWith(".pdf") || url.includes(".pdf?")) {
-      badge = "PDF";
-    } else if (url.match(/\.(mp4|webm|ogg)(?:\?.*)?$/i)) {
-      badge = "Video Player";
-    } else if (url.match(/\.(mp3|wav|ogg|m4a)(?:\?.*)?$/i)) {
-      badge = "Audio Player";
+    // Resolve smart embed settings
+    const config = getSmartEmbed(cleanUrl);
+    const embedSrc = config.src;
+    
+    // Map style object to CSS string if present
+    const styleAttr = config.attrs.style 
+      ? `style="${Object.entries(config.attrs.style).map(([k, v]) => `${k.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}:${v}`).join(';')}"`
+      : '';
+    const embedAttrs = `${config.attrs.allow ? `allow="${config.attrs.allow}"` : ''} ${config.attrs.allowFullScreen ? 'allowfullscreen' : ''} ${styleAttr}`;
+    const badge = config.badge;
+    const faviconUrl = `https://www.google.com/s2/favicons?domain=${displayDomain}&sz=32`;
+
+    if (isNoEmbed) {
+      // Link only mode
+      return `<div class="url-preview-card link-only" data-url="${url}" style="position: relative;">
+        <div class="url-preview-header">
+          <div class="url-preview-info">
+            <img class="url-preview-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">
+            <span class="url-preview-title">${displayDomain}</span>
+          </div>
+          <div class="url-preview-actions">
+            <span class="url-preview-badge">${badge} (Link)</span>
+            <a class="url-preview-action-btn" href="${cleanUrl}" target="_blank" rel="noopener noreferrer" title="Open in new tab">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </a>
+          </div>
+        </div>
+        <div class="url-preview-link-body" style="padding: 12px 16px 12px 44px; font-size: 13px;">
+          <a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #3b82f6); text-decoration: underline; word-break: break-all;">
+            ${cleanUrl}
+          </a>
+        </div>
+        <button class="url-preview-toggle-floating url-preview-toggle-btn" title="Convert to Iframe Embed">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        </button>
+      </div>`;
     }
 
-    const config = getSmartEmbed(url, currentTheme);
-    const embedSrc = config.src;
-    const embedAttrs = config.attrs;
-    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-
-    return `<div class="url-preview-card" data-url="${url}">
+    // Embed mode
+    return `<div class="url-preview-card" data-url="${url}" style="position: relative;">
       <div class="url-preview-header">
         <div class="url-preview-info">
           <img class="url-preview-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">
@@ -250,16 +229,19 @@ export function MarkdownPreview({
         </div>
         <div class="url-preview-actions">
           <span class="url-preview-badge">${badge}</span>
-          <a class="url-preview-action-btn" href="${url}" target="_blank" rel="noopener noreferrer" title="Open in new tab">
+          <a class="url-preview-action-btn" href="${cleanUrl}" target="_blank" rel="noopener noreferrer" title="Open in new tab">
             <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
           </a>
         </div>
       </div>
-      <div class="url-preview-body">
+      <div class="url-preview-body" style="position: relative;">
         <iframe class="url-preview-iframe" src="${embedSrc}" ${embedAttrs} style="height:100%; width:100%; aspect-ratio: 16 / 9; border: none;"></iframe>
       </div>
+      <button class="url-preview-toggle-floating url-preview-toggle-btn" title="Convert to Link only">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+      </button>
     </div>`;
-  }, [getSmartEmbed]);
+  }, []);
 
   // Configure marked for GFM (GitHub Flavored Markdown) support
   const renderedHtml = useMemo(() => {
@@ -402,6 +384,21 @@ export function MarkdownPreview({
         }
       }
 
+      // Handle URL preview toggle mode (iframe vs link)
+      const toggleBtn = target.closest(".url-preview-toggle-btn");
+      if (toggleBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = toggleBtn.closest(".url-preview-card");
+        const cardUrl = card?.getAttribute("data-url");
+        if (card && cardUrl && onContentChange) {
+          const isCurrentlyLinkOnly = card.classList.contains("link-only");
+          const nextContent = toggleUrlInMarkdown(content, cardUrl, !isCurrentlyLinkOnly);
+          onContentChange(nextContent);
+        }
+        return;
+      }
+
       // Handle wiki-link clicks
       if (target.classList.contains("wiki-link")) {
         e.preventDefault();
@@ -440,7 +437,7 @@ export function MarkdownPreview({
 
     container.addEventListener("click", handleClick);
     return () => container.removeEventListener("click", handleClick);
-  }, [onLinkClick, onCheckboxToggle, onImageClick]);
+  }, [onLinkClick, onCheckboxToggle, onImageClick, onContentChange, content]);
 
   // Handle link hover for preview
   useEffect(() => {
