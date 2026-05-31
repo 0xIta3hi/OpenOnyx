@@ -581,48 +581,53 @@ export function Sidebar({
         {/* Layout Groups Section */}
         {!filterQuery && (
           <div className="sidebar-section groups-section">
-            <button
-              className="section-header"
-              onClick={() => setShowGroups(!showGroups)}
-            >
-              <span className="section-chevron">
-                {showGroups ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </span>
-              <LayoutGrid size={14} className="section-icon" style={{ color: "var(--accent)" }} />
-              <span>Groups</span>
-              <span className="section-count">{groups.length}</span>
-              <div 
-                style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}
+            <div className="sidebar-section-header-wrapper">
+              <button
+                className="section-header"
+                onClick={() => setShowGroups(!showGroups)}
+              >
+                <span className="section-chevron">
+                  {showGroups ? (
+                    <ChevronDown size={14} />
+                  ) : (
+                    <ChevronRight size={14} />
+                  )}
+                </span>
+                <LayoutGrid size={14} className="section-icon" style={{ color: "var(--accent)" }} />
+                <span>Groups</span>
+                <span className="section-count">{groups.length}</span>
+              </button>
+              <button 
+                className="section-header-action"
                 onClick={(e) => {
                   e.stopPropagation();
                   onCreateGroup();
                 }}
                 title="Save current layout as group"
               >
-                <Plus size={14} style={{ opacity: 0.6, cursor: "pointer" }} />
-              </div>
-            </button>
-            {showGroups && (
+                <Plus size={14} />
+              </button>
+            </div>
+            <div className={`groups-list-wrapper ${showGroups ? "open" : ""}`}>
               <div className="groups-list">
                 {groups.map((group) => (
-                  <div key={group.id} className="group-item-container">
+                  <div key={group.id} className={`group-item-container ${activeGroupId === group.id ? "active" : ""}`}>
                     <button
-                      className={`group-item-btn ${activeGroupId === group.id ? "active" : ""}`}
+                      className="group-item-btn"
                       onClick={() => onRestoreGroup(group.id)}
                       onContextMenu={(e) => handleGroupContextMenu(e, group.id)}
                     >
                       <span 
                         className="group-color-dot" 
-                        style={{ backgroundColor: group.color }}
+                        style={{ 
+                          backgroundColor: group.color,
+                          boxShadow: `0 0 6px ${group.color}60`
+                        }}
                       />
-                      <span>{group.name}</span>
+                      <span className="group-name-text">{group.name}</span>
                       {group.auto_save_enabled && (
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)", marginLeft: "4px" }}>
-                          (auto)
+                        <span className="group-auto-badge">
+                          auto
                         </span>
                       )}
                     </button>
@@ -638,7 +643,7 @@ export function Sidebar({
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
         )}
 
