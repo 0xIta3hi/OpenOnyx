@@ -2781,12 +2781,7 @@ export function Editor({
               const collabOps = onCollabOperationsRef.current;
               const cid = localClientIdRef.current;
               if (collabOps && cid) {
-                const allOps: CollabOperation[] = [];
-                for (const tr of update.transactions) {
-                  if (tr.docChanged) {
-                    allOps.push(...extractOperations(tr.changes, cid, authManager.getUserId() || undefined));
-                  }
-                }
+                const allOps = extractOperations(update.changes, cid, authManager.getUserId() || undefined);
                 if (allOps.length > 0) {
                   collabOps(allOps);
                 }
