@@ -54,11 +54,13 @@ export function getSmartEmbed(url: string): SmartEmbedConfig {
     const embedUrl = cleanUrl.includes("/embed/")
       ? cleanUrl
       : cleanUrl.replace("open.spotify.com/", "open.spotify.com/embed/");
+    const isTrack = cleanUrl.includes("/track/");
+    const height = isTrack ? "352px" : "380px";
     return {
       src: embedUrl,
       attrs: {
         allow: "encrypted-media",
-        style: { borderRadius: "12px" },
+        style: { borderRadius: "12px", height: height, maxWidth: "660px", width: "100%" },
       },
       badge: "Spotify",
     };
