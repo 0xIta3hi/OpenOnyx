@@ -8,15 +8,33 @@ export interface SmartEmbedConfig {
     allow?: string;
     allowFullScreen?: boolean;
     style?: React.CSSProperties;
+    sandbox?: string;
   };
   badge: string;
+}
+
+/**
+ * Safely extracts the URL from an iframe or raw link, removing unwanted wrapping like prepended 'https://'
+ */
+export function cleanEmbedUrl(url: string): string {
+  if (!url) return "";
+  let clean = url.trim();
+
+  // Handle cases where an iframe snippet was pasted (and potentially prepended with http/https)
+  const iframeRegex = /<iframe[^>]+src=(["'])(.*?)\1/i;
+  const match = clean.match(iframeRegex);
+  if (match) {
+    return match[2].trim();
+  }
+
+  return clean;
 }
 
 /**
  * Returns the smart iframe URL, attributes, and category badge for a given URL.
  */
 export function getSmartEmbed(url: string): SmartEmbedConfig {
-  const cleanUrl = url.replace(/#no-embed/g, "").trim();
+  const cleanUrl = cleanEmbedUrl(url).replace(/#no-embed/g, "").trim();
 
   // 1. YouTube
   const ytMatch = cleanUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?]+)/);
@@ -43,6 +61,21 @@ export function getSmartEmbed(url: string): SmartEmbedConfig {
         style: { borderRadius: "12px" },
       },
       badge: "Spotify",
+    };
+  }
+
+  // 2b. Apple Music
+  if (cleanUrl.includes("music.apple.com/")) {
+    const embedUrl = cleanUrl.includes("embed.music.apple.com/")
+      ? cleanUrl
+      : cleanUrl.replace("music.apple.com/", "embed.music.apple.com/");
+    return {
+      src: embedUrl,
+      attrs: {
+        allow: "autoplay *; encrypted-media *; fullscreen *; clipboard-write",
+        style: { borderRadius: "10px", height: "175px", maxWidth: "660px", width: "100%" },
+      },
+      badge: "Apple Music",
     };
   }
 
@@ -84,7 +117,7 @@ export function getSmartEmbed(url: string): SmartEmbedConfig {
  */
 export function getDisplayDomain(url: string): string {
   try {
-    return new URL(url).hostname.replace(/^www\./, "");
+    return new URL(cleanEmbedUrl(url)).hostname.replace(/^www\./, "");
   } catch {
     return url;
   }

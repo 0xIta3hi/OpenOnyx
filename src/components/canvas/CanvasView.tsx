@@ -65,7 +65,7 @@ import {
   resolveCanvasColor,
 } from "../../types/canvas";
 import { generateId, isDarkTheme } from "../../utils/helpers";
-import { getSmartEmbed, getDisplayDomain } from "../../utils/urlHelper";
+import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl } from "../../utils/urlHelper";
 import { getAPI } from "../../utils/api";
 import { MarkdownPreview } from "../editor/MarkdownPreview";
 import {
@@ -3136,7 +3136,7 @@ export function CanvasView({
         setEditText((n as CanvasGroupNode).label || "");
         setEditingId(id);
       }
-      if (n.type === "link") window.open((n as CanvasLinkNode).url, "_blank");
+      if (n.type === "link") window.open(cleanEmbedUrl((n as CanvasLinkNode).url), "_blank");
       if (n.type === "file" && onOpenFile)
         onOpenFile((n as CanvasFileNode).file);
     },
@@ -4662,7 +4662,7 @@ export function CanvasView({
                 onChange={(e) => setLinkUrl(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    let u = linkUrl.trim();
+                    let u = cleanEmbedUrl(linkUrl.trim());
                     if (u && !u.startsWith("http")) u = "https://" + u;
                     if (u) addNode("link", { url: u });
                     setLinkModal(false);
@@ -4675,7 +4675,7 @@ export function CanvasView({
               <button
                 className="cv-link-go"
                 onClick={() => {
-                  let u = linkUrl.trim();
+                  let u = cleanEmbedUrl(linkUrl.trim());
                   if (u && !u.startsWith("http")) u = "https://" + u;
                   if (u) addNode("link", { url: u });
                   setLinkModal(false);
@@ -5306,7 +5306,7 @@ function NodeCard({
       {node.type === "link" && (() => {
         const url = (node as CanvasLinkNode).url || "";
         const isNoEmbed = url.includes("#no-embed");
-        const cleanUrl = url.replace(/#no-embed/g, "").trim();
+        const cleanUrl = cleanEmbedUrl(url.replace(/#no-embed/g, "").trim());
         const displayDomain = getDisplayDomain(cleanUrl);
 
         if (isNoEmbed) {
@@ -5329,21 +5329,20 @@ function NodeCard({
 
         return (
           <div className="cv-node-body cv-link-body iframe-mode" style={{ height: "100%", width: "100%", overflow: "hidden", display: "flex", flexDirection: "column", padding: 0 }}>
-            <div className="cv-link-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-subtle)", fontSize: "11px" }} data-cv-no-drag="true">
-              <span style={{ fontWeight: "bold", opacity: 0.7 }}>{displayDomain} ({config.badge})</span>
-            </div>
-            <div style={{ flex: 1, width: "100%", height: "100%", position: "relative" }} data-cv-no-drag="true">
+            <div style={{ flex: 1, width: "100%", height: "100%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }} data-cv-no-drag="true">
               <iframe
                 src={embedSrc}
                 allow={config.attrs.allow}
                 allowFullScreen={config.attrs.allowFullScreen}
+                sandbox={config.attrs.sandbox}
                 style={{
-                  width: "100%",
-                  height: "100%",
                   border: "none",
                   backgroundColor: "var(--bg-primary)",
                   pointerEvents: "auto",
-                  ...config.attrs.style
+                  ...config.attrs.style,
+                  width: "100%",
+                  height: "100%",
+                  maxWidth: "none",
                 }}
               />
             </div>

@@ -24,7 +24,7 @@ import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import DOMPurify from "dompurify";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
-import { getSmartEmbed, getDisplayDomain, toggleUrlInMarkdown } from "../../utils/urlHelper";
+import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl, toggleUrlInMarkdown } from "../../utils/urlHelper";
 
 // Enable math formatting
 marked.use(markedKatex({ throwOnError: false }));
@@ -39,6 +39,13 @@ marked.use({
       const safeAlt = String(text).replace(/"/g, "&quot;");
       return `<img src="${safeSrc}" alt="${safeAlt}" ${title ? `title="${String(title).replace(/"/g, "&quot;")}"` : ""} />`;
     }
+  }
+});
+
+// Keep iframe allow and sandbox attributes unchanged during DOMPurify sanitization
+DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
+  if (node.tagName === "IFRAME" && (data.attrName === "allow" || data.attrName === "sandbox")) {
+    data.forceKeepAttr = true;
   }
 });
 
@@ -176,27 +183,70 @@ export function MarkdownPreview({
   };
 
   // Generate premium HTML wrapper card for URL previews
-  const getUrlPreviewMarkup = useCallback((url: string, currentTheme: string) => {
+  const getUrlPreviewMarkup = useCallback((url: string, currentTheme: string, customAttrs?: { width?: string; height?: string; style?: string }) => {
     const isNoEmbed = url.includes("#no-embed");
-    const cleanUrl = url.replace(/#no-embed/g, "").trim();
+    const urlWithHashCleaned = url.replace(/#no-embed/g, "").trim();
+    const cleanUrl = cleanEmbedUrl(urlWithHashCleaned);
 
-    const displayDomain = getDisplayDomain(cleanUrl);
+    // Extract custom dimensions from hash/fragment (e.g. #width=600&height=175)
+    let hashAttrs: { width?: string; height?: string } = {};
+    try {
+      const hashIndex = cleanUrl.indexOf("#");
+      if (hashIndex !== -1) {
+        const hash = cleanUrl.substring(hashIndex);
+        const widthMatch = hash.match(/[#&]width=([^&]+)/i);
+        const heightMatch = hash.match(/[#&]height=([^&]+)/i);
+        if (widthMatch) hashAttrs.width = decodeURIComponent(widthMatch[1]);
+        if (heightMatch) hashAttrs.height = decodeURIComponent(heightMatch[1]);
+      }
+    } catch {}
+
+    // Strip hash from cleanUrl before resolving to avoid regex matches breaking
+    const cleanUrlWithoutHash = cleanUrl.split("#")[0];
+    const displayDomain = getDisplayDomain(cleanUrlWithoutHash);
     
     // Resolve smart embed settings
-    const config = getSmartEmbed(cleanUrl);
+    const config = getSmartEmbed(cleanUrlWithoutHash);
     const embedSrc = config.src;
     
-    // Map style object to CSS string if present
-    const styleAttr = config.attrs.style 
-      ? `style="${Object.entries(config.attrs.style).map(([k, v]) => `${k.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}:${v}`).join(';')}"`
-      : '';
-    const embedAttrs = `${config.attrs.allow ? `allow="${config.attrs.allow}"` : ''} ${config.attrs.allowFullScreen ? 'allowfullscreen' : ''} ${styleAttr}`;
+    const finalStyle = customAttrs?.style;
+    const finalWidth = customAttrs?.width || hashAttrs.width;
+    const finalHeight = customAttrs?.height || hashAttrs.height;
+
+    // Check if the registry config or overrides define dimensions
+    const hasCustomWidth = !!finalWidth || (config.attrs.style && (!!config.attrs.style.width || !!config.attrs.style.maxWidth));
+    const hasCustomHeight = !!finalHeight || (config.attrs.style && !!config.attrs.style.height);
+
+    let cardStyle = "";
+    let bodyStyle = "";
+
+    if (finalStyle) {
+      cardStyle = finalStyle;
+    } else {
+      if (hasCustomWidth) {
+        const rawWidth = finalWidth || (config.attrs.style ? (config.attrs.style.width || config.attrs.style.maxWidth) : "");
+        if (rawWidth) {
+          const w = String(rawWidth).endsWith('%') || String(rawWidth).endsWith('px') || String(rawWidth).endsWith('vh') || String(rawWidth).endsWith('vw') ? rawWidth : `${rawWidth}px`;
+          cardStyle = `max-width: ${w}; width: 100%; margin: 8px auto;`;
+        }
+      }
+      if (hasCustomHeight) {
+        const rawHeight = finalHeight || (config.attrs.style ? config.attrs.style.height : "");
+        if (rawHeight) {
+          const h = String(rawHeight).endsWith('%') || String(rawHeight).endsWith('px') || String(rawHeight).endsWith('vh') || String(rawHeight).endsWith('vw') ? rawHeight : `${rawHeight}px`;
+          bodyStyle = `height: ${h}; aspect-ratio: auto;`;
+        }
+      }
+    }
+
+    const sandboxAttr = config.attrs.sandbox ? `sandbox="${config.attrs.sandbox}"` : '';
+    const embedAttrs = `${config.attrs.allow ? `allow="${config.attrs.allow}"` : ''} ${config.attrs.allowFullScreen ? 'allowfullscreen' : ''} ${sandboxAttr}`;
     const badge = config.badge;
     const faviconUrl = `https://www.google.com/s2/favicons?domain=${displayDomain}&sz=32`;
 
     if (isNoEmbed) {
       // Link only mode
-      return `<div class="url-preview-card link-only" data-url="${url}" style="position: relative;">
+      return `<div class="url-preview-card link-only" data-url="${url}" style="position: relative; ${cardStyle}">
         <div class="url-preview-header">
           <div class="url-preview-info">
             <img class="url-preview-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">
@@ -221,21 +271,9 @@ export function MarkdownPreview({
     }
 
     // Embed mode
-    return `<div class="url-preview-card" data-url="${url}" style="position: relative;">
-      <div class="url-preview-header">
-        <div class="url-preview-info">
-          <img class="url-preview-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">
-          <span class="url-preview-title">${displayDomain}</span>
-        </div>
-        <div class="url-preview-actions">
-          <span class="url-preview-badge">${badge}</span>
-          <a class="url-preview-action-btn" href="${cleanUrl}" target="_blank" rel="noopener noreferrer" title="Open in new tab">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-          </a>
-        </div>
-      </div>
-      <div class="url-preview-body" style="position: relative;">
-        <iframe class="url-preview-iframe" src="${embedSrc}" ${embedAttrs} style="height:100%; width:100%; aspect-ratio: 16 / 9; border: none;"></iframe>
+    return `<div class="url-preview-card embed-only" data-url="${url}" style="position: relative; ${cardStyle}">
+      <div class="url-preview-body" style="position: relative; ${bodyStyle}">
+        <iframe class="url-preview-iframe" src="${embedSrc}" ${embedAttrs} style="height:100%; width:100%; border: none;"></iframe>
       </div>
       <button class="url-preview-toggle-floating url-preview-toggle-btn" title="Convert to Link only">
         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
@@ -353,7 +391,19 @@ export function MarkdownPreview({
       if (attrs.includes("url-preview-iframe")) {
         return match;
       }
-      return getUrlPreviewMarkup(src, theme || "dark");
+      
+      // Extract width, height, and style attributes from attrs
+      const widthMatch = attrs.match(/width=(["'])(.*?)\1/i);
+      const heightMatch = attrs.match(/height=(["'])(.*?)\1/i);
+      const styleMatch = attrs.match(/style=(["'])(.*?)\1/i);
+      
+      const customAttrs = {
+        width: widthMatch ? widthMatch[2] : undefined,
+        height: heightMatch ? heightMatch[2] : undefined,
+        style: styleMatch ? styleMatch[2] : undefined,
+      };
+
+      return getUrlPreviewMarkup(src, theme || "dark", customAttrs);
     });
 
     // Sanitize

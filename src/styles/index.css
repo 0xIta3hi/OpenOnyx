@@ -2765,9 +2765,24 @@ body.is-dragging .plugin-view-panel {
   position: relative;
 }
 
+.markdown-preview .url-preview-card.embed-only {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  margin: var(--space-4) auto;
+}
+
+.markdown-preview .url-preview-card.embed-only .url-preview-body {
+  border-radius: var(--radius-md);
+}
+
 .markdown-preview .url-preview-card:hover {
   border-color: var(--border-medium);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.markdown-preview .url-preview-card.embed-only:hover {
+  box-shadow: none;
 }
 
 .markdown-preview .url-preview-header {

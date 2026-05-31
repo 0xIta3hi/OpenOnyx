@@ -6,7 +6,7 @@
  * exposed to the renderer via secure IPC channels.
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, protocol, net, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { FileSystemManager } from './fileSystem';
@@ -310,6 +310,21 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(async () => {
   fsManager = new FileSystemManager();
   searchEngine = new SearchEngine();
+
+  // Grant all permission requests (like storage-access for Apple Music/Spotify embedded players)
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(true);
+  });
+
+  // Spoof Referer and Origin for Apple Music embeds to bypass HTTP/localhost restrictions
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*.music.apple.com/*', '*://*.apple.com/*'] },
+    (details, callback) => {
+      details.requestHeaders['Origin'] = 'https://embed.music.apple.com';
+      details.requestHeaders['Referer'] = 'https://embed.music.apple.com/';
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
 
   // Load last used vault if exists
   const config = loadConfig();
