@@ -36,6 +36,7 @@ export interface CanvasNodeBase {
   height: number;
   color?: CanvasColor;
   locked?: boolean;
+  opacity?: number;
 }
 
 export interface CanvasTextNode extends CanvasNodeBase {

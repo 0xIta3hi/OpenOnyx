@@ -125,6 +125,7 @@ function sanitizeNode(
     height,
     locked: toOptionalBoolean(record.locked),
     color: toOptionalString(record.color),
+    opacity: typeof record.opacity === "number" && Number.isFinite(record.opacity) ? record.opacity : undefined,
   } as Record<string, unknown>;
 
   if (type === "text") {

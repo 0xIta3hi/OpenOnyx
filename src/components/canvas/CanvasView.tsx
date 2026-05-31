@@ -3882,7 +3882,7 @@ export function CanvasView({
             top: renderVp.y + menuAnchor.y * renderVp.zoom - 8 - groupMenuLiftPx,
           }}
         >
-          {firstSel && (
+          {firstSel && firstSel.type !== "link" && (
             <button
               className="cv-card-btn"
               title="Color"
@@ -4014,6 +4014,35 @@ export function CanvasView({
                 />
                 <span className="cv-color-custom-label">Custom</span>
               </label>
+              {firstSel.type === "group" && (() => {
+                const currentOpacity = firstSel.opacity !== undefined ? firstSel.opacity : 0.12;
+                return (
+                  <div className="cv-color-opacity-slider" style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "12px", borderLeft: "1px solid var(--border-subtle)", paddingLeft: "12px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "bold", opacity: 0.7 }}>Opacity:</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(currentOpacity * 100)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) / 100;
+                        updateNode(firstSel.id, { opacity: val });
+                      }}
+                      style={{
+                        width: "80px",
+                        height: "4px",
+                        borderRadius: "2px",
+                        background: "var(--border-medium)",
+                        outline: "none",
+                        cursor: "pointer",
+                      }}
+                    />
+                    <span style={{ fontSize: "11px", minWidth: "24px", textAlign: "right" }}>
+                      {Math.round(currentOpacity * 100)}%
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -5160,13 +5189,22 @@ function NodeCard({
   onUpdateNode,
 }: NodeCardProps) {
   const isGroup = node.type === "group";
-  const borderColor = resolveCanvasColor(node.color);
+  const isLink = node.type === "link";
+  const isEmbed = isLink && !((node as CanvasLinkNode).url || "").includes("#no-embed");
+  const borderColor = isLink ? undefined : resolveCanvasColor(node.color);
 
   const style: React.CSSProperties = {
     left: node.x,
     top: node.y,
     width: node.width,
     height: node.height,
+    ...(isEmbed
+      ? {
+          background: "transparent",
+          boxShadow: "none",
+          border: "none",
+        }
+      : {}),
     ...(borderColor && !isGroup
       ? ({
           "--node-color": borderColor,
@@ -5179,7 +5217,7 @@ function NodeCard({
       ? ({
           "--node-color": borderColor,
           "--node-color-border": colorWithAlpha(borderColor, 0.72),
-          "--node-color-subtle": colorWithAlpha(borderColor, 0.12),
+          "--node-color-subtle": colorWithAlpha(borderColor, node.opacity !== undefined ? node.opacity : 0.12),
           "--node-color-label-bg": colorWithAlpha(borderColor, 0.34),
           "--node-color-label-border": colorWithAlpha(borderColor, 0.92),
         } as any)
