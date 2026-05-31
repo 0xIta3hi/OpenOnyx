@@ -41,9 +41,9 @@
 .spaces-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 24px;
 }

@@ -4,7 +4,56 @@ import { authManager } from './auth';
 import { getUserSupabaseClient } from './userDatabase';
 import { collaborationEngine } from './collaborationEngine';
 import { getAPI } from '../utils/api';
-import { normalizeVersion } from '../utils/collabDocument';
+import { normalizeVersion, sha256Hex } from '../utils/collabDocument';
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * Normalize an absolute or relative path to a relative path from the active vault root.
+ * Safe for cross-platform/cross-collaborator sync where local paths diverge.
+ */
+export function normalizeSyncPath(filePath: string): string {
+  if (!filePath) return '';
+  const vaultPath = typeof window !== 'undefined' ? (window as any).__oo_vault_path : null;
+  if (!vaultPath) return filePath;
+
+  // Normalize slashes to forward slashes for cross-platform safety
+  const normalizedFile = filePath.replace(/\\/g, '/');
+  const normalizedVault = vaultPath.replace(/\\/g, '/');
+
+  // Case 1: The path is already under the active vault path
+  if (normalizedFile.startsWith(normalizedVault)) {
+    let rel = normalizedFile.slice(normalizedVault.length);
+    if (rel.startsWith('/')) rel = rel.slice(1);
+    return rel;
+  }
+
+  // Case 2: The path is absolute but belongs to a different vault path
+  if (normalizedFile.startsWith('/') || /^[a-zA-Z]:/.test(normalizedFile)) {
+    const vaultParts = normalizedVault.split('/');
+    const fileParts = normalizedFile.split('/');
+    
+    // Find the last index where both paths match before their respective vault roots
+    let lastCommonIndex = -1;
+    for (let i = 0; i < Math.min(vaultParts.length - 1, fileParts.length - 1); i++) {
+      if (vaultParts[i] === fileParts[i]) {
+        lastCommonIndex = i;
+      } else {
+        break;
+      }
+    }
+    
+    if (lastCommonIndex >= 0) {
+      const relativeIndex = lastCommonIndex + 2;
+      if (relativeIndex < fileParts.length) {
+        return fileParts.slice(relativeIndex).join('/');
+      }
+    }
+    
+    return fileParts[fileParts.length - 1];
+  }
+
+  return filePath;
+}
 
 /**
  * Get the active Supabase client -- either the user's own instance
@@ -55,6 +104,7 @@ export class SyncEngine {
   private activeSpaceId: string | null = null;
   private activeVaultPath: string | null = null;
   private clientId: string = '';
+  private lastLocalScanTime = 0;
 
   /** Track whether we believe the network is available. */
   private isOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -88,7 +138,10 @@ export class SyncEngine {
 
     // If there's an active space, do an initial sync (push + pull)
     if (this.activeSpaceId) {
-      this.sync();
+      // Force offline edits scan on vault load
+      this.syncLocalFilesystemToDB(true).then(() => {
+        this.sync();
+      });
     }
   }
 
@@ -154,6 +207,8 @@ export class SyncEngine {
     } catch (err) {
       console.error('[SyncEngine] Failed to reset retry counts:', err);
     }
+    // Force scan of offline edits on reconnection
+    await this.syncLocalFilesystemToDB(true);
     this.sync();
   }
 
@@ -194,6 +249,8 @@ export class SyncEngine {
     let pulled = 0;
 
     try {
+      // Sync offline local filesystem edits into IndexedDB/sync_queue first
+      await this.syncLocalFilesystemToDB();
       pushed = await this.pushChanges();
       pulled = await this.pullChanges();
       this.notifyStatus({
@@ -244,6 +301,9 @@ export class SyncEngine {
         // Ensure space_id is set
         if (this.activeSpaceId && !payload.space_id) {
           payload.space_id = this.activeSpaceId;
+        }
+        if (payload.path) {
+          payload.path = normalizeSyncPath(payload.path);
         }
         return payload;
       });
@@ -370,6 +430,9 @@ export class SyncEngine {
 
     if (notes) {
       for (const remote of notes) {
+        const cleanPath = normalizeSyncPath(remote.path);
+        const remoteNote = toLocalNote(remote);
+        remoteNote.path = cleanPath;
         const local = await localDB.getNote(remote.id);
 
         // LWW: only apply if remote is newer
@@ -379,7 +442,7 @@ export class SyncEngine {
           if (remoteVersion > 0 || localVersion > 0) {
             if (remoteVersion <= localVersion) {
               console.info('[SyncEngine][pull_overwrite_prevented]', {
-                path: remote.path,
+                path: cleanPath,
                 remoteVersion,
                 localVersion,
               });
@@ -393,17 +456,17 @@ export class SyncEngine {
         }
 
         // Apply to IndexedDB (no sync enqueue -- this came from remote)
-        await localDB.putNote(toLocalNote(remote), false);
+        await localDB.putNote(remoteNote, false);
 
         // Write to filesystem
-        if (remote.path && !remote.deleted) {
+        if (cleanPath && !remote.deleted) {
           try {
             const api = getAPI();
-            if (remote.path.includes('/')) {
-              const parentDir = remote.path.split('/').slice(0, -1).join('/');
+            if (cleanPath.includes('/')) {
+              const parentDir = cleanPath.split('/').slice(0, -1).join('/');
               try { await api.createDirectory(parentDir); } catch { /* exists */ }
             }
-            await api.writeFile(remote.path, remote.content || '');
+            await api.writeFile(cleanPath, remote.content || '');
           } catch (err) {
             console.error('[SyncEngine] Failed to write pulled file:', err);
           }
@@ -415,6 +478,106 @@ export class SyncEngine {
 
     await localDB.setMeta(syncTimeKey, new Date().toISOString());
     return count;
+  }
+
+  /**
+   * Scan the local filesystem and sync any new or edited files (offline edits)
+   * into IndexedDB and the sync queue.
+   */
+  public async syncLocalFilesystemToDB(force = false) {
+    if (!this.activeVaultPath || !this.activeSpaceId) return;
+
+    const nowTime = Date.now();
+    if (!force && nowTime - this.lastLocalScanTime < 60_000) {
+      return; // scan at most once per minute unless forced
+    }
+    this.lastLocalScanTime = nowTime;
+
+    try {
+      const api = getAPI();
+      const fileTree = await api.getFileTree();
+      
+      const files: { path: string; modifiedAt: number }[] = [];
+      const scan = async (entries: any[]) => {
+        for (const e of entries) {
+          if (e.isDirectory) {
+            if (e.children) await scan(e.children);
+          } else if (e.extension === '.md' || e.extension === '.canvas') {
+            files.push({
+              path: e.path,
+              modifiedAt: e.modifiedAt || 0,
+            });
+          }
+        }
+      };
+      await scan(fileTree);
+
+      let enqueuedAny = false;
+
+      for (const file of files) {
+        // Normalize path to relative
+        const relativePath = normalizeSyncPath(file.path);
+        if (!relativePath) continue;
+
+        // Check if note exists in IndexedDB
+        const localNote = await localDB.getNoteByPath(this.activeSpaceId, relativePath);
+        
+        let needsSync = false;
+        if (!localNote) {
+          // New file created offline / when collab was off!
+          needsSync = true;
+        } else {
+          // File edited offline / when collab was off!
+          const noteTime = new Date(localNote.updated_at || localNote.last_modified || 0).getTime();
+          const fileTime = file.modifiedAt;
+          
+          // Sync if filesystem file is newer by more than 2 seconds (buffer clock skew)
+          if (fileTime - noteTime > 2000) {
+            needsSync = true;
+          }
+        }
+
+        if (needsSync) {
+          try {
+            const content = await api.readFile(file.path);
+            const title = relativePath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || relativePath;
+            const isCanvas = relativePath.endsWith('.canvas');
+            const nowIso = new Date(file.modifiedAt || Date.now()).toISOString();
+            
+            // Persist the note edit locally and enqueue for cloud sync
+            await localDB.putNote({
+              id: localNote?.id || uuidv4(),
+              space_id: this.activeSpaceId,
+              vault_id: null,
+              last_client_id: this.clientId,
+              version: localNote?.version !== undefined ? normalizeVersion(localNote.version) : 0,
+              last_modified: nowIso,
+              client_id: this.clientId,
+              content_hash: await sha256Hex(content),
+              title,
+              path: relativePath,
+              content,
+              pinned: localNote?.pinned || false,
+              created_at: localNote?.created_at || nowIso,
+              updated_at: nowIso,
+              deleted: false,
+              is_canvas: isCanvas,
+            }, true);
+            
+            enqueuedAny = true;
+          } catch (err) {
+            console.error(`[SyncEngine] Failed to sync offline change for ${file.path}:`, err);
+          }
+        }
+      }
+
+      if (enqueuedAny) {
+        console.log('[SyncEngine] Detected and enqueued offline edits for sync');
+        this.triggerPush();
+      }
+    } catch (err) {
+      console.error('[SyncEngine] Failed to scan filesystem for offline edits:', err);
+    }
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────

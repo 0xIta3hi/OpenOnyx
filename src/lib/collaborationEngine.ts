@@ -26,6 +26,7 @@ import { supabase } from './supabase';
 import { authManager } from './auth';
 import { getUserSupabaseClient } from './userDatabase';
 import { localDB } from './localdb';
+import { normalizeSyncPath } from './syncEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
 import type { CollabOperation, CursorPresence } from '../utils/collabOperations';
@@ -1222,24 +1223,27 @@ class CollaborationEngine {
     const spaceId = this._activeSpaceId;
     if (!spaceId) return;
 
-    console.warn('[Collab][resync_triggered]', { path, localVersion, spaceId });
+    const cleanPath = normalizeSyncPath(path);
+    if (!cleanPath) return;
+
+    console.warn('[Collab][resync_triggered]', { path: cleanPath, localVersion, spaceId });
     const client = getClient();
     const { data: remote, error } = await client
       .from('notes')
       .select('id, space_id, vault_id, last_client_id, version, last_modified, client_id, content_hash, title, path, content, pinned, created_at, updated_at, deleted, is_canvas')
       .eq('space_id', spaceId)
-      .eq('path', path)
+      .eq('path', cleanPath)
       .maybeSingle();
 
     if (error) {
-      console.warn('[Collab][resync_failed]', { path, message: error.message });
+      console.warn('[Collab][resync_failed]', { path: cleanPath, message: error.message });
       return;
     }
     if (!remote) return;
 
     const remoteVersion = normalizeVersion((remote as any).version);
     if (remoteVersion <= localVersion) {
-      console.info('[Collab][resync_kept_local]', { path, localVersion, remoteVersion });
+      console.info('[Collab][resync_kept_local]', { path: cleanPath, localVersion, remoteVersion });
       return;
     }
     const remoteHash = (remote as any).content_hash || await sha256Hex(remote.content || '');
@@ -1254,7 +1258,7 @@ class CollaborationEngine {
       client_id: (remote as any).client_id || remote.last_client_id || null,
       content_hash: remoteHash,
       title: remote.title,
-      path: remote.path || '',
+      path: cleanPath,
       content: remote.content || '',
       pinned: !!remote.pinned,
       created_at: remote.created_at,
@@ -1263,16 +1267,16 @@ class CollaborationEngine {
       is_canvas: !!remote.is_canvas,
     }, false);
 
-    if (remote.path && !remote.deleted) {
+    if (cleanPath && !remote.deleted) {
       const api = getAPI();
-      if (remote.path.includes('/')) {
-        const parentDir = remote.path.split('/').slice(0, -1).join('/');
+      if (cleanPath.includes('/')) {
+        const parentDir = cleanPath.split('/').slice(0, -1).join('/');
         try { await api.createDirectory(parentDir); } catch { /* exists */ }
       }
-      await api.writeFile(remote.path, remote.content || '');
+      await api.writeFile(cleanPath, remote.content || '');
     }
 
-    this.remoteDocListeners.forEach(fn => fn(remote.path || path, remote.content || '', (remote as any).client_id || remote.last_client_id || '', false, {
+    this.remoteDocListeners.forEach(fn => fn(cleanPath, remote.content || '', (remote as any).client_id || remote.last_client_id || '', false, {
       version: remoteVersion,
       last_modified: (remote as any).last_modified || remote.updated_at,
       client_id: (remote as any).client_id || remote.last_client_id || null,
@@ -1359,6 +1363,9 @@ class CollaborationEngine {
 
     if (!remoteNote) return;
 
+    const cleanPath = normalizeSyncPath(remoteNote.path);
+    if (!cleanPath) return;
+
     // Last-Write-Wins
     const localNote = await localDB.getNote(remoteNote.id);
     if (localNote) {
@@ -1367,7 +1374,7 @@ class CollaborationEngine {
       if (remoteVersion > 0 || localVersion > 0) {
         if (remoteVersion <= localVersion) {
           console.info('[Collab][overwrite_prevented]', {
-            path: remoteNote.path,
+            path: cleanPath,
             source: 'postgres_changes',
             remoteVersion,
             localVersion,
@@ -1392,7 +1399,7 @@ class CollaborationEngine {
       client_id: remoteNote.client_id || remoteNote.last_client_id || null,
       content_hash: remoteNote.content_hash || await sha256Hex(remoteNote.content || ''),
       title: remoteNote.title,
-      path: remoteNote.path || '',
+      path: cleanPath,
       content: remoteNote.content || '',
       pinned: !!remoteNote.pinned,
       created_at: remoteNote.created_at,
@@ -1402,30 +1409,30 @@ class CollaborationEngine {
     }, false);
 
     // Write to local filesystem if we have a path
-    if (remoteNote.path && !remoteNote.deleted) {
+    if (cleanPath && !remoteNote.deleted) {
       try {
         const api = getAPI();
         // Ensure parent directory exists
-        if (remoteNote.path.includes('/')) {
-          const parentDir = remoteNote.path.split('/').slice(0, -1).join('/');
+        if (cleanPath.includes('/')) {
+          const parentDir = cleanPath.split('/').slice(0, -1).join('/');
           try { await api.createDirectory(parentDir); } catch { /* exists */ }
         }
-        await api.writeFile(remoteNote.path, remoteNote.content || '');
+        await api.writeFile(cleanPath, remoteNote.content || '');
       } catch (err) {
         console.error('[Collab] Failed to write remote change to disk:', err);
       }
-    } else if (remoteNote.path && remoteNote.deleted) {
+    } else if (cleanPath && remoteNote.deleted) {
       try {
         const api = getAPI();
-        await api.deleteFile(remoteNote.path);
+        await api.deleteFile(cleanPath);
       } catch {
         // File might not exist locally
       }
     }
 
     // Notify remote doc listeners so the editor can refresh the open file
-    if (remoteNote.path && !remoteNote.deleted) {
-      this.remoteDocListeners.forEach(fn => fn(remoteNote.path, remoteNote.content || '', remoteNote.client_id || remoteNote.last_client_id || '', false, {
+    if (cleanPath && !remoteNote.deleted) {
+      this.remoteDocListeners.forEach(fn => fn(cleanPath, remoteNote.content || '', remoteNote.client_id || remoteNote.last_client_id || '', false, {
         version: normalizeVersion(remoteNote.version),
         last_modified: remoteNote.last_modified || remoteNote.updated_at,
         client_id: remoteNote.client_id || remoteNote.last_client_id || null,
@@ -1471,10 +1478,13 @@ class CollaborationEngine {
       return;
     }
 
+    const cleanPath = normalizeSyncPath(path);
+    if (!cleanPath) return;
+
     // Accumulate ops for this path
-    const existing = this.opBatchBuffer.get(path) || [];
+    const existing = this.opBatchBuffer.get(cleanPath) || [];
     existing.push(...ops);
-    this.opBatchBuffer.set(path, existing);
+    this.opBatchBuffer.set(cleanPath, existing);
 
     // Schedule flush if not already pending
     if (!this.opBatchTimer) {
@@ -1525,14 +1535,17 @@ class CollaborationEngine {
       return;
     }
 
+    const cleanPath = normalizeSyncPath(path);
+    if (!cleanPath) return;
+
     // Clear any pending ops for this path -- the full doc supersedes them
-    this.opBatchBuffer.delete(path);
+    this.opBatchBuffer.delete(cleanPath);
 
     void this.realtimeChannel.send({
       type: 'broadcast',
       event: 'doc-full',
       payload: {
-        path,
+        path: cleanPath,
         content,
         version: normalizeVersion(meta?.version),
         last_modified: meta?.last_modified || new Date().toISOString(),
@@ -1617,15 +1630,18 @@ class CollaborationEngine {
     const spaceId = this._activeSpaceId;
     if (!spaceId) return;
 
+    const cleanPath = normalizeSyncPath(path);
+    if (!cleanPath) return;
+
     const now = new Date().toISOString();
     const version = meta?.version !== undefined ? normalizeVersion(meta.version) : undefined;
     const contentHash = meta?.content_hash || await sha256Hex(content);
-    const title = path.split('/').pop()?.replace(/\.(md|canvas)$/, '') || path;
-    const isCanvas = path.endsWith('.canvas');
+    const title = cleanPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || cleanPath;
+    const isCanvas = cleanPath.endsWith('.canvas');
 
     try {
       // Look up existing note record by path
-      let note = await localDB.getNoteByPath(spaceId, path);
+      let note = await localDB.getNoteByPath(spaceId, cleanPath);
 
       if (note) {
         // Update existing note
@@ -1635,6 +1651,7 @@ class CollaborationEngine {
         note.last_modified = meta?.last_modified || now;
         note.client_id = meta?.client_id || this.clientId;
         note.content_hash = contentHash;
+        note.path = cleanPath;
         await localDB.putNote(note, true);
       } else {
         // Create a new note record (file was created locally)
@@ -1648,7 +1665,7 @@ class CollaborationEngine {
           client_id: meta?.client_id || this.clientId,
           content_hash: contentHash,
           title,
-          path,
+          path: cleanPath,
           content,
           pinned: false,
           created_at: now,

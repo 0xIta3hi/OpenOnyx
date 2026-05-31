@@ -231,7 +231,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // Marketplace states
   const [spaces, setSpaces] = useState<SpaceIndexEntry[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [marketFilter, setMarketFilter] = useState<"all" | "local" | "cloud">("all");
+  const [marketFilter, setMarketFilter] = useState<"all" | "local" | "private" | "public">("all");
   const [marketSearch, setMarketSearch] = useState("");
 
   // Space view state
@@ -1304,8 +1304,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     if (marketFilter === "local") {
       return matchesSearch && s.visibility === "local";
     }
-    if (marketFilter === "cloud") {
-      return matchesSearch && s.visibility !== "local";
+    if (marketFilter === "private") {
+      return matchesSearch && s.visibility === "private";
+    }
+    if (marketFilter === "public") {
+      return matchesSearch && s.visibility === "public";
     }
     return matchesSearch;
   });
@@ -1328,7 +1331,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           {/* Left Sidebar Panel */}
           <div className="spaces-marketplace-sidebar">
             <div className="spaces-sidebar-brand">
-              <SpacesIcon size={18} />
+              <SpacesIcon size={26} />
               <span>Spaces</span>
             </div>
 
@@ -1344,22 +1347,25 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 className={`spaces-menu-item ${marketFilter === "all" ? "active" : ""}`}
                 onClick={() => setMarketFilter("all")}
               >
-                <SpacesIcon size={14} />
-                All Custom Layers
+                All Spaces
               </button>
               <button
                 className={`spaces-menu-item ${marketFilter === "local" ? "active" : ""}`}
                 onClick={() => setMarketFilter("local")}
               >
-                <FileText size={14} strokeWidth={1.5} />
-                Local Vaults
+                Local Spaces
               </button>
               <button
-                className={`spaces-menu-item ${marketFilter === "cloud" ? "active" : ""}`}
-                onClick={() => setMarketFilter("cloud")}
+                className={`spaces-menu-item ${marketFilter === "private" ? "active" : ""}`}
+                onClick={() => setMarketFilter("private")}
               >
-                <Globe size={14} strokeWidth={1.5} />
-                Cloud Hub
+                Private Spaces
+              </button>
+              <button
+                className={`spaces-menu-item ${marketFilter === "public" ? "active" : ""}`}
+                onClick={() => setMarketFilter("public")}
+              >
+                Public Spaces
               </button>
             </div>
 
