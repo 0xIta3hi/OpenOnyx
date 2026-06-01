@@ -18,6 +18,7 @@ import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { getUserSupabaseClient } from "../lib/userDatabase";
 import { getAPI } from "./api";
+import { isPrivateCloudSpace, privateCrypto } from "../lib/privateCrypto";
 import type {
   Space,
   SpaceIndexEntry,
@@ -70,6 +71,15 @@ type RemoteSpaceRow = {
   created_at: string;
   updated_at: string;
   status: string | null;
+  encrypted_space_key?: string | null;
+  key_salt?: string | null;
+  key_iv?: string | null;
+  key_auth_tag?: string | null;
+  key_version?: number | null;
+  encryption_version?: number | null;
+  key_wrapping?: string | null;
+  kdf?: string | null;
+  kdf_params?: any;
 };
 
 function mapRemoteToSpace(remote: RemoteSpaceRow, noteCount: number = 0): Space {
@@ -89,6 +99,15 @@ function mapRemoteToSpace(remote: RemoteSpaceRow, noteCount: number = 0): Space 
     updatedAt: remote.updated_at,
     forkedFrom: remote.forked_from || undefined,
     status: remote.status || 'ready',
+    encryptedSpaceKey: remote.encrypted_space_key || null,
+    keySalt: remote.key_salt || null,
+    keyIv: remote.key_iv || null,
+    keyAuthTag: remote.key_auth_tag || null,
+    keyVersion: remote.key_version || null,
+    encryptionVersion: remote.encryption_version || null,
+    keyWrapping: remote.key_wrapping || null,
+    kdf: remote.kdf || null,
+    kdfParams: remote.kdf_params || null,
   };
 }
 
@@ -98,7 +117,7 @@ async function upsertCloudSpace(space: Space): Promise<void> {
   }
 
   const { error } = await getClient()
-    .from("spaces")
+    .from("spaces" as any)
     .upsert(
       {
         id: space.id,
@@ -112,6 +131,15 @@ async function upsertCloudSpace(space: Space): Promise<void> {
         created_at: space.createdAt,
         updated_at: space.updatedAt,
         status: space.status || 'ready',
+        encrypted_space_key: space.encryptedSpaceKey || null,
+        key_salt: space.keySalt || null,
+        key_iv: space.keyIv || null,
+        key_auth_tag: space.keyAuthTag || null,
+        key_version: space.keyVersion || null,
+        encryption_version: space.encryptionVersion || null,
+        key_wrapping: space.keyWrapping || null,
+        kdf: space.kdf || null,
+        kdf_params: space.kdfParams || null,
       },
       { onConflict: "id" },
     );
@@ -135,28 +163,47 @@ export async function pushSpaceNotes(
 
   console.log(`[SpacesStore] Pushing ${vaultNotes.length} notes to space ${spaceId}`);
   const now = new Date().toISOString();
+  const space = await getSpace(spaceId);
+  const shouldEncrypt = isPrivateCloudSpace({
+    visibility: space?.visibility,
+    is_public: space?.visibility === "public",
+  });
+  if (shouldEncrypt && !privateCrypto.isUnlocked(spaceId)) {
+    throw new Error("Unlock this private space before uploading encrypted notes.");
+  }
 
   // Batch upsert in groups of 50 to avoid payload limits
   const BATCH_SIZE = 50;
   let totalInserted = 0;
 
   for (let i = 0; i < vaultNotes.length; i += BATCH_SIZE) {
-    const batch = vaultNotes.slice(i, i + BATCH_SIZE).map((note) => ({
+    const batch = await Promise.all(vaultNotes.slice(i, i + BATCH_SIZE).map(async (note) => {
+      const id = generateDeterministicId(spaceId, note.path);
+      const encrypted = shouldEncrypt
+        ? await privateCrypto.encryptNoteContent(spaceId, {
+            id,
+            path: note.path,
+            version: 0,
+            content: note.content,
+          })
+        : { content: note.content };
+      return {
       // Deterministic ID from space + path so re-indexing upserts cleanly
-      id: generateDeterministicId(spaceId, note.path),
+      id,
       space_id: spaceId,
       title: note.title,
       path: note.path,
-      content: note.content,
+      ...encrypted,
       pinned: false,
       created_at: now,
       updated_at: now,
       deleted: false,
       is_canvas: note.is_canvas || false,
+      };
     }));
 
     const { error } = await getClient()
-      .from("notes")
+      .from("notes" as any)
       .upsert(batch, { onConflict: "id" });
 
     if (error) {
@@ -164,7 +211,7 @@ export async function pushSpaceNotes(
       // Try individual inserts as fallback
       let singles = 0;
       for (const row of batch) {
-        const { error: singleErr } = await getClient().from("notes").upsert(row, { onConflict: "id" });
+        const { error: singleErr } = await getClient().from("notes" as any).upsert(row, { onConflict: "id" });
         if (!singleErr) singles++;
         else console.error(`[SpacesStore] Single insert failed for ${row.path}:`, singleErr.message || JSON.stringify(singleErr));
       }
@@ -185,6 +232,10 @@ export async function pushSpaceChunks(
   chunks: SpaceChunk[],
 ): Promise<void> {
   if (!isSupabaseConfigured || !authManager.isLoggedIn()) return;
+  const space = await getSpace(spaceId);
+  if (space?.visibility === "private") {
+    return;
+  }
 
   // 1. Delete old chunks for this space to avoid duplicates
   await getClient()
@@ -241,15 +292,15 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
 
   // 1. Fetch public spaces
   const { data: publicSpaces, error: publicErr } = await getClient()
-    .from("spaces")
-    .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status")
+    .from("spaces" as any)
+    .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
     .eq("visibility", "public")
     .order("updated_at", { ascending: false });
 
   if (publicErr) {
     console.error("[SpacesStore] Failed to fetch public spaces:", publicErr);
   } else if (publicSpaces) {
-    rawSpaces.push(...(publicSpaces as RemoteSpaceRow[]));
+    rawSpaces.push(...(publicSpaces as unknown as RemoteSpaceRow[]));
   }
 
   // 2. Fetch private spaces if logged in
@@ -257,8 +308,8 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
     const userId = authManager.getUserId();
     if (userId) {
       const { data: ownSpaces, error: ownErr } = await getClient()
-        .from("spaces")
-        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status")
+        .from("spaces" as any)
+        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
         .eq("owner_id", userId)
         .eq("visibility", "private")
         .order("updated_at", { ascending: false });
@@ -266,7 +317,7 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
       if (ownErr) {
         console.error("[SpacesStore] Failed to fetch own spaces:", ownErr);
       } else if (ownSpaces) {
-        for (const s of ownSpaces) {
+        for (const s of ownSpaces as any[]) {
           if (!rawSpaces.find(rs => rs.id === s.id)) {
             rawSpaces.push(s as RemoteSpaceRow);
           }
@@ -275,23 +326,23 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
 
       // 2b. Fetch spaces where user is a collaborator
       const { data: collabRelations, error: collabRelationsErr } = await getClient()
-        .from("space_collaborators")
+        .from("space_collaborators" as any)
         .select("space_id")
         .eq("user_id", userId);
 
       if (collabRelationsErr) {
         console.error("[SpacesStore] Failed to fetch collaborator spaces:", collabRelationsErr);
       } else if (collabRelations && collabRelations.length > 0) {
-        const collabSpaceIds = collabRelations.map(cr => cr.space_id);
+        const collabSpaceIds = (collabRelations as any[]).map(cr => cr.space_id);
         const { data: collabSpaces, error: collabSpacesErr } = await getClient()
-          .from("spaces")
-          .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status")
+          .from("spaces" as any)
+          .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
           .in("id", collabSpaceIds);
 
         if (collabSpacesErr) {
           console.error("[SpacesStore] Failed to fetch collaborator spaces details:", collabSpacesErr);
         } else if (collabSpaces) {
-          for (const s of collabSpaces) {
+          for (const s of collabSpaces as any[]) {
             if (!rawSpaces.find(rs => rs.id === s.id)) {
               rawSpaces.push(s as RemoteSpaceRow);
             }
@@ -306,7 +357,7 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
   await Promise.all(rawSpaces.map(async (row) => {
     try {
       const { count, error: countErr } = await getClient()
-        .from("notes")
+        .from("notes" as any)
         .select("id", { count: "exact", head: true })
         .eq("space_id", row.id)
         .eq("deleted", false);
@@ -416,20 +467,20 @@ export async function getSpace(id: string): Promise<Space | null> {
   if (isSupabaseConfigured && (!space || space.visibility !== "local")) {
     try {
       const { data: remote } = await getClient()
-        .from("spaces")
-        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at")
+        .from("spaces" as any)
+        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
         .eq("id", id)
         .single();
 
       if (remote) {
         // Fetch accurate count
         const { count } = await getClient()
-          .from("notes")
+          .from("notes" as any)
           .select("*", { count: "exact", head: true })
           .eq("space_id", id)
           .eq("deleted", false);
 
-        const remoteSpace = mapRemoteToSpace(remote as RemoteSpaceRow, count || 0);
+        const remoteSpace = mapRemoteToSpace(remote as unknown as RemoteSpaceRow, count || 0);
         
         if (space) {
           space = { ...space, ...remoteSpace };
@@ -455,6 +506,7 @@ export async function createSpace(data: {
   noteCount?: number;
   visibility?: SpaceVisibility;
   forkedFrom?: string;
+  encryptionPassword?: string;
 }): Promise<Space> {
   const now = new Date().toISOString();
   const visibility = data.visibility || "local";
@@ -482,13 +534,52 @@ export async function createSpace(data: {
   };
 
   if (space.visibility !== "local") {
+    if (space.visibility === "private") {
+      if (!data.encryptionPassword) {
+        throw new Error("Encryption password is required for private cloud spaces.");
+      }
+      await privateCrypto.ensureUserKeyring();
+      const { raw } = await privateCrypto.generateSpaceKey();
+      const wrapped = await privateCrypto.wrapSpaceKeyWithPassword(raw, data.encryptionPassword);
+      await privateCrypto.unlockWithRawKey(space.id, raw);
+      Object.assign(space, {
+        encryptedSpaceKey: wrapped.encrypted_space_key,
+        keySalt: wrapped.key_salt || null,
+        keyIv: wrapped.key_iv,
+        keyAuthTag: wrapped.key_auth_tag,
+        keyVersion: wrapped.key_version,
+        encryptionVersion: wrapped.encryption_version,
+        keyWrapping: wrapped.key_wrapping,
+        kdf: wrapped.kdf || null,
+        kdfParams: wrapped.kdf_params || null,
+      });
+    }
     await upsertCloudSpace(space);
+    let memberWrapped: any = null;
+    if (space.visibility === "private") {
+      const raw = privateCrypto.getRawSpaceKey(space.id);
+      if (raw) {
+        try {
+          memberWrapped = await privateCrypto.wrapSpaceKeyForUser(raw, ownerId);
+        } catch {
+          memberWrapped = null;
+        }
+      }
+    }
     try {
-      await getClient().from("space_collaborators").insert({
+      await getClient().from("space_collaborators" as any).insert({
         space_id: space.id,
         user_id: ownerId,
         role: "owner",
-      });
+        encrypted_space_key: memberWrapped?.encrypted_space_key || null,
+        key_iv: memberWrapped?.key_iv || null,
+        key_auth_tag: memberWrapped?.key_auth_tag || null,
+        key_version: memberWrapped?.key_version || null,
+        encryption_version: memberWrapped?.encryption_version || null,
+        key_wrapping: memberWrapped?.key_wrapping || null,
+        invited_at: now,
+        accepted_at: now,
+      } as any);
     } catch (collabErr) {
       console.warn("[SpacesStore] Failed to add owner as collaborator:", collabErr);
     }
@@ -555,7 +646,7 @@ export async function deleteSpace(id: string): Promise<void> {
     // Remove from cloud with owner guard
     if (isSupabaseConfigured) {
       const { error } = await getClient()
-        .from("spaces")
+        .from("spaces" as any)
         .delete()
         .eq("id", id)
         .eq("owner_id", userId);
@@ -616,7 +707,7 @@ export async function forkSpace(
   if (source.visibility !== "local" && isSupabaseConfigured) {
     try {
       const { data: cloudNotes } = await getClient()
-        .from("notes")
+        .from("notes" as any)
         .select("path, title, content, created_at, is_canvas")
         .eq("space_id", source.id)
         .eq("deleted", false);
@@ -641,7 +732,7 @@ export async function forkSpace(
           return path;
         };
 
-        for (const note of cloudNotes) {
+        for (const note of cloudNotes as any[]) {
           let subPath = "";
           if (note.path && note.path.trim() !== "") {
             subPath = stripSpacePrefix(note.path, source.title);

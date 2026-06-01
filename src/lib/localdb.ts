@@ -45,6 +45,15 @@ export interface LocalSpace {
   forked_from: string | null;
   created_at: string;
   updated_at: string;
+  encrypted_space_key?: string | null;
+  key_salt?: string | null;
+  key_iv?: string | null;
+  key_auth_tag?: string | null;
+  key_version?: number | null;
+  encryption_version?: number | null;
+  key_wrapping?: string | null;
+  kdf?: string | null;
+  kdf_params?: any;
 }
 
 export interface LocalNote {
@@ -59,6 +68,10 @@ export interface LocalNote {
   title: string;
   path: string;
   content: string;
+  content_encrypted?: string | null;
+  iv?: string | null;
+  auth_tag?: string | null;
+  encryption_version?: number | null;
   pinned: boolean;
   created_at: string;
   updated_at: string;

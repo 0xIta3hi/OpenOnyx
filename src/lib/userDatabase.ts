@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
+CREATE TABLE IF NOT EXISTS public.user_keyrings (
+  user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  public_key_jwk jsonb NOT NULL,
+  algorithm text NOT NULL DEFAULT 'RSA-OAEP-256',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_keyrings ENABLE ROW LEVEL SECURITY;
+
 -- 3. Spaces table
 CREATE TABLE IF NOT EXISTS public.spaces (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,6 +59,15 @@ CREATE TABLE IF NOT EXISTS public.spaces (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.spaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS encrypted_space_key text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_salt text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_iv text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_auth_tag text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_version integer NOT NULL DEFAULT 1;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS encryption_version integer;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_wrapping text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS kdf text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS kdf_params jsonb;
 
 -- 4. Notes table
 CREATE TABLE IF NOT EXISTS public.notes (
@@ -63,6 +81,30 @@ CREATE TABLE IF NOT EXISTS public.notes (
   deleted boolean NOT NULL DEFAULT false
 );
 ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS content_encrypted text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS iv text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS auth_tag text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS encryption_version integer;
+
+CREATE TABLE IF NOT EXISTS public.space_collaborators (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role text NOT NULL DEFAULT 'editor'
+    CHECK (role IN ('owner', 'editor', 'viewer')),
+  email text,
+  encrypted_space_key text,
+  key_iv text,
+  key_auth_tag text,
+  key_version integer,
+  encryption_version integer,
+  key_wrapping text,
+  invited_at timestamptz,
+  accepted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(space_id, user_id)
+);
+ALTER TABLE public.space_collaborators ENABLE ROW LEVEL SECURITY;
 
 -- 5. Note chunks table (for embeddings / RAG)
 CREATE TABLE IF NOT EXISTS public.note_chunks (
@@ -163,6 +205,13 @@ CREATE POLICY "Users can update their own profile"
 CREATE POLICY "Users can insert their own profile"
   ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
 
+CREATE POLICY "Authenticated users can read public wrapping keys"
+  ON public.user_keyrings FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Users can insert their own public wrapping key"
+  ON public.user_keyrings FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own public wrapping key"
+  ON public.user_keyrings FOR UPDATE USING (auth.uid() = user_id);
+
 -- Spaces
 CREATE POLICY "Users can view their own spaces"
   ON public.spaces FOR SELECT USING (auth.uid() = owner_id);
@@ -174,6 +223,21 @@ CREATE POLICY "Users can update their own spaces"
   ON public.spaces FOR UPDATE USING (auth.uid() = owner_id);
 CREATE POLICY "Users can delete their own spaces"
   ON public.spaces FOR DELETE USING (auth.uid() = owner_id);
+
+CREATE POLICY "Collaborators can view space collaborators"
+  ON public.space_collaborators FOR SELECT USING (
+    user_id = auth.uid()
+    OR EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_collaborators.space_id AND spaces.owner_id = auth.uid())
+  );
+CREATE POLICY "Space owners can insert collaborators"
+  ON public.space_collaborators FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_collaborators.space_id AND spaces.owner_id = auth.uid())
+  );
+CREATE POLICY "Space owners can update collaborators"
+  ON public.space_collaborators FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_collaborators.space_id AND spaces.owner_id = auth.uid())
+    OR user_id = auth.uid()
+  );
 
 -- Notes
 CREATE POLICY "Notes are viewable if space is public or owned"
@@ -472,7 +536,7 @@ export async function setupUserDatabase(
     }
 
     // 4. Verify all required tables
-    const requiredTables = ['users', 'spaces', 'notes', 'note_chunks', 'space_embeddings', 'space_stats', 'space_votes'] as const;
+    const requiredTables = ['users', 'user_keyrings', 'spaces', 'notes', 'note_chunks', 'space_embeddings', 'space_stats', 'space_votes', 'space_collaborators'] as const;
     const missingTables: string[] = [];
 
     for (const table of requiredTables) {

@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Cloud, CloudUpload, Users, UserPlus, Check, X, RefreshCw,
   FolderOpen, Loader, AlertCircle, Send, ChevronDown, ChevronUp,
+  Lock, Unlock, KeyRound,
 } from 'lucide-react';
 import {
   collaborationEngine,
@@ -41,6 +42,11 @@ export function CollaborationPanel({
   const [collaborators, setCollaborators] = useState<SpaceCollaborator[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [spaceName, setSpaceName] = useState('');
+  const [encryptionPassword, setEncryptionPassword] = useState('');
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>('invites');
@@ -69,6 +75,14 @@ export function CollaborationPanel({
     const unsub = collaborationEngine.onStatusChange(setCollabStatus);
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (!cloudSpace) {
+      setIsUnlocked(false);
+      return;
+    }
+    setIsUnlocked(collaborationEngine.isPrivateSpaceUnlocked(cloudSpace.id));
+  }, [cloudSpace, collabStatus]);
 
   // Load cloud space for current vault
   const loadSpaceData = useCallback(async (isInitial = false) => {
@@ -133,12 +147,45 @@ export function CollaborationPanel({
     setError(null);
     setIsCreating(true);
     try {
-      await collaborationEngine.createCloudSpace(spaceName.trim(), vaultPath);
+      await collaborationEngine.createCloudSpace(spaceName.trim(), vaultPath, encryptionPassword);
+      setEncryptionPassword('');
       await loadSpaceData(false);
     } catch (err: any) {
       setError(err.message || 'Failed to create cloud space');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleUnlockSpace = async () => {
+    if (!cloudSpace || !unlockPassword) return;
+    setError(null);
+    try {
+      await collaborationEngine.unlockPrivateSpace(cloudSpace.id, unlockPassword);
+      setUnlockPassword('');
+      setIsUnlocked(true);
+      await loadSpaceData(false);
+    } catch (err: any) {
+      setError(err.message || 'Wrong password. Private content was not loaded.');
+    }
+  };
+
+  const handleLockSpace = () => {
+    if (!cloudSpace) return;
+    collaborationEngine.lockPrivateSpace(cloudSpace.id);
+    setIsUnlocked(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (!cloudSpace || !oldPassword || !newPassword) return;
+    setError(null);
+    try {
+      await collaborationEngine.changePrivateSpacePassword(cloudSpace.id, oldPassword, newPassword);
+      setOldPassword('');
+      setNewPassword('');
+      setIsUnlocked(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to change encryption password');
     }
   };
 
@@ -328,6 +375,7 @@ export function CollaborationPanel({
               </div>
               <div className="setting-description">
                 Establish a secure private space on the cloud to enable synchronization and invite users.
+                Recovery warning: this password cannot be recovered.
               </div>
             </div>
             <div className="setting-control" style={{ gap: '8px' }}>
@@ -338,12 +386,21 @@ export function CollaborationPanel({
                 placeholder="Space name..."
                 value={spaceName}
                 onChange={e => setSpaceName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleCreateSpace(); }}
+                onKeyDown={e => { if (e.key === 'Enter' && encryptionPassword.length >= 8) handleCreateSpace(); }}
+              />
+              <input
+                type="password"
+                className="setting-input"
+                style={{ width: '210px' }}
+                placeholder="Encryption password"
+                value={encryptionPassword}
+                onChange={e => setEncryptionPassword(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && encryptionPassword.length >= 8) handleCreateSpace(); }}
               />
               <button
                 className="setting-btn-primary"
                 onClick={handleCreateSpace}
-                disabled={isCreating || !spaceName.trim()}
+                disabled={isCreating || !spaceName.trim() || encryptionPassword.length < 8}
                 style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
               >
                 {isCreating ? <Loader size={12} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite' }} /> : <CloudUpload size={12} />} Create
@@ -396,7 +453,7 @@ export function CollaborationPanel({
           <div className="setting-card">
             <div className="setting-info">
               <div className="setting-title-with-icon">
-                <Cloud size={16} className="setting-title-icon" style={{ color: cloudSpace.status === 'ready' ? '#10b981' : '#eab308' }} />
+                {isUnlocked ? <Unlock size={16} className="setting-title-icon" style={{ color: '#10b981' }} /> : <Lock size={16} className="setting-title-icon" style={{ color: '#eab308' }} />}
                 <span>{cloudSpace.title}</span>
               </div>
               <div className="setting-description" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
@@ -412,6 +469,55 @@ export function CollaborationPanel({
               </button>
             </div>
           </div>
+
+          <div className="setting-card">
+            <div className="setting-info">
+              <div className="setting-title">Private Space Encryption</div>
+              <div className="setting-description">
+                {isUnlocked ? 'Unlocked locally. Supabase only receives encrypted notes and encrypted realtime payloads.' : 'Locked. Unlock this private space to sync content, collaborate, search, or use AI.'}
+              </div>
+            </div>
+            <div className="setting-control" style={{ gap: '8px', flexWrap: 'wrap' }}>
+              {isUnlocked ? (
+                <button className="setting-btn-secondary" onClick={handleLockSpace} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Lock size={12} /> Lock Space
+                </button>
+              ) : (
+                <>
+                  <input
+                    type="password"
+                    className="setting-input"
+                    style={{ width: '210px' }}
+                    placeholder="Encryption password"
+                    value={unlockPassword}
+                    onChange={e => setUnlockPassword(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleUnlockSpace(); }}
+                  />
+                  <button className="setting-btn-primary" onClick={handleUnlockSpace} disabled={!unlockPassword} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Unlock size={12} /> Unlock Space
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {isUnlocked && cloudSpace.owner_id === user.id && (
+            <div className="setting-card">
+              <div className="setting-info">
+                <div className="setting-title">Change Password</div>
+                <div className="setting-description">
+                  Re-encrypts the same space key. Existing notes are not re-encrypted.
+                </div>
+              </div>
+              <div className="setting-control" style={{ gap: '8px', flexWrap: 'wrap' }}>
+                <input type="password" className="setting-input" style={{ width: '170px' }} placeholder="Old password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} />
+                <input type="password" className="setting-input" style={{ width: '170px' }} placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <button className="setting-btn-secondary" onClick={handleChangePassword} disabled={!oldPassword || newPassword.length < 8} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <KeyRound size={12} /> Change
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Local collaboration active toggle card */}
           <div className="setting-card">

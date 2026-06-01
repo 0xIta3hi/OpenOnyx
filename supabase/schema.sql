@@ -23,6 +23,17 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
+-- Public wrapping keys for zero-knowledge private-space invites.
+-- Private wrapping keys are generated and kept only on client devices.
+CREATE TABLE IF NOT EXISTS public.user_keyrings (
+  user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  public_key_jwk jsonb NOT NULL,
+  algorithm text NOT NULL DEFAULT 'RSA-OAEP-256',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_keyrings ENABLE ROW LEVEL SECURITY;
+
 -- 3. Vaults table (for real-time collaboration)
 CREATE TABLE IF NOT EXISTS public.vaults (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,6 +93,15 @@ CREATE TABLE IF NOT EXISTS public.spaces (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.spaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS encrypted_space_key text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_salt text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_iv text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_auth_tag text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_version integer NOT NULL DEFAULT 1;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS encryption_version integer;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS key_wrapping text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS kdf text;
+ALTER TABLE public.spaces ADD COLUMN IF NOT EXISTS kdf_params jsonb;
 
 -- 5. Notes table
 CREATE TABLE IF NOT EXISTS public.notes (
@@ -107,6 +127,10 @@ ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAU
 ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS last_modified timestamptz NOT NULL DEFAULT now();
 ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS client_id text;
 ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS content_hash text NOT NULL DEFAULT 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS content_encrypted text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS iv text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS auth_tag text;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS encryption_version integer;
 
 -- 5. Note chunks table (for embeddings / RAG)
 CREATE TABLE IF NOT EXISTS public.note_chunks (
@@ -177,6 +201,29 @@ CREATE TABLE IF NOT EXISTS public.space_collaborators (
   UNIQUE(space_id, user_id)
 );
 ALTER TABLE public.space_collaborators ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS encrypted_space_key text;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS key_iv text;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS key_auth_tag text;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS key_version integer;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS encryption_version integer;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS key_wrapping text;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS invited_at timestamptz;
+ALTER TABLE public.space_collaborators ADD COLUMN IF NOT EXISTS accepted_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS public.space_members (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  space_id uuid NOT NULL REFERENCES public.spaces(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+  email text,
+  role text NOT NULL DEFAULT 'editor'
+    CHECK (role IN ('owner', 'editor', 'viewer')),
+  encrypted_space_key text,
+  key_version integer,
+  invited_at timestamptz NOT NULL DEFAULT now(),
+  accepted_at timestamptz
+);
+ALTER TABLE public.space_members ENABLE ROW LEVEL SECURITY;
 
 -- 11. Linked vaults (maps local vault paths to cloud spaces)
 CREATE TABLE IF NOT EXISTS public.linked_vaults (
@@ -225,6 +272,10 @@ CREATE TRIGGER trg_vaults_updated_at
 DROP TRIGGER IF EXISTS trg_spaces_updated_at ON public.spaces;
 CREATE TRIGGER trg_spaces_updated_at
   BEFORE UPDATE ON public.spaces FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_user_keyrings_updated_at ON public.user_keyrings;
+CREATE TRIGGER trg_user_keyrings_updated_at
+  BEFORE UPDATE ON public.user_keyrings FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_notes_updated_at ON public.notes;
 CREATE TRIGGER trg_notes_updated_at
@@ -285,6 +336,25 @@ END $$;
 DO $$ BEGIN
   CREATE POLICY "Allow authenticated users to view profiles"
     ON public.users FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- User keyrings
+DO $$ BEGIN
+  CREATE POLICY "Authenticated users can read public wrapping keys"
+    ON public.user_keyrings FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can insert their own public wrapping key"
+    ON public.user_keyrings FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update their own public wrapping key"
+    ON public.user_keyrings FOR UPDATE USING (auth.uid() = user_id);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -647,6 +717,33 @@ DO $$ BEGIN
   CREATE POLICY "Space owners can delete collaborators"
     ON public.space_collaborators FOR DELETE USING (
       EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_collaborators.space_id AND spaces.owner_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Space Members compatibility table
+DO $$ BEGIN
+  CREATE POLICY "Members can view their own member key rows"
+    ON public.space_members FOR SELECT USING (
+      user_id = auth.uid()
+      OR EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_members.space_id AND spaces.owner_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Space owners can insert member key rows"
+    ON public.space_members FOR INSERT WITH CHECK (
+      EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_members.space_id AND spaces.owner_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Space owners can update member key rows"
+    ON public.space_members FOR UPDATE USING (
+      EXISTS (SELECT 1 FROM public.spaces WHERE spaces.id = space_members.space_id AND spaces.owner_id = auth.uid())
+      OR user_id = auth.uid()
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;

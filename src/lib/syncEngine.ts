@@ -6,6 +6,7 @@ import { collaborationEngine } from './collaborationEngine';
 import { getAPI } from '../utils/api';
 import { normalizeVersion, sha256Hex } from '../utils/collabDocument';
 import { v4 as uuidv4 } from 'uuid';
+import { isPrivateCloudSpace, privateCrypto } from './privateCrypto';
 
 /**
  * Normalize an absolute or relative path to a relative path from the active vault root.
@@ -63,7 +64,10 @@ function getActiveClient() {
   return getUserSupabaseClient() || supabase;
 }
 
-function toLocalNote(note: any): LocalNote {
+async function toLocalNote(note: any, decryptForSpaceId?: string): Promise<LocalNote> {
+  const content = decryptForSpaceId
+    ? await privateCrypto.decryptNoteContent(decryptForSpaceId, note)
+    : (note.content || '');
   return {
     id: note.id,
     space_id: note.space_id,
@@ -75,7 +79,11 @@ function toLocalNote(note: any): LocalNote {
     content_hash: note.content_hash || '',
     title: note.title,
     path: note.path || '',
-    content: note.content || '',
+    content,
+    content_encrypted: note.content_encrypted || null,
+    iv: note.iv || null,
+    auth_tag: note.auth_tag || null,
+    encryption_version: note.encryption_version || null,
     pinned: !!note.pinned,
     created_at: note.created_at,
     updated_at: note.updated_at,
@@ -105,6 +113,7 @@ export class SyncEngine {
   private activeVaultPath: string | null = null;
   private clientId: string = '';
   private lastLocalScanTime = 0;
+  private activeSpacePrivateCache = new Map<string, boolean>();
 
   /** Track whether we believe the network is available. */
   private isOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -237,6 +246,31 @@ export class SyncEngine {
     this.listeners.forEach(fn => fn(status));
   }
 
+  private async isPrivateActiveSpace(): Promise<boolean> {
+    if (!this.activeSpaceId) return false;
+    if (this.activeSpacePrivateCache.has(this.activeSpaceId)) {
+      return this.activeSpacePrivateCache.get(this.activeSpaceId) || false;
+    }
+    const local = await localDB.getSpace(this.activeSpaceId);
+    if (local) {
+      const result = isPrivateCloudSpace(local);
+      this.activeSpacePrivateCache.set(this.activeSpaceId, result);
+      return result;
+    }
+    try {
+      const { data } = await getActiveClient()
+        .from('spaces')
+        .select('visibility, is_public')
+        .eq('id', this.activeSpaceId)
+        .maybeSingle();
+      const result = isPrivateCloudSpace(data as any);
+      this.activeSpacePrivateCache.set(this.activeSpaceId, result);
+      return result;
+    } catch {
+      return false;
+    }
+  }
+
   async sync(): Promise<{ pushed: number; pulled: number }> {
     if (this.isSyncing) return { pushed: 0, pulled: 0 };
     if (!authManager.isLoggedIn()) return { pushed: 0, pulled: 0 };
@@ -278,6 +312,7 @@ export class SyncEngine {
     const client = getActiveClient();
     const queue = await localDB.getSyncQueue();
     if (queue.length === 0) return 0;
+    const isPrivateSpace = await this.isPrivateActiveSpace();
 
     let count = 0;
 
@@ -294,6 +329,16 @@ export class SyncEngine {
 
       // Only sync notes and note_chunks for collaboration
       if (table !== 'notes' && table !== 'note_chunks') continue;
+      if (isPrivateSpace && table === 'note_chunks') {
+        for (const item of items) {
+          await localDB.removeSyncItem(item.id);
+        }
+        continue;
+      }
+      if (isPrivateSpace && !privateCrypto.isUnlocked(this.activeSpaceId)) {
+        this.notifyStatus({ state: 'error', error: 'Unlock this private space before syncing encrypted content.' });
+        continue;
+      }
 
       const payloads = items.map(item => {
         const payload = { ...item.payload };
@@ -368,7 +413,15 @@ export class SyncEngine {
                 console.warn('[SyncEngine] Client-side LWW check failed:', e);
               }
             }
-            finalPayloads.push(payload);
+            if (isPrivateSpace && table === 'notes') {
+              const encrypted = await privateCrypto.encryptNoteContent(this.activeSpaceId, payload);
+              finalPayloads.push({
+                ...payload,
+                ...encrypted,
+              });
+            } else {
+              finalPayloads.push(payload);
+            }
             pushedItemIds.add(originalItem.id);
           }
 
@@ -408,6 +461,11 @@ export class SyncEngine {
     if (!authManager.isLoggedIn()) return 0;
 
     const client = getActiveClient();
+    const isPrivateSpace = await this.isPrivateActiveSpace();
+    if (isPrivateSpace && !privateCrypto.isUnlocked(this.activeSpaceId)) {
+      this.notifyStatus({ state: 'error', error: 'Unlock this private space before loading encrypted content.' });
+      return 0;
+    }
     // Use a per-space sync time to avoid cross-space/cross-account issues
     const syncTimeKey = `lastSync_${this.activeSpaceId}`;
     const lastSync = await localDB.getMeta(syncTimeKey) || new Date(0).toISOString();
@@ -431,7 +489,14 @@ export class SyncEngine {
     if (notes) {
       for (const remote of notes) {
         const cleanPath = normalizeSyncPath(remote.path);
-        const remoteNote = toLocalNote(remote);
+        let remoteNote: LocalNote;
+        try {
+          remoteNote = await toLocalNote(remote, isPrivateSpace ? this.activeSpaceId : undefined);
+        } catch {
+          privateCrypto.enterFailSafe(this.activeSpaceId, cleanPath);
+          this.notifyStatus({ state: 'error', error: 'Failed to decrypt private note. Realtime paused to prevent data loss.' });
+          continue;
+        }
         remoteNote.path = cleanPath;
         const local = await localDB.getNote(remote.id);
 
@@ -466,7 +531,7 @@ export class SyncEngine {
               const parentDir = cleanPath.split('/').slice(0, -1).join('/');
               try { await api.createDirectory(parentDir); } catch { /* exists */ }
             }
-            await api.writeFile(cleanPath, remote.content || '');
+            await api.writeFile(cleanPath, remoteNote.content || '');
           } catch (err) {
             console.error('[SyncEngine] Failed to write pulled file:', err);
           }

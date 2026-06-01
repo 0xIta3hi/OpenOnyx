@@ -31,6 +31,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
 import type { CollabOperation, CursorPresence } from '../utils/collabOperations';
 import { normalizeVersion, sha256Hex } from '../utils/collabDocument';
+import {
+  isPrivateCloudSpace,
+  privateCrypto,
+  type WrappedSpaceKey,
+} from './privateCrypto';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +48,16 @@ export interface CloudSpace {
   visibility: string;
   created_at: string;
   updated_at: string;
+  is_public?: boolean;
+  encrypted_space_key?: string | null;
+  key_salt?: string | null;
+  key_iv?: string | null;
+  key_auth_tag?: string | null;
+  key_version?: number | null;
+  encryption_version?: number | null;
+  key_wrapping?: string | null;
+  kdf?: string | null;
+  kdf_params?: any;
 }
 
 export interface SpaceInvite {
@@ -74,6 +89,12 @@ export interface SpaceCollaborator {
   role: 'owner' | 'editor' | 'viewer';
   created_at: string;
   email?: string;
+  encrypted_space_key?: string | null;
+  key_iv?: string | null;
+  key_auth_tag?: string | null;
+  key_version?: number | null;
+  encryption_version?: number | null;
+  key_wrapping?: string | null;
 }
 
 export interface SpaceSnapshot {
@@ -233,6 +254,143 @@ class CollaborationEngine {
   get currentClientId() { return this.clientId; }
   get collabPaused() { return this._collabPaused; }
 
+  isPrivateSpaceUnlocked(spaceId: string | null = this._activeSpaceId) {
+    return privateCrypto.isUnlocked(spaceId);
+  }
+
+  lockPrivateSpace(spaceId: string | null = this._activeSpaceId) {
+    if (!spaceId) return;
+    privateCrypto.lock(spaceId);
+    if (spaceId === this._activeSpaceId) {
+      this.unsubscribeFromSpace();
+    }
+  }
+
+  async unlockPrivateSpace(spaceId: string, password: string): Promise<void> {
+    const client = getClient();
+    const userId = authManager.getUserId();
+    const { data: space, error } = await client
+      .from('spaces' as any)
+      .select('encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params')
+      .eq('id', spaceId)
+      .maybeSingle();
+    if (error) throw error;
+    const spaceRow = space as any;
+    if (!spaceRow?.encrypted_space_key) throw new Error('This space has no owner encryption key.');
+    await privateCrypto.unlockWithPassword(spaceId, {
+      encrypted_space_key: spaceRow.encrypted_space_key,
+      key_salt: spaceRow.key_salt,
+      key_iv: spaceRow.key_iv,
+      key_auth_tag: spaceRow.key_auth_tag,
+      key_version: spaceRow.key_version || 1,
+      encryption_version: spaceRow.encryption_version || 1,
+      key_wrapping: 'password',
+      kdf: (spaceRow.kdf || 'pbkdf2') as any,
+      kdf_params: spaceRow.kdf_params || null,
+    }, password);
+    if (userId) {
+      await privateCrypto.ensureUserKeyring();
+      await this.ensureOwnerMemberEncryptedKey(spaceId);
+    }
+    await this.subscribeToSpace(spaceId);
+  }
+
+  async unlockPrivateSpaceForCurrentUser(spaceId: string): Promise<void> {
+    const userId = authManager.getUserId();
+    if (!userId) throw new Error('Login required to unlock this private space.');
+    const client = getClient();
+    const { data, error } = await client
+      .from('space_collaborators' as any)
+      .select('encrypted_space_key, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping')
+      .eq('space_id', spaceId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    const memberRow = data as any;
+    if (!memberRow?.encrypted_space_key) {
+      throw new Error('No encrypted space key is available for your account.');
+    }
+    const raw = await privateCrypto.unwrapSpaceKeyForCurrentUser({
+      encrypted_space_key: memberRow.encrypted_space_key,
+      key_iv: memberRow.key_iv || '',
+      key_auth_tag: memberRow.key_auth_tag || '',
+      key_version: memberRow.key_version || 1,
+      encryption_version: memberRow.encryption_version || 1,
+      key_wrapping: 'rsa-oaep',
+    });
+    await privateCrypto.unlockWithRawKey(spaceId, raw);
+    await this.subscribeToSpace(spaceId);
+  }
+
+  async changePrivateSpacePassword(spaceId: string, oldPassword: string, newPassword: string): Promise<void> {
+    const client = getClient();
+    const { data: space, error } = await client
+      .from('spaces' as any)
+      .select('encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, kdf, kdf_params')
+      .eq('id', spaceId)
+      .single();
+    if (error) throw error;
+    const next = await privateCrypto.changePassword(spaceId, {
+      encrypted_space_key: (space as any).encrypted_space_key,
+      key_salt: (space as any).key_salt,
+      key_iv: (space as any).key_iv,
+      key_auth_tag: (space as any).key_auth_tag,
+      key_version: (space as any).key_version || 1,
+      encryption_version: (space as any).encryption_version || 1,
+      key_wrapping: 'password',
+      kdf: ((space as any).kdf || 'pbkdf2') as any,
+      kdf_params: (space as any).kdf_params || null,
+    }, oldPassword, newPassword);
+    await client.from('spaces' as any).update({
+      encrypted_space_key: next.encrypted_space_key,
+      key_salt: next.key_salt,
+      key_iv: next.key_iv,
+      key_auth_tag: next.key_auth_tag,
+      key_version: next.key_version,
+      encryption_version: next.encryption_version,
+      key_wrapping: next.key_wrapping,
+      kdf: next.kdf,
+      kdf_params: next.kdf_params,
+    } as any).eq('id', spaceId);
+  }
+
+  private async ensureOwnerMemberEncryptedKey(spaceId: string) {
+    const userId = authManager.getUserId();
+    const raw = privateCrypto.getRawSpaceKey(spaceId);
+    if (!userId || !raw) return;
+    try {
+      const wrapped = await privateCrypto.wrapSpaceKeyForUser(raw, userId);
+      await getClient().from('space_collaborators' as any).update({
+        encrypted_space_key: wrapped.encrypted_space_key,
+        key_iv: wrapped.key_iv,
+        key_auth_tag: wrapped.key_auth_tag,
+        key_version: wrapped.key_version,
+        encryption_version: wrapped.encryption_version,
+        key_wrapping: wrapped.key_wrapping,
+      } as any)
+        .eq('space_id', spaceId)
+        .eq('user_id', userId);
+    } catch (err) {
+      console.warn('[Collab] Failed to store owner member key:', err);
+    }
+  }
+
+  private async isActivePrivateSpace(): Promise<boolean> {
+    if (!this._activeSpaceId) return false;
+    const local = await localDB.getSpace(this._activeSpaceId);
+    if (local) return isPrivateCloudSpace(local);
+    try {
+      const { data } = await getClient()
+        .from('spaces' as any)
+        .select('visibility, is_public')
+        .eq('id', this._activeSpaceId)
+        .maybeSingle();
+      return isPrivateCloudSpace(data as any);
+    } catch {
+      return false;
+    }
+  }
+
   setCollabPaused(paused: boolean) {
     this._collabPaused = paused;
     if (typeof localStorage !== 'undefined') {
@@ -326,12 +484,15 @@ class CollaborationEngine {
 
   // ── Owner: Create Cloud Space ──────────────────────────────────────────────
 
-  async createCloudSpace(spaceName: string, vaultPath: string): Promise<string> {
+  async createCloudSpace(spaceName: string, vaultPath: string, encryptionPassword: string): Promise<string> {
     const user = authManager.requireAuth();
     const client = getClient();
     const api = getAPI();
     const spaceId = uuidv4();
     const now = new Date().toISOString();
+    if (!encryptionPassword) {
+      throw new Error('Encryption password is required for private cloud spaces.');
+    }
 
     this.notify({
       state: 'creating',
@@ -339,9 +500,19 @@ class CollaborationEngine {
     });
 
     try {
+      await privateCrypto.ensureUserKeyring();
+      const { raw: rawSpaceKey } = await privateCrypto.generateSpaceKey();
+      const ownerWrappedKey = await privateCrypto.wrapSpaceKeyWithPassword(rawSpaceKey, encryptionPassword);
+      await privateCrypto.unlockWithRawKey(spaceId, rawSpaceKey);
+      let ownerMemberWrappedKey: WrappedSpaceKey | null = null;
+      try {
+        ownerMemberWrappedKey = await privateCrypto.wrapSpaceKeyForUser(rawSpaceKey, user.id);
+      } catch {
+        ownerMemberWrappedKey = null;
+      }
+
       // Create space with status: processing
-      console.log('[Collab] Creating space', spaceId, 'for vault', vaultPath);
-      const { error: spaceErr } = await client.from('spaces').insert({
+      const { error: spaceErr } = await client.from('spaces' as any).insert({
         id: spaceId,
         owner_id: user.id,
         title: spaceName,
@@ -349,20 +520,37 @@ class CollaborationEngine {
         visibility: 'private',
         is_public: false,
         status: 'processing',
+        encrypted_space_key: ownerWrappedKey.encrypted_space_key,
+        key_salt: ownerWrappedKey.key_salt,
+        key_iv: ownerWrappedKey.key_iv,
+        key_auth_tag: ownerWrappedKey.key_auth_tag,
+        key_version: ownerWrappedKey.key_version,
+        encryption_version: ownerWrappedKey.encryption_version,
+        key_wrapping: ownerWrappedKey.key_wrapping,
+        kdf: ownerWrappedKey.kdf,
+        kdf_params: ownerWrappedKey.kdf_params,
         created_at: now,
         updated_at: now,
-      });
+      } as any);
 
       if (spaceErr) {
         throw new Error(`Failed to create space: ${spaceErr.message || spaceErr.code || JSON.stringify(spaceErr)}`);
       }
 
       // Add owner as collaborator
-      const { error: collabErr } = await client.from('space_collaborators').insert({
+      const { error: collabErr } = await client.from('space_collaborators' as any).insert({
         space_id: spaceId,
         user_id: user.id,
         role: 'owner',
-      });
+        encrypted_space_key: ownerMemberWrappedKey?.encrypted_space_key || null,
+        key_iv: ownerMemberWrappedKey?.key_iv || null,
+        key_auth_tag: ownerMemberWrappedKey?.key_auth_tag || null,
+        key_version: ownerMemberWrappedKey?.key_version || ownerWrappedKey.key_version,
+        encryption_version: ownerWrappedKey.encryption_version,
+        key_wrapping: ownerMemberWrappedKey?.key_wrapping || null,
+        invited_at: now,
+        accepted_at: now,
+      } as any);
       if (collabErr) {
         console.warn('[Collab] Failed to add owner as collaborator:', collabErr.message || JSON.stringify(collabErr));
       }
@@ -411,32 +599,42 @@ class CollaborationEngine {
 
       for (let i = 0; i < files.length; i += BATCH_SIZE) {
         const batchFiles = files.slice(i, i + BATCH_SIZE);
-        const batch = await Promise.all(batchFiles.map(async f => ({
-          id: uuidv4(),
-          space_id: spaceId,
-          version: 0,
-          last_modified: now,
-          client_id: this.clientId,
-          content_hash: await sha256Hex(f.content),
-          title: f.title,
-          path: f.path,
-          content: f.content,
-          is_canvas: f.isCanvas,
-          pinned: false,
-          deleted: false,
-          created_at: now,
-          updated_at: now,
-        })));
+        const batch = await Promise.all(batchFiles.map(async f => {
+          const id = uuidv4();
+          const version = 0;
+          const encrypted = await privateCrypto.encryptNoteContent(spaceId, {
+            id,
+            path: f.path,
+            version,
+            content: f.content,
+          });
+          return {
+            id,
+            space_id: spaceId,
+            version,
+            last_modified: now,
+            client_id: this.clientId,
+            content_hash: await sha256Hex(f.content),
+            title: f.title,
+            path: f.path,
+            ...encrypted,
+            is_canvas: f.isCanvas,
+            pinned: false,
+            deleted: false,
+            created_at: now,
+            updated_at: now,
+          };
+        }));
 
         try {
-          const { error: insertErr } = await client.from('notes').insert(batch);
+          const { error: insertErr } = await client.from('notes' as any).insert(batch);
           if (insertErr) {
             const detail = insertErr.message || insertErr.code || insertErr.hint || JSON.stringify(insertErr);
             console.error(`[Collab] Batch ${i / BATCH_SIZE + 1} insert failed:`, detail);
             // Try inserting one-by-one as fallback
             let singles = 0;
             for (const row of batch) {
-              const { error: singleErr } = await client.from('notes').insert(row);
+              const { error: singleErr } = await client.from('notes' as any).insert(row);
               if (!singleErr) singles++;
             }
             console.log(`[Collab] Fallback: inserted ${singles}/${batch.length} individually`);
@@ -476,7 +674,7 @@ class CollaborationEngine {
         is_bootstrapping: false,
       });
 
-      await client.from('spaces').update({ status: 'ready' }).eq('id', spaceId);
+      await client.from('spaces' as any).update({ status: 'ready' }).eq('id', spaceId);
       await localDB.putSpace({
         id: spaceId,
         owner_id: user.id,
@@ -488,6 +686,15 @@ class CollaborationEngine {
         forked_from: null,
         created_at: now,
         updated_at: now,
+        encrypted_space_key: ownerWrappedKey.encrypted_space_key,
+        key_salt: ownerWrappedKey.key_salt,
+        key_iv: ownerWrappedKey.key_iv,
+        key_auth_tag: ownerWrappedKey.key_auth_tag,
+        key_version: ownerWrappedKey.key_version,
+        encryption_version: ownerWrappedKey.encryption_version,
+        key_wrapping: ownerWrappedKey.key_wrapping,
+        kdf: ownerWrappedKey.kdf,
+        kdf_params: ownerWrappedKey.kdf_params,
       }, false);
       await localDB.setMeta(`collab_space_${normalizedVaultPath}`, spaceId);
       this._activeSpaceId = spaceId;
@@ -499,8 +706,18 @@ class CollaborationEngine {
         description: null,
         status: 'ready',
         visibility: 'private',
+        is_public: false,
         created_at: now,
         updated_at: now,
+        encrypted_space_key: ownerWrappedKey.encrypted_space_key,
+        key_salt: ownerWrappedKey.key_salt,
+        key_iv: ownerWrappedKey.key_iv,
+        key_auth_tag: ownerWrappedKey.key_auth_tag,
+        key_version: ownerWrappedKey.key_version,
+        encryption_version: ownerWrappedKey.encryption_version,
+        key_wrapping: ownerWrappedKey.key_wrapping,
+        kdf: ownerWrappedKey.kdf,
+        kdf_params: ownerWrappedKey.kdf_params,
       };
 
       this.notify({ state: 'ready', space });
@@ -520,11 +737,12 @@ class CollaborationEngine {
     const client = getClient();
 
     // Verify space is ready
-    const { data: space } = await client.from('spaces')
-      .select('status')
+    const { data: space } = await client.from('spaces' as any)
+      .select('status, visibility, is_public')
       .eq('id', spaceId)
       .single();
-    if (!space || space.status !== 'ready') {
+    const spaceRow = space as any;
+    if (!spaceRow || spaceRow.status !== 'ready') {
       throw new Error('Space is not ready yet. Wait for upload to complete.');
     }
 
@@ -556,8 +774,37 @@ class CollaborationEngine {
       if (recv) invite.receiver_email = recv.email;
     }
 
+    let memberWrappedKey: WrappedSpaceKey | null = null;
+    if (isPrivateCloudSpace(spaceRow)) {
+      const rawSpaceKey = privateCrypto.getRawSpaceKey(spaceId);
+      if (!rawSpaceKey) {
+        throw new Error('Unlock this private space before inviting collaborators.');
+      }
+      if (!invite.receiver_id) {
+        throw new Error('Private space invites require an existing OpenObsidian user so the space key can be encrypted for them.');
+      }
+      memberWrappedKey = await privateCrypto.wrapSpaceKeyForUser(rawSpaceKey, invite.receiver_id);
+    }
+
     const { error } = await client.from('space_invites').insert(invite);
     if (error) throw new Error(error.message);
+
+    if (invite.receiver_id) {
+      const { error: memberErr } = await client.from('space_collaborators' as any).upsert({
+        space_id: spaceId,
+        user_id: invite.receiver_id,
+        role: invite.role,
+        encrypted_space_key: memberWrappedKey?.encrypted_space_key || null,
+        key_iv: memberWrappedKey?.key_iv || null,
+        key_auth_tag: memberWrappedKey?.key_auth_tag || null,
+        key_version: memberWrappedKey?.key_version || null,
+        encryption_version: memberWrappedKey?.encryption_version || null,
+        key_wrapping: memberWrappedKey?.key_wrapping || null,
+        invited_at: invite.created_at,
+        accepted_at: null,
+      } as any, { onConflict: 'space_id,user_id' });
+      if (memberErr) throw new Error(memberErr.message);
+    }
     return invite;
   }
 
@@ -614,6 +861,13 @@ class CollaborationEngine {
       .eq('id', inviteId)
       .single();
     if (!invite) throw new Error('Invite not found after accepting');
+
+    await privateCrypto.ensureUserKeyring();
+    await client.from('space_collaborators' as any).update({
+      accepted_at: new Date().toISOString(),
+    } as any)
+      .eq('space_id', invite.space_id)
+      .eq('user_id', user.id);
 
     // Check if already linked
     const { data: existing } = await client.from('linked_vaults')
@@ -694,6 +948,11 @@ class CollaborationEngine {
 
     try {
       // Step 2: Create directory structure
+      const privateSnapshot = isPrivateCloudSpace(snapshot.space);
+      if (privateSnapshot && !privateCrypto.isUnlocked(spaceId)) {
+        await this.unlockPrivateSpaceForCurrentUser(spaceId);
+      }
+
       const dirs = new Set<string>();
       for (const n of notes) {
         if (n.path?.includes('/')) {
@@ -744,8 +1003,18 @@ class CollaborationEngine {
         }
 
         // Write file to disk
+        let noteContent = note.content || '';
+        if (privateSnapshot) {
+          try {
+            noteContent = await privateCrypto.decryptNoteContent(spaceId, note);
+          } catch {
+            privateCrypto.enterFailSafe(spaceId, filePath);
+            throw new Error('Failed to decrypt private snapshot. Vault reconstruction stopped.');
+          }
+        }
+
         try {
-          await api.createFile(filePath, note.content || '');
+          await api.createFile(filePath, noteContent);
         } catch (err) {
           console.error(`[Collab] Write failed: ${filePath}`, err);
         }
@@ -759,10 +1028,14 @@ class CollaborationEngine {
           version: normalizeVersion(note.version),
           last_modified: note.last_modified || note.updated_at,
           client_id: note.client_id || note.last_client_id || null,
-          content_hash: note.content_hash || await sha256Hex(note.content || ''),
+          content_hash: note.content_hash || await sha256Hex(noteContent),
           title: note.title,
           path: filePath,
-          content: note.content || '',
+          content: noteContent,
+          content_encrypted: note.content_encrypted || null,
+          iv: note.iv || null,
+          auth_tag: note.auth_tag || null,
+          encryption_version: note.encryption_version || null,
           pinned: note.pinned || false,
           created_at: note.created_at,
           updated_at: note.updated_at,
@@ -790,6 +1063,15 @@ class CollaborationEngine {
           forked_from: snapshot.space.forked_from || null,
           created_at: snapshot.space.created_at || new Date().toISOString(),
           updated_at: snapshot.space.updated_at || new Date().toISOString(),
+          encrypted_space_key: snapshot.space.encrypted_space_key || null,
+          key_salt: snapshot.space.key_salt || null,
+          key_iv: snapshot.space.key_iv || null,
+          key_auth_tag: snapshot.space.key_auth_tag || null,
+          key_version: snapshot.space.key_version || null,
+          encryption_version: snapshot.space.encryption_version || null,
+          key_wrapping: snapshot.space.key_wrapping || null,
+          kdf: snapshot.space.kdf || null,
+          kdf_params: snapshot.space.kdf_params || null,
         }, false);
       }
 
@@ -833,28 +1115,38 @@ class CollaborationEngine {
     if (!spaceId) return null;
 
     try {
-      const { data, error } = await client.from('spaces')
+      const { data, error } = await client.from('spaces' as any)
         .select('*')
         .eq('id', spaceId)
         .single();
 
       if (data) {
+        const row = data as any;
         // Cache space details locally
         await localDB.putSpace({
-          id: data.id,
-          owner_id: data.owner_id,
-          title: data.title,
-          description: data.description,
-          helps_with: data.helps_with || null,
-          is_public: data.is_public || false,
-          visibility: (data.visibility || 'private') as 'local' | 'private' | 'public',
-          forked_from: data.forked_from || null,
-          created_at: data.created_at,
-          updated_at: data.updated_at,
+          id: row.id,
+          owner_id: row.owner_id,
+          title: row.title,
+          description: row.description,
+          helps_with: row.helps_with || null,
+          is_public: row.is_public || false,
+          visibility: (row.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: row.forked_from || null,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          encrypted_space_key: row.encrypted_space_key || null,
+          key_salt: row.key_salt || null,
+          key_iv: row.key_iv || null,
+          key_auth_tag: row.key_auth_tag || null,
+          key_version: row.key_version || null,
+          encryption_version: row.encryption_version || null,
+          key_wrapping: row.key_wrapping || null,
+          kdf: row.kdf || null,
+          kdf_params: row.kdf_params || null,
         }, false);
 
         this._activeSpaceId = spaceId;
-        return data as CloudSpace;
+        return row as CloudSpace;
       }
 
       if (error) {
@@ -900,7 +1192,7 @@ class CollaborationEngine {
 
   async getCollaborators(spaceId: string): Promise<SpaceCollaborator[]> {
     const client = getClient();
-    const { data } = await client.from('space_collaborators')
+    const { data } = await client.from('space_collaborators' as any)
       .select('*, users:user_id(email)')
       .eq('space_id', spaceId);
 
@@ -916,7 +1208,7 @@ class CollaborationEngine {
     const client = getClient();
 
     const { data, error } = await client
-      .from('space_collaborators')
+      .from('space_collaborators' as any)
       .select('space_id, spaces (*)')
       .eq('user_id', user.id);
 
@@ -951,23 +1243,36 @@ class CollaborationEngine {
     }
 
     try {
-      const { data: space } = await client.from('spaces')
+      const { data: space } = await client.from('spaces' as any)
         .select('*')
         .eq('id', spaceId)
         .single();
 
       if (space) {
+        const row = space as any;
+        if (isPrivateCloudSpace(row) && !privateCrypto.isUnlocked(spaceId)) {
+          await this.unlockPrivateSpaceForCurrentUser(spaceId);
+        }
         await localDB.putSpace({
-          id: space.id,
-          owner_id: space.owner_id,
-          title: space.title,
-          description: space.description || null,
-          helps_with: space.helps_with || null,
-          is_public: space.is_public || false,
-          visibility: (space.visibility || 'private') as 'local' | 'private' | 'public',
-          forked_from: space.forked_from || null,
-          created_at: space.created_at,
-          updated_at: space.updated_at,
+          id: row.id,
+          owner_id: row.owner_id,
+          title: row.title,
+          description: row.description || null,
+          helps_with: row.helps_with || null,
+          is_public: row.is_public || false,
+          visibility: (row.visibility || 'private') as 'local' | 'private' | 'public',
+          forked_from: row.forked_from || null,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          encrypted_space_key: row.encrypted_space_key || null,
+          key_salt: row.key_salt || null,
+          key_iv: row.key_iv || null,
+          key_auth_tag: row.key_auth_tag || null,
+          key_version: row.key_version || null,
+          encryption_version: row.encryption_version || null,
+          key_wrapping: row.key_wrapping || null,
+          kdf: row.kdf || null,
+          kdf_params: row.kdf_params || null,
         }, false);
       }
     } catch (e) {
@@ -1037,49 +1342,12 @@ class CollaborationEngine {
       // Listen for granular editing operations via Broadcast
       .on('broadcast', { event: 'doc-ops' }, (msg) => {
         if (this._collabPaused) return;
-        const { path, ops, clientId: senderClientId } = msg.payload || {};
-        // Skip if no payload, or if this is our own echo (should not happen
-        // with self:false but guard defensively), or if clientId is empty.
-        if (!path || !ops) return;
-        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
-        const normalizedOps = (ops as CollabOperation[])
-          .filter(op => {
-            const opClientId = op.client_id || op.clientId || senderClientId;
-            if (opClientId && this.clientId && opClientId === this.clientId) return false;
-            if (!op.operation_id) {
-              console.warn('[Collab][op_rejected] missing operation_id', { path, senderClientId });
-              return false;
-            }
-            if (this.appliedOperationIds.has(op.operation_id)) {
-              console.info('[Collab][op_duplicate] skipping already applied operation', { path, operation_id: op.operation_id });
-              return false;
-            }
-            return true;
-          });
-
-        if (normalizedOps.length === 0) return;
-
-        const clientPathKey = `${senderClientId || normalizedOps[0]?.client_id || 'unknown'}:${path}`;
-        const lastTs = this.lastAppliedTimestamps.get(clientPathKey) || 0;
-        const freshOps = normalizedOps;
-        if (freshOps.length > 0) {
-          const maxTs = Math.max(lastTs, ...freshOps.map(op => op.timestamp));
-          this.lastAppliedTimestamps.set(clientPathKey, maxTs);
-          this.enqueueIncomingOperations(path, freshOps);
-        }
+        void this.handleDocOpsBroadcast(msg.payload || {});
       })
       // Listen for full-document sync via Broadcast (fallback for large edits)
       .on('broadcast', { event: 'doc-full' }, (msg) => {
         if (this._collabPaused) return;
-        const { path, content, clientId: senderClientId, version, last_modified, client_id, content_hash } = msg.payload || {};
-        if (!path || content === undefined) return;
-        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
-        this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || client_id || '', true, {
-          version: normalizeVersion(version),
-          last_modified,
-          client_id: client_id || senderClientId || null,
-          content_hash,
-        }));
+        void this.handleDocFullBroadcast(msg.payload || {});
       })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
@@ -1116,6 +1384,113 @@ class CollaborationEngine {
           this.scheduleRealtimeReconnect(spaceId);
         }
       });
+  }
+
+  private async handleDocOpsBroadcast(payload: any) {
+    let path = payload.path;
+    let ops = payload.ops;
+    let senderClientId = payload.clientId || payload.sender_client_id;
+
+    if (payload?.type === 'encrypted_doc_ops') {
+      const spaceId = payload.space_id || this._activeSpaceId;
+      if (!spaceId) return;
+      if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+      try {
+        const decrypted = await privateCrypto.decryptJson<{
+          ops: CollabOperation[];
+          note_path: string;
+          base_version: number;
+          version: number;
+          content_hash: string;
+        }>(spaceId, {
+          encrypted_payload: payload.encrypted_payload,
+          iv: payload.iv,
+          auth_tag: payload.auth_tag,
+        }, `doc-ops:${spaceId}:${payload.note_path}:${payload.operation_id}:${payload.version}:${payload.base_version}`);
+        path = decrypted.note_path;
+        ops = decrypted.ops;
+      } catch {
+        privateCrypto.enterFailSafe(spaceId, payload.note_path || '');
+        return;
+      }
+    }
+
+        // Skip if no payload, or if this is our own echo (should not happen
+        // with self:false but guard defensively), or if clientId is empty.
+        if (!path || !ops) return;
+        if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+        const normalizedOps = (ops as CollabOperation[])
+          .filter(op => {
+            const opClientId = op.client_id || op.clientId || senderClientId;
+            if (opClientId && this.clientId && opClientId === this.clientId) return false;
+            if (!op.operation_id) {
+              console.warn('[Collab][op_rejected] missing operation_id', { path, senderClientId });
+              return false;
+            }
+            if (this.appliedOperationIds.has(op.operation_id)) {
+              console.info('[Collab][op_duplicate] skipping already applied operation', { path, operation_id: op.operation_id });
+              return false;
+            }
+            return true;
+          });
+
+        if (normalizedOps.length === 0) return;
+
+        const clientPathKey = `${senderClientId || normalizedOps[0]?.client_id || 'unknown'}:${path}`;
+        const lastTs = this.lastAppliedTimestamps.get(clientPathKey) || 0;
+        const freshOps = normalizedOps;
+        if (freshOps.length > 0) {
+          const maxTs = Math.max(lastTs, ...freshOps.map(op => op.timestamp));
+          this.lastAppliedTimestamps.set(clientPathKey, maxTs);
+          this.enqueueIncomingOperations(path, freshOps);
+        }
+  }
+
+  private async handleDocFullBroadcast(payload: any) {
+    let {
+      path,
+      content,
+      clientId: senderClientId,
+      version,
+      last_modified,
+      client_id,
+      content_hash,
+    } = payload || {};
+
+    if (payload?.type === 'encrypted_doc_full') {
+      const spaceId = payload.space_id || this._activeSpaceId;
+      senderClientId = payload.sender_client_id;
+      if (!spaceId) return;
+      if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+      try {
+        const decrypted = await privateCrypto.decryptJson<{
+          content: string;
+          note_path: string;
+          version: number;
+          content_hash: string;
+        }>(spaceId, {
+          encrypted_payload: payload.encrypted_payload,
+          iv: payload.iv,
+          auth_tag: payload.auth_tag,
+        }, `doc-full:${spaceId}:${payload.note_path}:${payload.operation_id}:${payload.version}`);
+        path = decrypted.note_path;
+        content = decrypted.content;
+        version = decrypted.version;
+        content_hash = decrypted.content_hash;
+      } catch {
+        privateCrypto.enterFailSafe(spaceId, payload.note_path || '');
+        return;
+      }
+    }
+
+    if (!path || content === undefined) return;
+    if (senderClientId && this.clientId && senderClientId === this.clientId) return;
+    this.remoteDocListeners.forEach(fn => fn(path, content, senderClientId || client_id || '', true, {
+      version: normalizeVersion(version),
+      last_modified,
+      client_id: client_id || senderClientId || null,
+      content_hash,
+    }));
   }
 
   unsubscribeFromSpace() {
@@ -1229,8 +1604,8 @@ class CollaborationEngine {
     console.warn('[Collab][resync_triggered]', { path: cleanPath, localVersion, spaceId });
     const client = getClient();
     const { data: remote, error } = await client
-      .from('notes')
-      .select('id, space_id, vault_id, last_client_id, version, last_modified, client_id, content_hash, title, path, content, pinned, created_at, updated_at, deleted, is_canvas')
+      .from('notes' as any)
+      .select('id, space_id, vault_id, last_client_id, version, last_modified, client_id, content_hash, title, path, content, content_encrypted, iv, auth_tag, encryption_version, pinned, created_at, updated_at, deleted, is_canvas')
       .eq('space_id', spaceId)
       .eq('path', cleanPath)
       .maybeSingle();
@@ -1240,46 +1615,60 @@ class CollaborationEngine {
       return;
     }
     if (!remote) return;
+    const remoteRow = remote as any;
 
-    const remoteVersion = normalizeVersion((remote as any).version);
+    const remoteVersion = normalizeVersion(remoteRow.version);
     if (remoteVersion <= localVersion) {
       console.info('[Collab][resync_kept_local]', { path: cleanPath, localVersion, remoteVersion });
       return;
     }
-    const remoteHash = (remote as any).content_hash || await sha256Hex(remote.content || '');
+    let remoteContent = remoteRow.content || '';
+    if (remoteRow.content_encrypted) {
+      try {
+        remoteContent = await privateCrypto.decryptNoteContent(spaceId, remote);
+      } catch {
+        privateCrypto.enterFailSafe(spaceId, cleanPath);
+        return;
+      }
+    }
+    const remoteHash = remoteRow.content_hash || await sha256Hex(remoteContent);
 
     await localDB.putNote({
-      id: remote.id,
-      space_id: remote.space_id,
-      vault_id: remote.vault_id || null,
-      last_client_id: remote.last_client_id || null,
+      id: remoteRow.id,
+      space_id: remoteRow.space_id,
+      vault_id: remoteRow.vault_id || null,
+      last_client_id: remoteRow.last_client_id || null,
       version: remoteVersion,
-      last_modified: (remote as any).last_modified || remote.updated_at,
-      client_id: (remote as any).client_id || remote.last_client_id || null,
+      last_modified: remoteRow.last_modified || remoteRow.updated_at,
+      client_id: remoteRow.client_id || remoteRow.last_client_id || null,
       content_hash: remoteHash,
-      title: remote.title,
+      title: remoteRow.title,
       path: cleanPath,
-      content: remote.content || '',
-      pinned: !!remote.pinned,
-      created_at: remote.created_at,
-      updated_at: remote.updated_at,
-      deleted: !!remote.deleted,
-      is_canvas: !!remote.is_canvas,
+      content: remoteContent,
+      content_encrypted: remoteRow.content_encrypted || null,
+      iv: remoteRow.iv || null,
+      auth_tag: remoteRow.auth_tag || null,
+      encryption_version: remoteRow.encryption_version || null,
+      pinned: !!remoteRow.pinned,
+      created_at: remoteRow.created_at,
+      updated_at: remoteRow.updated_at,
+      deleted: !!remoteRow.deleted,
+      is_canvas: !!remoteRow.is_canvas,
     }, false);
 
-    if (cleanPath && !remote.deleted) {
+    if (cleanPath && !remoteRow.deleted) {
       const api = getAPI();
       if (cleanPath.includes('/')) {
         const parentDir = cleanPath.split('/').slice(0, -1).join('/');
         try { await api.createDirectory(parentDir); } catch { /* exists */ }
       }
-      await api.writeFile(cleanPath, remote.content || '');
+      await api.writeFile(cleanPath, remoteContent);
     }
 
-    this.remoteDocListeners.forEach(fn => fn(cleanPath, remote.content || '', (remote as any).client_id || remote.last_client_id || '', false, {
+    this.remoteDocListeners.forEach(fn => fn(cleanPath, remoteContent, remoteRow.client_id || remoteRow.last_client_id || '', false, {
       version: remoteVersion,
-      last_modified: (remote as any).last_modified || remote.updated_at,
-      client_id: (remote as any).client_id || remote.last_client_id || null,
+      last_modified: remoteRow.last_modified || remoteRow.updated_at,
+      client_id: remoteRow.client_id || remoteRow.last_client_id || null,
       content_hash: remoteHash,
     }));
   }
@@ -1365,6 +1754,15 @@ class CollaborationEngine {
 
     const cleanPath = normalizeSyncPath(remoteNote.path);
     if (!cleanPath) return;
+    let remoteContent = remoteNote.content || '';
+    if (remoteNote.content_encrypted) {
+      try {
+        remoteContent = await privateCrypto.decryptNoteContent(remoteNote.space_id, remoteNote);
+      } catch {
+        privateCrypto.enterFailSafe(remoteNote.space_id, cleanPath);
+        return;
+      }
+    }
 
     // Last-Write-Wins
     const localNote = await localDB.getNote(remoteNote.id);
@@ -1397,10 +1795,14 @@ class CollaborationEngine {
       version: normalizeVersion(remoteNote.version),
       last_modified: remoteNote.last_modified || remoteNote.updated_at,
       client_id: remoteNote.client_id || remoteNote.last_client_id || null,
-      content_hash: remoteNote.content_hash || await sha256Hex(remoteNote.content || ''),
+      content_hash: remoteNote.content_hash || await sha256Hex(remoteContent),
       title: remoteNote.title,
       path: cleanPath,
-      content: remoteNote.content || '',
+      content: remoteContent,
+      content_encrypted: remoteNote.content_encrypted || null,
+      iv: remoteNote.iv || null,
+      auth_tag: remoteNote.auth_tag || null,
+      encryption_version: remoteNote.encryption_version || null,
       pinned: !!remoteNote.pinned,
       created_at: remoteNote.created_at,
       updated_at: remoteNote.updated_at,
@@ -1417,7 +1819,7 @@ class CollaborationEngine {
           const parentDir = cleanPath.split('/').slice(0, -1).join('/');
           try { await api.createDirectory(parentDir); } catch { /* exists */ }
         }
-        await api.writeFile(cleanPath, remoteNote.content || '');
+        await api.writeFile(cleanPath, remoteContent);
       } catch (err) {
         console.error('[Collab] Failed to write remote change to disk:', err);
       }
@@ -1432,7 +1834,7 @@ class CollaborationEngine {
 
     // Notify remote doc listeners so the editor can refresh the open file
     if (cleanPath && !remoteNote.deleted) {
-      this.remoteDocListeners.forEach(fn => fn(cleanPath, remoteNote.content || '', remoteNote.client_id || remoteNote.last_client_id || '', false, {
+      this.remoteDocListeners.forEach(fn => fn(cleanPath, remoteContent, remoteNote.client_id || remoteNote.last_client_id || '', false, {
         version: normalizeVersion(remoteNote.version),
         last_modified: remoteNote.last_modified || remoteNote.updated_at,
         client_id: remoteNote.client_id || remoteNote.last_client_id || null,
@@ -1488,11 +1890,11 @@ class CollaborationEngine {
 
     // Schedule flush if not already pending
     if (!this.opBatchTimer) {
-      this.opBatchTimer = setTimeout(() => this.flushOpBatch(), CollaborationEngine.OP_BATCH_INTERVAL);
+      this.opBatchTimer = setTimeout(() => { void this.flushOpBatch(); }, CollaborationEngine.OP_BATCH_INTERVAL);
     }
   }
 
-  private flushOpBatch() {
+  private async flushOpBatch() {
     this.opBatchTimer = null;
     if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) {
       this.opBatchBuffer.clear();
@@ -1500,16 +1902,46 @@ class CollaborationEngine {
       return;
     }
 
+    const isPrivate = await this.isActivePrivateSpace();
+    const spaceId = this._activeSpaceId;
+    if (isPrivate && (!spaceId || !privateCrypto.isUnlocked(spaceId))) {
+      this.opBatchBuffer.clear();
+      return;
+    }
+
     for (const [path, ops] of this.opBatchBuffer) {
       if (ops.length === 0) continue;
+      const version = normalizeVersion(ops[ops.length - 1]?.version);
+      const baseVersion = normalizeVersion(ops[0]?.base_version ?? Math.max(0, version - ops.length));
+      const operationId = ops[ops.length - 1]?.operation_id || uuidv4();
+      const payload = isPrivate && spaceId
+        ? {
+            type: 'encrypted_doc_ops',
+            space_id: spaceId,
+            note_path: path,
+            ...(await privateCrypto.encryptJson(spaceId, {
+              ops,
+              note_path: path,
+              base_version: baseVersion,
+              version,
+              content_hash: ops[ops.length - 1]?.content_hash || '',
+            }, `doc-ops:${spaceId}:${path}:${operationId}:${version}:${baseVersion}`)),
+            sender_client_id: this.clientId,
+            operation_id: operationId,
+            version,
+            base_version: baseVersion,
+            timestamp: Date.now(),
+          }
+        : {
+            path,
+            ops,
+            clientId: this.clientId,
+          };
+
       void this.realtimeChannel.send({
         type: 'broadcast',
         event: 'doc-ops',
-        payload: {
-          path,
-          ops,
-          clientId: this.clientId,
-        },
+        payload,
       }).then((result: any) => {
         if (result !== 'ok') {
           console.warn('[Collab] doc-ops broadcast failed:', result);
@@ -1540,19 +1972,41 @@ class CollaborationEngine {
 
     // Clear any pending ops for this path -- the full doc supersedes them
     this.opBatchBuffer.delete(cleanPath);
+    const isPrivate = await this.isActivePrivateSpace();
+    const spaceId = this._activeSpaceId;
+    if (isPrivate && (!spaceId || !privateCrypto.isUnlocked(spaceId))) return;
+    const version = normalizeVersion(meta?.version);
+    const operationId = uuidv4();
+    const payload = isPrivate && spaceId
+      ? {
+          type: 'encrypted_doc_full',
+          space_id: spaceId,
+          note_path: cleanPath,
+          ...(await privateCrypto.encryptJson(spaceId, {
+            content,
+            note_path: cleanPath,
+            version,
+            content_hash: meta?.content_hash || await sha256Hex(content),
+          }, `doc-full:${spaceId}:${cleanPath}:${operationId}:${version}`)),
+          sender_client_id: this.clientId,
+          operation_id: operationId,
+          version,
+          timestamp: Date.now(),
+        }
+      : {
+          path: cleanPath,
+          content,
+          version,
+          last_modified: meta?.last_modified || new Date().toISOString(),
+          client_id: meta?.client_id || this.clientId,
+          content_hash: meta?.content_hash || await sha256Hex(content),
+          clientId: this.clientId,
+        };
 
     void this.realtimeChannel.send({
       type: 'broadcast',
       event: 'doc-full',
-      payload: {
-        path: cleanPath,
-        content,
-        version: normalizeVersion(meta?.version),
-        last_modified: meta?.last_modified || new Date().toISOString(),
-        client_id: meta?.client_id || this.clientId,
-        content_hash: meta?.content_hash || await sha256Hex(content),
-        clientId: this.clientId,
-      },
+      payload,
     }).then((result: any) => {
       if (result !== 'ok') {
         console.warn('[Collab] doc-full broadcast failed:', result);

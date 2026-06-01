@@ -23,6 +23,15 @@ export interface Space {
   updatedAt: string;
   forkedFrom?: string;
   status?: string;
+  encryptedSpaceKey?: string | null;
+  keySalt?: string | null;
+  keyIv?: string | null;
+  keyAuthTag?: string | null;
+  keyVersion?: number | null;
+  encryptionVersion?: number | null;
+  keyWrapping?: string | null;
+  kdf?: string | null;
+  kdfParams?: any;
 }
 
 // ── Vector Store Types ───────────────────────────────────────────────────────

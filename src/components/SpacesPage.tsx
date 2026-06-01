@@ -36,6 +36,7 @@ import { AuthModal } from "./AuthModal";
 import { collaborationEngine } from "../lib/collaborationEngine";
 import { syncEngine } from "../lib/syncEngine";
 import { generateDiffMarkdown } from "../utils/diff";
+import { privateCrypto } from "../lib/privateCrypto";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -245,6 +246,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [createTags, setCreateTags] = useState<string[]>([]);
   const [createTagInput, setCreateTagInput] = useState("");
   const [createVisibility, setCreateVisibility] = useState<SpaceVisibility>("local");
+  const [createEncryptionPassword, setCreateEncryptionPassword] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
 
   // Auth/cloud state
@@ -617,12 +619,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         helpsWith: createTags,
         noteCount: vaultNoteCount,
         visibility: createVisibility,
+        encryptionPassword: createVisibility === "private" ? createEncryptionPassword : undefined,
       });
       setCreateTitle("");
       setCreateDesc("");
       setCreateTags([]);
       setCreateTagInput("");
       setCreateVisibility("local");
+      setCreateEncryptionPassword("");
       setShowCreateModal(false);
       await refreshSpaces();
       openSpace(space.id);
@@ -635,7 +639,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       console.error("[SpacesPage] Failed to create space:", err);
       setCreateError(err instanceof Error ? err.message : "Failed to create space.");
     }
-  }, [createTitle, createDesc, createTags, vaultNoteCount, createVisibility, refreshSpaces, openSpace]);
+  }, [createTitle, createDesc, createTags, vaultNoteCount, createVisibility, createEncryptionPassword, refreshSpaces, openSpace]);
 
   // ── Delete space ─────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
@@ -703,24 +707,31 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       
       const currentUserId = authManager.getUserId();
       const isRemoteSpace = activeSpace && activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId;
+      if (activeSpace?.visibility === "private" && !privateCrypto.isUnlocked(activeSpaceId)) {
+        showToast("Unlock this private space to use AI features.", "error");
+        setIsIndexing(false);
+        return;
+      }
       
       if (activeSpace && activeSpace.visibility !== "local" && isRemoteSpace && isSupabaseConfigured) {
         // Cloud space (Remote): Fetch notes directly from Supabase to index them on the cloud
         const { data: cloudNotes, error: fetchErr } = await supabase
           .from("notes")
-          .select("path, title, content, is_canvas")
+          .select("id, path, title, content, content_encrypted, iv, auth_tag, encryption_version, version, is_canvas")
           .eq("space_id", activeSpaceId)
           .eq("deleted", false);
           
         if (fetchErr) throw fetchErr;
         
         if (cloudNotes) {
-          customNotes = cloudNotes.map(n => ({
+          customNotes = await Promise.all(cloudNotes.map(async (n: any) => ({
             path: n.path,
             title: n.title,
-            content: n.content || "",
+            content: activeSpace.visibility === "private"
+              ? await privateCrypto.decryptNoteContent(activeSpaceId, n)
+              : n.content || "",
             isCanvas: n.is_canvas || false,
-          }));
+          })));
         }
       }
 
@@ -781,6 +792,16 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const handleChat = useCallback(async (query?: string) => {
     const q = (query || chatInput).trim();
     if (!q || !activeSpaceId || !activeSpace || isQuerying || !activeConversationId) return;
+    if (activeSpace.visibility === "private" && !privateCrypto.isUnlocked(activeSpaceId)) {
+      const lockedMsg: SpaceChatMessage = {
+        id: `msg-${Date.now()}-locked`,
+        role: "assistant",
+        content: "Unlock this private space to use AI features.",
+        timestamp: Date.now(),
+      };
+      setChatMessages((prev) => [...prev, lockedMsg]);
+      return;
+    }
 
     // Handle auto-rename and updatedAt timestamp updates
     let updatedConversations = conversations;
@@ -1580,6 +1601,22 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   )}
                 </div>
 
+                {createVisibility === "private" && (
+                  <div className="space-form-field">
+                    <label>Encryption Password</label>
+                    <input
+                      className="space-form-input"
+                      type="password"
+                      placeholder="Required to unlock this private space"
+                      value={createEncryptionPassword}
+                      onChange={(e) => setCreateEncryptionPassword(e.target.value)}
+                    />
+                    <div className="space-form-hint warning">
+                      Recovery warning: this password cannot be recovered. Changing it only re-encrypts the space key.
+                    </div>
+                  </div>
+                )}
+
                 {createError && <div className="space-form-error">{createError}</div>}
 
                 <div className="space-form-actions">
@@ -1589,7 +1626,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   <button
                     className="btn btn-primary btn-sm"
                     onClick={handleCreate}
-                    disabled={!createTitle.trim()}
+                    disabled={!createTitle.trim() || (createVisibility === "private" && createEncryptionPassword.length < 8)}
                   >
                     Create Space
                   </button>
