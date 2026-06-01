@@ -431,3 +431,14 @@ export const privateCrypto = {
     return next;
   },
 };
+
+// Automatically ensure user keyring is initialized on login or app load
+if (typeof window !== 'undefined') {
+  authManager.subscribe((state) => {
+    if (state.user) {
+      privateCrypto.ensureUserKeyring().catch(err => {
+        console.warn('[privateCrypto] Auto-keyring initialization failed:', err);
+      });
+    }
+  });
+}
