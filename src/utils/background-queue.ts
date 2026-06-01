@@ -12,7 +12,7 @@
  *  - Temporal weighting (recently edited notes processed first)
  */
 
-import { loadStore, embedNote, type EmbeddingStore } from "./embeddings";
+import { loadStoreAsync, embedNote, type EmbeddingStore } from "./embeddings";
 import { getAnnotation } from "./ai-core";
 import { readData, writeData } from "./disk-store";
 
@@ -179,7 +179,7 @@ async function processBatch(api: any): Promise<void> {
   const batch = _queue.splice(0, BATCH_SIZE);
   if (batch.length === 0) return;
 
-  const store = loadStore();
+  const store = await loadStoreAsync();
 
   for (const job of batch) {
     try {
@@ -288,7 +288,10 @@ export async function initializeVault(
   // Load any persisted queue state first
   await loadPersistedQueue();
 
-  const store = loadStore();
+  // CRITICAL: await disk-loaded embeddings so we can skip notes that
+  // already have cached embeddings. Without this, the in-memory Map is
+  // empty and every note looks "new", causing full re-analysis.
+  const store = await loadStoreAsync();
   let enqueued = 0;
   let alreadyIndexed = 0;
   const recentSet = new Set(recentPaths);

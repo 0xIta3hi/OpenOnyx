@@ -110,6 +110,19 @@ export function LeafPaneEditor({
   // Remote cursor presence state for the current file
   const [remoteCursors, setRemoteCursors] = useState<CursorPresence[]>([]);
 
+  // Refs for debouncing typing content updates to prevent react lags
+  const latestContentRef = useRef<string>("");
+  const contentDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const flushContentDebounce = useCallback(() => {
+    if (contentDebounceTimeoutRef.current) {
+      clearTimeout(contentDebounceTimeoutRef.current);
+      contentDebounceTimeoutRef.current = null;
+      setContent(latestContentRef.current);
+      onContentChangeGlobal(activeTab.path, latestContentRef.current);
+    }
+  }, [activeTab.path, onContentChangeGlobal]);
+
   // Stable ref for auto-save and sync tracking to prevent tab-switch race conditions
   const pendingSaveRef = useRef<{
     path: string;
@@ -123,6 +136,9 @@ export function LeafPaneEditor({
 
   // Unified callback to immediately flush any pending save
   const flushSave = useCallback(async () => {
+    // 0. Flush any debounced content changes first
+    flushContentDebounce();
+
     // 1. Clear auto-save timer if active
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current);
@@ -170,13 +186,17 @@ export function LeafPaneEditor({
         }
       }
     }
-  }, []);
+  }, [flushContentDebounce]);
 
+  const flushSaveRef = useRef(flushSave);
+  useEffect(() => {
+    flushSaveRef.current = flushSave;
+  }, [flushSave]);
 
   // Load content when the active tab changes
   useEffect(() => {
     // Flush any pending changes of the previous note before switching tabs or loading new content
-    void flushSave();
+    void flushSaveRef.current();
 
     let isActive = true;
     
@@ -186,6 +206,7 @@ export function LeafPaneEditor({
 
     if (activeTab.path === "__new_tab__") {
       setContent("");
+      latestContentRef.current = "";
       setIsLoading(false);
       return;
     }
@@ -212,11 +233,13 @@ export function LeafPaneEditor({
           docHashRef.current = await sha256Hex(c);
         }
         setContent(c);
+        latestContentRef.current = c;
         setIsLoading(false);
       } catch (err) {
         if (isActive) {
           setFileExists(false);
           setContent("");
+          latestContentRef.current = "";
           setIsLoading(false);
           console.error("Failed to load note content:", err);
         }
@@ -228,18 +251,31 @@ export function LeafPaneEditor({
     return () => {
       isActive = false;
     };
-  }, [activeTab.path, flushSave]);
+  }, [activeTab.path]);
 
   // ── Content Change Handler ──────────────────────────────────────────────────
 
   const handleContentChange = useCallback((newContent: string, isUserEdit?: boolean) => {
-    setContent(newContent);
+    latestContentRef.current = newContent;
 
-    // Let the global state know there was a change
-    onContentChangeGlobal(activeTab.path, newContent);
+    if (!isUserEdit) {
+      if (contentDebounceTimeoutRef.current) {
+        clearTimeout(contentDebounceTimeoutRef.current);
+        contentDebounceTimeoutRef.current = null;
+      }
+      setContent(newContent);
+      onContentChangeGlobal(activeTab.path, newContent);
+      return;
+    }
 
-    // Only run side-effects for genuine user edits (not remote or programmatic syncs)
-    if (!isUserEdit) return;
+    if (contentDebounceTimeoutRef.current) {
+      clearTimeout(contentDebounceTimeoutRef.current);
+    }
+    contentDebounceTimeoutRef.current = setTimeout(() => {
+      contentDebounceTimeoutRef.current = null;
+      setContent(newContent);
+      onContentChangeGlobal(activeTab.path, newContent);
+    }, 250);
 
     // Presence: mark as typing
     const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused && !collabFailSafe;
@@ -580,6 +616,7 @@ export function LeafPaneEditor({
           return;
         }
         setContent(nextContent);
+        latestContentRef.current = nextContent;
         onContentChangeGlobal(activeTab.path, nextContent);
         scheduleRemoteContentPersist(activeTab.path, nextContent, {
           version: docVersionRef.current,
@@ -674,6 +711,11 @@ export function LeafPaneEditor({
       if (path !== activeTab.path) return;
       if (collabFailSafe) return;
 
+      const isTabModified = leaf.tabs.find(t => t.id === activeTab.id)?.isModified;
+      if (isSelfTyping || isTabModified) {
+        return;
+      }
+
       const incomingVersion = normalizeVersion(meta?.version);
       const currentVersion = docVersionRef.current;
       if (incomingVersion <= currentVersion) {
@@ -723,6 +765,7 @@ export function LeafPaneEditor({
         }
       } else {
         setContent(remoteContent);
+        latestContentRef.current = remoteContent;
         onContentChangeGlobal(activeTab.path, remoteContent);
       }
 
@@ -772,6 +815,8 @@ export function LeafPaneEditor({
     const handleReSync = async () => {
       // Only pull if there are no pending unsaved local edits
       if (dbSyncTimer.current !== null) return;
+      const isTabModified = leaf.tabs.find(t => t.id === activeTab.id)?.isModified;
+      if (isSelfTyping || isTabModified) return;
       try {
         const spaceId = collaborationEngine.activeSpaceId;
         if (!spaceId) return;
@@ -825,6 +870,7 @@ export function LeafPaneEditor({
               }
             } else {
               setContent(remote.content);
+              latestContentRef.current = remote.content;
               onContentChangeGlobal(activeTab.path, remote.content);
             }
           }
@@ -861,8 +907,12 @@ export function LeafPaneEditor({
 
   useEffect(() => {
     return () => {
-      void flushSave();
+      void flushSaveRef.current();
       if (dbSyncTimer.current) clearTimeout(dbSyncTimer.current);
+      if (contentDebounceTimeoutRef.current) {
+        clearTimeout(contentDebounceTimeoutRef.current);
+        contentDebounceTimeoutRef.current = null;
+      }
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
@@ -880,7 +930,7 @@ export function LeafPaneEditor({
         fullDocumentBroadcastTimerRef.current = null;
       }
     };
-  }, [flushSave]);
+  }, []);
 
   useEffect(() => {
     return () => {

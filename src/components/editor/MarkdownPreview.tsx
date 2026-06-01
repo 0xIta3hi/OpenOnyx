@@ -142,6 +142,20 @@ export function MarkdownPreview({
   onContentChange,
 }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
+  const [debouncedContent, setDebouncedContent] = useState(content);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedContent(content);
+    }, 200);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [content]);
+
   const [linkPreview, setLinkPreview] = useState<{
     noteName: string;
     content: string | null;
@@ -283,9 +297,9 @@ export function MarkdownPreview({
 
   // Configure marked for GFM (GitHub Flavored Markdown) support
   const renderedHtml = useMemo(() => {
-    if (!content) return "";
+    if (!debouncedContent) return "";
 
-    let processed = content;
+    let processed = debouncedContent;
 
     // Convert url to preview (iframe) - standalone URLs or markdown links to ANY URL
     processed = processed.replace(
@@ -413,7 +427,7 @@ export function MarkdownPreview({
       ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path", "circle", "line", "rect", "polyline"],
       ADD_DATA_URI_TAGS: ["img"],
     });
-  }, [content, onEmbed, theme, getSmartEmbed, getUrlPreviewMarkup]);
+  }, [debouncedContent, onEmbed, theme, getSmartEmbed, getUrlPreviewMarkup]);
 
   // Handle clicks on wiki-links, tags, and checkboxes
   useEffect(() => {
@@ -443,7 +457,7 @@ export function MarkdownPreview({
         const cardUrl = card?.getAttribute("data-url");
         if (card && cardUrl && onContentChange) {
           const isCurrentlyLinkOnly = card.classList.contains("link-only");
-          const nextContent = toggleUrlInMarkdown(content, cardUrl, !isCurrentlyLinkOnly);
+          const nextContent = toggleUrlInMarkdown(contentRef.current, cardUrl, !isCurrentlyLinkOnly);
           onContentChange(nextContent);
         }
         return;
@@ -487,7 +501,7 @@ export function MarkdownPreview({
 
     container.addEventListener("click", handleClick);
     return () => container.removeEventListener("click", handleClick);
-  }, [onLinkClick, onCheckboxToggle, onImageClick, onContentChange, content]);
+  }, [onLinkClick, onCheckboxToggle, onImageClick, onContentChange]);
 
   // Handle link hover for preview
   useEffect(() => {

@@ -445,6 +445,7 @@ export const PluginSettingTab = _PluginSettingTab as unknown as PluginSettingTab
 export class Menu {
   dom: HTMLElement;
   items: MenuItem[] = [];
+  activeSubmenu: Menu | null = null;
 
   constructor() {
     this.dom = document.createElement('div');
@@ -453,6 +454,7 @@ export class Menu {
 
   addItem(cb: (item: MenuItem) => any): this {
     const item = new MenuItem();
+    item.parentMenu = this;
     cb(item);
     this.items.push(item);
     this.dom.appendChild(item.dom);
@@ -464,6 +466,13 @@ export class Menu {
     sep.className = 'menu-separator';
     this.dom.appendChild(sep);
     return this;
+  }
+
+  hideActiveSubmenu() {
+    if (this.activeSubmenu) {
+      this.activeSubmenu.close();
+      this.activeSubmenu = null;
+    }
   }
 
   showAtMouseEvent(evt: MouseEvent): this {
@@ -489,9 +498,15 @@ export class Menu {
       this.dom.style.visibility = 'visible';
     });
 
+    const isTargetInMenuOrSubmenus = (menu: Menu, target: Node): boolean => {
+      if (menu.dom.contains(target)) return true;
+      if (menu.activeSubmenu && isTargetInMenuOrSubmenus(menu.activeSubmenu, target)) return true;
+      return false;
+    };
+
     const close = (e: MouseEvent) => {
-      if (!this.dom.contains(e.target as Node)) {
-        this.dom.remove();
+      if (!isTargetInMenuOrSubmenus(this, e.target as Node)) {
+        this.close();
         document.removeEventListener('mousedown', close);
       }
     };
@@ -508,12 +523,17 @@ export class Menu {
     return this;
   }
 
-  hide(): this { this.dom.remove(); return this; }
-  close(): void { this.dom.remove(); }
+  hide(): this { this.close(); return this; }
+  close(): void {
+    this.hideActiveSubmenu();
+    this.dom.remove();
+  }
 }
 
 export class MenuItem {
   dom: HTMLElement;
+  parentMenu?: Menu;
+  submenu?: Menu;
   private _callback?: (evt: MouseEvent | KeyboardEvent) => any;
 
   constructor() {
@@ -522,7 +542,48 @@ export class MenuItem {
     const titleEl = document.createElement('div');
     titleEl.className = 'menu-item-title';
     this.dom.appendChild(titleEl);
-    this.dom.addEventListener('click', (e) => this._callback?.(e));
+
+    this.dom.addEventListener('click', (e) => {
+      if (this.submenu) {
+        e.stopPropagation();
+        return;
+      }
+      this._callback?.(e);
+      // Dismiss all open menus
+      document.querySelectorAll('.oo-plugin-menu').forEach(el => el.remove());
+    });
+
+    this.dom.addEventListener('mouseenter', () => {
+      if (this.parentMenu) {
+        this.parentMenu.hideActiveSubmenu();
+      }
+      if (this.submenu) {
+        const rect = this.dom.getBoundingClientRect();
+        let left = rect.right;
+        let top = rect.top;
+
+        this.submenu.dom.style.position = 'fixed';
+        this.submenu.dom.style.visibility = 'hidden';
+        document.body.appendChild(this.submenu.dom);
+
+        requestAnimationFrame(() => {
+          const subRect = this.submenu!.dom.getBoundingClientRect();
+          if (left + subRect.width > window.innerWidth) {
+            left = rect.left - subRect.width;
+          }
+          if (top + subRect.height > window.innerHeight) {
+            top = window.innerHeight - subRect.height - 10;
+          }
+          this.submenu!.dom.style.left = `${Math.max(10, left)}px`;
+          this.submenu!.dom.style.top = `${Math.max(10, top)}px`;
+          this.submenu!.dom.style.visibility = 'visible';
+        });
+
+        if (this.parentMenu) {
+          this.parentMenu.activeSubmenu = this.submenu;
+        }
+      }
+    });
   }
 
   setTitle(title: string | DocumentFragment): this {
@@ -548,6 +609,23 @@ export class MenuItem {
     
     return this;
   }
+
+  setSubmenu(): Menu {
+    const submenu = new Menu();
+    this.submenu = submenu;
+    this.dom.classList.add('has-submenu');
+
+    let indicator = this.dom.querySelector('.menu-item-submenu-indicator') as HTMLElement;
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'menu-item-submenu-indicator';
+      indicator.textContent = '▶';
+      this.dom.appendChild(indicator);
+    }
+
+    return submenu;
+  }
+
   setChecked(checked: boolean): this { this.dom.classList.toggle('is-checked', checked); return this; }
   setDisabled(disabled: boolean): this { this.dom.classList.toggle('is-disabled', disabled); return this; }
   setIsLabel(isLabel: boolean): this { this.dom.classList.toggle('is-label', isLabel); return this; }

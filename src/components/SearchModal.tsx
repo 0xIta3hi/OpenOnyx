@@ -24,6 +24,8 @@ interface SearchModalProps {
   recentFiles?: string[];
   starredNotes?: string[];
   fileTree?: FileEntry[];
+  initialQuery?: string;
+  initialMode?: "search" | "switcher";
 }
 
 const api = getAPI();
@@ -48,12 +50,21 @@ export function SearchModal({
   recentFiles = [],
   starredNotes = [],
   fileTree = [],
+  initialQuery = "",
+  initialMode = "switcher",
 }: SearchModalProps) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [mode, setMode] = useState<"search" | "switcher">("switcher"); // Start in switcher mode
+  const [mode, setMode] = useState<"search" | "switcher">(initialMode); // Start in switcher mode
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Trigger search on mount if initial query is provided in search mode
+  useEffect(() => {
+    if (initialMode === "search" && initialQuery.trim()) {
+      void performSearch(initialQuery);
+    }
+  }, []);
 
   // All notes for quick switching
   const allNotes = useMemo(() => getAllNotes(fileTree), [fileTree]);

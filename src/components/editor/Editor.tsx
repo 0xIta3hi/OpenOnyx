@@ -38,6 +38,7 @@ import { Tab, ViewMode } from "../../types";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SearchReplace } from "./SearchReplace";
 import { Menu, TFile } from "../../lib/obsidian-api";
+import { getAPI } from "../../utils/api";
 import {
   linkAutocomplete,
   linkAutocompleteTheme,
@@ -1966,6 +1967,11 @@ export function Editor({
 
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(content);
+
+  // Tracks the timestamp of the last local (user) edit. Used by the content
+  // sync effect to avoid replacing the CM document with stale debounced
+  // content while the user is actively typing.
+  const lastLocalEditTsRef = useRef<number>(0);
   const [internalShowInsight, setInternalShowInsight] = useState(false);
   const isInsightVisible = showInsight !== undefined ? showInsight : internalShowInsight;
   const toggleInsight = (val: boolean) => {
@@ -2000,6 +2006,11 @@ export function Editor({
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [editorMountTick, setEditorMountTick] = useState(0);
+  // isActivelyTyping is stored as a ref to avoid re-rendering the entire
+  // Editor component on every single keystroke. We only promote to state
+  // when the value *changes* (true->false or false->true) so that derived
+  // UI (suggestion visibility) updates correctly without per-keystroke renders.
+  const isActivelyTypingRef = useRef(false);
   const [isActivelyTyping, setIsActivelyTyping] = useState(false);
   const [isSuggestionIdle, setIsSuggestionIdle] = useState(false);
   const [isSectionPauseReady, setIsSectionPauseReady] = useState(false);
@@ -2055,7 +2066,9 @@ export function Editor({
       if (activeEl && (activeEl.closest(".inline-ai-toolbar") || activeEl.classList.contains("inline-ai-prompt-input"))) {
         return;
       }
-      setSelectionRange(null);
+      // Only call setState if we actually have a value to clear -- avoids
+      // re-rendering on every keystroke when there's no text selection.
+      setSelectionRange((prev) => prev === null ? prev : null);
       return;
     }
 
@@ -2220,11 +2233,17 @@ export function Editor({
     (isSuggestionIdle || isNearNoteEnd || hasFlowTrigger);
 
   const markActiveTyping = useCallback(() => {
-    setIsActivelyTyping(true);
+    // Update the ref synchronously (no render) on every keystroke.
+    // Only promote to state when the value actually *transitions*.
+    if (!isActivelyTypingRef.current) {
+      isActivelyTypingRef.current = true;
+      setIsActivelyTyping(true);
+    }
     if (typingPauseTimerRef.current) {
       window.clearTimeout(typingPauseTimerRef.current);
     }
     typingPauseTimerRef.current = window.setTimeout(() => {
+      isActivelyTypingRef.current = false;
       setIsActivelyTyping(false);
       typingPauseTimerRef.current = null;
     }, 750);
@@ -2777,6 +2796,10 @@ export function Editor({
             // collab space becomes active asynchronously.
             onContentChangeRef.current(update.state.doc.toString(), isUserEdit);
             if (isUserEdit) {
+              // Record that a local edit just happened, so the content-sync
+              // effect knows not to overwrite the CM doc with stale content.
+              lastLocalEditTsRef.current = Date.now();
+
               // Extract granular operations for collaboration broadcast
               const collabOps = onCollabOperationsRef.current;
               const cid = localClientIdRef.current;
@@ -2848,9 +2871,13 @@ export function Editor({
           ".cm-cursorLayer .cm-cursor": {
             borderLeft: "2px solid var(--editor-caret)",
             maxHeight: "1.2em !important",
+            animation: "smooth-cursor-blink 1s ease-in-out infinite !important",
+            transition: "left 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) !important",
           },
           ".cm-cursor": {
             maxHeight: "1.2em !important",
+            animation: "smooth-cursor-blink 1s ease-in-out infinite !important",
+            transition: "left 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) !important",
           },
           ".cm-dropCursor": {
             borderLeft: "2px solid var(--editor-caret)",
@@ -2999,25 +3026,35 @@ export function Editor({
     isSpecialTab,
   ]);
 
-  // Update content when it changes externally (tab switch or remote broadcast)
+  // Update content when it changes externally (tab switch or remote broadcast).
+  // CRITICAL: We must NOT replace the CM doc if the change originated from a
+  // local user edit.  The debounced `content` prop always lags behind the
+  // real CM document by up to 250ms. Without this guard the effect would
+  // overwrite the document with stale content, erasing characters the user
+  // typed since the last debounce flush (the "auto-backspace" bug).
   useEffect(() => {
     if (isSpecialTab) return;
-    if (viewRef.current) {
-      const currentDoc = viewRef.current.state.doc.toString();
-      if (currentDoc !== content) {
-        const newContent = content || "";
-        // Preserve cursor position: clamp to new document length
-        const oldSel = viewRef.current.state.selection;
-        const maxPos = newContent.length;
-        const clampedAnchor = Math.min(oldSel.main.anchor, maxPos);
-        const clampedHead = Math.min(oldSel.main.head, maxPos);
+    if (!viewRef.current) return;
 
-        viewRef.current.dispatch({
-           changes: { from: 0, to: currentDoc.length, insert: newContent },
-           selection: { anchor: clampedAnchor, head: clampedHead },
-           annotations: Transaction.remote.of(true),
-         });
-      }
+    // If the user edited locally very recently, the content prop is stale.
+    // Skip the full-doc replace to avoid clobbering ongoing typing.
+    const msSinceLocalEdit = Date.now() - lastLocalEditTsRef.current;
+    if (msSinceLocalEdit < 500) return;
+
+    const currentDoc = viewRef.current.state.doc.toString();
+    if (currentDoc !== content) {
+      const newContent = content || "";
+      // Preserve cursor position: clamp to new document length
+      const oldSel = viewRef.current.state.selection;
+      const maxPos = newContent.length;
+      const clampedAnchor = Math.min(oldSel.main.anchor, maxPos);
+      const clampedHead = Math.min(oldSel.main.head, maxPos);
+
+      viewRef.current.dispatch({
+         changes: { from: 0, to: currentDoc.length, insert: newContent },
+         selection: { anchor: clampedAnchor, head: clampedHead },
+         annotations: Transaction.remote.of(true),
+       });
     }
   }, [content, isSpecialTab]);
 
@@ -3129,6 +3166,189 @@ export function Editor({
     const app = (window as any).__oo_app;
     if (!app) return;
 
+    const getSettings = () => {
+      try {
+        const saved = localStorage.getItem("openobsidian-settings");
+        if (saved) return JSON.parse(saved);
+      } catch (err) {}
+      return null;
+    };
+
+    const toggleInlineFormat = (prefix: string, suffix: string = prefix) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const state = view.state;
+      const main = state.selection.main;
+      const selectedText = state.sliceDoc(main.from, main.to);
+      const isWrapped = selectedText.startsWith(prefix) && selectedText.endsWith(suffix);
+      
+      let newText = '';
+      let newAnchor = main.from;
+      let newHead = main.to;
+      
+      if (isWrapped) {
+        newText = selectedText.slice(prefix.length, selectedText.length - suffix.length);
+        newAnchor = main.from;
+        newHead = main.to - prefix.length - suffix.length;
+      } else {
+        newText = prefix + selectedText + suffix;
+        newAnchor = main.from + prefix.length;
+        newHead = main.to + prefix.length;
+      }
+      
+      view.dispatch({
+        changes: { from: main.from, to: main.to, insert: newText },
+        selection: { anchor: isWrapped ? main.from : newAnchor, head: isWrapped ? newHead : newHead }
+      });
+      view.focus();
+    };
+
+    const toggleBlockFormat = (blockPrefix: string) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const state = view.state;
+      const main = state.selection.main;
+      const line = state.doc.lineAt(main.from);
+      const lineText = line.text;
+      const hasPrefix = lineText.startsWith(blockPrefix);
+      
+      let newText = '';
+      if (hasPrefix) {
+        newText = lineText.slice(blockPrefix.length);
+      } else {
+        newText = blockPrefix + lineText;
+      }
+      
+      view.dispatch({
+        changes: { from: line.from, to: line.to, insert: newText },
+        selection: { anchor: Math.max(line.from, main.from + (hasPrefix ? -blockPrefix.length : blockPrefix.length)) }
+      });
+      view.focus();
+    };
+
+    const insertContent = (content: string, cursorOffset: number = 0) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const main = view.state.selection.main;
+      
+      view.dispatch({
+        changes: { from: main.from, to: main.to, insert: content },
+        selection: { anchor: main.from + cursorOffset }
+      });
+      view.focus();
+    };
+
+    const addLink = async () => {
+      const view = viewRef.current;
+      if (!view) return;
+      const settings = getSettings();
+      const useWikiLinks = settings ? settings.useWikiLinks !== false : true;
+      const main = view.state.selection.main;
+      const selectedText = view.state.sliceDoc(main.from, main.to);
+      
+      let clipboardText = '';
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch (err) {}
+      
+      const isUrl = /^(https?:\/\/|www\.)\S+$/i.test(clipboardText.trim());
+      
+      let insertText = '';
+      let newAnchor = main.from;
+      if (isUrl) {
+        insertText = `[${selectedText}](${clipboardText.trim()})`;
+        newAnchor = main.from + insertText.length;
+      } else if (useWikiLinks) {
+        insertText = `[[${selectedText}]]`;
+        newAnchor = main.from + insertText.length;
+      } else {
+        insertText = `[${selectedText}]()`;
+        newAnchor = main.from + selectedText.length + 3;
+      }
+      
+      view.dispatch({
+        changes: { from: main.from, to: main.to, insert: insertText },
+        selection: { anchor: newAnchor }
+      });
+      view.focus();
+    };
+
+    const addExternalLink = async () => {
+      const view = viewRef.current;
+      if (!view) return;
+      const main = view.state.selection.main;
+      const selectedText = view.state.sliceDoc(main.from, main.to);
+      
+      let clipboardText = '';
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch (err) {}
+      
+      const isUrl = /^(https?:\/\/|www\.)\S+$/i.test(clipboardText.trim());
+      
+      let insertText = '';
+      let newAnchor = main.from;
+      if (isUrl) {
+        insertText = `[${selectedText}](${clipboardText.trim()})`;
+        newAnchor = main.from + insertText.length;
+      } else {
+        insertText = `[${selectedText}]()`;
+        newAnchor = main.from + selectedText.length + 3;
+      }
+      
+      view.dispatch({
+        changes: { from: main.from, to: main.to, insert: insertText },
+        selection: { anchor: newAnchor }
+      });
+      view.focus();
+    };
+
+    const searchSelection = () => {
+      if (!selection) return;
+      const event = new CustomEvent('oo:global-search', {
+        detail: {
+          query: selection,
+          mode: 'search'
+        }
+      });
+      window.dispatchEvent(event);
+    };
+
+    const extractSelection = () => {
+      const view = viewRef.current;
+      if (!view || !selection) return;
+      
+      const event = new CustomEvent('oo:show-prompt', {
+        detail: {
+          title: 'Extract Selection to Note',
+          message: 'Enter a name for the new note:',
+          defaultValue: '',
+          onConfirm: async (fileName: string) => {
+            if (!fileName || !fileName.trim()) return;
+            const cleanName = fileName.trim();
+            const notePath = cleanName.endsWith('.md') ? cleanName : `${cleanName}.md`;
+            
+            try {
+              await getAPI().createFile(notePath, selection);
+              
+              window.dispatchEvent(new CustomEvent('oo:refresh-file-tree'));
+              
+              const main = view.state.selection.main;
+              const linkText = `[[${cleanName}]]`;
+              view.dispatch({
+                changes: { from: main.from, to: main.to, insert: linkText },
+                selection: { anchor: main.from + linkText.length }
+              });
+              view.focus();
+            } catch (err) {
+              console.error('Failed to extract selection:', err);
+            }
+          }
+        }
+      });
+      window.dispatchEvent(event);
+    };
+
     const menu = new Menu();
 
     const selection = viewRef.current?.state.sliceDoc(
@@ -3139,17 +3359,62 @@ export function Editor({
       ? `Search for "${selection.length > 20 ? selection.substring(0, 20) + '...' : selection}"`
       : 'Search for selection';
 
-    menu.addItem((item: any) => item.setTitle('Add link').setIcon('link').onClick(() => {}));
-    menu.addItem((item: any) => item.setTitle('Add external link').setIcon('external-link').onClick(() => {}));
+    menu.addItem((item: any) => item.setTitle('Add link').setIcon('link').onClick(() => { void addLink(); }));
+    menu.addItem((item: any) => item.setTitle('Add external link').setIcon('external-link').onClick(() => { void addExternalLink(); }));
     menu.addSeparator();
-    menu.addItem((item: any) => item.setTitle(searchTitle).setIcon('search').onClick(() => {}));
-    menu.addItem((item: any) => item.setTitle('Extract current selection...').setIcon('scissors').onClick(() => {}));
+    menu.addItem((item: any) => item.setTitle(searchTitle).setIcon('search').onClick(() => { searchSelection(); }));
+    menu.addItem((item: any) => item.setTitle('Extract current selection...').setIcon('scissors').onClick(() => { extractSelection(); }));
     menu.addSeparator();
     
-    // Native Obsidian submenus represented directly for now
-    menu.addItem((item: any) => item.setTitle('Format').setIcon('type').onClick(() => {}));
-    menu.addItem((item: any) => item.setTitle('Paragraph').setIcon('align-left').onClick(() => {}));
-    menu.addItem((item: any) => item.setTitle('Insert').setIcon('plus-circle').onClick(() => {}));
+    // Submenus for Format, Paragraph, Insert
+    let formatItem: any;
+    menu.addItem((item: any) => {
+      item.setTitle('Format').setIcon('type');
+      formatItem = item;
+    });
+    const formatSubmenu = formatItem.setSubmenu();
+    formatSubmenu.addItem((subItem: any) => subItem.setTitle('Bold').setIcon('bold').onClick(() => toggleInlineFormat('**')));
+    formatSubmenu.addItem((subItem: any) => subItem.setTitle('Italic').setIcon('italic').onClick(() => toggleInlineFormat('*')));
+    formatSubmenu.addItem((subItem: any) => subItem.setTitle('Strikethrough').setIcon('strikethrough').onClick(() => toggleInlineFormat('~~')));
+    formatSubmenu.addItem((subItem: any) => subItem.setTitle('Code').setIcon('code').onClick(() => toggleInlineFormat('`')));
+    formatSubmenu.addItem((subItem: any) => subItem.setTitle('Highlighter').setIcon('pen-tool').onClick(() => toggleInlineFormat('==')));
+
+    let paragraphItem: any;
+    menu.addItem((item: any) => {
+      item.setTitle('Paragraph').setIcon('align-left');
+      paragraphItem = item;
+    });
+    const paragraphSubmenu = paragraphItem.setSubmenu();
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Heading 1').setIcon('heading').onClick(() => toggleBlockFormat('# ')));
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Heading 2').setIcon('heading').onClick(() => toggleBlockFormat('## ')));
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Heading 3').setIcon('heading').onClick(() => toggleBlockFormat('### ')));
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Heading 4').setIcon('heading').onClick(() => toggleBlockFormat('#### ')));
+    paragraphSubmenu.addSeparator();
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Bullet list').setIcon('list').onClick(() => toggleBlockFormat('- ')));
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Numbered list').setIcon('list-ordered').onClick(() => toggleBlockFormat('1. ')));
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Todo list').setIcon('check-square').onClick(() => toggleBlockFormat('- [ ] ')));
+    paragraphSubmenu.addSeparator();
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Blockquote').setIcon('quote').onClick(() => toggleBlockFormat('> ')));
+
+    let insertItem: any;
+    menu.addItem((item: any) => {
+      item.setTitle('Insert').setIcon('plus-circle');
+      insertItem = item;
+    });
+    const insertSubmenu = insertItem.setSubmenu();
+    insertSubmenu.addItem((subItem: any) => subItem.setTitle('Callout').setIcon('info').onClick(() => insertContent('> [!NOTE]\n> ', 10)));
+    insertSubmenu.addItem((subItem: any) => subItem.setTitle('Code block').setIcon('terminal').onClick(() => insertContent('\n```\n\n```\n', 5)));
+    insertSubmenu.addItem((subItem: any) => subItem.setTitle('Table').setIcon('table').onClick(() => insertContent('\n| Header | Header |\n| --- | --- |\n| Cell | Cell |\n', 3)));
+    insertSubmenu.addItem((subItem: any) => subItem.setTitle('Math block').setIcon('percent').onClick(() => insertContent('\n$$\n\n$$\n', 4)));
+    insertSubmenu.addItem((subItem: any) => subItem.setTitle('Horizontal rule').setIcon('minus').onClick(() => insertContent('\n---\n', 5)));
+    insertSubmenu.addItem((subItem: any) => {
+      subItem.setTitle('Date / Time').setIcon('clock').onClick(() => {
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 16).replace('T', ' '); // YYYY-MM-DD HH:mm
+        insertContent(dateStr, dateStr.length);
+      });
+    });
+
     menu.addSeparator();
     
     menu.addItem((item: any) => item.setTitle('Cut').setIcon('scissors').onClick(() => { document.execCommand('cut'); }));
@@ -3177,61 +3442,61 @@ export function Editor({
        if (viewRef.current) {
          viewRef.current.dispatch({ selection: { anchor: 0, head: viewRef.current.state.doc.length }});
        }
-    }));
-
-    // Sync real editor state to the API mock before triggering event
-    const activeLeaf = app.workspace.activeLeaf;
-    if (activeLeaf && viewRef.current) {
-      // Ensure this leaf is considered the active one during the event trigger
-      if (activeLeaf.view) {
-        const view = activeLeaf.view;
-        const cmView = viewRef.current;
-        const state = cmView.state;
-        
-        // Sync the file info
-        const activeTab = tabs.find(t => t.id === activeTabId);
-        if (activeTab) {
-          activeLeaf.view.file = new TFile(activeTab.path);
-        }
-
-        // Initialize editor mocks if needed
-        const editor = view.editor || {};
-        view.editor = editor;
-        
-        // Update the mock methods with real data from CodeMirror 6
-        editor.getValue = () => state.doc.toString();
-        editor.getSelection = () => state.sliceDoc(state.selection.main.from, state.selection.main.to);
-        editor.somethingSelected = () => !state.selection.main.empty;
-        editor.getCursor = () => {
-          const pos = state.selection.main.head;
-          const line = state.doc.lineAt(pos);
-          return { line: line.number - 1, ch: pos - line.from };
-        };
-        editor.replaceSelection = (text: string) => {
-          const main = state.selection.main;
-          cmView.dispatch({
-            changes: { from: main.from, to: main.to, insert: text },
-            selection: { anchor: main.from + text.length }
-          });
-        };
-        
-        // Add more standard Obsidian editor methods for compatibility
-        editor.getLine = (n: number) => state.doc.line(n + 1).text;
-        editor.lineCount = () => state.doc.lines;
-        editor.getDoc = () => editor;
-        editor.cm = editor;
-        
-        // Ensure sourceMode shim is present as expected by many plugins
-        view.sourceMode = view.sourceMode || {};
-        view.sourceMode.cmEditor = editor;
-
-        console.log(`[Editor] Triggering editor-menu for ${activeTab?.path}. Selection: "${editor.getSelection()}"`);
-        app.workspace.trigger('editor-menu', menu, editor, view);
-      }
-    }
-
-    menu.showAtMouseEvent(e.nativeEvent);
-  }, [activeTabId, tabs]);
+     }));
+ 
+     // Sync real editor state to the API mock before triggering event
+     const activeLeaf = app.workspace.activeLeaf;
+     if (activeLeaf && viewRef.current) {
+       // Ensure this leaf is considered the active one during the event trigger
+       if (activeLeaf.view) {
+         const view = activeLeaf.view;
+         const cmView = viewRef.current;
+         const state = cmView.state;
+         
+         // Sync the file info
+         const activeTab = tabs.find(t => t.id === activeTabId);
+         if (activeTab) {
+           activeLeaf.view.file = new TFile(activeTab.path);
+         }
+ 
+         // Initialize editor mocks if needed
+         const editor = view.editor || {};
+         view.editor = editor;
+         
+         // Update the mock methods with real data from CodeMirror 6
+         editor.getValue = () => state.doc.toString();
+         editor.getSelection = () => state.sliceDoc(state.selection.main.from, state.selection.main.to);
+         editor.somethingSelected = () => !state.selection.main.empty;
+         editor.getCursor = () => {
+           const pos = state.selection.main.head;
+           const line = state.doc.lineAt(pos);
+           return { line: line.number - 1, ch: pos - line.from };
+         };
+         editor.replaceSelection = (text: string) => {
+           const main = state.selection.main;
+           cmView.dispatch({
+             changes: { from: main.from, to: main.to, insert: text },
+             selection: { anchor: main.from + text.length }
+           });
+         };
+         
+         // Add more standard Obsidian editor methods for compatibility
+         editor.getLine = (n: number) => state.doc.line(n + 1).text;
+         editor.lineCount = () => state.doc.lines;
+         editor.getDoc = () => editor;
+         editor.cm = editor;
+         
+         // Ensure sourceMode shim is present as expected by many plugins
+         view.sourceMode = view.sourceMode || {};
+         view.sourceMode.cmEditor = editor;
+ 
+         console.log(`[Editor] Triggering editor-menu for ${activeTab?.path}. Selection: "${editor.getSelection()}"`);
+         app.workspace.trigger('editor-menu', menu, editor, view);
+       }
+     }
+ 
+     menu.showAtMouseEvent(e.nativeEvent);
+   }, [activeTabId, tabs]);
 
   const getClampedToolbarCoords = () => {
     if (!selectionRange) return { top: 0, left: 0 };
@@ -3525,34 +3790,32 @@ export function Editor({
               <div className="resizer" onMouseDown={startDrag} />
             )}
 
-            <div
-              ref={previewRef}
-              onContextMenu={handleContextMenu}
-              style={{
-                flex:
-                  viewMode === "split"
-                    ? `0 0 calc(${100 - editorWidth}% - 4px)`
-                    : 1,
-                overflow: "auto",
-                height: "100%",
-                display:
-                  viewMode === "preview" || viewMode === "split"
-                    ? "block"
-                    : "none",
-                backgroundColor: "var(--bg-primary)",
-              }}
-            >
-              <MarkdownPreview
-                content={content}
-                onLinkClick={onLinkClick}
-                onCheckboxToggle={handleCheckboxToggle}
-                onEmbed={onGetNoteContent}
-                onGetLinkPreview={onGetNoteContent}
-                onImageClick={handleOpenImageLightbox}
-                theme={theme}
-                onContentChange={onContentChange}
-              />
-            </div>
+            {(viewMode === "preview" || viewMode === "split") && (
+              <div
+                ref={previewRef}
+                onContextMenu={handleContextMenu}
+                style={{
+                  flex:
+                    viewMode === "split"
+                      ? `0 0 calc(${100 - editorWidth}% - 4px)`
+                      : 1,
+                  overflow: "auto",
+                  height: "100%",
+                  backgroundColor: "var(--bg-primary)",
+                }}
+              >
+                <MarkdownPreview
+                  content={content}
+                  onLinkClick={onLinkClick}
+                  onCheckboxToggle={handleCheckboxToggle}
+                  onEmbed={onGetNoteContent}
+                  onGetLinkPreview={onGetNoteContent}
+                  onImageClick={handleOpenImageLightbox}
+                  theme={theme}
+                  onContentChange={onContentChange}
+                />
+              </div>
+            )}
           </>
         )}
       </div>

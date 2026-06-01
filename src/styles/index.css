@@ -2349,6 +2349,16 @@ body.is-dragging .plugin-view-panel {
   position: relative;
 }
 
+/* Smooth cursor blink keyframes */
+@keyframes smooth-cursor-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
 /* ── CodeMirror Editor Overrides ───────────────────── */
 .editor-container .cm-editor {
   height: 100%;
@@ -2357,6 +2367,9 @@ body.is-dragging .plugin-view-panel {
   color: var(--text-primary);
   cursor: default;
   caret-color: var(--editor-caret);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .editor-container .cm-editor .cm-scroller {
@@ -2378,6 +2391,8 @@ body.is-dragging .plugin-view-panel {
   margin: 0 auto;
   caret-color: var(--editor-caret) !important;
   cursor: text;
+  will-change: transform, opacity;
+  contain: content;
 }
 
 .editor-container .cm-editor .cm-line {

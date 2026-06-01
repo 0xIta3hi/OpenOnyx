@@ -249,12 +249,12 @@
 /* ── Menus ──────────────────────────────────────────── */
 
 .menu.oo-plugin-menu {
-  background: #252525;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
+  background: var(--background-secondary-alt, #252525);
+  border: 1px solid var(--background-modifier-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 6px);
   min-width: 250px;
   padding: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.6));
   z-index: 10000;
   display: flex;
   flex-direction: column;
@@ -267,20 +267,20 @@
   align-items: center;
   padding: 6px 12px;
   font-size: 13.5px;
-  color: #d3d3d3;
-  border-radius: 4px;
+  color: var(--text-normal, #d3d3d3);
+  border-radius: var(--radius-sm, 4px);
   cursor: pointer;
   gap: 12px;
   transition: background 0.05s ease;
 }
 
 .menu-item:hover {
-  background: var(--accent-primary, #6c63ff);
-  color: white;
+  background: var(--background-modifier-hover, var(--accent-primary, #6c63ff));
+  color: var(--text-on-accent, white);
 }
 
 .menu-item:hover .menu-item-icon svg {
-  color: white;
+  color: var(--text-on-accent, white);
 }
 
 .menu-item-icon {
@@ -289,7 +289,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: #a3a3a3;
+  color: var(--text-muted, #a3a3a3);
   flex-shrink: 0;
 }
 
@@ -310,9 +310,20 @@
   color: inherit;
 }
 
+.menu-item-submenu-indicator {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-muted, #a3a3a3);
+  opacity: 0.7;
+}
+
+.menu-item:hover .menu-item-submenu-indicator {
+  color: var(--text-on-accent, white);
+}
+
 .menu-separator {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--background-modifier-border, rgba(255, 255, 255, 0.08));
   margin: 4px 0;
 }
 

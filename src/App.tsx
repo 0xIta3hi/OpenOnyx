@@ -953,6 +953,8 @@ export default function App() {
   const [graphMode, setGraphMode] = useState<GraphMode>("manual");
   const [graphFullScreen, setGraphFullScreen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [searchInitialQuery, setSearchInitialQuery] = useState("");
+  const [searchInitialMode, setSearchInitialMode] = useState<"search" | "switcher">("switcher");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showBacklinks, setShowBacklinks] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
@@ -1214,6 +1216,38 @@ export default function App() {
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [currentContent, setCurrentContent] = useState<string>("");
+  const currentContentRef = useRef<string>("");
+  const pendingContentUpdateRef = useRef<{ path: string; content: string } | null>(null);
+  const contentUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const flushContentUpdate = useCallback(() => {
+    if (contentUpdateTimeoutRef.current) {
+      clearTimeout(contentUpdateTimeoutRef.current);
+      contentUpdateTimeoutRef.current = null;
+    }
+    if (pendingContentUpdateRef.current) {
+      const { path, content } = pendingContentUpdateRef.current;
+      pendingContentUpdateRef.current = null;
+      setCurrentContent(content);
+
+      if (
+        !isCanvasFile(path) &&
+        path !== GRAPH_TAB_PATH &&
+        path.toLowerCase().endsWith(".md")
+      ) {
+        window.dispatchEvent(
+          new CustomEvent("openobsidian:note-content-changed", {
+            detail: { path, content },
+          }),
+        );
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    currentContentRef.current = currentContent;
+  }, [currentContent]);
+
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [backlinks, setBacklinks] = useState<string[]>([]);
   
@@ -2329,11 +2363,20 @@ export default function App() {
   }, [vaultPath]);
 
   // ── Reset Caches and Queue on Vault Path Change ─────
+  const prevVaultPathRef = useRef<string | null>(null);
   useEffect(() => {
     if (!vaultPath) return;
 
+    // Only reset caches when switching to a genuinely different vault,
+    // not on initial mount. This preserves disk-backed embedding cache
+    // so initializeVault can skip notes that are already indexed.
+    const isVaultSwitch = prevVaultPathRef.current !== null && prevVaultPathRef.current !== vaultPath;
+    prevVaultPathRef.current = vaultPath;
+
     resetQueueState();
-    resetEmbeddingsStore();
+    if (isVaultSwitch) {
+      resetEmbeddingsStore();
+    }
     clearSpacesCache();
     resetSynthesisCache();
   }, [vaultPath]);
@@ -2514,7 +2557,7 @@ export default function App() {
         "menu:toggle-sidebar",
       ].forEach((ch) => api.removeMenuListener(ch));
     };
-  }, [tabs, activeTabId, currentContent]);
+  }, [tabs, activeTabId]);
 
   // ── Keyboard Shortcuts ──────────────────────────────
   useEffect(() => {
@@ -2613,7 +2656,7 @@ export default function App() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener('oo:open-database', handleOpenDatabase as EventListener);
     };
-  }, [activeTabId, tabs, currentContent, paneTree]);
+  }, [activeTabId, tabs, paneTree]);
 
   const loadVaultData = async (path: string) => {
     await api.setVaultPath(path);
@@ -4190,7 +4233,7 @@ export default function App() {
     try {
       let content = "";
       if (activeTabId === tabId) {
-        content = currentContent;
+        content = currentContentRef.current;
       } else {
         content = await api.readFile(path);
       }
@@ -4211,7 +4254,7 @@ export default function App() {
         return next;
       });
     }
-  }, [activeTabId, currentContent]);
+  }, [activeTabId]);
 
   const handleSave = async () => {
     if (!activeTabId) return;
@@ -4219,16 +4262,17 @@ export default function App() {
     if (!tab) return;
     if (isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH) return;
 
-    await api.writeFile(tab.path, currentContent);
+    const saveContent = currentContentRef.current;
+    await api.writeFile(tab.path, saveContent);
     if (tab.path.toLowerCase().endsWith(".md")) {
       window.dispatchEvent(
         new CustomEvent("openobsidian:note-content-changed", {
-          detail: { path: tab.path, content: currentContent },
+          detail: { path: tab.path, content: saveContent },
         }),
       );
     }
     // Auto-embed in background
-    autoEmbedNote(tab.path, currentContent);
+    autoEmbedNote(tab.path, saveContent);
 
     setTabs((prev) =>
       prev.map((t) => (t.id === activeTabId ? { ...t, isModified: false } : t)),
@@ -4238,29 +4282,39 @@ export default function App() {
 
   const handleContentChangeGlobal = useCallback(
     (path: string, content: string) => {
-      // If the edited note is the globally focused one, update the global content state
-      if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
-        setCurrentContent(content);
+      // Keep suggestion idle state updated immediately
+      setFtuxSuggestionIdle(false);
+      if (ftuxIdleTimerRef.current) {
+        clearTimeout(ftuxIdleTimerRef.current);
       }
+      ftuxIdleTimerRef.current = setTimeout(() => {
+        setFtuxSuggestionIdle(true);
+        ftuxIdleTimerRef.current = null;
+      }, 600);
 
-      if (
-        !isCanvasFile(path) &&
-        path !== GRAPH_TAB_PATH &&
-        path.toLowerCase().endsWith(".md")
-      ) {
-        window.dispatchEvent(
-          new CustomEvent("openobsidian:note-content-changed", {
-            detail: { path, content },
-          }),
-        );
+      // Keep currentContentRef updated synchronously
+      if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
+        currentContentRef.current = content;
+
+        // Debounce setCurrentContent and CustomEvent dispatch
+        pendingContentUpdateRef.current = { path, content };
+        if (contentUpdateTimeoutRef.current) {
+          clearTimeout(contentUpdateTimeoutRef.current);
+        }
+        contentUpdateTimeoutRef.current = setTimeout(() => {
+          contentUpdateTimeoutRef.current = null;
+          flushContentUpdate();
+        }, 250);
       }
 
       // Mark tab as modified
-      setTabs((prev) =>
-        prev.map((t) =>
+      setTabs((prev) => {
+        const target = prev.find((t) => t.path === path);
+        if (target && target.isModified) return prev;
+        return prev.map((t) =>
           t.path === path ? { ...t, isModified: true } : t,
-        ),
-      );
+        );
+      });
 
       // Auto-embed in background when typing stops
       clearAutoSaveTimer();
@@ -4269,12 +4323,13 @@ export default function App() {
         autoEmbedNote(path, content);
       }, 2000);
     },
-    [activeTabId, tabs],
+    [activeTabId, tabs, flushContentUpdate],
   );
 
   // Auto-save with debounce
   const handleContentChange = useCallback(
     (content: string) => {
+      currentContentRef.current = content;
       setCurrentContent(content);
 
       const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -4292,11 +4347,13 @@ export default function App() {
       }
 
       // Mark tab as modified
-      setTabs((prev) =>
-        prev.map((t) =>
+      setTabs((prev) => {
+        const target = prev.find((t) => t.id === activeTabId);
+        if (target && target.isModified) return prev;
+        return prev.map((t) =>
           t.id === activeTabId ? { ...t, isModified: true } : t,
-        ),
-      );
+        );
+      });
 
       // Auto-save after 2 seconds of no typing
       clearAutoSaveTimer();
@@ -4327,25 +4384,17 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (ftuxIdleTimerRef.current) {
+      clearTimeout(ftuxIdleTimerRef.current);
+      ftuxIdleTimerRef.current = null;
+    }
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab || isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH) {
       setFtuxSuggestionIdle(false);
-      if (ftuxIdleTimerRef.current) {
-        clearTimeout(ftuxIdleTimerRef.current);
-        ftuxIdleTimerRef.current = null;
-      }
-      return;
-    }
-
-    setFtuxSuggestionIdle(false);
-    if (ftuxIdleTimerRef.current) {
-      clearTimeout(ftuxIdleTimerRef.current);
-    }
-    ftuxIdleTimerRef.current = setTimeout(() => {
+    } else {
       setFtuxSuggestionIdle(true);
-      ftuxIdleTimerRef.current = null;
-    }, 600);
-  }, [activeTabId, currentContent, tabs]);
+    }
+  }, [activeTabId]);
 
   useEffect(() => {
     return () => {
@@ -4629,8 +4678,36 @@ export default function App() {
       setShowBacklinks((prev) => !prev);
     };
 
-    const onGlobalSearch = () => {
+    const onGlobalSearch = (event?: Event) => {
+      const customEvent = event as CustomEvent<{ query?: string; mode?: "search" | "switcher" }>;
+      setSearchInitialQuery(customEvent?.detail?.query || "");
+      setSearchInitialMode(customEvent?.detail?.mode || "switcher");
       setShowSearch(true);
+    };
+
+    const onShowPrompt = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        title: string;
+        message: string;
+        defaultValue?: string;
+        onConfirm: (result: string) => void;
+      }>;
+      const { title, message, defaultValue, onConfirm } = customEvent.detail || {};
+      setModal({
+        type: "prompt",
+        title: title || "Prompt",
+        message: message || "",
+        defaultValue: defaultValue || "",
+        onConfirm: (result) => {
+          if (typeof result === "string") {
+            onConfirm?.(result);
+          }
+        },
+      });
+    };
+
+    const onRefreshFileTreeEvent = () => {
+      void refreshFileTree();
     };
 
     const onCommandPalette = () => {
@@ -4665,6 +4742,8 @@ export default function App() {
     window.addEventListener("oo:fuzzy-search", onFuzzySearch as EventListener);
     window.addEventListener("oo:toggle-backlinks", onToggleBacklinks as EventListener);
     window.addEventListener("oo:global-search", onGlobalSearch as EventListener);
+    window.addEventListener("oo:show-prompt", onShowPrompt as EventListener);
+    window.addEventListener("oo:refresh-file-tree", onRefreshFileTreeEvent as EventListener);
     window.addEventListener("oo:command-palette", onCommandPalette as EventListener);
     window.addEventListener("oo:next-tab", onNextTab as EventListener);
     window.addEventListener("oo:prev-tab", onPrevTab as EventListener);
@@ -4681,6 +4760,8 @@ export default function App() {
       window.removeEventListener("oo:fuzzy-search", onFuzzySearch as EventListener);
       window.removeEventListener("oo:toggle-backlinks", onToggleBacklinks as EventListener);
       window.removeEventListener("oo:global-search", onGlobalSearch as EventListener);
+      window.removeEventListener("oo:show-prompt", onShowPrompt as EventListener);
+      window.removeEventListener("oo:refresh-file-tree", onRefreshFileTreeEvent as EventListener);
       window.removeEventListener("oo:command-palette", onCommandPalette as EventListener);
       window.removeEventListener("oo:next-tab", onNextTab as EventListener);
       window.removeEventListener("oo:prev-tab", onPrevTab as EventListener);
@@ -4693,6 +4774,7 @@ export default function App() {
     handleSave,
     openGraphAsTab,
     selectRelativeTab,
+    refreshFileTree,
   ]);
 
   // ── Link Navigation ─────────────────────────────────
@@ -6025,7 +6107,7 @@ export default function App() {
       />
     );
   }, [
-    focusedLeafId, theme, vaultPath, fileTree, viewMode, currentContent,
+    focusedLeafId, theme, vaultPath, fileTree, viewMode,
     inlineSuggestions, nextStepSuggestions, inlineSuggestionsByPath, nextStepSuggestionsByPath,
     activeTabId, tabs, inlineAnnotationByPath, showInlineInsightByTab, ftuxConnectionPulse,
     mainPluginViews, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
@@ -6523,7 +6605,11 @@ export default function App() {
 
       {showSearch && (
         <SearchModal
-          onClose={() => setShowSearch(false)}
+          onClose={() => {
+            setShowSearch(false);
+            setSearchInitialQuery("");
+            setSearchInitialMode("switcher");
+          }}
           onSelect={(path) => {
             setShowSearch(false);
             openFile(path);
@@ -6531,6 +6617,8 @@ export default function App() {
           recentFiles={recentFiles}
           starredNotes={starredNotes}
           fileTree={fileTree}
+          initialQuery={searchInitialQuery}
+          initialMode={searchInitialMode}
         />
       )}
 
