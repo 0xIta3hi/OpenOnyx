@@ -2,6 +2,12 @@
 -- OpenObsidian Schema v2
 -- Self-contained migration for user-owned Supabase databases
 --
+-- PREREQUISITES:
+-- 1. Create a new Supabase project at https://supabase.com
+-- 2. In Dashboard > Database > Extensions, enable "vector" (pgvector)
+-- 3. In Dashboard > Database > Replication, ensure the supabase_realtime
+--    publication exists (it does by default on new projects)
+--
 -- HOW TO USE:
 -- 1. Open your Supabase project dashboard
 -- 2. Go to SQL Editor
@@ -930,12 +936,26 @@ $$;
 -- REALTIME PUBLICATION
 -- ════════════════════════════════════════════════════════════════════════════
 -- Enable realtime for collaboration-critical tables.
--- Run this AFTER tables exist. Safe to re-run.
+-- NOTE: If you see errors here, your Supabase plan may not support
+-- modifying the realtime publication. You can skip these and enable
+-- Realtime manually via the Supabase Dashboard (Database > Replication).
 
--- ALTER PUBLICATION supabase_realtime ADD TABLE public.notes;
--- ALTER PUBLICATION supabase_realtime ADD TABLE public.space_invites;
--- ALTER PUBLICATION supabase_realtime ADD TABLE public.vault_presence;
--- ALTER PUBLICATION supabase_realtime ADD TABLE public.space_collaborators;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.notes;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.space_invites;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.vault_presence;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.space_collaborators;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 
 -- ════════════════════════════════════════════════════════════════════════════

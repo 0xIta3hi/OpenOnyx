@@ -14,7 +14,8 @@ A local-first knowledge management tool for creating, editing, and linking Markd
 8. [Extending OpenObsidian](#extending-openobsidian)
 9. [Privacy and Security](#privacy-and-security)
 10. [Technology Stack](#technology-stack)
-11. [License](#license)
+11. [Contributing](#contributing)
+12. [License](#license)
 
 ## Overview
 
@@ -31,16 +32,18 @@ OpenObsidian implements a secure, offline-first multi-process architecture combi
 - **Tags & Daily Notes**: Organize using `#tag` syntax and create daily note entries
 - **Command Palette**: VS Code-style command launcher (Ctrl+P)
 - **Backlinks Panel**: View all notes that link to the current note
-- **Theme Toggle**: Switch between dark and light modes
+- **Theme Toggle**: Multiple themes including dark, light, oceanic, and more
 - **Tabs & Split View**: Work with multiple notes simultaneously and preview markdown side-by-side
+- **Canvas**: Visual canvas for spatial note arrangement and freeform drawing
+- **Plugin System**: Obsidian-compatible plugin API for extensibility
 
 ## AI & Intelligence Features
 
-### 🌌 Knowledge Spaces & RAG Engine
+### Knowledge Spaces & RAG Engine
 - **Automated Vault Indexing**: A background pipeline automatically scans your entire vault, chunks markdown files, and builds a semantic vector index directly on your machine.
 - **"Thinking Layer" RAG Engine**: A custom Retrieval-Augmented Generation pipeline. The AI acts as a distilled version of your vault's thinking, prioritizing context from your notes and citing sources.
-- **Spaces Marketplace**: Manage your knowledge systems—create, delete, or remix spaces to explore different thematic views of your vault.
-- **Streaming Chat Interface**: High-fidelity chat experience with real-time response streaming, markdown rendering, and intelligent source citation. You can jump directly from chat references to the actual markdown files.
+- **Spaces Marketplace**: Manage your knowledge systems -- create, delete, or remix spaces to explore different thematic views of your vault.
+- **Streaming Chat Interface**: High-fidelity chat experience with real-time response streaming, markdown rendering, and intelligent source citation.
 
 ### Local Semantic Embeddings
 - **Model**: `Xenova/all-MiniLM-L6-v2` running locally in the browser via Transformers.js
@@ -59,7 +62,7 @@ OpenObsidian implements a secure, offline-first multi-process architecture combi
 
 ### AI Settings & Configuration
 - Supports **OpenRouter** and **OpenAI**.
-- Select from various models including Claude 3.5 Sonnet, GPT-4o, Gemini 1.5 Pro, etc.
+- Select from various models including Claude Sonnet 4.5, GPT-4o, Gemini 2.5 Pro, etc.
 - Works offline-first; core AI features like embeddings operate without any API keys.
 
 ## Getting Started
@@ -68,14 +71,43 @@ OpenObsidian implements a secure, offline-first multi-process architecture combi
 - Node.js >= 24.x
 - npm >= 9.x
 
-### Installation
+### Setup
 
-```bash
-git clone <repository-url>
-cd openobsidian
-npm install
-npm run dev
-```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/OpenObsidian/OpenObsidian.git
+   cd OpenObsidian
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment variables:**
+   ```bash
+   cp .env.example .env.local
+   ```
+   Edit `.env.local` with your Supabase credentials (see [Supabase Setup](#supabase-setup) below).
+
+4. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+
+### Supabase Setup
+
+OpenObsidian uses [Supabase](https://supabase.com) for cloud sync, collaboration, and the public Spaces marketplace. The app works fully offline without Supabase, but cloud features require it.
+
+1. Create a free project at [supabase.com](https://supabase.com)
+2. In your project dashboard, go to **Database > Extensions** and enable `vector` (pgvector)
+3. Go to **SQL Editor**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**
+4. Go to **Project Settings > API** and copy your **Project URL** and **anon (public) key**
+5. Paste them into your `.env.local`:
+   ```env
+   VITE_SUPABASE_URL=https://your-project-id.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key-here
+   ```
 
 ### Production Build
 
@@ -98,35 +130,63 @@ openobsidian/
 ├── src/                        # React renderer process
 │   ├── main.tsx                # React entry point
 │   ├── App.tsx                 # Root component and state management
-│   ├── types/index.ts          # TypeScript type definitions
+│   ├── types/                  # TypeScript type definitions
+│   ├── context/                # React context providers
+│   ├── keybindings/            # Keyboard shortcut handlers
+│   ├── editor/                 # CodeMirror editor extensions
 │   ├── utils/
-│   │   ├── helpers.ts          # Utility functions
+│   │   ├── ai-core.ts          # AI annotation & synthesis engine
+│   │   ├── ai-settings.ts      # AI provider configuration
+│   │   ├── ai-enrichment.ts    # Suggestion & enrichment pipeline
 │   │   ├── spaces-store.ts     # CRUD for knowledge spaces
 │   │   ├── spaces-processing.ts # Vault indexing pipeline
-│   │   ├── spaces-rag.ts        # Retrieval-Augmented Generation
-│   │   └── ai-core.ts          # AI provider configuration
+│   │   ├── spaces-rag.ts       # Retrieval-Augmented Generation
+│   │   ├── collabOperations.ts # Real-time collaboration ops
+│   │   └── embeddings.ts       # Local vector embeddings
+│   │
+│   ├── lib/
+│   │   ├── supabase.ts         # Supabase client initialization
+│   │   ├── auth.ts             # Authentication manager
+│   │   ├── syncEngine.ts       # Offline-first sync engine
+│   │   ├── collaborationEngine.ts # Real-time collaboration
+│   │   ├── pluginManager.ts    # Plugin system
+│   │   ├── localdb.ts          # IndexedDB local database
+│   │   ├── obsidian-api/       # Obsidian API compatibility layer
+│   │   └── database.types.ts   # Supabase generated types
 │   │
 │   ├── styles/
-│   │   ├── index.css           # Global application styles
-│   │   └── spaces.css          # Spaces-specific aesthetics
+│   │   ├── index.css           # Global design system (with Tailwind)
+│   │   ├── spaces.css          # Spaces-specific styles
+│   │   ├── plugins.css         # Plugin system styles
+│   │   ├── collaboration.css   # Collaboration UI styles
+│   │   └── database.css        # Database view styles
 │   │
 │   └── components/
 │       ├── SpacesPage.tsx      # Knowledge Spaces entry point
-│       ├── TitleBar.tsx
-│       ├── Sidebar.tsx
-│       ├── SearchModal.tsx
-│       ├── CommandPalette.tsx
-│       ├── BacklinksPanel.tsx
+│       ├── SettingsPage.tsx    # Application settings
+│       ├── TitleBar.tsx        # Window title bar & tabs
+│       ├── Sidebar.tsx         # File explorer sidebar
+│       ├── CollaborationPanel.tsx # Real-time collaboration
+│       ├── PluginMarketplace.tsx  # Plugin browser
 │       ├── editor/
-│       │   ├── Editor.tsx
+│       │   ├── Editor.tsx      # CodeMirror editor wrapper
 │       │   └── MarkdownPreview.tsx
-│       └── graph/
-│           └── GraphView.tsx
+│       ├── graph/
+│       │   ├── GraphView.tsx   # Graph visualization
+│       │   └── GraphRenderer.ts # Canvas2D renderer
+│       └── canvas/             # Visual canvas components
 │
-├── sample-vault/               # Demo notes
-├── dist-electron/              # Compiled Electron code
-├── dist/                       # Built frontend
-└── release/                    # Packaged applications
+├── supabase/
+│   ├── schema.sql              # Database schema (run in SQL Editor)
+│   └── functions/              # Edge functions
+│
+├── docs/                       # Documentation
+├── scripts/                    # Build & dev scripts
+├── public/                     # Static assets
+├── .env.example                # Environment variable template
+├── vite.config.ts              # Vite + Tailwind configuration
+├── tsconfig.json               # TypeScript configuration
+└── package.json
 ```
 
 ## Architecture
@@ -141,7 +201,7 @@ The application follows a secure multi-process architecture:
 │  ┌──────────────────────────────────┐   │
 │  │  UI Components                   │   │
 │  │   - Editor (CodeMirror)          │   │
-│  │   - GraphView (D3.js)            │   │
+│  │   - GraphView (D3.js)           │   │
 │  │   - Sidebar (File Explorer)      │   │
 │  │   - Search / CommandPalette      │   │
 │  │   - AI Chat & Suggestions        │   │
@@ -173,6 +233,7 @@ The application follows a secure multi-process architecture:
 - **In-Memory Search Index**: Fuse.js maintains an in-memory search index that is rebuilt when files change, providing fast search results.
 - **File-Based Storage**: All notes are stored as plain Markdown (.md) files. AI embeddings, syntheses, and caches are persisted to disk in the `.openobsidian/` folder.
 - **Local AI Processing**: Transformer models run in-browser through Web Workers to maintain responsiveness and ensure privacy.
+- **Offline-First Sync**: The sync engine uses a queue-based approach with deduplication, retry mechanics, and last-write-wins conflict resolution.
 
 ## Keyboard Shortcuts
 
@@ -223,6 +284,10 @@ customAction: (arg: string) => ipcRenderer.invoke('custom:action', arg)
 await window.electronAPI.customAction(arg);
 ```
 
+### Styling
+
+The project uses **Tailwind CSS v4** alongside an existing custom design system. For new components, you can use Tailwind utility classes directly. The existing CSS custom properties (design tokens) are defined in `src/styles/index.css` and are available globally.
+
 ## Privacy and Security
 
 - **Fully Offline Core**: Core application functionality and local semantic embeddings require no internet connection.
@@ -230,17 +295,33 @@ await window.electronAPI.customAction(arg);
 - **No Telemetry**: Zero data collection or analytics.
 - **Context Isolation**: Renderer process runs in a sandboxed environment.
 - **API Keys**: Stored locally in localStorage and sent securely only to configured providers.
+- **Zero-Knowledge Encryption**: Private spaces use client-side encryption with key wrapping.
 
 ## Technology Stack
 
 - **Electron**: Cross-platform desktop framework
-- **React**: UI framework
+- **React 19**: UI framework
 - **TypeScript**: Type-safe development
 - **CodeMirror 6**: Advanced text editor
 - **D3.js**: Graph visualization
 - **Fuse.js**: Fuzzy search engine
 - **Transformers.js**: Local machine learning models
 - **Vite**: Build tool and development server
+- **Tailwind CSS v4**: Utility-first CSS framework
+- **Supabase**: Backend (auth, database, realtime, vector search)
+
+## Contributing
+
+Contributions are welcome. Here is how to get started:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Follow the [Getting Started](#getting-started) guide to set up your development environment
+4. Make your changes
+5. Run `npm run lint` to verify TypeScript compilation
+6. Commit your changes (`git commit -m 'Add my feature'`)
+7. Push to the branch (`git push origin feature/my-feature`)
+8. Open a Pull Request
 
 ## License
 

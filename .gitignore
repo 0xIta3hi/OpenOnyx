@@ -1,15 +1,42 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
 dist-electron/
 release/
-*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Project-specific
 thought_model/
 PROMPT.md
-.env.local
-.env
-.gemini
-.vscode
-.agents
-.openobsidian
+.gemini/
+.agents/
+.openobsidian/
+
+# Test & scratch files
+OO-Test-Vault/
+scratch/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Mobile (separate project)
 OOMobile/

@@ -103,58 +103,70 @@ export type Database = {
       }
       notes: {
         Row: {
+          auth_tag: string | null
+          client_id: string | null
           content: string
+          content_encrypted: string | null
+          content_hash: string
           created_at: string
           deleted: boolean
+          encryption_version: number | null
           id: string
           is_canvas: boolean
+          iv: string | null
           last_client_id: string | null
-          version: number
           last_modified: string
-          client_id: string | null
-          content_hash: string
           path: string
           pinned: boolean
           space_id: string | null
           title: string
           updated_at: string
           vault_id: string | null
+          version: number
         }
         Insert: {
+          auth_tag?: string | null
+          client_id?: string | null
           content: string
+          content_encrypted?: string | null
+          content_hash?: string
           created_at?: string
           deleted?: boolean
+          encryption_version?: number | null
           id?: string
           is_canvas?: boolean
+          iv?: string | null
           last_client_id?: string | null
-          version?: number
           last_modified?: string
-          client_id?: string | null
-          content_hash?: string
           path?: string
           pinned?: boolean
           space_id?: string | null
           title: string
           updated_at?: string
           vault_id?: string | null
+          version?: number
         }
         Update: {
+          auth_tag?: string | null
+          client_id?: string | null
           content?: string
+          content_encrypted?: string | null
+          content_hash?: string
           created_at?: string
           deleted?: boolean
+          encryption_version?: number | null
           id?: string
           is_canvas?: boolean
+          iv?: string | null
           last_client_id?: string | null
-          version?: number
           last_modified?: string
-          client_id?: string | null
-          content_hash?: string
           path?: string
           pinned?: boolean
           space_id?: string | null
           title?: string
           updated_at?: string
           vault_id?: string | null
+          version?: number
         }
         Relationships: [
           {
@@ -175,22 +187,49 @@ export type Database = {
       }
       space_collaborators: {
         Row: {
+          accepted_at: string | null
           created_at: string
+          email: string | null
+          encrypted_space_key: string | null
+          encryption_version: number | null
           id: string
+          invited_at: string | null
+          key_auth_tag: string | null
+          key_iv: string | null
+          key_version: number | null
+          key_wrapping: string | null
           role: string
           space_id: string
           user_id: string
         }
         Insert: {
+          accepted_at?: string | null
           created_at?: string
+          email?: string | null
+          encrypted_space_key?: string | null
+          encryption_version?: number | null
           id?: string
+          invited_at?: string | null
+          key_auth_tag?: string | null
+          key_iv?: string | null
+          key_version?: number | null
+          key_wrapping?: string | null
           role?: string
           space_id: string
           user_id: string
         }
         Update: {
+          accepted_at?: string | null
           created_at?: string
+          email?: string | null
+          encrypted_space_key?: string | null
+          encryption_version?: number | null
           id?: string
+          invited_at?: string | null
+          key_auth_tag?: string | null
+          key_iv?: string | null
+          key_version?: number | null
+          key_wrapping?: string | null
           role?: string
           space_id?: string
           user_id?: string
@@ -374,10 +413,19 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          encrypted_space_key: string | null
+          encryption_version: number | null
           forked_from: string | null
           helps_with: string[] | null
           id: string
           is_public: boolean
+          kdf: string | null
+          kdf_params: Json | null
+          key_auth_tag: string | null
+          key_iv: string | null
+          key_salt: string | null
+          key_version: number
+          key_wrapping: string | null
           owner_id: string
           status: string
           title: string
@@ -387,10 +435,19 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          encrypted_space_key?: string | null
+          encryption_version?: number | null
           forked_from?: string | null
           helps_with?: string[] | null
           id?: string
           is_public?: boolean
+          kdf?: string | null
+          kdf_params?: Json | null
+          key_auth_tag?: string | null
+          key_iv?: string | null
+          key_salt?: string | null
+          key_version?: number
+          key_wrapping?: string | null
           owner_id: string
           status?: string
           title: string
@@ -400,10 +457,19 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          encrypted_space_key?: string | null
+          encryption_version?: number | null
           forked_from?: string | null
           helps_with?: string[] | null
           id?: string
           is_public?: boolean
+          kdf?: string | null
+          kdf_params?: Json | null
+          key_auth_tag?: string | null
+          key_iv?: string | null
+          key_salt?: string | null
+          key_version?: number
+          key_wrapping?: string | null
           owner_id?: string
           status?: string
           title?: string
