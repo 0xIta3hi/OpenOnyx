@@ -8,9 +8,14 @@ import DOMPurify from 'dompurify';
 
 interface PluginMarketplaceProps {
   onClose: () => void;
-  onInstall: (repo: string, pluginId: string) => Promise<boolean>;
+  onInstall: (repo: string, pluginId: string, version?: string) => Promise<boolean>;
   installedPluginIds: string[];
 }
+
+const compactToggleClass = "relative inline-block h-[18px] w-[34px] shrink-0 cursor-pointer";
+const compactToggleInputClass = "peer absolute h-0 w-0 opacity-0";
+const compactToggleSliderClass =
+  "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:bottom-0.5 before:left-0.5 before:h-3.5 before:w-3.5 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
 
 export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: PluginMarketplaceProps) {
   const [plugins, setPlugins] = useState<PluginRegistryEntry[]>([]);
@@ -118,12 +123,12 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
     };
   }, [selectedPlugin]);
 
-  const handleInstall = async (repo: string, pluginId: string) => {
+  const handleInstall = async (repo: string, pluginId: string, version?: string) => {
     if (!repo) return;
     setInstalling(pluginId);
     setInstallError(null);
     try {
-      const success = await onInstall(repo, pluginId);
+      const success = await onInstall(repo, pluginId, version);
       if (success) {
         setJustInstalled(prev => new Set(prev).add(pluginId));
       } else {
@@ -256,13 +261,14 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <label className="setting-toggle" style={{ transform: 'scale(0.8)', margin: 0, width: '34px', height: '18px', cursor: 'pointer' }}>
+                <label className={compactToggleClass}>
                   <input
+                    className={compactToggleInputClass}
                     type="checkbox"
                     checked={showInstalledOnly}
                     onChange={e => setShowInstalledOnly(e.target.checked)}
                   />
-                  <span className="toggle-slider"></span>
+                  <span className={compactToggleSliderClass} />
                 </label>
                 <span style={{ color: 'var(--text-secondary)' }}>Show installed only</span>
               </div>
@@ -557,7 +563,11 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
               </button>
               <button
                 onClick={() => {
-                  handleInstall(confirmInstall.repo, confirmInstall.id);
+                  handleInstall(
+                    confirmInstall.repo,
+                    confirmInstall.id,
+                    plugins.find((plugin) => plugin.id === confirmInstall.id)?.version,
+                  );
                   setConfirmInstall(null);
                 }}
                 style={{

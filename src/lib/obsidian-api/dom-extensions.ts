@@ -8,9 +8,14 @@
  * This file must be imported early (before any plugins load)
  * to ensure the prototypes are patched.
  */
+import CodeMirror from 'codemirror';
+
+(window as any).CodeMirror = (window as any).CodeMirror || CodeMirror;
 
 // Avoid double-patching
 if (!(HTMLElement.prototype as any).__oo_dom_patched) {
+  (window as any).activeDocument = document;
+  (window as any).activeWindow = window;
 
   // ── empty() — Remove all children ───────────────────
   (HTMLElement.prototype as any).empty = function () {

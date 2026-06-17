@@ -22,15 +22,36 @@ const electronAPI = {
   getPreviouslyOpenedVaults: (): Promise<string[]> =>
     ipcRenderer.invoke('vault:getPreviousPaths'),
 
+  showOpenDialog: (options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue> =>
+    ipcRenderer.invoke('desktop:showOpenDialog', options),
+
+  showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> =>
+    ipcRenderer.invoke('desktop:showSaveDialog', options),
+
+  openPath: (targetPath: string): Promise<string> =>
+    ipcRenderer.invoke('desktop:openPath', targetPath),
+
+  showItemInFolder: (targetPath: string): Promise<void> =>
+    ipcRenderer.invoke('desktop:showItemInFolder', targetPath),
+
+  getSystemPath: (name: string): Promise<string> =>
+    ipcRenderer.invoke('desktop:getPath', name),
+
   // ── File Operations ───────────────────────────────
   listFiles: (dirPath?: string): Promise<any[]> =>
     ipcRenderer.invoke('fs:listFiles', dirPath),
   
   readFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('fs:readFile', filePath),
+
+  readBinary: (filePath: string): Promise<Uint8Array> =>
+    ipcRenderer.invoke('fs:readBinary', filePath),
   
   writeFile: (filePath: string, content: string): Promise<void> =>
     ipcRenderer.invoke('fs:writeFile', filePath, content),
+
+  writeBinary: (filePath: string, content: Uint8Array): Promise<void> =>
+    ipcRenderer.invoke('fs:writeBinary', filePath, content),
   
   createFile: (filePath: string, content?: string): Promise<void> =>
     ipcRenderer.invoke('fs:createFile', filePath, content),

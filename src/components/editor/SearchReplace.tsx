@@ -27,6 +27,32 @@ interface MatchInfo {
   total: number;
 }
 
+const panelClass =
+  "absolute right-6 top-3 z-[1000] flex items-start gap-0 rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] p-1.5 font-[var(--font-sans)] text-[13px] text-[var(--text-secondary)] shadow-[var(--shadow-lg)]";
+const toggleClass =
+  "mt-0.5 flex h-[26px] w-5 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[var(--text-tertiary)] transition-[transform,color] duration-150 hover:text-[var(--text-primary)] [&_svg]:transition-transform [&_svg]:duration-150";
+const toggleExpandedClass = "[&_svg]:rotate-90";
+const contentClass = "flex flex-col gap-1";
+const rowClass = "flex h-[26px] items-center gap-1";
+const inputContainerClass = "relative flex items-center";
+const inputClass =
+  "h-6 w-[180px] rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] py-0.5 pl-2 pr-[70px] font-[inherit] text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--editor-caret)] focus:shadow-[0_0_0_2px_var(--editor-selection)]";
+const replaceInputClass = "pr-8";
+const optionsClass =
+  "absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5";
+const optionButtonClass =
+  "flex h-[18px] w-5 cursor-pointer items-center justify-center rounded-[3px] border border-transparent bg-transparent p-0 text-xs font-medium text-[var(--text-tertiary)] transition-colors duration-100 hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const optionButtonActiveClass =
+  "border-[var(--editor-caret)] bg-[var(--editor-caret)] text-white";
+const matchCountClass =
+  "min-w-[70px] whitespace-nowrap pl-1.5 text-left text-xs text-[var(--text-tertiary)]";
+const actionsClass = "flex items-center gap-0";
+const actionButtonClass =
+  "flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[var(--text-tertiary)] transition-colors duration-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:h-4 [&_svg]:w-4";
+const replaceOptionsClass = "pointer-events-none";
+const replaceLabelClass =
+  "px-1 text-xs font-medium text-[var(--text-tertiary)]";
+
 export function SearchReplace({
   getView,
   isOpen,
@@ -192,10 +218,10 @@ export function SearchReplace({
   if (!isOpen) return null;
 
   return (
-    <div className="search-replace-panel" ref={panelRef}>
+    <div className={panelClass} ref={panelRef}>
       {/* Chevron toggle for replace section */}
       <button
-        className={`search-toggle-btn ${showReplace ? "expanded" : ""}`}
+        className={`${toggleClass}${showReplace ? ` ${toggleExpandedClass}` : ""}`}
         onClick={() => setShowReplace(!showReplace)}
         title={showReplace ? "Hide Replace" : "Show Replace"}
       >
@@ -204,14 +230,14 @@ export function SearchReplace({
         </svg>
       </button>
 
-      <div className="search-replace-content">
+      <div className={contentClass}>
         {/* Find Row */}
-        <div className="search-row">
-          <div className="search-input-container">
+        <div className={rowClass}>
+          <div className={inputContainerClass}>
             <input
               ref={searchInputRef}
               type="text"
-              className="search-input"
+              className={inputClass}
               placeholder="Find"
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
@@ -225,23 +251,23 @@ export function SearchReplace({
                 }
               }}
             />
-            <div className="search-options">
+            <div className={optionsClass}>
               <button
-                className={`search-option-btn ${caseSensitive ? "active" : ""}`}
+                className={`${optionButtonClass}${caseSensitive ? ` ${optionButtonActiveClass}` : ""}`}
                 onClick={() => setCaseSensitive(!caseSensitive)}
                 title="Match Case (Alt+C)"
               >
                 Aa
               </button>
               <button
-                className={`search-option-btn ${wholeWord ? "active" : ""}`}
+                className={`${optionButtonClass}${wholeWord ? ` ${optionButtonActiveClass}` : ""}`}
                 onClick={() => setWholeWord(!wholeWord)}
                 title="Match Whole Word (Alt+W)"
               >
-                <span className="underline-text">ab</span>
+                <span className="underline underline-offset-2">ab</span>
               </button>
               <button
-                className={`search-option-btn ${useRegex ? "active" : ""}`}
+                className={`${optionButtonClass}${useRegex ? ` ${optionButtonActiveClass}` : ""}`}
                 onClick={() => setUseRegex(!useRegex)}
                 title="Use Regular Expression (Alt+R)"
               >
@@ -250,7 +276,7 @@ export function SearchReplace({
             </div>
           </div>
 
-          <span className="search-match-count">
+          <span className={matchCountClass}>
             {searchValue
               ? matchInfo.total === 0
                 ? "No results"
@@ -258,9 +284,9 @@ export function SearchReplace({
               : "No results"}
           </span>
 
-          <div className="search-actions">
+          <div className={actionsClass}>
             <button
-              className="search-action-btn"
+              className={actionButtonClass}
               onClick={handleFindPrev}
               title="Previous Match (Shift+Enter)"
               disabled={!searchValue || matchInfo.total === 0}
@@ -280,7 +306,7 @@ export function SearchReplace({
               </svg>
             </button>
             <button
-              className="search-action-btn"
+              className={actionButtonClass}
               onClick={handleFindNext}
               title="Next Match (Enter)"
               disabled={!searchValue || matchInfo.total === 0}
@@ -300,7 +326,7 @@ export function SearchReplace({
               </svg>
             </button>
             <button
-              className="search-action-btn"
+              className={actionButtonClass}
               onClick={handleSelectAll}
               title="Select All Matches"
               disabled={!searchValue || matchInfo.total === 0}
@@ -315,7 +341,7 @@ export function SearchReplace({
               </svg>
             </button>
             <button
-              className="search-action-btn close-btn"
+              className={actionButtonClass}
               onClick={onClose}
               title="Close (Escape)"
             >
@@ -337,11 +363,11 @@ export function SearchReplace({
 
         {/* Replace Row */}
         {showReplace && (
-          <div className="replace-row">
-            <div className="search-input-container">
+          <div className={rowClass}>
+            <div className={inputContainerClass}>
               <input
                 type="text"
-                className="search-input"
+                className={`${inputClass} ${replaceInputClass}`}
                 placeholder="Replace"
                 value={replaceValue}
                 onChange={(e) => setReplaceValue(e.target.value)}
@@ -355,14 +381,14 @@ export function SearchReplace({
                   }
                 }}
               />
-              <div className="search-options replace-options">
-                <span className="replace-label">AB</span>
+              <div className={`${optionsClass} ${replaceOptionsClass}`}>
+                <span className={replaceLabelClass}>AB</span>
               </div>
             </div>
 
-            <div className="replace-actions">
+            <div className={actionsClass}>
               <button
-                className="search-action-btn"
+                className={actionButtonClass}
                 onClick={handleReplace}
                 title="Replace (Enter)"
                 disabled={!searchValue || matchInfo.total === 0}
@@ -377,7 +403,7 @@ export function SearchReplace({
                 </svg>
               </button>
               <button
-                className="search-action-btn"
+                className={actionButtonClass}
                 onClick={handleReplaceAll}
                 title="Replace All (Shift+Enter)"
                 disabled={!searchValue || matchInfo.total === 0}

@@ -203,12 +203,12 @@ export function PropertiesPanel({
   if (!visible) return null;
 
   return (
-    <div className="properties-panel">
-      <div className="properties-header">
-        <Settings size={14} strokeWidth={2} />
-        <span>Properties</span>
+    <div className="border-b border-(--border-subtle) bg-(--bg-secondary)">
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        <Settings size={14} strokeWidth={2} className="text-(--text-muted)" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-muted) flex-1">Properties</span>
         <button
-          className="properties-add-btn"
+          className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-150"
           onClick={() => setShowAddProperty(!showAddProperty)}
           title="Add property"
         >
@@ -217,64 +217,64 @@ export function PropertiesPanel({
       </div>
 
       {showAddProperty && (
-        <div className="property-add-form">
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-(--border-subtle)">
           <input
             type="text"
             placeholder="Property name"
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
-            className="property-add-input"
+            className="flex-1 bg-(--bg-primary) border border-(--border-subtle) rounded px-2 py-1 text-xs text-(--text-primary) outline-none focus:border-(--border-strong)"
           />
-          <div className="property-type-buttons">
-            <button onClick={() => addProperty(newKey, "text")} title="Text">
+          <div className="flex gap-1">
+            <button className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary)" onClick={() => addProperty(newKey, "text")} title="Text">
               <FileText size={12} />
             </button>
-            <button onClick={() => addProperty(newKey, "date")} title="Date">
+            <button className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary)" onClick={() => addProperty(newKey, "date")} title="Date">
               <Calendar size={12} />
             </button>
-            <button onClick={() => addProperty(newKey, "list")} title="List">
+            <button className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary)" onClick={() => addProperty(newKey, "list")} title="List">
               <List size={12} />
             </button>
-            <button onClick={() => addProperty(newKey, "tags")} title="Tags">
+            <button className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary)" onClick={() => addProperty(newKey, "tags")} title="Tags">
               <Tag size={12} />
             </button>
           </div>
         </div>
       )}
 
-      <div className="properties-list">
+      <div className="px-4 pb-2">
         {properties.length === 0 ? (
-          <div className="properties-empty">
+          <div className="py-4 text-center text-xs text-(--text-muted) leading-relaxed">
             No properties defined.
             <br />
             <small>Add YAML frontmatter to define properties.</small>
           </div>
         ) : (
           properties.map((prop) => (
-            <div key={prop.key} className="property-item">
-              <div className="property-key">
+            <div key={prop.key} className="flex items-start gap-2 py-1.5 border-b border-(--border-subtle) last:border-b-0">
+              <div className="flex items-center gap-1.5 min-w-[80px] shrink-0 pt-1">
                 {prop.type === "date" && (
-                  <Calendar size={12} className="property-type-icon" />
+                  <Calendar size={12} className="text-(--text-muted) opacity-60" />
                 )}
                 {prop.type === "tags" && (
-                  <Tag size={12} className="property-type-icon" />
+                  <Tag size={12} className="text-(--text-muted) opacity-60" />
                 )}
                 {prop.type === "list" && (
-                  <List size={12} className="property-type-icon" />
+                  <List size={12} className="text-(--text-muted) opacity-60" />
                 )}
                 {prop.type === "text" && (
-                  <FileText size={12} className="property-type-icon" />
+                  <FileText size={12} className="text-(--text-muted) opacity-60" />
                 )}
-                <span>{prop.key}</span>
+                <span className="text-[11px] font-medium text-(--text-secondary)">{prop.key}</span>
               </div>
-              <div className="property-value">
+              <div className="flex-1 min-w-0">
                 {Array.isArray(prop.value) ? (
-                  <div className="property-tags">
+                  <div className="flex flex-wrap gap-1 items-center">
                     {prop.value.map((v, i) => (
-                      <span key={i} className="property-tag">
+                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-(--bg-active) text-(--text-secondary)">
                         {v}
                         <button
-                          className="property-tag-remove"
+                          className="bg-transparent border-none text-(--text-muted) cursor-pointer p-0 text-[10px] leading-none hover:text-red-400"
                           onClick={() => {
                             const arr = prop.value as string[];
                             updateProperty(
@@ -283,13 +283,13 @@ export function PropertiesPanel({
                             );
                           }}
                         >
-                          ×
+                          {'\u00D7'}
                         </button>
                       </span>
                     ))}
                     <input
                       type="text"
-                      className="property-tag-input"
+                      className="bg-transparent border-none outline-none text-[11px] text-(--text-primary) w-16 placeholder:text-(--text-muted)"
                       placeholder="Add..."
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && e.currentTarget.value) {
@@ -307,19 +307,19 @@ export function PropertiesPanel({
                     type="date"
                     value={prop.value as string}
                     onChange={(e) => updateProperty(prop.key, e.target.value)}
-                    className="property-input date"
+                    className="bg-(--bg-primary) border border-(--border-subtle) rounded px-2 py-0.5 text-[11px] text-(--text-primary) outline-none focus:border-(--border-strong)"
                   />
                 ) : (
                   <input
                     type="text"
                     value={prop.value as string}
                     onChange={(e) => updateProperty(prop.key, e.target.value)}
-                    className="property-input"
+                    className="w-full bg-(--bg-primary) border border-(--border-subtle) rounded px-2 py-0.5 text-[11px] text-(--text-primary) outline-none focus:border-(--border-strong)"
                   />
                 )}
               </div>
               <button
-                className="property-delete"
+                className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded opacity-0 hover:opacity-100 focus:opacity-100 hover:bg-red-500/10 hover:text-red-400 transition-all duration-150 shrink-0 mt-0.5"
                 onClick={() => deleteProperty(prop.key)}
                 title="Delete property"
               >

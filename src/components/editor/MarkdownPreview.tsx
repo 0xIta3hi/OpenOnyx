@@ -25,6 +25,7 @@ import markedKatex from "marked-katex-extension";
 import DOMPurify from "dompurify";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl, toggleUrlInMarkdown } from "../../utils/urlHelper";
+import { runMarkdownPostProcessors } from "../../lib/obsidian-api/markdown";
 
 // Enable math formatting
 marked.use(markedKatex({ throwOnError: false }));
@@ -105,7 +106,15 @@ interface MarkdownPreviewProps {
   onImageClick?: (src: string, alt: string) => void;
   theme?: string;
   onContentChange?: (content: string) => void;
+  constrainWidth?: boolean;
 }
+
+const linkPreviewClass = "bg-(--bg-elevated) border border-(--border-medium) rounded-lg shadow-xl max-w-[400px] max-h-[300px] overflow-hidden flex flex-col animate-fade-in";
+const linkPreviewHeaderClass = "px-3 py-2 border-b border-(--border-subtle) bg-(--bg-secondary)";
+const linkPreviewTitleClass = "font-semibold text-[var(--text-sm)] text-(--text-link)";
+const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em]";
+const markdownPreviewClass =
+  "markdown-preview [&_.embed-container]:my-[var(--space-4)] [&_.embed-container]:overflow-hidden [&_.embed-container]:rounded-[var(--radius-md)] [&_.embed-container]:border [&_.embed-container]:border-[var(--border-medium)] [&_.embed-container]:bg-[var(--bg-secondary)] [&_.embed-content]:p-[var(--space-3)] [&_.embed-content]:text-[length:var(--text-sm)] [&_.embed-content]:text-[var(--text-secondary)] [&_.embed-icon]:opacity-60 [&_.embed-missing]:bg-[var(--bg-secondary)] [&_.embed-missing]:p-[var(--space-3)] [&_.embed-missing]:italic [&_.embed-missing]:text-[var(--text-muted)] [&_.embed-title]:flex [&_.embed-title]:items-center [&_.embed-title]:gap-[var(--space-2)] [&_.embed-title]:border-b [&_.embed-title]:border-[var(--border-subtle)] [&_.embed-title]:bg-[var(--bg-tertiary)] [&_.embed-title]:px-[var(--space-3)] [&_.embed-title]:py-[var(--space-2)] [&_.embed-title]:text-[length:var(--text-sm)] [&_.embed-title]:font-medium [&_.embed-title]:text-[var(--text-link)]";
 
 function parseImageRenderMeta(title?: string): {
   width?: number;
@@ -131,6 +140,27 @@ function parseImageRenderMeta(title?: string): {
   return { width, crop, offsetX, offsetY };
 }
 
+function protectFencedCodeBlocks(text: string): {
+  text: string;
+  restore: (value: string) => string;
+} {
+  const blocks: string[] = [];
+  const protectedText = text.replace(
+    /(^|\n)([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\2\3[ \t]*(?=\n|$)/g,
+    (match) => {
+      const token = `\uE000CODE_BLOCK_${blocks.length}\uE000`;
+      blocks.push(match);
+      return token;
+    },
+  );
+
+  return {
+    text: protectedText,
+    restore: (value: string) =>
+      value.replace(/\uE000CODE_BLOCK_(\d+)\uE000/g, (_, index) => blocks[Number(index)] || ""),
+  };
+}
+
 export function MarkdownPreview({
   content,
   onLinkClick,
@@ -140,11 +170,19 @@ export function MarkdownPreview({
   onImageClick,
   theme,
   onContentChange,
+  constrainWidth = true,
 }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [debouncedContent, setDebouncedContent] = useState(content);
   const contentRef = useRef(content);
   contentRef.current = content;
+  const [processorVersion, setProcessorVersion] = useState(0);
+
+  useEffect(() => {
+    const handleProcessorsChanged = () => setProcessorVersion((version) => version + 1);
+    window.addEventListener('obsidian:markdown-processors-changed', handleProcessorsChanged);
+    return () => window.removeEventListener('obsidian:markdown-processors-changed', handleProcessorsChanged);
+  }, []);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -300,6 +338,8 @@ export function MarkdownPreview({
     if (!debouncedContent) return "";
 
     let processed = debouncedContent;
+    const protectedCode = protectFencedCodeBlocks(processed);
+    processed = protectedCode.text;
 
     // Convert url to preview (iframe) - standalone URLs or markdown links to ANY URL
     processed = processed.replace(
@@ -380,10 +420,15 @@ export function MarkdownPreview({
         return `${prefix}<input type="checkbox" class="task-checkbox" data-line="${lineNum++}" ${isChecked ? "checked" : ""}>`;
       },
     );
+    processed = protectedCode.restore(processed);
 
     // Parse markdown to HTML
     let html = marked.parse(processed, { gfm: true, breaks: true }) as string;
     html = closeCallouts(html);
+    html = html.replace(
+      /<li>\s*(<input\b[^>]*class="task-checkbox"[^>]*>)/g,
+      '<li class="task-list-item">$1',
+    );
 
     // --- Unified Smart Embed Resolver ---
     // Handle both raw iframes and Twitter blockquotes
@@ -580,8 +625,10 @@ export function MarkdownPreview({
   // Manually update the DOM and upgrade iframes injected by plugins
   useEffect(() => {
     if (!previewRef.current) return;
+    let processorCleanup: (() => void) | undefined;
+    let cancelled = false;
 
-    if (lastHtmlRef.current !== renderedHtml) {
+    if (lastHtmlRef.current !== renderedHtml || processorVersion > 0) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
 
@@ -606,6 +653,14 @@ export function MarkdownPreview({
         injectTwitter();
       }
     }
+
+    void runMarkdownPostProcessors(
+      previewRef.current,
+      (window as any).__oo_active_file || '',
+    ).then((cleanup) => {
+      if (cancelled) cleanup();
+      else processorCleanup = cleanup;
+    });
 
     // Function to upgrade YouTube iframes into HD Posters
     const upgradeYouTubeIframe = (iframe: HTMLIFrameElement) => {
@@ -662,20 +717,29 @@ export function MarkdownPreview({
 
     observer.observe(previewRef.current, { childList: true, subtree: true });
 
-    return () => observer.disconnect();
-  }, [renderedHtml, theme]);
+    return () => {
+      cancelled = true;
+      processorCleanup?.();
+      observer.disconnect();
+    };
+  }, [renderedHtml, theme, processorVersion]);
 
   return (
     <>
       <div
         ref={previewRef}
-        className="markdown-preview"
+        className={markdownPreviewClass}
+        style={constrainWidth ? {
+          width: "100%",
+          maxWidth: "var(--reading-view-width)",
+          margin: "0 auto",
+        } : undefined}
       />
 
       {/* Link Preview Popup */}
       {linkPreview && (
         <div
-          className="link-preview"
+          className={linkPreviewClass}
           style={{
             position: "fixed",
             left: linkPreview.position.x,
@@ -690,11 +754,11 @@ export function MarkdownPreview({
           }}
           onMouseLeave={() => setLinkPreview(null)}
         >
-          <div className="link-preview-header">
-            <span className="link-preview-title">{linkPreview.noteName}</span>
+          <div className={linkPreviewHeaderClass}>
+            <span className={linkPreviewTitleClass}>{linkPreview.noteName}</span>
           </div>
           <div
-            className="link-preview-content"
+            className={linkPreviewContentClass}
             dangerouslySetInnerHTML={{
               __html: renderPreviewContent(linkPreview.content),
             }}

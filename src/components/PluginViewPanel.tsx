@@ -24,6 +24,12 @@ interface PluginViewPanelProps {
   width?: number;
 }
 
+const pluginTabsClass = "flex min-h-9 shrink-0 items-stretch overflow-hidden border-b border-(--divider-color) bg-(--bg-primary)";
+const pluginTabClass = "group relative flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 border-0 border-r border-(--divider-color) bg-transparent px-3 text-[11px] font-medium text-(--text-muted) transition-all duration-150 last:border-r-0 hover:bg-(--bg-hover) hover:text-(--text-secondary)";
+const pluginTabActiveClass = "bg-(--bg-secondary) text-(--text-primary) after:absolute after:inset-x-0 after:top-0 after:h-0.5 after:bg-[var(--accent-color,#7c6ef6)] after:content-['']";
+const pluginTabTextClass = "overflow-hidden text-ellipsis whitespace-nowrap";
+const pluginTabCloseClass = "ml-0.5 text-sm leading-none opacity-30 transition-opacity duration-150 group-hover:opacity-80 hover:text-(--danger) hover:opacity-100";
+
 export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: PluginViewPanelProps) {
   const [activeViewType, setActiveViewType] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -92,11 +98,11 @@ export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: Plu
     >
       {/* Tab bar for multiple views (hidden in main view) */}
       {!isMainView && views.length > 0 && (
-        <div className="plugin-view-tabs">
+        <div className={pluginTabsClass}>
           {views.map((view) => (
             <button
               key={view.viewType}
-              className={`plugin-view-tab ${view.viewType === activeViewType ? 'active' : ''}`}
+              className={`${pluginTabClass} ${view.viewType === activeViewType ? pluginTabActiveClass : ''}`}
               onClick={() => setActiveViewType(view.viewType)}
               draggable
               onDragStart={(e) => {
@@ -111,9 +117,9 @@ export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: Plu
               }}
               onDragEnd={() => setDragCtx(null)}
             >
-              <span className="plugin-view-tab-text">{view.displayText}</span>
+              <span className={pluginTabTextClass}>{view.displayText}</span>
               <span
-                className="plugin-view-tab-close"
+                className={pluginTabCloseClass}
                 onClick={(e) => {
                   e.stopPropagation();
                   onClose(view.viewType);

@@ -131,50 +131,50 @@ export function UnlinkedMentionsPanel({
   }, [mentions]);
 
   return (
-    <div className="panel unlinked-mentions-panel">
-      <div className="panel-header" onClick={() => setExpanded(!expanded)}>
-        <span className="panel-title">
+    <div className="border-t border-(--border-subtle)">
+      <div className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-(--bg-hover) transition-colors duration-100" onClick={() => setExpanded(!expanded)}>
+        <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-(--text-muted)">
           <LinkIcon size={14} />
           Unlinked Mentions
           {mentions.length > 0 && (
-            <span className="panel-count">{mentions.length}</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary) normal-case tracking-normal">{mentions.length}</span>
           )}
         </span>
-        <button className="panel-toggle">
+        <button className="bg-transparent border-none text-(--text-muted) p-0 cursor-pointer">
           {expanded ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
 
       {expanded && (
-        <div className="panel-content">
+        <div className="px-2 pb-2">
           {loading ? (
-            <div className="panel-loading">Searching...</div>
+            <div className="px-2 py-4 text-center text-xs text-(--text-muted)">Searching...</div>
           ) : mentions.length === 0 ? (
-            <div className="panel-empty">
+            <div className="px-2 py-4 text-center text-xs text-(--text-muted)">
               No unlinked mentions found for "{currentNoteName}"
             </div>
           ) : (
-            <div className="unlinked-list">
+            <div className="flex flex-col gap-1">
               {Array.from(groupedMentions.entries()).map(
                 ([path, fileMentions]) => (
-                  <div key={path} className="unlinked-file">
-                    <div className="unlinked-file-header">
-                      <FileText size={14} />
-                      <span>{getNoteName(path)}</span>
-                      <span className="mention-count">
+                  <div key={path} className="rounded-md overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-(--text-secondary) bg-(--bg-active)">
+                      <FileText size={14} className="shrink-0 text-(--text-muted)" />
+                      <span className="truncate">{getNoteName(path)}</span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-hover) text-(--text-muted) ml-auto">
                         {fileMentions.length}
                       </span>
                     </div>
                     {fileMentions.map((mention, i) => (
                       <button
                         key={i}
-                        className="unlinked-mention"
+                        className="w-full flex items-center gap-2 px-3 py-1.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
                         onClick={() => onNavigate(mention.path, mention.line)}
                         title={`Line ${mention.line}`}
                       >
-                        <span className="mention-context">
+                        <span className="text-[11px] text-(--text-muted) leading-relaxed flex-1 truncate">
                           {mention.context.substring(0, mention.matchStart)}
-                          <mark>
+                          <mark className="bg-amber-500/20 text-amber-300 rounded-sm px-0.5">
                             {mention.context.substring(
                               mention.matchStart,
                               mention.matchEnd,
@@ -182,7 +182,7 @@ export function UnlinkedMentionsPanel({
                           </mark>
                           {mention.context.substring(mention.matchEnd)}
                         </span>
-                        <span className="mention-line">:{mention.line}</span>
+                        <span className="text-[10px] text-(--text-muted) shrink-0">:{mention.line}</span>
                       </button>
                     ))}
                   </div>

@@ -1,5 +1,5 @@
 /**
- * SuggestionBanner — Context-aware inline suggestions
+ * SuggestionBanner -- Context-aware inline suggestions
  *
  * Features:
  *  - Grouped display: Strong Matches vs Broader Connections
@@ -31,10 +31,10 @@ import type { EnrichedSuggestion } from "../utils/suggestion-enrichment";
 export type LinkType = "related" | "supports" | "contradicts" | "example_of";
 
 export const LINK_TYPES: { id: LinkType; label: string; symbol: string }[] = [
-  { id: "related", label: "Related", symbol: "↔" },
-  { id: "supports", label: "Supports", symbol: "→" },
-  { id: "contradicts", label: "Contradicts", symbol: "⇄" },
-  { id: "example_of", label: "Example of", symbol: "∈" },
+  { id: "related", label: "Related", symbol: "\u2194" },
+  { id: "supports", label: "Supports", symbol: "\u2192" },
+  { id: "contradicts", label: "Contradicts", symbol: "\u21C4" },
+  { id: "example_of", label: "Example of", symbol: "\u2208" },
 ];
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -55,19 +55,19 @@ interface SuggestionBannerProps {
 
 // ── Type badge colors ────────────────────────────────────────────────────────
 
-function getTypeBadgeClass(type: string): string {
+function getTypeBadgeClasses(type: string): string {
   switch (type) {
-    case "expands": return "suggestion-type-expands";
-    case "contradicts": return "suggestion-type-contradicts";
-    case "example": return "suggestion-type-example";
-    default: return "suggestion-type-related";
+    case "expands": return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+    case "contradicts": return "bg-red-500/10 text-red-400 border-red-500/20";
+    case "example": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+    default: return "bg-(--bg-active) text-(--text-secondary) border-(--border-subtle)";
   }
 }
 
-function getConfidenceClass(similarity: number): string {
-  if (similarity >= 0.7) return "suggestion-confidence-high";
-  if (similarity >= 0.5) return "suggestion-confidence-medium";
-  return "suggestion-confidence-low";
+function getConfidenceBorder(similarity: number): string {
+  if (similarity >= 0.7) return "border-l-emerald-500/60";
+  if (similarity >= 0.5) return "border-l-(--border-strong)";
+  return "border-l-(--border-subtle)";
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -96,19 +96,19 @@ export function SuggestionBanner({
   const renderSuggestionItem = (s: EnrichedSuggestion) => (
     <div
       key={s.path}
-      className={`suggestion-item ${getConfidenceClass(s.similarity)} ${s.isLinked ? "suggestion-already-linked" : ""}`}
+      className={`flex items-start justify-between gap-3 px-3 py-2 border-l-2 ${getConfidenceBorder(s.similarity)} ${s.isLinked ? "opacity-50" : ""} transition-colors duration-150 hover:bg-(--bg-hover)`}
     >
-      <div className="suggestion-item-content">
-        <div className="suggestion-item-top">
+      <div className="flex flex-col gap-1 min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Type badge */}
-          <span className={`suggestion-type-badge ${getTypeBadgeClass(s.type)}`}>
-            <span className="suggestion-type-symbol">{s.typeSymbol}</span>
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getTypeBadgeClasses(s.type)}`}>
+            <span className="text-[9px]">{s.typeSymbol}</span>
             {s.typeLabel}
           </span>
 
           {/* Title */}
           <button
-            className="suggestion-title-btn"
+            className="bg-transparent border-none text-[12px] font-medium text-(--text-primary) cursor-pointer p-0 hover:underline hover:underline-offset-2 truncate max-w-[180px]"
             onClick={() => onOpenNote?.(s.path)}
             title={`Open ${s.title}`}
           >
@@ -116,45 +116,45 @@ export function SuggestionBanner({
           </button>
 
           {/* Score */}
-          <span className="suggestion-score">
+          <span className="text-[10px] text-(--text-muted) font-medium ml-auto shrink-0">
             {Math.round(s.similarity * 100)}%
           </span>
 
           {/* Not linked indicator */}
           {!s.isLinked && (
-            <span className="suggestion-not-linked" title="Not yet linked">
+            <span className="text-(--text-muted) opacity-50" title="Not yet linked">
               <LinkIcon size={10} />
             </span>
           )}
         </div>
 
         {/* Contextual reason */}
-        <div className="suggestion-reason">
-          <Sparkles size={10} />
+        <div className="flex items-start gap-1.5 text-[11px] text-(--text-muted) leading-relaxed">
+          <Sparkles size={10} className="shrink-0 mt-0.5 opacity-60" />
           <span>{s.reason}</span>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="suggestion-actions">
+      <div className="flex items-center gap-1 shrink-0">
         {activeLinkSelector === s.path ? (
-          <div className="suggestion-link-types">
+          <div className="flex items-center gap-0.5 flex-wrap">
             {LINK_TYPES.map((lt) => (
               <button
                 key={lt.id}
-                className="suggestion-link-type-btn"
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-(--bg-active) text-(--text-secondary) border-none cursor-pointer transition-colors duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)"
                 onClick={() => {
                   onAccept(s.path, lt.id);
                   setActiveLinkSelector(null);
                 }}
                 title={lt.label}
               >
-                <span className="suggestion-link-symbol">{lt.symbol}</span>
+                <span className="text-[9px]">{lt.symbol}</span>
                 <span>{lt.label}</span>
               </button>
             ))}
             <button
-              className="suggestion-link-cancel"
+              className="bg-transparent border-none text-(--text-muted) cursor-pointer p-0.5 rounded hover:bg-(--bg-hover)"
               onClick={() => setActiveLinkSelector(null)}
             >
               <X size={10} />
@@ -163,7 +163,7 @@ export function SuggestionBanner({
         ) : (
           <>
             <button
-              className="suggestion-accept"
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border-none cursor-pointer transition-colors duration-150 hover:bg-emerald-500/20"
               onClick={() => setActiveLinkSelector(s.path)}
               title="Create link"
             >
@@ -171,7 +171,7 @@ export function SuggestionBanner({
               Link
             </button>
             <button
-              className="suggestion-reject"
+              className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded transition-colors duration-150 hover:bg-red-500/10 hover:text-red-400"
               onClick={() => onReject(s.path)}
               title="Dismiss"
             >
@@ -184,25 +184,25 @@ export function SuggestionBanner({
   );
 
   return (
-    <div className="suggestion-banner">
-      <div className="suggestion-banner-header">
-        <div className="suggestion-banner-left">
-          <Sparkles size={12} />
-          <span className="suggestion-banner-label">
+    <div className="border border-(--border-subtle) rounded-lg bg-(--bg-secondary) overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-(--border-subtle)">
+        <div className="flex items-center gap-2 text-[11px] text-(--text-muted) font-medium">
+          <Sparkles size={12} className="text-(--accent-primary)" />
+          <span>
             {suggestions.length} connection{suggestions.length !== 1 ? "s" : ""} found
           </span>
         </div>
-        <div className="suggestion-banner-right">
+        <div className="flex items-center gap-1.5">
           {hasMore && (
             <button
-              className="suggestion-banner-toggle"
+              className="text-[11px] text-(--text-muted) bg-transparent border-none cursor-pointer px-2 py-0.5 rounded hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-150"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? "Show less" : `+${strongMatches.length - 2} more`}
             </button>
           )}
           <button
-            className="suggestion-banner-dismiss"
+            className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-150"
             onClick={onDismissAll}
             title="Dismiss all"
           >
@@ -213,12 +213,12 @@ export function SuggestionBanner({
 
       {/* Strong Matches */}
       {visibleStrong.length > 0 && (
-        <div className="suggestion-group">
-          <div className="suggestion-group-label">
-            <span className="suggestion-group-dot suggestion-dot-strong" />
+        <div>
+          <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             Strong Matches
           </div>
-          <div className="suggestion-list">
+          <div className="flex flex-col">
             {visibleStrong.map(renderSuggestionItem)}
           </div>
         </div>
@@ -226,18 +226,18 @@ export function SuggestionBanner({
 
       {/* Broader Connections (collapsed by default) */}
       {broaderConnections.length > 0 && (
-        <div className="suggestion-group">
+        <div>
           <button
-            className="suggestion-group-toggle"
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-(--text-muted) bg-transparent border-none cursor-pointer hover:bg-(--bg-hover) transition-colors duration-150"
             onClick={() => setShowBroader(!showBroader)}
           >
             {showBroader ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <span className="suggestion-group-dot suggestion-dot-broader" />
+            <span className="w-1.5 h-1.5 rounded-full bg-(--text-muted) opacity-50" />
             Broader Connections
-            <span className="suggestion-group-count">{broaderConnections.length}</span>
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary) normal-case tracking-normal">{broaderConnections.length}</span>
           </button>
           {showBroader && (
-            <div className="suggestion-list">
+            <div className="flex flex-col">
               {broaderConnections.map(renderSuggestionItem)}
             </div>
           )}

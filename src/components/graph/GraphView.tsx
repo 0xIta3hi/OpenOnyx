@@ -808,7 +808,7 @@ export function GraphView({
     return (
       <div className="graph-view-container">
         <div className="graph-loading">
-          <div className="loading-spinner" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-medium)] border-t-[var(--accent-primary)]" />
           <span>Loading graph...</span>
         </div>
       </div>

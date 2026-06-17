@@ -5,7 +5,7 @@
  * Each handler validates inputs and delegates to the appropriate manager.
  */
 
-import { IpcMain, BrowserWindow, clipboard } from 'electron';
+import { app, IpcMain, BrowserWindow, clipboard, dialog, shell } from 'electron';
 import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
 
@@ -46,6 +46,20 @@ export function registerIpcHandlers(
     return [];
   });
 
+  ipcMain.handle('desktop:showOpenDialog', async (_event, options: Electron.OpenDialogOptions) => {
+    const owner = getMainWindow();
+    return owner ? dialog.showOpenDialog(owner, options) : dialog.showOpenDialog(options);
+  });
+
+  ipcMain.handle('desktop:showSaveDialog', async (_event, options: Electron.SaveDialogOptions) => {
+    const owner = getMainWindow();
+    return owner ? dialog.showSaveDialog(owner, options) : dialog.showSaveDialog(options);
+  });
+
+  ipcMain.handle('desktop:openPath', async (_event, targetPath: string) => shell.openPath(targetPath));
+  ipcMain.handle('desktop:showItemInFolder', (_event, targetPath: string) => shell.showItemInFolder(targetPath));
+  ipcMain.handle('desktop:getPath', (_event, name: Parameters<typeof app.getPath>[0]) => app.getPath(name));
+
   // ── File Operations ───────────────────────────────
   ipcMain.handle('fs:listFiles', async (_event, dirPath?: string) => {
     return fsManager.listFiles(dirPath || '');
@@ -55,10 +69,18 @@ export function registerIpcHandlers(
     return fsManager.readFile(filePath);
   });
 
+  ipcMain.handle('fs:readBinary', async (_event, filePath: string) => {
+    return fsManager.readBinary(filePath);
+  });
+
   ipcMain.handle('fs:writeFile', async (_event, filePath: string, content: string) => {
     await fsManager.writeFile(filePath, content);
     // Update search index in background (don't await to avoid blocking)
     searchEngine.buildIndex(fsManager).catch(console.error);
+  });
+
+  ipcMain.handle('fs:writeBinary', async (_event, filePath: string, content: Uint8Array) => {
+    await fsManager.writeBinary(filePath, content);
   });
 
   ipcMain.handle('fs:createFile', async (_event, filePath: string, content?: string) => {

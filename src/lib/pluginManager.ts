@@ -14,6 +14,11 @@ import { OOApp } from './obsidian-api/app';
 import { Plugin } from './obsidian-api/plugin';
 import * as cmState from '@codemirror/state';
 import * as cmView from '@codemirror/view';
+import * as cmCommands from '@codemirror/commands';
+import * as cmLanguage from '@codemirror/language';
+import * as cmSearch from '@codemirror/search';
+import * as lezerHighlight from '@lezer/highlight';
+import JSZip from 'jszip';
 import type { IPlugin } from './obsidian-api/plugin';
 import { injectPluginStyles, removePluginStyles, injectPluginBaseCss, getPluginScopeClass } from './pluginStyles';
 import {
@@ -42,13 +47,36 @@ const api = () => getAPI();
 
 // ── Constants ────────────────────────────────────────
 
-const APP_VERSION = '1.9.16';
+const APP_VERSION = '1.13.1';
 const LOAD_TIMEOUT_MS = 8000;
 const MAX_PARALLEL_LOADS = 3;
 
 // Default permissions plugins get if manifest doesn't declare any
 // (Obsidian compat: existing plugins don't have permissions in manifest)
 const DEFAULT_PERMISSIONS: PluginPermission[] = ['filesystem', 'network', 'ui', 'editor'];
+
+export interface PluginBundleFiles {
+  manifestText: string;
+  mainText: string;
+  stylesText: string | null;
+}
+
+export async function extractPluginBundleFromZip(data: ArrayBuffer): Promise<PluginBundleFiles> {
+  const zip = await JSZip.loadAsync(data);
+  const files = Object.values(zip.files).filter((entry) => !entry.dir);
+  const findFile = (name: string) => files
+    .filter((entry) => entry.name.split('/').pop() === name)
+    .sort((a, b) => a.name.split('/').length - b.name.split('/').length)[0];
+  const manifest = findFile('manifest.json');
+  const main = findFile('main.js');
+  const styles = findFile('styles.css');
+  if (!manifest || !main) throw new Error('ZIP does not contain manifest.json and main.js');
+  return {
+    manifestText: await manifest.async('text'),
+    mainText: await main.async('text'),
+    stylesText: styles ? await styles.async('text') : null,
+  };
+}
 
 // ── Callbacks ────────────────────────────────────────
 
@@ -78,11 +106,23 @@ export class PluginManager {
   private _manifestCache: Map<string, PluginManifest> = new Map();
   private _scriptElements: Map<string, HTMLScriptElement> = new Map();
   private _loggers: Map<string, PluginLogger> = new Map();
+  private _editorExtensions: Map<string, any[]> = new Map();
 
   constructor(app: OOApp, callbacks: PluginManagerCallbacks) {
     this._app = app;
     this._callbacks = callbacks;
+    const appPlugins = (this._app as any).plugins;
+    appPlugins.enablePlugin = (id: string) => this.loadPlugin(id);
+    appPlugins.enablePluginAndSave = (id: string) => this.enablePlugin(id);
+    appPlugins.disablePlugin = (id: string) => this.unloadPlugin(id);
+    appPlugins.disablePluginAndSave = (id: string) => this.disablePlugin(id);
+    appPlugins.loadPlugin = (id: string) => this.loadPlugin(id);
+    appPlugins.unloadPlugin = (id: string) => this.unloadPlugin(id);
+    appPlugins.getPluginFolder = (manifest: PluginManifest) =>
+      manifest?.dir || `.openobsidian/plugins/${manifest?.id || ''}`;
     this._setupGlobalHooks();
+    (window as any).__oo_cm_commands = cmCommands;
+    (window as any).__oo_cm_editor_view = cmView.EditorView;
     injectPluginBaseCss();
   }
 
@@ -95,11 +135,13 @@ export class PluginManager {
       // Deduplicate by command ID
       this._commands = this._commands.filter(c => c.id !== cmd.id);
       this._commands.push(cmd);
+      (this._app as any).commands?.addCommand?.(cmd);
       this._callbacks.onCommandsChanged([...this._commands]);
     };
 
     win.__oo_unregister_command = (cmdId: string) => {
       this._commands = this._commands.filter(c => c.id !== cmdId);
+      (this._app as any).commands?.removeCommand?.(cmdId);
       this._callbacks.onCommandsChanged([...this._commands]);
     };
 
@@ -137,6 +179,25 @@ export class PluginManager {
     win.__oo_unregister_setting_tab = (pluginId: string) => {
       this._settingTabs = this._settingTabs.filter(t => t.pluginId !== pluginId);
       this._callbacks.onSettingTabsChanged([...this._settingTabs]);
+    };
+
+    const publishEditorExtensions = () => {
+      win.__oo_editor_extensions = Array.from(this._editorExtensions.values()).flat();
+      window.dispatchEvent(new CustomEvent('obsidian:editor-extensions-changed'));
+    };
+
+    win.__oo_register_editor_ext = (pluginId: string, extension: any) => {
+      const extensions = this._editorExtensions.get(pluginId) || [];
+      extensions.push(extension);
+      this._editorExtensions.set(pluginId, extensions);
+      publishEditorExtensions();
+    };
+
+    win.__oo_unregister_editor_ext = (pluginId: string, extension: any) => {
+      const extensions = (this._editorExtensions.get(pluginId) || []).filter((item) => item !== extension);
+      if (extensions.length > 0) this._editorExtensions.set(pluginId, extensions);
+      else this._editorExtensions.delete(pluginId);
+      publishEditorExtensions();
     };
 
     // Auto-disable hook from crash isolation
@@ -182,6 +243,7 @@ export class PluginManager {
             approvedPermissions: approval?.permissions,
           };
           this._plugins.set(manifest.id, reg);
+          (this._app as any).plugins.manifests[manifest.id] = manifest;
           results.push(reg);
         } catch (e) {
           console.warn(`[PluginManager] Failed to read plugin in ${dir}:`, e);
@@ -273,6 +335,39 @@ export class PluginManager {
       // Provide built-in frontend modules
       if (id === '@codemirror/state') return cmState;
       if (id === '@codemirror/view') return cmView;
+      if (id === '@codemirror/commands') return cmCommands;
+      if (id === '@codemirror/language') return cmLanguage;
+      if (id === '@codemirror/search') return cmSearch;
+      if (id === '@lezer/highlight') return lezerHighlight;
+
+      if (id === 'electron') {
+        let electron: any = {};
+        try { electron = (window as any).require?.('electron') || {}; } catch { /* bridge only */ }
+        const bridge = api() as any;
+        const home = (() => {
+          try { return (window as any).require?.('os')?.homedir?.() || ''; } catch { return ''; }
+        })();
+        return {
+          ...electron,
+          remote: electron.remote || {
+            app: {
+              getPath: (name: string) => {
+                if (name === 'documents') return home ? `${home}/Documents` : this._app.vault.adapter.getBasePath();
+                if (name === 'home') return home;
+                return this._app.vault.adapter.getBasePath();
+              },
+            },
+            dialog: {
+              showOpenDialog: (options: any) => bridge.showOpenDialog(options),
+              showSaveDialog: (options: any) => bridge.showSaveDialog(options),
+            },
+            shell: {
+              openPath: (targetPath: string) => bridge.openPath(targetPath),
+              showItemInFolder: (targetPath: string) => bridge.showItemInFolder(targetPath),
+            },
+          },
+        };
+      }
       
       // Fallback to real node modules or electron modules if nodeIntegration is enabled
       if (typeof (window as any).require !== 'undefined') {
@@ -360,9 +455,15 @@ export class PluginManager {
       reg.state = 'enabled';
       reg.error = undefined;
       reg.loadTimeMs = Math.round(performance.now() - startTime);
+      (this._app as any).plugins.plugins[pluginId] = instance;
+      (this._app as any).plugins.enabledPlugins.add(pluginId);
 
       // ── Call onload with crash isolation
-      const loadResult = safePluginCall(pluginId, () => instance.load(), 'onload');
+      const loadResult = await safePluginCallAsync(
+        pluginId,
+        () => Promise.resolve(instance.load() as any),
+        'onload',
+      );
       if (loadResult.shouldDisable) {
         throw new Error(`Plugin crashed during onload: ${loadResult.error}`);
       }
@@ -511,6 +612,8 @@ window["${globalKey}"].__done = true;
     reg.instance = null;
     reg.state = 'disabled';
     reg.error = undefined;
+    delete (this._app as any).plugins.plugins[pluginId];
+    (this._app as any).plugins.enabledPlugins.delete(pluginId);
 
     this._callbacks.onPluginsChanged(this.getPluginList());
   }
@@ -547,112 +650,177 @@ window["${globalKey}"].__done = true;
 
   // ── Install from Github Repo (Marketplace) ────────
 
-  async installFromGithubRepo(repo: string, expectedPluginId: string): Promise<boolean> {
+  async installFromGithubRepo(repo: string, expectedPluginId: string, registryVersion?: string): Promise<boolean> {
     console.log(`[PluginManager] Installing from Github: ${repo} → ${expectedPluginId}`);
-    
-    // 1. Fetch latest release from GitHub API
-    console.log(`[PluginManager] Step 1: Fetching release info...`);
-    let releaseText: string;
-    try {
-      releaseText = await api().dataFetch(`https://api.github.com/repos/${repo}/releases/latest`);
-    } catch (e: any) {
-      console.error(`[PluginManager] Step 1 FAILED:`, e);
-      throw new Error(`Failed to fetch release info for ${repo}: ${e.message}`);
-    }
-    
-    let releaseData: any;
-    try {
-      releaseData = JSON.parse(releaseText);
-    } catch (e: any) {
-      console.error(`[PluginManager] Release JSON parse failed. Raw text:`, releaseText?.slice(0, 200));
-      throw new Error(`Invalid release data from GitHub for ${repo}`);
-    }
 
-    // Check for GitHub API errors (rate limit, not found, etc.)
-    if (releaseData.message) {
-      throw new Error(`GitHub API error for ${repo}: ${releaseData.message}`);
-    }
+    const fetchText = (url: string) => api().dataFetch(url);
+    const fetchBinary = async (url: string): Promise<ArrayBuffer> => {
+      const response = await api().networkRequest({
+        url,
+        method: 'GET',
+        headers: { Accept: 'application/octet-stream' },
+      });
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`HTTP ${response.status} fetching ${url}`);
+      }
+      return response.arrayBuffer;
+    };
 
-    const assets = releaseData.assets;
-    if (!assets || !Array.isArray(assets)) {
-      throw new Error(`No release assets found for ${repo}. The plugin may not have any releases.`);
-    }
-    
-    // 2. Find required files
-    const manifestAsset = assets.find((a: any) => a.name === 'manifest.json');
-    const mainAsset = assets.find((a: any) => a.name === 'main.js');
-    const stylesAsset = assets.find((a: any) => a.name === 'styles.css');
-    
-    if (!manifestAsset || !mainAsset) {
-      const available = assets.map((a: any) => a.name).join(', ');
-      throw new Error(`Release is missing required files. Found: [${available}]. Need: manifest.json, main.js`);
-    }
-    
-    // 3. Download files
-    console.log(`[PluginManager] Step 2: Downloading files...`);
-    console.log(`[PluginManager]   manifest.json: ${manifestAsset.browser_download_url}`);
-    console.log(`[PluginManager]   main.js: ${mainAsset.browser_download_url}`);
-    if (stylesAsset) console.log(`[PluginManager]   styles.css: ${stylesAsset.browser_download_url}`);
+    const readZipBundle = async (url: string): Promise<PluginBundleFiles> => {
+      return extractPluginBundleFromZip(await fetchBinary(url));
+    };
 
-    let manifestText: string, mainText: string, stylesText: string | null;
-    try {
-      [manifestText, mainText, stylesText] = await Promise.all([
-        api().dataFetch(manifestAsset.browser_download_url),
-        api().dataFetch(mainAsset.browser_download_url),
-        stylesAsset ? api().dataFetch(stylesAsset.browser_download_url) : Promise.resolve(null)
+    const readLooseBundle = async (
+      manifestUrl: string,
+      mainUrl: string,
+      stylesUrl?: string,
+    ): Promise<PluginBundleFiles> => {
+      const [manifestText, mainText] = await Promise.all([
+        fetchText(manifestUrl),
+        fetchText(mainUrl),
       ]);
-    } catch (e: any) {
-      console.error(`[PluginManager] Step 2 FAILED:`, e);
-      throw new Error(`Failed to download plugin files: ${e.message}`);
+      let stylesText: string | null = null;
+      if (stylesUrl) {
+        try { stylesText = await fetchText(stylesUrl); } catch { /* styles.css is optional */ }
+      }
+      return { manifestText, mainText, stylesText };
+    };
+
+    console.log(`[PluginManager] Step 1: Resolving release bundle...`);
+    const strategies: Array<{ label: string; load: () => Promise<PluginBundleFiles> }> = [];
+    let repositoryVersion = registryVersion;
+    for (const branch of ['HEAD', 'main', 'master']) {
+      try {
+        const candidate = JSON.parse(
+          await fetchText(`https://raw.githubusercontent.com/${repo}/${branch}/manifest.json`),
+        ) as PluginManifest;
+        if (candidate.id === expectedPluginId && candidate.version) {
+          repositoryVersion = candidate.version;
+          break;
+        }
+      } catch {
+        // Some repositories keep release files outside the default branch root.
+      }
     }
-    
-    // 4. Validate manifest
+
+    const releaseApiUrls = [
+      ...(repositoryVersion ? [
+        `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(repositoryVersion)}`,
+        `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(`v${repositoryVersion}`)}`,
+      ] : []),
+      `https://api.github.com/repos/${repo}/releases/latest`,
+    ];
+    const releases: any[] = [];
+    for (const url of releaseApiUrls) {
+      try {
+        const release = JSON.parse(await fetchText(url));
+        if (release?.assets && !releases.some((entry) => entry.id === release.id)) releases.push(release);
+      } catch (error) {
+        console.warn(`[PluginManager] Release API unavailable: ${url}`, error);
+      }
+    }
+
+    for (const release of releases) {
+      const assets = Array.isArray(release.assets) ? release.assets : [];
+      const manifestAsset = assets.find((asset: any) => asset.name.toLowerCase() === 'manifest.json');
+      const mainAsset = assets.find((asset: any) => asset.name.toLowerCase() === 'main.js');
+      const stylesAsset = assets.find((asset: any) => asset.name.toLowerCase() === 'styles.css');
+      if (manifestAsset && mainAsset) {
+        strategies.push({
+          label: `loose release assets (${release.tag_name})`,
+          load: () => readLooseBundle(
+            manifestAsset.browser_download_url,
+            mainAsset.browser_download_url,
+            stylesAsset?.browser_download_url,
+          ),
+        });
+      }
+
+      for (const asset of assets.filter((entry: any) => entry.name.toLowerCase().endsWith('.zip'))) {
+        strategies.push({
+          label: `release ZIP ${asset.name} (${release.tag_name})`,
+          load: () => readZipBundle(asset.browser_download_url),
+        });
+      }
+    }
+
+    const releaseTags = [...new Set([
+      repositoryVersion,
+      repositoryVersion ? `v${repositoryVersion}` : undefined,
+      ...releases.map((release) => release.tag_name),
+    ].filter((entry): entry is string => Boolean(entry)))];
+    for (const releaseTag of releaseTags) {
+      const releaseBase = `https://github.com/${repo}/releases/download/${encodeURIComponent(releaseTag)}`;
+      strategies.push({
+        label: `release tag ${releaseTag}`,
+        load: () => readLooseBundle(
+          `${releaseBase}/manifest.json`,
+          `${releaseBase}/main.js`,
+          `${releaseBase}/styles.css`,
+        ),
+      });
+    }
+
+    for (const branch of ['HEAD', 'main', 'master']) {
+      const rawBase = `https://raw.githubusercontent.com/${repo}/${branch}`;
+      strategies.push({
+        label: `repository ${branch}`,
+        load: () => readLooseBundle(
+          `${rawBase}/manifest.json`,
+          `${rawBase}/main.js`,
+          `${rawBase}/styles.css`,
+        ),
+      });
+    }
+
+    let bundle: PluginBundleFiles | null = null;
+    const failures: string[] = [];
+    for (const strategy of strategies) {
+      try {
+        bundle = await strategy.load();
+        console.log(`[PluginManager] Resolved ${expectedPluginId} from ${strategy.label}`);
+        break;
+      } catch (error: any) {
+        failures.push(`${strategy.label}: ${error.message}`);
+      }
+    }
+    if (!bundle) {
+      throw new Error(`No installable plugin bundle found for ${repo}. ${failures.join(' | ')}`);
+    }
+
     let manifest: PluginManifest;
     try {
-      manifest = JSON.parse(manifestText) as PluginManifest;
-    } catch (e: any) {
+      manifest = JSON.parse(bundle.manifestText) as PluginManifest;
+    } catch {
       throw new Error(`Downloaded manifest.json is invalid JSON`);
     }
-
-    if (manifest.id !== expectedPluginId) {
-      console.warn(`[PluginManager] Warning: Manifest ID (${manifest.id}) does not match expected ID (${expectedPluginId})`);
+    if (!manifest.id || !manifest.name || !manifest.version) {
+      throw new Error('Downloaded manifest.json is missing id, name, or version');
     }
-    
-    // 5. Save to disk
-    console.log(`[PluginManager] Step 3: Saving to disk...`);
-    const pluginDir = `plugins/${manifest.id || expectedPluginId}`;
+    if (manifest.id !== expectedPluginId) {
+      throw new Error(`Plugin ID mismatch: registry requested ${expectedPluginId}, bundle contains ${manifest.id}`);
+    }
+
+    console.log(`[PluginManager] Step 2: Saving ${manifest.name} v${manifest.version}...`);
+    const pluginDir = `plugins/${manifest.id}`;
     try {
-      await api().dataWrite(`${pluginDir}/manifest.json`, manifestText);
-      await api().dataWrite(`${pluginDir}/main.js`, mainText);
-      if (stylesText) {
-        await api().dataWrite(`${pluginDir}/styles.css`, stylesText);
-      }
+      await api().dataWrite(`${pluginDir}/manifest.json`, bundle.manifestText);
+      await api().dataWrite(`${pluginDir}/main.js`, bundle.mainText);
+      if (bundle.stylesText) await api().dataWrite(`${pluginDir}/styles.css`, bundle.stylesText);
+      else await api().dataDelete(`${pluginDir}/styles.css`).catch(() => {});
     } catch (e: any) {
-      console.error(`[PluginManager] Step 3 FAILED:`, e);
       throw new Error(`Failed to save plugin files to disk: ${e.message}`);
     }
-    
-    console.log(`[PluginManager] ✓ Files saved for ${manifest.name} v${manifest.version}`);
-    
-    // 6. Refresh plugin registry and auto-enable
-    await this.discoverPlugins();
-    
-    // 7. Auto-enable (load + persist)
-    const pluginId = manifest.id || expectedPluginId;
-    console.log(`[PluginManager] Step 4: Auto-enabling ${pluginId}...`);
-    try {
-      const loadSuccess = await this.enablePlugin(pluginId);
-      if (!loadSuccess) {
-        // Plugin was installed but failed to load — still count as installed
-        console.warn(`[PluginManager] Plugin installed but failed to load. It can be enabled manually.`);
-      } else {
-        console.log(`[PluginManager] ✓ Plugin ${manifest.name} installed and enabled`);
-      }
-    } catch (e: any) {
-      console.warn(`[PluginManager] Plugin installed but errored during enable:`, e.message);
-      // Don't throw — install succeeded, load is a separate concern
-    }
 
+    await this.discoverPlugins();
+
+    console.log(`[PluginManager] Step 3: Enabling ${manifest.id}...`);
+    const loadSuccess = await this.enablePlugin(manifest.id);
+    if (!loadSuccess) {
+      const registration = this._plugins.get(manifest.id);
+      throw new Error(registration?.error || `${manifest.name} installed but failed to load`);
+    }
+    console.log(`[PluginManager] Installed and enabled ${manifest.name} v${manifest.version}`);
     return true;
   }
 
@@ -740,5 +908,7 @@ window["${globalKey}"].__done = true;
     this._manifestCache.clear();
     this._scriptElements.clear();
     this._loggers.clear();
+    this._editorExtensions.clear();
+    (window as any).__oo_editor_extensions = [];
   }
 }

@@ -21,13 +21,13 @@ export function BacklinksPanel({
   onClose,
 }: BacklinksPanelProps) {
   return (
-    <div className="backlinks-panel">
-      <div className="backlinks-header">
-        <span>Backlinks</span>
-        <div className="backlinks-header-right">
-          <span className="backlinks-count">{backlinks.length}</span>
+    <div className="flex flex-col h-full border-l border-(--border-subtle) bg-(--bg-secondary)">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-(--border-subtle)">
+        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-muted)">Backlinks</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary)">{backlinks.length}</span>
           <button
-            className="backlinks-close-btn"
+            className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-150"
             onClick={onClose}
             title="Close backlinks panel"
           >
@@ -36,22 +36,22 @@ export function BacklinksPanel({
         </div>
       </div>
 
-      <div className="backlinks-list">
+      <div className="flex-1 overflow-y-auto">
         {backlinks.length > 0 ? (
           backlinks.map((link) => (
             <button
               key={link}
-              className="backlink-item"
+              className="w-full flex flex-col gap-0.5 px-4 py-2.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-150 hover:bg-(--bg-hover)"
               onClick={() => onBacklinkClick(link)}
             >
-              <span className="backlink-name">{getNoteName(link)}</span>
-              <span className="backlink-path">{link}</span>
+              <span className="text-[13px] font-medium text-(--text-primary)">{getNoteName(link)}</span>
+              <span className="text-[11px] text-(--text-muted) truncate">{link}</span>
             </button>
           ))
         ) : (
-          <div className="empty-state" style={{ padding: "2rem 1rem" }}>
-            <div style={{ fontSize: "24px", opacity: 0.3 }}>🔗</div>
-            <div className="empty-text" style={{ textAlign: "center" }}>
+          <div className="flex flex-col items-center justify-center py-8 px-4 gap-2">
+            <div className="text-2xl opacity-30">&#x1F517;</div>
+            <div className="text-xs text-(--text-muted) text-center">
               No backlinks found
             </div>
           </div>

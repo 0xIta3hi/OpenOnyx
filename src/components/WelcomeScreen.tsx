@@ -55,45 +55,31 @@ export function WelcomeScreen({
   };
 
   return (
-    <div className="welcome-screen" ref={screenRef} data-transition-phase={transitionPhase}>
-      <div className="welcome-logo">
+    <div className="flex flex-col items-center justify-center h-full w-full bg-(--bg-primary) text-(--text-primary) select-none" ref={screenRef} data-transition-phase={transitionPhase}>
+      <div className="mb-6">
         <img
           src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
           alt="OpenObsidian Logo"
-          style={{ width: "80px", height: "80px", objectFit: "contain" }}
+          className="w-20 h-20 object-contain"
         />
       </div>
-      <h1 className="welcome-title">OpenObsidian</h1>
-      <p className="welcome-subtitle">
+      <h1 className="text-3xl font-bold tracking-tight mb-2 text-(--text-primary)">OpenObsidian</h1>
+      <p className="text-sm text-(--text-secondary) text-center max-w-[360px] leading-relaxed mb-8">
         Your local-first knowledge base. Create, link, and visualize your
         thoughts as an interconnected graph.
       </p>
-      <div className="welcome-actions">
+      <div className="flex items-center gap-4">
         <button
-          className={`btn btn-primary welcome-action-btn ${pressedAction === "open" ? "is-pressing" : ""}`}
+          className={`inline-flex items-center gap-2 px-6 py-3 text-base font-semibold rounded-lg bg-(--accent-primary) text-(--text-on-accent) border border-(--accent-primary) cursor-pointer transition-all duration-150 hover:bg-(--accent-secondary) hover:border-(--accent-secondary) disabled:opacity-50 disabled:cursor-not-allowed ${pressedAction === "open" ? "scale-95" : ""}`}
           onClick={() => handleAction("open")}
           disabled={actionsDisabled}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "12px 24px",
-            fontSize: "16px",
-          }}
         >
           <FolderOpen size={18} strokeWidth={2} /> Open Vault
         </button>
         <button
-          className={`btn btn-secondary welcome-action-btn ${pressedAction === "create" ? "is-pressing" : ""}`}
+          className={`inline-flex items-center gap-2 px-6 py-3 text-base font-semibold rounded-lg bg-(--bg-secondary) text-(--text-primary) border border-(--border-subtle) cursor-pointer transition-all duration-150 hover:bg-(--bg-hover) hover:border-(--border-medium) disabled:opacity-50 disabled:cursor-not-allowed ${pressedAction === "create" ? "scale-95" : ""}`}
           onClick={() => handleAction("create")}
           disabled={actionsDisabled}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "12px 24px",
-            fontSize: "16px",
-          }}
         >
           <Plus size={18} strokeWidth={2} /> Create Vault
         </button>

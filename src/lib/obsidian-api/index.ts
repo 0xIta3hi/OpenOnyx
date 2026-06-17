@@ -7,7 +7,8 @@
 
 // ── DOM Extensions (must be first — patches HTMLElement.prototype) ──
 import './dom-extensions';
-import { setIcon } from './utils';
+import { normalizePath, Scope, setIcon } from './utils';
+import { marked } from 'marked';
 
 // ── File System ─────────────────────────────────────
 export { TAbstractFile, TFile, TFolder } from './files';
@@ -111,17 +112,37 @@ export class MarkdownRenderer extends MarkdownRenderChild {
   app: any;
   hoverPopover: any = null;
   get file(): any { return null; }
-  static async render(app: any, markdown: string, el: HTMLElement, sourcePath: string, component: any): Promise<void> {
-    el.innerHTML = markdown
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`(.+?)`/g, '<code>$1</code>')
-      .replace(/\n/g, '<br>');
+  static async render(app: any, markdown: string, el: any, sourcePath: string, component: any): Promise<void> {
+    const container = document.createElement('div');
+    container.className = 'markdown-rendered';
+    container.innerHTML = marked.parse(markdown, { async: false }) as string;
+    for (const link of Array.from(container.querySelectorAll('a'))) {
+      const href = link.getAttribute('href') || '';
+      if (!href || /^(https?:|mailto:|#)/i.test(href)) continue;
+      link.classList.add('internal-link');
+      link.setAttribute('data-href', decodeURIComponent(href.replace(/\.md$/i, '')));
+    }
+    const cleanup = await runMarkdownPostProcessors(container, sourcePath);
+    component?.register?.(cleanup);
+    if (typeof Node !== 'undefined' && el instanceof Node) {
+      while (container.firstChild) el.appendChild(container.firstChild);
+    } else {
+      // Export plugins use a capture target and inspect the rendered
+      // element's HTMLCollection before moving its children elsewhere.
+      el.appendChild(container);
+    }
   }
   static renderMarkdown = MarkdownRenderer.render;
+  static async postProcess(app: any, context: any): Promise<void> {
+    const container = context?.containerEl || context?.el;
+    if (!container) return;
+    const cleanup = await runMarkdownPostProcessors(container, context.sourcePath || '');
+    context?.addChild?.({
+      load() {},
+      unload: cleanup,
+    });
+    if (Array.isArray(context?.promises)) await Promise.all(context.promises);
+  }
 }
 
 export class MarkdownPreviewView {
@@ -131,13 +152,32 @@ export class MarkdownPreviewView {
 }
 
 export class MarkdownPreviewRenderer {
-  static registerPostProcessor(postProcessor: any, sortOrder?: number): void {}
-  static unregisterPostProcessor(postProcessor: any): void {}
+  private static registrations = new Map<any, () => void>();
+  static registerPostProcessor(postProcessor: any, sortOrder?: number): void {
+    this.unregisterPostProcessor(postProcessor);
+    this.registrations.set(
+      postProcessor,
+      registerMarkdownPostProcessor('global', postProcessor, sortOrder),
+    );
+  }
+  static unregisterPostProcessor(postProcessor: any): void {
+    this.registrations.get(postProcessor)?.();
+    this.registrations.delete(postProcessor);
+  }
 }
 
 import type { WorkspaceLeaf, View } from './workspace';
-import { Component, Events, Modal } from './components';
+import {
+  ButtonComponent,
+  Component,
+  Events,
+  ExtraButtonComponent,
+  Modal,
+  SearchComponent,
+  Setting,
+} from './components';
 import { TFile, TFolder, TAbstractFile } from './files';
+import { registerMarkdownPostProcessor, runMarkdownPostProcessors } from './markdown';
 
 // ── FileSystemAdapter (obsidian-git uses instanceof checks) ──
 export class FileSystemAdapter {
@@ -147,20 +187,47 @@ export class FileSystemAdapter {
   }
   getBasePath(): string { return this.basePath; }
   getName(): string { return this.basePath.split('/').pop() || 'Vault'; }
-  async read(path: string): Promise<string> { return ''; }
-  async write(path: string, data: string): Promise<void> {}
-  async exists(path: string): Promise<boolean> { return false; }
-  async stat(path: string): Promise<any> { return null; }
-  async list(path: string): Promise<{ files: string[]; folders: string[] }> { return { files: [], folders: [] }; }
-  async mkdir(path: string): Promise<void> {}
-  async remove(path: string): Promise<void> {}
-  async rename(from: string, to: string): Promise<void> {}
-  async append(path: string, data: string): Promise<void> {}
-  async readBinary(path: string): Promise<ArrayBuffer> { return new ArrayBuffer(0); }
-  async writeBinary(path: string, data: ArrayBuffer): Promise<void> {}
+  private get delegate(): any { return (window as any).__oo_app?.vault?.adapter; }
+  async read(path: string): Promise<string> { return this.delegate?.read(path) ?? ''; }
+  async write(path: string, data: string, options?: any): Promise<void> { await this.delegate?.write(path, data, options); }
+  async exists(path: string, sensitive?: boolean): Promise<boolean> { return !!(await this.delegate?.exists(path, sensitive)); }
+  async stat(path: string): Promise<any> { return this.delegate?.stat(path) ?? null; }
+  async list(path: string): Promise<{ files: string[]; folders: string[] }> {
+    return this.delegate?.list(path) ?? { files: [], folders: [] };
+  }
+  async mkdir(path: string): Promise<void> { await this.delegate?.mkdir(path); }
+  async rmdir(path: string, recursive: boolean): Promise<void> { await this.delegate?.rmdir?.(path, recursive); }
+  async remove(path: string): Promise<void> { await this.delegate?.remove(path); }
+  async rename(from: string, to: string): Promise<void> { await this.delegate?.rename(from, to); }
+  async copy(from: string, to: string): Promise<void> { await this.delegate?.copy?.(from, to); }
+  async append(path: string, data: string, options?: any): Promise<void> { await this.delegate?.append(path, data, options); }
+  async process(path: string, fn: (data: string) => string, options?: any): Promise<string> {
+    const next = fn(await this.read(path));
+    await this.write(path, next, options);
+    return next;
+  }
+  async readBinary(path: string): Promise<ArrayBuffer> {
+    if (this.delegate?.readBinary) return this.delegate.readBinary(path);
+    return new TextEncoder().encode(await this.read(path)).buffer;
+  }
+  async writeBinary(path: string, data: ArrayBuffer, options?: any): Promise<void> {
+    if (this.delegate?.writeBinary) return this.delegate.writeBinary(path, data, options);
+    await this.write(path, new TextDecoder().decode(data), options);
+  }
+  async appendBinary(path: string, data: ArrayBuffer, options?: any): Promise<void> {
+    const current = new Uint8Array(await this.readBinary(path));
+    const addition = new Uint8Array(data);
+    const combined = new Uint8Array(current.length + addition.length);
+    combined.set(current);
+    combined.set(addition, current.length);
+    await this.writeBinary(path, combined.buffer, options);
+  }
   getResourcePath(path: string): string { return `app://local${this.basePath}/${path}`; }
-  async trashLocal(path: string): Promise<void> {}
-  async trashSystem(path: string): Promise<boolean> { return false; }
+  getFilePath(path: string): string { return `${this.basePath}/${normalizePath(path)}`; }
+  getFullPath(path: string): string { return this.getFilePath(path); }
+  async readLocalFile(path: string): Promise<ArrayBuffer> { return this.readBinary(path); }
+  async trashLocal(path: string): Promise<void> { await this.delegate?.trashLocal?.(path); }
+  async trashSystem(path: string): Promise<boolean> { return !!(await this.delegate?.trashSystem?.(path)); }
 }
 
 // ── Keymap (obsidian-git uses Keymap.isModifier) ──
@@ -239,7 +306,7 @@ export interface EditorPosition { line: number; ch: number; }
 export interface EditorRange { from: EditorPosition; to: EditorPosition; }
 
 // CM6 StateField stubs — plugins like obsidian-git import these
-import { StateField } from '@codemirror/state';
+import { EditorSelection as CMEditorSelection, StateField } from '@codemirror/state';
 export const editorInfoField: any = StateField.define({
   create: () => ({ file: null, editor: null }),
   update: (value: any) => value,
@@ -260,6 +327,12 @@ function _EditorSuggest(this: any, app: any) {
   this.app = app || (window as any).__oo_app;
   this.context = null;
   this.limit = 100;
+  this.scope = new Scope();
+  this.suggestEl = document.createElement('div');
+  this.suggestEl.className = 'suggestion-container editor-suggest';
+  this.suggestEl.style.display = 'none';
+  document.body.appendChild(this.suggestEl);
+  this.instructions = [];
 }
 _EditorSuggest.prototype = Object.create(Component.prototype);
 _EditorSuggest.prototype.constructor = _EditorSuggest;
@@ -267,39 +340,193 @@ _EditorSuggest.prototype.onTrigger = function(cursor: any, editor: any, file: an
 _EditorSuggest.prototype.getSuggestions = function(context: any) { return []; };
 _EditorSuggest.prototype.renderSuggestion = function(value: any, el: HTMLElement) {};
 _EditorSuggest.prototype.selectSuggestion = function(value: any, evt: any) {};
-_EditorSuggest.prototype.close = function() {};
+_EditorSuggest.prototype.setInstructions = function(instructions: any[]) { this.instructions = instructions; };
+_EditorSuggest.prototype.open = function() { this.suggestEl.style.display = 'block'; };
+_EditorSuggest.prototype.close = function() { this.suggestEl.style.display = 'none'; };
+_EditorSuggest.prototype.updatePosition = function(force?: boolean) {};
+_EditorSuggest.prototype.onunload = function() { this.suggestEl.remove(); };
 
 export const EditorSuggest = _EditorSuggest as any;
 
 // ── Editor stub (used by Templater, Dataview, etc.) ──
 export class Editor {
-  cm: any = null;
+  cm: any;
+  constructor(cm?: any) { this.cm = cm || null; }
   getDoc(): any { return this; }
-  getValue(): string { return ''; }
-  setValue(content: string): void {}
-  getLine(line: number): string { return ''; }
-  setLine(line: number, text: string): void {}
-  lineCount(): number { return 0; }
-  lastLine(): number { return 0; }
-  getSelection(): string { return ''; }
-  replaceSelection(replacement: string, origin?: string): void {}
-  replaceRange(replacement: string, from: any, to?: any, origin?: string): void {}
-  setCursor(pos: { line: number; ch: number }): void {}
-  somethingSelected(): boolean { return false; }
-  getRange(from: any, to: any): string { return ''; }
-  undo(): void {}
-  redo(): void {}
-  exec(command: string): void {}
-  transaction(fn: () => void): void { fn(); }
-  wordAt(pos: any): { from: any; to: any } | null { return null; }
-  posToOffset(pos: any): number { return 0; }
-  offsetToPos(offset: number): { line: number; ch: number } { return { line: 0, ch: 0 }; }
-  focus(): void {}
-  blur(): void {}
-  hasFocus(): boolean { return false; }
-  getScrollInfo(): { top: number; left: number } { return { top: 0, left: 0 }; }
-  scrollTo(x?: number | null, y?: number | null): void {}
-  scrollIntoView(range: any, margin?: number): void {}
+  refresh(): void { this.cm?.requestMeasure?.(); }
+  getValue(): string { return this.cm?.state?.doc?.toString?.() || ''; }
+  setValue(content: string): void {
+    if (!this.cm) return;
+    this.cm.dispatch({ changes: { from: 0, to: this.cm.state.doc.length, insert: content } });
+  }
+  getLine(line: number): string {
+    if (!this.cm || line < 0 || line >= this.lineCount()) return '';
+    return this.cm.state.doc.line(line + 1).text;
+  }
+  setLine(line: number, text: string): void {
+    if (!this.cm || line < 0 || line >= this.lineCount()) return;
+    const current = this.cm.state.doc.line(line + 1);
+    this.cm.dispatch({ changes: { from: current.from, to: current.to, insert: text } });
+  }
+  lineCount(): number { return this.cm?.state?.doc?.lines || 0; }
+  lastLine(): number { return Math.max(0, this.lineCount() - 1); }
+  getSelection(): string {
+    if (!this.cm) return '';
+    const selection = this.cm.state.selection.main;
+    return this.cm.state.sliceDoc(selection.from, selection.to);
+  }
+  replaceSelection(replacement: string, origin?: string): void {
+    if (!this.cm) return;
+    const selection = this.cm.state.selection.main;
+    this.cm.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: replacement },
+      selection: { anchor: selection.from + replacement.length },
+    });
+  }
+  replaceRange(replacement: string, from: EditorPosition, to?: EditorPosition, origin?: string): void {
+    if (!this.cm) return;
+    this.cm.dispatch({
+      changes: {
+        from: this.posToOffset(from),
+        to: this.posToOffset(to || from),
+        insert: replacement,
+      },
+    });
+  }
+  setCursor(pos: EditorPosition | number, ch?: number): void {
+    if (!this.cm) return;
+    const position = typeof pos === 'number' ? { line: pos, ch: ch || 0 } : pos;
+    this.cm.dispatch({ selection: { anchor: this.posToOffset(position) }, scrollIntoView: true });
+  }
+  getCursor(side: 'from' | 'to' | 'head' | 'anchor' = 'head'): EditorPosition {
+    if (!this.cm) return { line: 0, ch: 0 };
+    const selection = this.cm.state.selection.main;
+    const offset = side === 'from' ? selection.from
+      : side === 'to' ? selection.to
+      : side === 'anchor' ? selection.anchor
+      : selection.head;
+    return this.offsetToPos(offset);
+  }
+  listSelections(): EditorSelection[] {
+    if (!this.cm) return [{ anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } }];
+    return this.cm.state.selection.ranges.map((range: any) => ({
+      anchor: this.offsetToPos(range.anchor),
+      head: this.offsetToPos(range.head),
+    }));
+  }
+  setSelection(anchor: EditorPosition, head?: EditorPosition): void {
+    if (!this.cm) return;
+    this.cm.dispatch({
+      selection: {
+        anchor: this.posToOffset(anchor),
+        head: this.posToOffset(head || anchor),
+      },
+    });
+  }
+  setSelections(ranges: EditorSelectionOrCaret[], main?: number): void {
+    const range = ranges[main || 0];
+    if (range) this.setSelection(range.anchor, range.head);
+  }
+  somethingSelected(): boolean { return !!this.cm && !this.cm.state.selection.main.empty; }
+  getRange(from: EditorPosition, to: EditorPosition): string {
+    return this.cm?.state?.sliceDoc(this.posToOffset(from), this.posToOffset(to)) || '';
+  }
+  undo(): void {
+    if (this.cm) (window as any).__oo_cm_commands?.undo?.(this.cm);
+  }
+  redo(): void {
+    if (this.cm) (window as any).__oo_cm_commands?.redo?.(this.cm);
+  }
+  exec(command: string): void {
+    const handler = (window as any).__oo_cm_commands?.[command];
+    if (this.cm && typeof handler === 'function') handler(this.cm);
+  }
+  transaction(tx: EditorTransaction, origin?: string): void {
+    if (!this.cm) return;
+    const changes = (tx.changes || []).map((change) => ({
+      from: this.posToOffset(change.from),
+      to: this.posToOffset(change.to || change.from),
+      insert: change.text,
+    }));
+    const selections = tx.selections || (tx.selection ? [tx.selection] : undefined);
+    const selection = selections ? CMEditorSelection.create(
+      selections.map((range) => CMEditorSelection.range(
+        this.posToOffset(range.from),
+        this.posToOffset(range.to || range.from),
+      )),
+      0,
+    ) : undefined;
+    if (tx.replaceSelection !== undefined) {
+      const current = this.cm.state.selection.main;
+      changes.push({ from: current.from, to: current.to, insert: tx.replaceSelection });
+    }
+    this.cm.dispatch({
+      ...(changes.length ? { changes } : {}),
+      ...(selection ? { selection } : {}),
+    });
+  }
+  wordAt(pos: EditorPosition): { from: EditorPosition; to: EditorPosition } | null {
+    const line = this.getLine(pos.line);
+    const matches = Array.from(line.matchAll(/\S+/g));
+    const match = matches.find((item) => {
+      const start = item.index || 0;
+      return pos.ch >= start && pos.ch <= start + item[0].length;
+    });
+    if (!match) return null;
+    const start = match.index || 0;
+    return { from: { line: pos.line, ch: start }, to: { line: pos.line, ch: start + match[0].length } };
+  }
+  posToOffset(pos: EditorPosition): number {
+    if (!this.cm || this.lineCount() === 0) return 0;
+    const lineNumber = Math.min(Math.max(pos.line + 1, 1), this.cm.state.doc.lines);
+    const line = this.cm.state.doc.line(lineNumber);
+    return Math.min(line.to, line.from + Math.max(0, pos.ch));
+  }
+  offsetToPos(offset: number): EditorPosition {
+    if (!this.cm || this.lineCount() === 0) return { line: 0, ch: 0 };
+    const clamped = Math.min(Math.max(offset, 0), this.cm.state.doc.length);
+    const line = this.cm.state.doc.lineAt(clamped);
+    return { line: line.number - 1, ch: clamped - line.from };
+  }
+  focus(): void { this.cm?.focus?.(); }
+  blur(): void { (this.cm?.contentDOM as HTMLElement | undefined)?.blur?.(); }
+  hasFocus(): boolean { return !!this.cm?.hasFocus; }
+  getScrollInfo(): EditorScrollInfo {
+    const scroller = this.cm?.scrollDOM;
+    return {
+      top: scroller?.scrollTop || 0,
+      left: scroller?.scrollLeft || 0,
+      height: scroller?.scrollHeight || 0,
+      width: scroller?.scrollWidth || 0,
+      clientHeight: scroller?.clientHeight || 0,
+      clientWidth: scroller?.clientWidth || 0,
+    };
+  }
+  scrollTo(x?: number | null, y?: number | null): void {
+    this.cm?.scrollDOM?.scrollTo?.(x ?? this.cm.scrollDOM.scrollLeft, y ?? this.cm.scrollDOM.scrollTop);
+  }
+  scrollIntoView(range: EditorRangeOrCaret, center?: boolean): void {
+    if (!this.cm) return;
+    const position = this.posToOffset(range.from);
+    const effect = (window as any).__oo_cm_editor_view?.scrollIntoView?.(position, { y: center ? 'center' : 'nearest' });
+    if (effect) this.cm.dispatch({ effects: effect });
+  }
+  processLines<T>(
+    read: (line: number, lineText: string) => T | null,
+    write: (line: number, lineText: string, value: T | null) => EditorChange | void,
+    ignoreEmpty?: boolean,
+  ): void {
+    const values: Array<{ line: number; text: string; value: T | null }> = [];
+    for (let line = 0; line < this.lineCount(); line++) {
+      const text = this.getLine(line);
+      if (ignoreEmpty && !text) continue;
+      values.push({ line, text, value: read(line, text) });
+    }
+    const changes = values
+      .map(({ line, text, value }) => write(line, text, value))
+      .filter((change): change is EditorChange => !!change);
+    if (changes.length) this.transaction({ changes });
+  }
 }
 
 // ── HoverPopover stub ──
@@ -373,7 +600,7 @@ const origUpdateLocale = momentLib.updateLocale;
 export const moment = momentLib;
 
 // ── apiVersion ──────────────────────────────────────
-export let apiVersion: string = '1.9.16';
+export let apiVersion: string = '1.13.1';
 
 // ── livePreviewState ──
 import { ViewPlugin } from '@codemirror/view';
@@ -639,17 +866,50 @@ export class SecretComponent extends BaseComponent {
 }
 
 export class SettingGroup {
+  listEl: HTMLElement;
   settingEl: HTMLElement;
   constructor(containerEl: HTMLElement) {
     this.settingEl = containerEl.createEl('div', { cls: 'setting-group' }) as unknown as HTMLElement;
+    this.listEl = this.settingEl.createDiv({ cls: 'setting-group-list' });
+  }
+  setHeading(text: string): this {
+    let heading = this.settingEl.querySelector<HTMLElement>('.setting-group-heading');
+    if (!heading) {
+      heading = document.createElement('div');
+      heading.className = 'setting-group-heading';
+      this.settingEl.prepend(heading);
+    }
+    heading.textContent = text;
+    return this;
+  }
+  addClass(classes: string): this { this.settingEl.addClass(classes); return this; }
+  addSetting(cb: (setting: any) => any): this {
+    cb(new (Setting as any)(this.listEl));
+    return this;
+  }
+  addSearch(cb: (component: SearchComponent) => any): this {
+    cb(new SearchComponent(this.listEl));
+    return this;
+  }
+  addExtraButton(cb: (component: ExtraButtonComponent) => any): this {
+    cb(new ExtraButtonComponent(this.settingEl));
+    return this;
   }
 }
 
-export class SettingPage {
+export abstract class SettingPage {
+  rootEl: HTMLElement;
+  titlebarEl: HTMLElement;
   containerEl: HTMLElement;
-  constructor(containerEl: HTMLElement) {
-    this.containerEl = containerEl.createEl('div', { cls: 'setting-page' }) as unknown as HTMLElement;
+  title = '';
+  constructor() {
+    this.rootEl = document.createElement('div');
+    this.rootEl.className = 'setting-page';
+    this.titlebarEl = this.rootEl.createDiv({ cls: 'setting-page-titlebar' });
+    this.containerEl = this.rootEl.createDiv({ cls: 'setting-page-content' });
   }
+  abstract display(): void;
+  hide(): void { this.containerEl.empty(); }
 }
 
 export class RenderContext {}
@@ -761,7 +1021,12 @@ export interface EditorScrollInfo { top: number; left: number; height: number; w
 export interface EditorSelection { anchor: EditorPosition; head: EditorPosition; }
 export interface EditorSelectionOrCaret { anchor: EditorPosition; head?: EditorPosition; }
 export interface EditorRangeOrCaret { from: EditorPosition; to?: EditorPosition; }
-export interface EditorTransaction { changes?: EditorChange[]; selections?: EditorSelectionOrCaret[]; selection?: EditorSelectionOrCaret; }
+export interface EditorTransaction {
+  replaceSelection?: string;
+  changes?: EditorChange[];
+  selections?: EditorRangeOrCaret[];
+  selection?: EditorRangeOrCaret;
+}
 export interface EditorSuggestContext { start: EditorPosition; end: EditorPosition; query: string; editor: Editor; file: TFile; }
 export interface EditorSuggestTriggerInfo { start: EditorPosition; end: EditorPosition; query: string; }
 export type EditorCommandName = string;
@@ -882,21 +1147,37 @@ export function hexStringToArrayBuffer(hexString: string): ArrayBuffer {
 // do not use these, but having them avoids undefined errors.
 
 export class BasesView extends Component {
+  readonly type = '';
+  app: any;
   controller: QueryController;
+  config: BasesViewConfig;
+  allProperties: any[] = [];
+  data: BasesQueryResult = new BasesQueryResult();
   containerEl: HTMLElement;
   constructor(controller: QueryController, containerEl: HTMLElement) {
     super();
+    this.app = (window as any).__oo_app;
     this.controller = controller;
+    this.config = new BasesViewConfig();
     this.containerEl = containerEl;
+  }
+  onDataUpdated(): void {}
+  async createFileForView(baseFileName: string, frontmatterProcessor?: (frontmatter: any) => void): Promise<TFile | null> {
+    const app = this.app;
+    if (!app?.vault) return null;
+    const path = `${baseFileName.replace(/\.md$/i, '')}.md`;
+    const file = await app.vault.create(path, '');
+    if (frontmatterProcessor) await app.fileManager.processFrontMatter(file, frontmatterProcessor);
+    return file;
   }
 }
 
 export class BasesEntry {
-  _file: any = null;
-  _values: Map<string, any> = new Map();
-  getFile(): any { return this._file; }
-  getValue(_id: string): any { return undefined; }
-  setValue(_id: string, _value: any): void {}
+  file: TFile = null as any;
+  _values: Map<string, Value> = new Map();
+  getFile(): TFile { return this.file; }
+  getValue(id: string): Value { return this._values.get(id) || new NullValue(); }
+  setValue(id: string, value: Value): void { this._values.set(id, value); }
 }
 
 export class BasesEntryGroup {
@@ -907,6 +1188,7 @@ export class BasesEntryGroup {
 export class BasesQueryResult {
   entries: BasesEntry[] = [];
   groups: BasesEntryGroup[] = [];
+  groupedData: BasesEntryGroup[] = this.groups;
   properties: any[] = [];
 }
 
@@ -914,21 +1196,144 @@ export class BasesViewConfig {
   id: string = '';
   name: string = '';
   icon: string = '';
+  private _values = new Map<string, any>();
+  private _order: string[] = [];
+  get(key: string): any { return this._values.get(key); }
+  set(key: string, value: any): void { this._values.set(key, value); }
+  getOrder(): string[] { return [...this._order]; }
+  setOrder(order: string[]): void { this._order = [...order]; }
 }
 
 // ── Value types for Bases formula system ────────────
-class PrimitiveValue<T> {
-  value: T;
-  constructor(value: T) { this.value = value; }
-  toString(): string { return String(this.value); }
+export abstract class Value {
+  abstract readonly type: string;
+  static equals(a: Value | null, b: Value | null): boolean { return a?.equals(b) ?? b === null; }
+  static looseEquals(a: Value | null, b: Value | null): boolean { return a?.looseEquals(b) ?? b === null; }
+  abstract toString(): string;
+  isTruthy(): boolean { return !this.isEmpty(); }
+  isEmpty(): boolean { return false; }
+  equals(other: Value | null): boolean { return !!other && this.type === other.type && this.toString() === other.toString(); }
+  looseEquals(other: Value | null): boolean { return !!other && this.toString() === other.toString(); }
+  renderTo(el: HTMLElement, _ctx?: any): void { el.textContent = this.toString(); }
 }
 
-export class BooleanValue extends PrimitiveValue<boolean> {}
-export class NumberValue extends PrimitiveValue<number> {}
-export class StringValue extends PrimitiveValue<string> {}
-export class DateValue extends PrimitiveValue<Date> {}
+export class PrimitiveValue<T> extends Value {
+  readonly type: string = 'primitive';
+  value: T;
+  constructor(value: T) { super(); this.value = value; }
+  toString(): string { return String(this.value); }
+  isEmpty(): boolean { return this.value === null || this.value === undefined || this.value === ''; }
+}
+
+export class BooleanValue extends PrimitiveValue<boolean> { readonly type = 'boolean'; }
+export class NumberValue extends PrimitiveValue<number> { readonly type = 'number'; }
+export class StringValue extends PrimitiveValue<string> { readonly type = 'string'; }
+export class DateValue extends PrimitiveValue<Date> { readonly type = 'date'; }
+export class DurationValue extends PrimitiveValue<any> { readonly type = 'duration'; }
+export class RegExpValue extends PrimitiveValue<RegExp> { readonly type = 'regexp'; }
+export class RelativeDateValue extends PrimitiveValue<any> { readonly type = 'relative-date'; }
+export class FileValue extends PrimitiveValue<TFile> { readonly type = 'file'; }
+export class LinkValue extends PrimitiveValue<any> { readonly type = 'link'; }
+export class TagValue extends PrimitiveValue<string> { readonly type = 'tag'; }
+export class UrlValue extends PrimitiveValue<string> { readonly type = 'url'; }
+export class IconValue extends PrimitiveValue<string> { readonly type = 'icon'; }
+export class ImageValue extends PrimitiveValue<any> { readonly type = 'image'; }
+export class HTMLValue extends PrimitiveValue<string> {
+  readonly type = 'html';
+  renderTo(el: HTMLElement): void { el.innerHTML = this.value; }
+}
+export class ListValue extends PrimitiveValue<Value[]> {
+  readonly type = 'list';
+  toString(): string { return this.value.map((value) => value.toString()).join(', '); }
+  isEmpty(): boolean { return this.value.length === 0; }
+}
+export class ObjectValue extends PrimitiveValue<Record<string, Value>> {
+  readonly type = 'object';
+  toString(): string { return JSON.stringify(this.value); }
+  isEmpty(): boolean { return Object.keys(this.value).length === 0; }
+}
+export class NullValue extends Value {
+  readonly type = 'null';
+  toString(): string { return ''; }
+  isTruthy(): boolean { return false; }
+  isEmpty(): boolean { return true; }
+  equals(other: Value | null): boolean { return other === null || other instanceof NullValue; }
+}
+export class NotNullValue extends Value {
+  readonly type = 'not-null';
+  toString(): string { return 'not null'; }
+}
+
+export class DisplayValueComponent extends BaseComponent {
+  valueEl: HTMLElement;
+  constructor(containerEl: HTMLElement) {
+    super();
+    this.valueEl = containerEl.createSpan({ cls: 'setting-item-display-value' });
+  }
+  setValue(value: Value | string): this {
+    this.valueEl.empty();
+    if (value instanceof Value) value.renderTo(this.valueEl);
+    else this.valueEl.textContent = value;
+    return this;
+  }
+}
+
+export class ConfirmationButton extends ButtonComponent {
+  private modal: ConfirmationModal;
+  private handler: ((evt: MouseEvent) => unknown | Promise<unknown>) | null = null;
+  constructor(containerEl: HTMLElement, modal: ConfirmationModal) {
+    super(containerEl);
+    this.modal = modal;
+    this.buttonEl.addEventListener('click', async (evt) => {
+      const keepOpen = await this.handler?.(evt);
+      if (!keepOpen) this.modal.close();
+    });
+  }
+  onClick(handler: (evt: MouseEvent) => unknown | Promise<unknown>): this {
+    this.handler = handler;
+    return this;
+  }
+  setInitialFocus(): this { this.buttonEl.dataset.initialFocus = 'true'; return this; }
+  setSecondary(): this { this.buttonEl.classList.add('mod-secondary'); return this; }
+  setCancel(): this { this.buttonEl.classList.add('mod-cancel'); return this; }
+  setConfirmationText(text: string): this {
+    this.buttonEl.dataset.confirmationText = text;
+    return this;
+  }
+}
+
+export class ConfirmationModal extends (Modal as any) {
+  buttonContainerEl: HTMLElement;
+  constructor(app: any) {
+    super(app);
+    this.buttonContainerEl = document.createElement('div');
+    this.buttonContainerEl.className = 'modal-button-container';
+    this.contentEl.appendChild(this.buttonContainerEl);
+  }
+  addClass(cls: string): this { this.modalEl.addClass(cls); return this; }
+  addCheckbox(label: string, cb: (value: boolean) => any | Promise<any>): this {
+    const wrapper = this.contentEl.createEl('label', { cls: 'mod-checkbox' });
+    const input = wrapper.createEl('input', { type: 'checkbox' }) as HTMLInputElement;
+    wrapper.createSpan({ text: label });
+    input.addEventListener('change', () => void cb(input.checked));
+    this.contentEl.insertBefore(wrapper, this.buttonContainerEl);
+    return this;
+  }
+  addButton(cb: (button: ConfirmationButton) => any): this {
+    const button = new ConfirmationButton(this.buttonContainerEl, this);
+    cb(button);
+    return this;
+  }
+  addCancelButton(text = 'Cancel'): this {
+    return this.addButton((button) => button.setButtonText(text).setCancel());
+  }
+  open(): void {
+    super.open();
+    const target = this.buttonContainerEl.querySelector<HTMLElement>('[data-initial-focus="true"]');
+    target?.focus();
+  }
+}
 
 export interface FormulaContext {
   getValue(id: string): any;
 }
-

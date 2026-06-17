@@ -1836,7 +1836,7 @@ Summarize the theme and key intersections. No emojis.`;
     return (
       <div className="graph-view-container">
         <div className="graph-loading">
-          <div className="loading-spinner" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-medium)] border-t-[var(--accent-primary)]" />
           <span>Building semantic graph...</span>
         </div>
       </div>
@@ -2730,7 +2730,7 @@ Summarize the theme and key intersections. No emojis.`;
             <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-main)", border: "1px solid var(--border-medium)", borderRadius: "8px", padding: "12px" }}>
               {writingLoading ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "8px" }}>
-                  <div className="loading-spinner" />
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-medium)] border-t-[var(--accent-primary)]" />
                   <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Synthesizing note contents...</span>
                 </div>
               ) : writingGeneratedText ? (

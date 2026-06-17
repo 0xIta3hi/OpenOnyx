@@ -239,7 +239,7 @@ export class GraphRenderer {
 
       // Smooth zoom interpolation (Obsidian-style)
       const zoomLerp = 0.15;
-      const panLerp = 0.2;
+      const panLerp = 0.15;
 
       const scaleDiff = Math.abs(this.targetScale - this.scale);
       const offsetXDiff = Math.abs(this.targetOffsetX - this.offsetX);
@@ -275,8 +275,8 @@ export class GraphRenderer {
     const newScale = Math.max(1 / 128, Math.min(8, this.targetScale * zoomFactor));
 
     // Zoom towards mouse position
-    const worldX = (mouseX - this.offsetX) / this.scale;
-    const worldY = (mouseY - this.offsetY) / this.scale;
+    const worldX = (mouseX - this.targetOffsetX) / this.targetScale;
+    const worldY = (mouseY - this.targetOffsetY) / this.targetScale;
 
     this.targetScale = newScale;
     this.targetOffsetX = mouseX - worldX * newScale;

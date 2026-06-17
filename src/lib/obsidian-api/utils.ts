@@ -58,9 +58,17 @@ function toPascalCase(str: string): string {
 }
 
 function getLucideIconHtml(iconId: string): string | null {
-  // Handle some obsidian specific mappings if needed
-  if (iconId === 'lucide-rss') iconId = 'rss';
-  if (iconId === 'document') iconId = 'file';
+  // Obsidian accepts both canonical icon IDs and the lucide-* aliases.
+  if (iconId.startsWith('lucide-')) iconId = iconId.slice('lucide-'.length);
+  const aliases: Record<string, string> = {
+    document: 'file',
+    github: 'code-2',
+    reset: 'rotate-ccw',
+    trello: 'columns-3',
+    twitter: 'message-circle',
+    youtube: 'play',
+  };
+  iconId = aliases[iconId] || iconId;
 
   const pascalName = toPascalCase(iconId);
   const iconNodes = (icons as any)[pascalName];
@@ -228,7 +236,7 @@ export function stripHeadingForLink(heading: string): string {
 // Scope -- hotkey scoping
 export class Scope {
   parent: Scope | null;
-  private _keys: any[] = [];
+  keys: Set<any> = new Set();
 
   constructor(parent?: Scope) {
     this.parent = parent || null;
@@ -236,18 +244,17 @@ export class Scope {
 
   register(modifiers: string[] | null, key: string | null, func: (evt: KeyboardEvent) => any): any {
     const handler = { modifiers: modifiers || [], key, func };
-    this._keys.push(handler);
+    this.keys.add(handler);
     return handler;
   }
 
   unregister(handler: any): void {
-    const idx = this._keys.indexOf(handler);
-    if (idx >= 0) this._keys.splice(idx, 1);
+    this.keys.delete(handler);
   }
 
   /** Dispatch a keyboard event through registered handlers. Returns true if handled. */
   handleKey(evt: KeyboardEvent): boolean {
-    for (const handler of this._keys) {
+    for (const handler of this.keys) {
       // Match key
       if (handler.key && handler.key !== evt.key && handler.key !== evt.code) continue;
 

@@ -232,6 +232,35 @@ function findLeafById(node: PaneNode, leafId: string): PaneLeaf | null {
 
 
 import { DragCtx, DragContextData } from "../context/DragContext";
+
+const splitClasses = {
+  root: "flex flex-1 w-full h-full overflow-hidden",
+  container: "flex flex-1 w-full h-full overflow-hidden",
+  child: "flex flex-col overflow-hidden min-w-0 min-h-0",
+  leafPane: "flex flex-col flex-1 overflow-hidden min-w-0 min-h-0 relative",
+  leafContent: "flex flex-col flex-1 overflow-hidden relative",
+  dividerBase: "shrink-0 bg-(--divider-color) z-10 relative hover:bg-(--accent-primary) after:content-[''] after:absolute after:z-[11]",
+  dividerHorizontal: "w-px cursor-col-resize after:top-0 after:bottom-0 after:-left-[3px] after:-right-[3px]",
+  dividerVertical: "h-px cursor-row-resize after:left-0 after:right-0 after:-top-[3px] after:-bottom-[3px]",
+  dropOverlay: "absolute inset-0 z-50 pointer-events-none",
+  dropZoneBase: "absolute pointer-events-auto",
+  dropZones: {
+    left: "left-0 top-0 w-1/4 h-full",
+    right: "right-0 top-0 w-1/4 h-full",
+    top: "left-1/4 top-0 w-1/2 h-1/4",
+    bottom: "left-1/4 bottom-0 w-1/2 h-1/4",
+    center: "left-1/4 top-1/4 w-1/2 h-1/2",
+  } satisfies Record<DropZone, string>,
+  dropIndicatorBase: "absolute bg-(--accent-color) opacity-[0.18] rounded border-2 border-(--accent-color) pointer-events-none transition-all duration-75",
+  dropIndicators: {
+    left: "left-1 top-1 w-[calc(50%_-_8px)] h-[calc(100%_-_8px)]",
+    right: "right-1 top-1 w-[calc(50%_-_8px)] h-[calc(100%_-_8px)]",
+    top: "left-1 top-1 w-[calc(100%_-_8px)] h-[calc(50%_-_8px)]",
+    bottom: "left-1 bottom-1 w-[calc(100%_-_8px)] h-[calc(50%_-_8px)]",
+    center: "left-1 top-1 w-[calc(100%_-_8px)] h-[calc(100%_-_8px)]",
+  } satisfies Record<DropZone, string>,
+};
+
 /* ─────── Drop Zone Overlay ─────── */
 
 function DropZoneOverlay({
@@ -263,12 +292,12 @@ function DropZoneOverlay({
   };
 
   return (
-    <div className="split-drop-overlay">
+    <div className={splitClasses.dropOverlay}>
       {(["left", "right", "top", "bottom", "center"] as DropZone[]).map(
         (zone) => (
           <div
             key={zone}
-            className={`split-drop-zone split-drop-zone-${zone}${activeZone === zone ? " active" : ""}`}
+            className={`${splitClasses.dropZoneBase} ${splitClasses.dropZones[zone]}`}
             onDragOver={(e) => handleDragOver(e, zone)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, zone)}
@@ -276,7 +305,7 @@ function DropZoneOverlay({
         ),
       )}
       {activeZone && (
-        <div className={`split-drop-indicator split-drop-indicator-${activeZone}`} />
+        <div className={`${splitClasses.dropIndicatorBase} ${splitClasses.dropIndicators[activeZone]}`} />
       )}
     </div>
   );
@@ -362,7 +391,7 @@ function SplitDivider({
   return (
     <div
       ref={dividerRef}
-      className={`split-divider split-divider-${direction}`}
+      className={`${splitClasses.dividerBase} ${direction === "horizontal" ? splitClasses.dividerHorizontal : splitClasses.dividerVertical}`}
       onMouseDown={handleMouseDown}
     />
   );
@@ -392,10 +421,10 @@ function PaneRenderer({
     const isFocused = node.id === focusedLeafId;
     return (
       <div
-        className={`split-leaf-pane${isFocused ? " focused" : ""}`}
+        className={splitClasses.leafPane}
         onClick={() => onFocusLeaf(node.id)}
       >
-        <div className="split-leaf-content">
+        <div className={splitClasses.leafContent}>
           {renderContent(node)}
           <DropZoneOverlay onDrop={onDrop} leafId={node.id} />
         </div>
@@ -408,13 +437,13 @@ function PaneRenderer({
 
   return (
     <div
-      className={`split-container split-${node.direction}`}
+      className={splitClasses.container}
       style={{
         flexDirection: isHorizontal ? "row" : "column",
       }}
     >
       <div
-        className="split-pane-child"
+        className={splitClasses.child}
         style={
           isHorizontal
             ? { width: `${node.ratio * 100}%` }
@@ -436,7 +465,7 @@ function PaneRenderer({
         onRatioChange={onRatioChange}
       />
       <div
-        className="split-pane-child"
+        className={splitClasses.child}
         style={
           isHorizontal
             ? { width: `${(1 - node.ratio) * 100}%` }
@@ -603,7 +632,7 @@ export function SplitPaneContainer({
 
   return (
     <div
-      className="split-pane-root"
+      className={splitClasses.root}
       onDragOver={(e) => e.preventDefault()}
     >
       <PaneRenderer

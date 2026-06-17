@@ -73,43 +73,43 @@ export function TagPane({ visible, onTagClick }: TagPaneProps) {
   if (!visible) return null;
 
   return (
-    <div className="tag-pane">
-      <div className="tag-pane-header">
-        <Hash size={14} strokeWidth={2} />
-        <span>Tags</span>
-        <span className="tag-count">{tags.length}</span>
+    <div className="flex flex-col h-full border-l border-(--border-subtle) bg-(--bg-secondary)">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--border-subtle)">
+        <Hash size={14} strokeWidth={2} className="text-(--text-muted)" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-muted)">Tags</span>
+        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary) ml-auto">{tags.length}</span>
       </div>
 
-      <div className="tag-list">
+      <div className="flex-1 overflow-y-auto py-1">
         {loading ? (
-          <div className="tag-loading">Loading tags...</div>
+          <div className="px-4 py-6 text-center text-xs text-(--text-muted)">Loading tags...</div>
         ) : tags.length === 0 ? (
-          <div className="tag-empty">No tags found</div>
+          <div className="px-4 py-6 text-center text-xs text-(--text-muted)">No tags found</div>
         ) : (
           tags.map((tag) => (
-            <div key={tag.name} className="tag-group">
+            <div key={tag.name}>
               <button
-                className="tag-item"
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 border-none bg-transparent text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover) text-(--text-secondary)"
                 onClick={() => toggleExpand(tag.name)}
               >
-                <span className="tag-expand">
+                <span className="text-(--text-muted) shrink-0">
                   {expandedTags.has(tag.name) ? (
                     <ChevronDown size={12} />
                   ) : (
                     <ChevronRight size={12} />
                   )}
                 </span>
-                <Hash size={12} className="tag-icon" />
-                <span className="tag-name">{tag.name}</span>
-                <span className="tag-badge">{tag.count}</span>
+                <Hash size={12} className="text-(--text-muted) shrink-0 opacity-60" />
+                <span className="text-[12.5px] truncate flex-1">{tag.name}</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-muted)">{tag.count}</span>
               </button>
 
               {expandedTags.has(tag.name) && (
-                <div className="tag-files">
+                <div className="pl-8 pb-1">
                   {tag.files.map((file) => (
                     <button
                       key={file}
-                      className="tag-file"
+                      className="w-full text-left px-3 py-1 text-[11.5px] text-(--text-muted) bg-transparent border-none cursor-pointer truncate hover:text-(--text-primary) hover:bg-(--bg-hover) rounded transition-colors duration-100"
                       onClick={() => onTagClick(file)}
                     >
                       {file.replace(".md", "")}

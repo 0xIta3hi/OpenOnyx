@@ -12,10 +12,16 @@ const api = () => (window as any).electronAPI;
 export class OOVault extends Events {
   adapter: any;
   configDir = '.openobsidian';
+  config: Record<string, any> = {
+    useMarkdownLinks: false,
+    newLinkFormat: 'shortest',
+    showUnsupportedFiles: true,
+  };
   private _path: string = '';
 
   private _files: Map<string, TAbstractFile> = new Map();
   private _root: TFolder = new TFolder('/');
+  private _config: Record<string, any> = {};
 
   constructor() {
     super();
@@ -93,8 +99,16 @@ export class OOVault extends Events {
       readFile: async (path: string, encoding?: string) => {
         return await api().readFile(path) || '';
       },
+      readBinary: async (path: string) => {
+        const bytes = await api().readBinary(path);
+        return new Uint8Array(bytes).buffer;
+      },
       writeFile: async (path: string, data: string) => {
         await api().writeFile(path, data);
+      },
+      writeBinary: async (path: string, data: ArrayBuffer | Uint8Array) => {
+        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+        await api().writeBinary(path, bytes);
       },
       remove: async (path: string) => {
         await api().deleteFile(path);
@@ -102,6 +116,18 @@ export class OOVault extends Events {
       rename: async (oldPath: string, newPath: string) => {
         await api().renameFile(oldPath, newPath);
       },
+      copy: async (oldPath: string, newPath: string) => {
+        const bytes = await api().readBinary(oldPath);
+        await api().writeBinary(newPath, new Uint8Array(bytes));
+      },
+      rmdir: async (path: string, recursive = false) => {
+        await api().deleteDirectory(path);
+        await this.refreshFiles();
+      },
+      getFilePath: (path: string) => `${this.adapter.getBasePath()}/${normalizePath(path)}`,
+      getFullPath: (path: string) => `${this.adapter.getBasePath()}/${normalizePath(path)}`,
+      getRealPath: (path: string) => `${this.adapter.getBasePath()}/${normalizePath(path)}`,
+      getFullRealPath: (path: string) => `${this.adapter.getBasePath()}/${normalizePath(path)}`,
     };
 
     // Try to recover path from global if available immediately
@@ -114,6 +140,23 @@ export class OOVault extends Events {
       const vp = this._path || (window as any).__oo_vault_path || '';
       return vp.split('/').pop() || vp.split('\\').pop() || 'Vault';
     } catch { return 'Vault'; }
+  }
+
+  getConfig(key: string): any {
+    if (key in this._config) return this._config[key];
+    if (key in this.config) return this.config[key];
+    try {
+      const stored = localStorage.getItem(`oo_vault_config_${key}`);
+      return stored === null ? undefined : JSON.parse(stored);
+    } catch {
+      return undefined;
+    }
+  }
+
+  setConfig(key: string, value: any): void {
+    this._config[key] = value;
+    this.config[key] = value;
+    try { localStorage.setItem(`oo_vault_config_${key}`, JSON.stringify(value)); } catch { /* ignore */ }
   }
 
   // ── File Tree Management ──────────────────────────
@@ -175,6 +218,14 @@ export class OOVault extends Events {
     return this._files.get(normalizePath(path)) || null;
   }
 
+  getAbstractFileByPathInsensitive(path: string): TAbstractFile | null {
+    const normalized = normalizePath(path).toLowerCase();
+    for (const [candidate, file] of this._files) {
+      if (candidate.toLowerCase() === normalized) return file;
+    }
+    return null;
+  }
+
   getFileByPath(path: string): TFile | null {
     const f = this._files.get(normalizePath(path));
     return f instanceof TFile ? f : null;
@@ -203,6 +254,42 @@ export class OOVault extends Events {
     return folders;
   }
 
+  getAvailablePath(path: string, extension?: string): string {
+    const requested = extension
+      ? `${normalizePath(path).replace(/\.[^/.]+$/, '')}.${extension.replace(/^\./, '')}`
+      : normalizePath(path);
+    if (!this.getAbstractFileByPathInsensitive(requested)) return requested;
+    const dot = requested.lastIndexOf('.');
+    const slash = requested.lastIndexOf('/');
+    const hasExtension = dot > slash;
+    const base = hasExtension ? requested.slice(0, dot) : requested;
+    const suffix = hasExtension ? requested.slice(dot) : '';
+    let index = 1;
+    while (this.getAbstractFileByPathInsensitive(`${base} ${index}${suffix}`)) index++;
+    return `${base} ${index}${suffix}`;
+  }
+
+  getAvailablePathForAttachments(filename: string, sourcePath = ''): string {
+    const attachmentFolder = this.getConfig('attachmentFolderPath');
+    const sourceFolder = sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : '';
+    const folder = attachmentFolder === './'
+      ? sourceFolder
+      : typeof attachmentFolder === 'string' && attachmentFolder.length > 0
+        ? attachmentFolder
+        : '';
+    return this.getAvailablePath(folder ? `${folder}/${filename}` : filename);
+  }
+
+  exists(path: string, sensitive = true): boolean {
+    return sensitive
+      ? Boolean(this.getAbstractFileByPath(path))
+      : Boolean(this.getAbstractFileByPathInsensitive(path));
+  }
+
+  iterateFiles(callback: (file: TFile) => any): void {
+    for (const file of this.getFiles()) callback(file);
+  }
+
   static recurseChildren(root: TFolder, cb: (file: TAbstractFile) => any): void {
     for (const child of root.children) {
       cb(child);
@@ -223,13 +310,8 @@ export class OOVault extends Events {
   }
 
   async createBinary(path: string, data: ArrayBuffer): Promise<TFile> {
-    // Convert to base64 for IPC transport
     const np = normalizePath(path);
-    const bytes = new Uint8Array(data);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    const b64 = btoa(binary);
-    await api().writeFile(np, b64);
+    await api().writeBinary(np, new Uint8Array(data));
     const file = new TFile(np);
     file.vault = this;
     this._files.set(np, file);
@@ -253,9 +335,8 @@ export class OOVault extends Events {
   }
 
   async readBinary(file: TFile): Promise<ArrayBuffer> {
-    const text = await api().readFile(file.path);
-    const encoder = new TextEncoder();
-    return encoder.encode(text).buffer;
+    const bytes = await api().readBinary(file.path);
+    return new Uint8Array(bytes).buffer;
   }
 
   getResourcePath(file: TFile): string {
@@ -269,12 +350,18 @@ export class OOVault extends Events {
   }
 
   async modifyBinary(file: TFile, data: ArrayBuffer): Promise<void> {
-    const bytes = new Uint8Array(data);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    await api().writeFile(file.path, btoa(binary));
+    await api().writeBinary(file.path, new Uint8Array(data));
     file.stat.mtime = Date.now();
     this.trigger('modify', file);
+  }
+
+  async appendBinary(file: TFile, data: ArrayBuffer): Promise<void> {
+    const current = new Uint8Array(await this.readBinary(file));
+    const addition = new Uint8Array(data);
+    const combined = new Uint8Array(current.length + addition.length);
+    combined.set(current);
+    combined.set(addition, current.length);
+    await this.modifyBinary(file, combined.buffer);
   }
 
   async append(file: TFile, data: string): Promise<void> {

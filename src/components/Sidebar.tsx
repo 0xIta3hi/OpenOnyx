@@ -131,6 +131,122 @@ function filterTree(entries: FileEntry[], query: string): FileEntry[] {
   }, []);
 }
 
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const sidebarRootClass =
+  "sidebar relative flex w-[var(--sidebar-width)] min-w-0 shrink-0 flex-col overflow-hidden border-r border-t border-[var(--divider-color)] bg-[var(--bg-secondary)] pt-0";
+const sidebarCollapsedClass =
+  "collapsed !m-0 hidden !w-0 !min-w-0 !max-w-0 !overflow-hidden !border-x-0 !p-0";
+const sidebarHeaderClass =
+  "flex min-h-10 shrink-0 items-center justify-between gap-1 px-2 py-1.5";
+const sidebarTitleClass =
+  "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--text-secondary)]";
+const sidebarActionsClass = "flex shrink-0 flex-nowrap gap-px";
+const sidebarBtnClass =
+  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-secondary)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const sidebarBtnActiveClass =
+  "bg-[color-mix(in_srgb,var(--accent-primary)_12%,transparent)] text-[var(--accent-primary)]";
+const sidebarFilterClass =
+  "flex items-center gap-1.5 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1";
+const sidebarFilterIconClass = "shrink-0 text-[var(--text-muted)]";
+const sidebarFilterInputClass =
+  "flex-1 border-0 bg-transparent py-1 font-sans text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+const sidebarFilterClearClass =
+  "flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const sidebarSortClass =
+  "flex items-center gap-1 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-[3px] text-[10px] text-[var(--text-muted)]";
+const fileExplorerClass =
+  "file-explorer flex-1 overflow-y-auto overflow-x-hidden px-3 pb-6 pt-1.5 transition-[background-color,box-shadow] duration-200";
+const fileExplorerDragClass =
+  "bg-[rgba(var(--accent-color-rgb,108,99,255),0.05)] shadow-[inset_0_0_0_2px_var(--accent-primary)]";
+const fileTreeItemBaseClass =
+  "file-tree-item group relative mb-px flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-1.5 pl-7 pr-2 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.25] text-[var(--nav-item-color)] transition-[background-color,color,transform,opacity,filter,box-shadow] duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
+const fileTreeItemActiveClass =
+  "active bg-[var(--nav-item-background-selected)] text-[var(--nav-item-color-active)]";
+const fileTreeItemDraggingClass =
+  "dragging scale-[0.98] bg-[var(--bg-hover)] opacity-40 grayscale-[0.5] [&_.name]:text-[1.1em] [&_.name]:font-semibold [&_.name]:text-[var(--accent-primary)]";
+const fileTreeItemDragOverClass =
+  "z-10 translate-x-1 !bg-[var(--nav-item-background-hover)] shadow-[inset_0_0_0_2px_var(--accent-primary)]";
+const fileNameClass = "name flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
+const chevronClass =
+  "chevron absolute left-2 flex text-[var(--text-muted)] transition-transform duration-150";
+const folderCountClass =
+  "folder-count ml-auto shrink-0 rounded-lg bg-[var(--bg-tertiary)] px-[5px] text-[10px] leading-4 text-[var(--text-muted)] opacity-0 transition-opacity duration-150 group-hover:opacity-100";
+const treeChildrenWrapperClass =
+  "file-tree-children-wrapper grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)]";
+const treeChildrenClass =
+  "file-tree-children min-h-0 border-l border-[color-mix(in_srgb,var(--text-muted)_22%,transparent)] py-0.5 pl-2 ml-4";
+const emptyFolderHintClass =
+  "py-1.5 pl-7 pr-2 text-[11px] italic text-[var(--text-muted)] opacity-60";
+const renameInputClass =
+  "w-full rounded-[var(--radius-sm)] border border-[var(--accent-primary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 font-sans text-[length:var(--text-sm)] text-[var(--text-primary)] shadow-[0_0_0_3px_var(--accent-glow)] outline-none";
+const sidebarSectionClass = "shrink-0 border-b border-[var(--border-subtle)] px-2 py-1.5";
+const sectionHeaderClass =
+  "flex min-h-7 w-full cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-1.5 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]";
+const sectionChevronClass = "flex h-4 w-4 shrink-0 items-center justify-center text-[var(--text-muted)]";
+const sectionIconClass = "shrink-0 text-[var(--text-muted)]";
+const sectionCountClass =
+  "ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--bg-tertiary)] px-1.5 text-[10px] font-semibold text-[var(--text-muted)]";
+const starredListClass = "flex flex-col gap-1 p-[var(--space-1)]";
+const starredItemClass =
+  "starred-item min-h-10 items-start gap-2 rounded-[var(--radius-sm)] px-2.5 py-[7px]";
+const starredActiveClass =
+  "border border-[color-mix(in_srgb,var(--accent-primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--accent-primary)_16%,transparent)]";
+const starIconClass = "star-icon mt-0.5 shrink-0";
+const starredTextClass = "flex min-w-0 flex-col items-start gap-0.5";
+const starredPathClass =
+  "max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--text-muted)]";
+const groupHeaderWrapperClass = "flex items-center gap-1";
+const sectionHeaderActionClass =
+  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const groupsListWrapperClass =
+  "grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]";
+const groupsListClass = "min-h-0 space-y-1 overflow-hidden pt-1";
+const groupItemContainerClass =
+  "group relative flex min-h-8 items-center rounded-[var(--radius-sm)]";
+const groupItemActiveClass =
+  "bg-[var(--nav-item-background-selected)]";
+const groupItemBtnClass =
+  "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const groupColorDotClass =
+  "h-2 w-2 shrink-0 rounded-full";
+const groupNameTextClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
+const groupAutoBadgeClass =
+  "ml-auto rounded border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)]";
+const groupItemActionsClass =
+  "absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100";
+const groupActionBtnClass =
+  "flex h-6 w-6 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const sidebarFooterClass =
+  "relative mt-auto flex shrink-0 items-center gap-1 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-2";
+const vaultSelectorBtnClass =
+  "flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-1.5 py-1 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] [&_.vault-selector-icon]:shrink-0";
+const vaultSelectorActiveClass = "bg-[var(--bg-hover)] text-[var(--text-primary)]";
+const vaultSelectorNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
+const sidebarSettingsBtnClass =
+  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const vaultMenuClass =
+  "absolute bottom-[calc(100%+6px)] left-2 right-2 z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]";
+const vaultMenuHeaderClass =
+  "px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
+const vaultMenuItemClass =
+  "flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const vaultMenuCurrentClass = "text-[var(--text-primary)]";
+const vaultMenuActionClass = "[&_.action-icon]:text-[var(--text-muted)]";
+const vaultNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
+const vaultCheckIconClass = "shrink-0 text-[var(--accent-primary)]";
+const vaultMenuSeparatorClass = "mx-2 my-1 h-px bg-[var(--border-subtle)]";
+const contextMenuClass =
+  "context-menu fixed z-[3301] flex min-w-[180px] flex-col rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl pointer-events-auto";
+const contextMenuItemClass =
+  "context-menu-item flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-sans text-[13px] text-[var(--text-secondary,#b0b0bc)] transition-colors duration-150 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
+const contextMenuDangerClass =
+  "danger text-[var(--danger,#f43f5e)] hover:bg-[rgba(244,63,94,0.12)] hover:text-[var(--danger,#f43f5e)]";
+const contextMenuSeparatorClass =
+  "context-menu-separator mx-2 my-1 h-px bg-[var(--border-subtle)]";
+
 export function Sidebar({
   visible,
   fileTree,
@@ -369,7 +485,12 @@ export function Sidebar({
       return (
         <React.Fragment key={entry.path}>
           <button
-            className={`file-tree-item ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""} ${isDragging ? "dragging" : ""}`}
+            className={cx(
+              fileTreeItemBaseClass,
+              isActive && fileTreeItemActiveClass,
+              isDragOver && fileTreeItemDragOverClass,
+              isDragging && fileTreeItemDraggingClass,
+            )}
             onClick={() => {
               if (entry.isDirectory) {
                 toggleDir(entry.path);
@@ -397,7 +518,7 @@ export function Sidebar({
             }}
           >
             {entry.isDirectory && (
-              <span className={`chevron ${isExpanded ? "open" : ""}`}>
+              <span className={cx(chevronClass, isExpanded && "open rotate-90")}>
                 <ChevronRight size={14} strokeWidth={2} />
               </span>
             )}
@@ -405,7 +526,7 @@ export function Sidebar({
             {isRenaming ? (
               <form onSubmit={handleRenameSubmit} style={{ flex: 1 }}>
                 <input
-                  className="rename-input"
+                  className={renameInputClass}
                   value={renameValue}
                   onChange={(e) => setRenameValue(e.target.value)}
                   onBlur={handleRenameSubmit}
@@ -414,22 +535,22 @@ export function Sidebar({
                 />
               </form>
             ) : (
-              <span className="name">
+              <span className={fileNameClass}>
                 {entry.isDirectory ? entry.name : getNoteName(entry.name)}
               </span>
             )}
             {entry.isDirectory && childCount > 0 && !isRenaming && (
-              <span className="folder-count">{childCount}</span>
+              <span className={folderCountClass}>{childCount}</span>
             )}
           </button>
 
           {entry.isDirectory && entry.children && (
-            <div className={`file-tree-children-wrapper ${isExpanded ? "open" : ""}`}>
-              <div className="file-tree-children">
+            <div className={cx(treeChildrenWrapperClass, isExpanded && "open grid-rows-[1fr]")}>
+              <div className={treeChildrenClass}>
                 {entry.children.length > 0 ? (
                   renderFileTree(sortEntries(entry.children, sortMode), depth + 1)
                 ) : (
-                  <div className="empty-folder-hint">Empty</div>
+                  <div className={emptyFolderHintClass}>Empty</div>
                 )}
               </div>
             </div>
@@ -449,12 +570,12 @@ export function Sidebar({
 
   return (
     <>
-      <div className={`sidebar workspace-split mod-left-split ${!visible ? "collapsed" : ""}`}>
-        <div className="sidebar-header">
-          <h3>Explorer</h3>
-          <div className="sidebar-actions">
+      <div className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}>
+        <div className={sidebarHeaderClass}>
+          <h3 className={sidebarTitleClass}>Explorer</h3>
+          <div className={sidebarActionsClass}>
             <button
-              className={`sidebar-btn ${showFilter ? "active" : ""}`}
+              className={cx(sidebarBtnClass, showFilter && sidebarBtnActiveClass)}
               onClick={() => {
                 setShowFilter(!showFilter);
                 if (showFilter) setFilterQuery("");
@@ -464,31 +585,31 @@ export function Sidebar({
               <Search size={16} strokeWidth={1.5} />
             </button>
             <button
-              className="sidebar-btn"
+              className={sidebarBtnClass}
               onClick={onNewNote}
               title="New Note"
             >
               <FilePlus size={16} strokeWidth={1.5} />
             </button>
             <button
-              className="sidebar-btn"
+              className={sidebarBtnClass}
               onClick={() => onNewFolder("")}
               title="New Folder"
             >
               <FolderPlus size={16} strokeWidth={1.5} />
             </button>
             <button
-              className="sidebar-btn"
+              className={sidebarBtnClass}
               onClick={cycleSortMode}
               title={`Sort: ${sortLabel}`}
             >
               <ArrowUpDown size={16} strokeWidth={1.5} />
             </button>
-            <button className="sidebar-btn" onClick={onRefresh} title="Refresh">
+            <button className={sidebarBtnClass} onClick={onRefresh} title="Refresh">
               <RefreshCw size={16} strokeWidth={1.5} />
             </button>
             <button
-              className="sidebar-btn"
+              className={sidebarBtnClass}
               onClick={onCollapse}
               title="Collapse Explorer"
             >
@@ -499,12 +620,12 @@ export function Sidebar({
 
         {/* Filter Bar */}
         {showFilter && (
-          <div className="sidebar-filter">
-            <Search size={13} className="sidebar-filter-icon" />
+          <div className={sidebarFilterClass}>
+            <Search size={13} className={sidebarFilterIconClass} />
             <input
               ref={filterInputRef}
               type="text"
-              className="sidebar-filter-input"
+              className={sidebarFilterInputClass}
               placeholder="Filter files..."
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
@@ -512,7 +633,7 @@ export function Sidebar({
             />
             {filterQuery && (
               <button
-                className="sidebar-filter-clear"
+                className={sidebarFilterClearClass}
                 onClick={() => setFilterQuery("")}
               >
                 <X size={12} />
@@ -523,7 +644,7 @@ export function Sidebar({
 
         {/* Sort indicator */}
         {sortMode !== "name" && (
-          <div className="sidebar-sort-indicator">
+          <div className={sidebarSortClass}>
             <ArrowUpDown size={10} />
             <span>Sorted by {sortLabel.toLowerCase()}</span>
           </div>
@@ -531,28 +652,34 @@ export function Sidebar({
 
         {/* Starred Notes Section */}
         {starredNotes.length > 0 && !filterQuery && (
-          <div className="sidebar-section starred-section">
+          <div className={cx(sidebarSectionClass, "starred-section")}>
             <button
-              className="section-header"
+              className={sectionHeaderClass}
               onClick={() => setShowStarred(!showStarred)}
             >
-              <span className="section-chevron">
+              <span className={sectionChevronClass}>
                 {showStarred ? (
                   <ChevronDown size={14} />
                 ) : (
                   <ChevronRight size={14} />
                 )}
               </span>
-              <Star size={14} className="section-icon" fill="currentColor" />
+              <Star size={14} className={sectionIconClass} fill="currentColor" />
               <span>Starred</span>
-              <span className="section-count">{starredNotes.length}</span>
+              <span className={sectionCountClass}>{starredNotes.length}</span>
             </button>
             {showStarred && (
-              <div className="starred-list">
+              <div className={starredListClass}>
                 {starredNotes.map((path) => (
                   <button
                     key={path}
-                    className={`file-tree-item starred-item ${activeFilePath === path ? "active" : ""} ${draggingPath === path ? "dragging" : ""}`}
+                    className={cx(
+                      fileTreeItemBaseClass,
+                      starredItemClass,
+                      activeFilePath === path && fileTreeItemActiveClass,
+                      activeFilePath === path && starredActiveClass,
+                      draggingPath === path && fileTreeItemDraggingClass,
+                    )}
                     onClick={() => onFileSelect(path)}
                     onContextMenu={(e) => handleContextMenu(e, path, false)}
                     draggable={true}
@@ -561,13 +688,13 @@ export function Sidebar({
                   >
                     <Star
                       size={14}
-                      className="star-icon"
+                      className={starIconClass}
                       fill="var(--accent-warning)"
                       stroke="var(--accent-warning)"
                     />
-                    <span className="starred-text">
-                      <span className="name">{getNoteName(path)}</span>
-                      <span className="starred-path">
+                    <span className={starredTextClass}>
+                      <span className={fileNameClass}>{getNoteName(path)}</span>
+                      <span className={starredPathClass}>
                         {getStarredParentPath(path)}
                       </span>
                     </span>
@@ -580,25 +707,25 @@ export function Sidebar({
 
         {/* Layout Groups Section */}
         {!filterQuery && (
-          <div className="sidebar-section groups-section">
-            <div className="sidebar-section-header-wrapper">
+          <div className={cx(sidebarSectionClass, "groups-section")}>
+            <div className={groupHeaderWrapperClass}>
               <button
-                className="section-header"
+                className={cx(sectionHeaderClass, "flex-1")}
                 onClick={() => setShowGroups(!showGroups)}
               >
-                <span className="section-chevron">
+                <span className={sectionChevronClass}>
                   {showGroups ? (
                     <ChevronDown size={14} />
                   ) : (
                     <ChevronRight size={14} />
                   )}
                 </span>
-                <LayoutGrid size={14} className="section-icon" style={{ color: "var(--accent)" }} />
+                <LayoutGrid size={14} className="text-[var(--accent)]" />
                 <span>Groups</span>
-                <span className="section-count">{groups.length}</span>
+                <span className={sectionCountClass}>{groups.length}</span>
               </button>
               <button 
-                className="section-header-action"
+                className={sectionHeaderActionClass}
                 onClick={(e) => {
                   e.stopPropagation();
                   onCreateGroup();
@@ -608,32 +735,32 @@ export function Sidebar({
                 <Plus size={14} />
               </button>
             </div>
-            <div className={`groups-list-wrapper ${showGroups ? "open" : ""}`}>
-              <div className="groups-list">
+            <div className={cx(groupsListWrapperClass, showGroups && "open grid-rows-[1fr]")}>
+              <div className={groupsListClass}>
                 {groups.map((group) => (
-                  <div key={group.id} className={`group-item-container ${activeGroupId === group.id ? "active" : ""}`}>
+                  <div key={group.id} className={cx(groupItemContainerClass, activeGroupId === group.id && groupItemActiveClass)}>
                     <button
-                      className="group-item-btn"
+                      className={groupItemBtnClass}
                       onClick={() => onRestoreGroup(group.id)}
                       onContextMenu={(e) => handleGroupContextMenu(e, group.id)}
                     >
                       <span 
-                        className="group-color-dot" 
+                        className={groupColorDotClass}
                         style={{ 
                           backgroundColor: group.color,
                           boxShadow: `0 0 6px ${group.color}60`
                         }}
                       />
-                      <span className="group-name-text">{group.name}</span>
+                      <span className={groupNameTextClass}>{group.name}</span>
                       {group.auto_save_enabled && (
-                        <span className="group-auto-badge">
+                        <span className={groupAutoBadgeClass}>
                           auto
                         </span>
                       )}
                     </button>
-                    <div className="group-item-actions">
+                    <div className={groupItemActionsClass}>
                       <button
-                        className="group-action-btn"
+                        className={groupActionBtnClass}
                         onClick={(e) => handleGroupContextMenu(e, group.id)}
                         title="Group Options"
                       >
@@ -648,7 +775,7 @@ export function Sidebar({
         )}
 
         <div
-          className={`file-explorer ${dragOverPath === "" ? "drag-over" : ""}`}
+          className={cx(fileExplorerClass, dragOverPath === "" && fileExplorerDragClass)}
           onDragOver={(e) => handleDragOver(e, "")}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, "")}
@@ -656,20 +783,20 @@ export function Sidebar({
           {processedTree.length > 0 ? (
             renderFileTree(processedTree)
           ) : filterQuery ? (
-            <div className="empty-state" style={{ padding: "2rem 1rem" }}>
-              <div style={{ opacity: 0.3, marginBottom: "0.5rem" }}>
+            <div className="flex h-full flex-col items-center justify-center gap-[var(--space-3)] px-4 py-8 text-center text-[length:var(--text-sm)] text-[var(--text-muted)]">
+              <div className="mb-2 opacity-30">
                 <Search size={36} strokeWidth={1} />
               </div>
-              <div className="empty-text" style={{ textAlign: "center" }}>
+              <div>
                 No files matching &ldquo;{filterQuery}&rdquo;
               </div>
             </div>
           ) : (
-            <div className="empty-state" style={{ padding: "2rem 1rem" }}>
-              <div style={{ opacity: 0.15, marginBottom: "0.5rem" }}>
+            <div className="flex h-full flex-col items-center justify-center gap-[var(--space-3)] px-4 py-8 text-center text-[length:var(--text-sm)] leading-normal text-[var(--text-muted)]">
+              <div className="mb-2 opacity-15">
                 <FolderOpen size={48} strokeWidth={1} />
               </div>
-              <div className="empty-text" style={{ textAlign: "center", lineHeight: 1.5 }}>
+              <div className="leading-normal">
                 No files yet.
                 <br />
                 Create a new note to get started.
@@ -690,19 +817,19 @@ export function Sidebar({
 
         {/* Sidebar Footer - Vault Selector & Settings */}
         {vaultPath && (
-          <div className="sidebar-footer">
+          <div className={sidebarFooterClass}>
             <button
               ref={vaultButtonRef}
-              className={`vault-selector-btn ${showVaultMenu ? "active" : ""}`}
+              className={cx(vaultSelectorBtnClass, showVaultMenu && vaultSelectorActiveClass)}
               onClick={() => setShowVaultMenu(!showVaultMenu)}
               title="Switch Vault"
             >
               <ChevronsUpDown size={20} className="vault-selector-icon" />
-              <span className="vault-selector-name">{vaultName}</span>
+              <span className={vaultSelectorNameClass}>{vaultName}</span>
             </button>
             {onSettings && (
               <button
-                className="sidebar-settings-btn"
+                className={sidebarSettingsBtnClass}
                 onClick={onSettings}
                 title="Settings"
               >
@@ -711,38 +838,38 @@ export function Sidebar({
             )}
             
             {showVaultMenu && (
-              <div className="vault-menu" ref={vaultMenuRef}>
+              <div className={vaultMenuClass} ref={vaultMenuRef}>
                 {otherVaults.length > 0 && (
                   <>
-                    <div className="vault-menu-header">Recent vaults</div>
+                    <div className={vaultMenuHeaderClass}>Recent vaults</div>
                     {otherVaults.map((path) => {
                       const name = path.split(/[/\\]/).pop() || path;
                       return (
                         <button
                           key={path}
-                          className="vault-menu-item"
+                          className={vaultMenuItemClass}
                           onClick={() => {
                             setShowVaultMenu(false);
                             onSwitchVault?.(path);
                           }}
                           title={path}
                         >
-                          <span className="vault-name">{name}</span>
+                          <span className={vaultNameClass}>{name}</span>
                         </button>
                       );
                     })}
-                    <div className="vault-menu-separator" />
+                    <div className={vaultMenuSeparatorClass} />
                   </>
                 )}
-                <div className="vault-menu-header">Current vault</div>
-                <button className="vault-menu-item current">
-                  <span className="vault-name">{vaultName}</span>
-                  <Check size={14} className="check-icon" />
+                <div className={vaultMenuHeaderClass}>Current vault</div>
+                <button className={cx(vaultMenuItemClass, vaultMenuCurrentClass)}>
+                  <span className={vaultNameClass}>{vaultName}</span>
+                  <Check size={14} className={vaultCheckIconClass} />
                 </button>
-                <div className="vault-menu-separator" />
+                <div className={vaultMenuSeparatorClass} />
                 {onOpenVault && (
                   <button
-                    className="vault-menu-item action"
+                    className={cx(vaultMenuItemClass, vaultMenuActionClass)}
                     onClick={() => {
                       setShowVaultMenu(false);
                       onOpenVault();
@@ -770,13 +897,13 @@ export function Sidebar({
             }}
           />
           <div
-            className="context-menu"
+            className={contextMenuClass}
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             {!contextMenu.isDir && (
               <>
                 <button
-                  className="context-menu-item"
+                  className={contextMenuItemClass}
                   onClick={() => {
                     onFileSelect(contextMenu.path);
                     closeContextMenu();
@@ -785,7 +912,7 @@ export function Sidebar({
                   <FileText size={14} style={{ marginRight: 8 }} /> Open
                 </button>
                 <button
-                  className="context-menu-item"
+                  className={contextMenuItemClass}
                   onClick={() => {
                     onToggleStar(contextMenu.path);
                     closeContextMenu();
@@ -805,7 +932,7 @@ export function Sidebar({
               </>
             )}
             <button
-              className="context-menu-item"
+              className={contextMenuItemClass}
               onClick={() => startRename(contextMenu.path)}
             >
               <FileEdit size={14} style={{ marginRight: 8 }} /> Rename
@@ -813,7 +940,7 @@ export function Sidebar({
             {contextMenu.isDir && (
               <>
                 <button
-                  className="context-menu-item"
+                  className={contextMenuItemClass}
                   onClick={() => {
                     const event = new CustomEvent('oo:open-database', { detail: { path: contextMenu.path } });
                     window.dispatchEvent(event);
@@ -822,9 +949,9 @@ export function Sidebar({
                 >
                   <Table size={14} style={{ marginRight: 8 }} /> Open as Database
                 </button>
-                <div className="context-menu-separator" />
+                <div className={contextMenuSeparatorClass} />
                 <button
-                  className="context-menu-item"
+                  className={contextMenuItemClass}
                   onClick={() => {
                     onNewFolder(contextMenu.path);
                     closeContextMenu();
@@ -834,9 +961,9 @@ export function Sidebar({
                 </button>
               </>
             )}
-            <div className="context-menu-separator" />
+            <div className={contextMenuSeparatorClass} />
             <button
-              className="context-menu-item danger"
+              className={cx(contextMenuItemClass, contextMenuDangerClass)}
               onClick={() => {
                 onDeleteFile(contextMenu.path, contextMenu.isDir);
                 closeContextMenu();
@@ -860,7 +987,7 @@ export function Sidebar({
             }}
           />
           <div
-            className="context-menu"
+            className={contextMenuClass}
             style={{ left: groupContextMenu.x, top: groupContextMenu.y }}
           >
             {(() => {
@@ -869,7 +996,7 @@ export function Sidebar({
               return (
                 <>
                   <button
-                    className="context-menu-item"
+                    className={contextMenuItemClass}
                     onClick={() => {
                       onToggleGroupAutoSave(group.id);
                       setGroupContextMenu(null);
@@ -878,9 +1005,9 @@ export function Sidebar({
                     <Check size={14} style={{ marginRight: 8, opacity: group.auto_save_enabled ? 1 : 0 }} /> 
                     <span>Auto-update Layout</span>
                   </button>
-                  <div className="context-menu-separator" />
+                  <div className={contextMenuSeparatorClass} />
                   <button
-                    className="context-menu-item"
+                    className={contextMenuItemClass}
                     onClick={() => {
                       onRenameGroup(group.id, group.name);
                       setGroupContextMenu(null);
@@ -889,7 +1016,7 @@ export function Sidebar({
                     <FileEdit size={14} style={{ marginRight: 8 }} /> Rename
                   </button>
                   <button
-                    className="context-menu-item"
+                    className={contextMenuItemClass}
                     onClick={() => {
                       onChangeGroupColor(group.id, group.color);
                       setGroupContextMenu(null);
@@ -898,7 +1025,7 @@ export function Sidebar({
                     <Palette size={14} style={{ marginRight: 8 }} /> Change Color
                   </button>
                   <button
-                    className="context-menu-item"
+                    className={contextMenuItemClass}
                     onClick={() => {
                       onDuplicateGroup(group.id);
                       setGroupContextMenu(null);
@@ -906,9 +1033,9 @@ export function Sidebar({
                   >
                     <Copy size={14} style={{ marginRight: 8 }} /> Duplicate
                   </button>
-                  <div className="context-menu-separator" />
+                  <div className={contextMenuSeparatorClass} />
                   <button
-                    className="context-menu-item danger"
+                    className={cx(contextMenuItemClass, contextMenuDangerClass)}
                     onClick={() => {
                       onDeleteGroup(group.id);
                       setGroupContextMenu(null);

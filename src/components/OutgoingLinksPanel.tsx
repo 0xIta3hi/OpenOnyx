@@ -61,50 +61,50 @@ export function OutgoingLinksPanel({
   const phantomLinks = links.filter((l) => !l.exists);
 
   return (
-    <div className="outgoing-links-panel">
-      <div className="outgoing-links-header">
-        <ArrowUpRight size={14} strokeWidth={2} />
-        <span>Outgoing Links</span>
-        <span className="outgoing-links-count">{links.length}</span>
+    <div className="flex flex-col border-l border-(--border-subtle) bg-(--bg-secondary)">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--border-subtle)">
+        <ArrowUpRight size={14} strokeWidth={2} className="text-(--text-muted)" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-muted)">Outgoing Links</span>
+        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary) ml-auto">{links.length}</span>
       </div>
 
-      <div className="outgoing-links-list">
+      <div className="overflow-y-auto">
         {links.length === 0 ? (
-          <div className="outgoing-links-empty">No outgoing links</div>
+          <div className="px-4 py-6 text-center text-xs text-(--text-muted)">No outgoing links</div>
         ) : (
           <>
             {existingLinks.length > 0 && (
-              <div className="outgoing-links-section">
-                <div className="outgoing-links-section-title">
+              <div className="py-1">
+                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
                   <FileText size={12} /> Linked Notes ({existingLinks.length})
                 </div>
                 {existingLinks.map((link) => (
                   <button
                     key={link.name}
-                    className="outgoing-link-item"
+                    className="w-full flex items-center gap-2 px-4 py-1.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
                     onClick={() => onLinkClick(link.name)}
                   >
-                    <FileText size={14} className="link-icon" />
-                    <span className="link-name">{link.name}</span>
+                    <FileText size={14} className="text-(--text-muted) shrink-0" />
+                    <span className="text-[12.5px] text-(--text-primary) truncate">{link.name}</span>
                   </button>
                 ))}
               </div>
             )}
 
             {phantomLinks.length > 0 && (
-              <div className="outgoing-links-section">
-                <div className="outgoing-links-section-title phantom">
+              <div className="py-1 border-t border-(--border-subtle)">
+                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-500/70">
                   <FilePlus size={12} /> Unresolved ({phantomLinks.length})
                 </div>
                 {phantomLinks.map((link) => (
                   <button
                     key={link.name}
-                    className="outgoing-link-item phantom"
+                    className="w-full flex items-center gap-2 px-4 py-1.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
                     onClick={() => onLinkClick(link.name)}
                     title="Click to create this note"
                   >
-                    <FilePlus size={14} className="link-icon" />
-                    <span className="link-name">{link.name}</span>
+                    <FilePlus size={14} className="text-amber-500/50 shrink-0" />
+                    <span className="text-[12.5px] text-(--text-muted) italic truncate">{link.name}</span>
                   </button>
                 ))}
               </div>

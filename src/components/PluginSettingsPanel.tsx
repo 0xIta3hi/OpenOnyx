@@ -28,7 +28,7 @@ import { pluginLogStore, pluginErrorTracker, isVersionCompatible } from '../lib/
 import type { PluginLogEntry, PluginErrorRecord } from '../lib/pluginDevTools';
 import { PluginMarketplace } from './PluginMarketplace';
 
-const APP_VERSION = '1.9.16';
+const APP_VERSION = '1.13.1';
 
 interface PluginSettingsPanelProps {
   plugins: PluginRegistration[];
@@ -37,7 +37,7 @@ interface PluginSettingsPanelProps {
   onDisablePlugin: (pluginId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
-  onInstallPlugin?: (repo: string, pluginId: string) => Promise<boolean>;
+  onInstallPlugin?: (repo: string, pluginId: string, version?: string) => Promise<boolean>;
   onBrowse?: () => void;
 }
 

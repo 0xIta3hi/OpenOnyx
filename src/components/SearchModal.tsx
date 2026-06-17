@@ -169,11 +169,11 @@ export function SearchModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="search-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="search-mode-tabs">
+    <div className="fixed inset-0 bg-black/50 flex items-start justify-center pt-[15vh] z-[9999]" onClick={onClose}>
+      <div className="w-full max-w-[560px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex border-b border-(--border-subtle)">
           <button
-            className={`mode-tab ${mode === "switcher" ? "active" : ""}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium border-none cursor-pointer transition-colors duration-150 ${mode === "switcher" ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-muted) hover:text-(--text-secondary)"}`}
             onClick={() => {
               setMode("switcher");
               setSelectedIndex(0);
@@ -182,7 +182,7 @@ export function SearchModal({
             <FileText size={14} /> Quick Switch
           </button>
           <button
-            className={`mode-tab ${mode === "search" ? "active" : ""}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium border-none cursor-pointer transition-colors duration-150 ${mode === "search" ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-muted) hover:text-(--text-secondary)"}`}
             onClick={() => {
               setMode("search");
               setSelectedIndex(0);
@@ -192,13 +192,13 @@ export function SearchModal({
           </button>
         </div>
 
-        <div className="search-input-wrapper">
-          <span className="search-icon">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-subtle)">
+          <span className="text-(--text-muted) shrink-0">
             {mode === "search" ? <Search size={18} /> : <FileText size={18} />}
           </span>
           <input
             ref={inputRef}
-            className="search-input"
+            className="flex-1 bg-transparent border-none outline-none text-(--text-primary) text-base placeholder:text-(--text-muted)"
             type="text"
             placeholder={
               mode === "search"
@@ -211,16 +211,16 @@ export function SearchModal({
           />
         </div>
 
-        <div className="search-results">
+        <div className="max-h-[50vh] overflow-y-auto">
           {displayItems.length > 0 ? (
             displayItems.map((item: any, index) => (
               <button
                 key={item.path}
-                className={`search-result-item ${index === selectedIndex ? "selected" : ""}`}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 border-none text-left cursor-pointer transition-colors duration-100 ${index === selectedIndex ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-primary) hover:bg-(--bg-hover)"}`}
                 onClick={() => onSelect(item.path)}
                 onMouseEnter={() => setSelectedIndex(index)}
               >
-                <span className="result-icon">
+                <span className="shrink-0 text-(--text-muted)">
                   {item.isStarred ? (
                     <Star
                       size={14}
@@ -233,22 +233,22 @@ export function SearchModal({
                     <FileText size={14} />
                   )}
                 </span>
-                <span className="result-name">{item.name}</span>
-                <span className="result-path">{item.path}</span>
+                <span className="text-[13px] font-medium truncate">{item.name}</span>
+                <span className="text-[11px] text-(--text-muted) truncate ml-auto">{item.path}</span>
                 {item.match && (
-                  <span className="result-match">
+                  <span className="text-[11px] text-(--text-muted) truncate max-w-[200px]">
                     {item.match.substring(0, 100)}
                   </span>
                 )}
               </button>
             ))
           ) : query ? (
-            <div className="empty-state" style={{ padding: "2rem" }}>
-              <div className="empty-text">No results found</div>
+            <div className="flex items-center justify-center py-8">
+              <div className="text-xs text-(--text-muted)">No results found</div>
             </div>
           ) : (
-            <div className="empty-state" style={{ padding: "2rem" }}>
-              <div className="empty-text">
+            <div className="flex items-center justify-center py-8">
+              <div className="text-xs text-(--text-muted)">
                 {mode === "search"
                   ? "Start typing to search contents..."
                   : recentFiles.length === 0 && starredNotes.length === 0
@@ -259,18 +259,18 @@ export function SearchModal({
           )}
         </div>
 
-        <div className="search-footer">
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-(--border-subtle) text-[11px] text-(--text-muted)">
           <span>
-            <kbd>↑↓</kbd> Navigate
+            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">{'\u2191\u2193'}</kbd> Navigate
           </span>
           <span>
-            <kbd>↵</kbd> Open
+            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">{'\u21B5'}</kbd> Open
           </span>
           <span>
-            <kbd>Tab</kbd> Switch mode
+            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">Tab</kbd> Switch mode
           </span>
           <span>
-            <kbd>Esc</kbd> Close
+            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">Esc</kbd> Close
           </span>
         </div>
       </div>

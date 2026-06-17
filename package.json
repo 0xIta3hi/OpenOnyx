@@ -12,7 +12,14 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder",
     "lint": "tsc --noEmit",
-    "test:canvas-compat": "node scripts/test-canvas-compat.cjs"
+    "test:canvas-compat": "node scripts/test-canvas-compat.cjs",
+    "test:obsidian-api": "node scripts/test-obsidian-api-compat.cjs",
+    "test:plugin-runtime": "vitest run tests/plugin-runtime.test.ts",
+    "fetch:plugin-fixtures": "node scripts/fetch-plugin-fixtures.cjs",
+    "install:pandoc-backend": "node scripts/install-pandoc-backend.cjs",
+    "test:pandoc-backend": "node scripts/test-pandoc-backend.cjs",
+    "test:plugin-bundles": "npm run fetch:plugin-fixtures && vitest run tests/real-plugin-bundles.test.ts",
+    "test:plugin-compat": "npm run test:obsidian-api && npm run test:plugin-runtime && npm run test:pandoc-backend && npm run test:plugin-bundles"
   },
   "keywords": [
     "notes",
@@ -37,6 +44,7 @@
     "@replit/codemirror-vim": "^6.3.0",
     "@supabase/supabase-js": "^2.104.1",
     "@xenova/transformers": "^2.17.2",
+    "codemirror": "^5.65.20",
     "d3": "^7.9.0",
     "dompurify": "^3.2.6",
     "file-saver": "^2.0.5",
@@ -72,9 +80,13 @@
     "concurrently": "^9.1.2",
     "electron": "^41.2.0",
     "electron-builder": "^26.0.12",
+    "fake-indexeddb": "^6.2.4",
+    "jsdom": "^26.1.0",
+    "obsidian": "^1.13.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.8.2",
     "vite": "^6.3.1",
+    "vitest": "^3.2.4",
     "wait-on": "^8.0.3"
   },
   "build": {

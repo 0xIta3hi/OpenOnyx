@@ -1,61 +1,41 @@
 /**
- * AIPage — Knowledge Graph Intelligence Panel
+ * AIPage — Semantic Intelligence Panel
  *
  * Tabs:
  *  1. Suggest — auto-suggestions for active note
  *  2. Insights — clusters, missing links, unwritten insights, synthesis
- *  3. Query — RAG-based Q&A
- *  4. Spaces — export/import knowledge spaces
- *  5. Settings — AI provider configuration
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { getAPI } from "../utils/api";
 import { FileEntry, Theme } from "../types";
 import {
   Sparkles,
-  Settings,
-  Send,
   Loader2,
-  AlertCircle,
   X,
   Maximize,
   Minimize,
   FileText,
-  ExternalLink,
-  Key,
   Check,
   Link,
-  Search,
-  Brain,
   Lightbulb,
   Layers,
   GitBranch,
   CircleDot,
   Save,
-  Download,
-  Upload,
   Eye,
   Zap,
 } from "lucide-react";
-import { SpacesIcon } from "./SpacesIcon";
 import {
   loadStore,
   findSimilar,
-  searchByQuery,
   applyHistoryWeighting,
   recordSuggestion,
   isModelLoaded,
   getLoadProgress,
   setProgressCallback,
   type EmbeddingStore,
-  type SimilarNote,
 } from "../utils/embeddings";
-import {
-  queryRAG,
-  isAIConfigured,
-  getCachedAnnotation,
-} from "../utils/ai-core";
 import {
   detectClusters,
   detectMissingLinks,
@@ -67,17 +47,8 @@ import {
   type SynthesisResult,
 } from "../utils/synthesis";
 import {
-  exportSpace,
-  importSpace,
-  type ImportResult,
-} from "../utils/space";
-import {
   loadSettings,
-  saveSettings,
-  getModelsForProvider,
-  AI_PROVIDER_PRESETS,
   type AISettings,
-  DEFAULT_MODEL_ID,
 } from "../utils/ai-settings";
 import { LINK_TYPES, type LinkType } from "./SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "../utils/suggestion-enrichment";
@@ -87,6 +58,103 @@ import { enrichSuggestions, type EnrichedSuggestion } from "../utils/suggestion-
 function getNoteName(path: string): string {
   return path.split("/").pop()?.replace(/\.md$/, "") || path;
 }
+
+const tm = {
+  header: "flex min-h-[64px] shrink-0 items-center justify-between gap-3 border-b border-(--border-subtle) bg-(--bg-secondary) px-4 py-3",
+  title: "m-0 text-[15px] font-semibold leading-tight tracking-normal text-(--text-primary)",
+  titleBlock: "flex min-w-0 items-center gap-2.5",
+  subtitle: "mt-1 text-[11px] leading-tight text-(--text-muted)",
+  controls: "flex shrink-0 items-center gap-2",
+  stats: "inline-flex h-7 items-center gap-1.5 rounded-md border border-(--border-subtle) bg-(--bg-primary) px-2 text-[11px] font-medium text-(--text-secondary)",
+  iconBtn: "inline-flex h-8 w-8 items-center justify-center rounded-md border border-(--border-subtle) bg-transparent text-(--text-muted) transition-colors duration-150 hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary)",
+  content: "flex min-h-0 flex-1 flex-col bg-(--bg-primary)",
+  tabs: "flex shrink-0 gap-1 border-b border-(--border-subtle) bg-(--bg-primary) px-3 pt-2",
+  tab: "inline-flex h-9 items-center gap-1.5 rounded-t-md border border-transparent border-b-0 px-3 text-[12px] font-medium text-(--text-muted) transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)",
+  tabActive: "border-(--border-subtle) bg-(--bg-secondary) text-(--text-primary)",
+  spinner: "animate-spin text-(--text-muted)",
+};
+
+const tmTabClass = (active: boolean) => `${tm.tab} ${active ? tm.tabActive : ""}`;
+const panelBtnBaseClass =
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-(--border-subtle) px-2.5 text-[11px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50";
+const panelBtnGhostClass =
+  `${panelBtnBaseClass} bg-transparent text-(--text-secondary) hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary)`;
+
+const ai = {
+  modelStatus: "mx-3 mt-3 flex items-center gap-2 rounded-md border border-(--border-subtle) bg-(--bg-secondary) px-3 py-2 text-[12px] text-(--text-secondary)",
+  modelProgress: "h-1 flex-1 overflow-hidden rounded-full bg-(--border-subtle)",
+  modelProgressBar: "h-full rounded-full bg-(--text-secondary)",
+  empty: "m-3 flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-(--border-subtle) bg-(--bg-secondary) p-6 text-center text-[13px] leading-relaxed text-(--text-muted)",
+  tabPanel: "min-h-0 flex-1 overflow-y-auto p-3",
+  tabPanelScroll: "min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
+  suggestionsList: "space-y-3",
+  suggestionsListFlush: "space-y-2",
+  suggestionsHeader: "text-[10px] font-semibold uppercase tracking-[0.08em] text-(--text-muted)",
+  suggestionHero: "flex items-center justify-between gap-3 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) px-3 py-2.5",
+  suggestionHeroTitle: "truncate text-[13px] font-semibold text-(--text-primary)",
+  suggestionHeroMeta: "mt-0.5 text-[11px] text-(--text-muted)",
+  suggestionHeroCount: "flex h-8 min-w-8 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-primary) px-2 text-[13px] font-semibold tabular-nums text-(--text-primary)",
+  suggestionItem: "grid cursor-default grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border border-(--border-subtle) bg-(--bg-secondary) p-3 transition-colors duration-150 hover:border-(--border-medium)",
+  suggestionContent: "min-w-0 space-y-2",
+  suggestionTopRow: "flex min-w-0 items-center gap-2",
+  suggestionInfo: "min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-left",
+  suggestionTitle: "block truncate text-[13px] font-medium text-(--text-primary)",
+  suggestionScore: "shrink-0 rounded border border-(--border-subtle) bg-(--bg-primary) px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-(--text-muted)",
+  suggestionActions: "flex shrink-0 items-start gap-1.5",
+  suggestionAccept: "inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--border-medium) bg-(--bg-active) px-2 text-[11px] font-medium text-(--text-primary) transition-colors duration-150 hover:border-(--border-strong) hover:bg-(--bg-hover)",
+  suggestionReject: "inline-flex h-7 w-7 items-center justify-center rounded-md border border-(--border-subtle) bg-transparent text-(--text-muted) transition-colors duration-150 hover:border-(--color-red) hover:bg-[rgba(220,80,80,0.08)] hover:text-(--color-red)",
+  suggestionGroup: "space-y-2",
+  suggestionGroupLabel: "flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--text-muted)",
+  suggestionReason: "flex items-start gap-1.5 text-[11px] leading-relaxed text-(--text-secondary)",
+  suggestionNotLinked: "shrink-0 text-[12px] text-(--text-faint)",
+  typeBadgeBase: "inline-flex items-center gap-0.5 px-[5px] py-px rounded-[3px] text-[9px] font-semibold uppercase tracking-[0.3px] shrink-0 leading-[1.3]",
+  dot: "w-1.5 h-1.5 rounded-full shrink-0",
+  dotStrong: "bg-(--text-primary)",
+  dotBroader: "bg-(--text-muted)",
+  linkTypeSelector: "flex items-center gap-0.5",
+  linkTypeBtn: "flex items-center gap-[3px] px-1.5 py-0.5 border border-(--border-subtle) rounded bg-transparent text-(--text-muted) text-[10px] cursor-pointer transition-colors duration-150 whitespace-nowrap hover:bg-(--bg-active) hover:text-(--text-primary) hover:border-(--border-medium)",
+  linkCancel: "flex items-center p-0.5 border-none bg-transparent text-(--text-muted) cursor-pointer rounded",
+  sectionHeader: "flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--text-secondary)",
+  sectionBadge: "ml-auto rounded border border-(--border-subtle) bg-(--bg-primary) px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-(--text-muted)",
+  sectionHint: "m-0 text-[12px] leading-relaxed text-(--text-muted)",
+  section: "space-y-2.5 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-3",
+  result: "rounded-md border border-(--border-subtle) bg-(--bg-primary) p-3 text-[13px] leading-relaxed text-(--text-secondary)",
+  clusterList: "space-y-2",
+  clusterItem: "overflow-hidden rounded-lg border border-(--border-subtle) bg-(--bg-primary)",
+  clusterItemActive: "border-(--border-medium) bg-(--bg-active)",
+  clusterHeaderBtn: "flex w-full items-center gap-2 border-0 bg-transparent px-3 py-2.5 text-left text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)",
+  clusterName: "min-w-0 flex-1 truncate text-[12px] font-medium",
+  clusterMembers: "space-y-1.5 border-t border-(--border-subtle) px-3 py-2.5",
+  clusterMember: "inline-flex max-w-full items-center gap-1.5 rounded-md border border-(--border-subtle) bg-(--bg-secondary) px-2 py-1 text-[11px] text-(--text-secondary) transition-colors duration-150 hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary) [&_span]:truncate",
+  missingLinkInfo: "flex min-w-0 flex-1 flex-wrap items-center gap-1.5",
+  missingLinkArrow: "text-[12px] text-(--text-faint)",
+  confidenceBadge: "shrink-0 rounded border border-(--border-subtle) bg-(--bg-primary) px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-(--text-muted)",
+  unwrittenList: "space-y-2",
+  unwrittenItem: "relative space-y-2 rounded-lg border border-(--border-subtle) bg-(--bg-primary) p-3",
+  unwrittenDescription: "flex gap-2 text-[12px] leading-relaxed text-(--text-secondary)",
+  unwrittenNotes: "flex flex-wrap gap-1.5",
+  unwrittenActions: "flex flex-wrap gap-1.5",
+  compactBtn: "h-7 px-2 text-[10px]",
+  thresholdControl: "rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-3",
+  thresholdLabel: "flex justify-between items-center text-[11px] text-(--text-muted) mb-1",
+  thresholdValue: "font-semibold tabular-nums",
+  thresholdSlider: "w-full h-1 appearance-none bg-(--border-subtle) rounded-sm outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-(--text-secondary) [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:duration-150 hover:[&::-webkit-slider-thumb]:bg-(--text-primary)",
+  thresholdLabels: "flex justify-between text-[10px] text-(--text-muted) mt-0.5 opacity-60",
+};
+
+const aiTypeBadgeClass = (type: EnrichedSuggestion["type"]) => {
+  const tone =
+    type === "expands" ? "bg-[rgba(80,140,220,0.12)] text-[rgb(100,160,240)]" :
+    type === "contradicts" ? "bg-[rgba(220,160,60,0.12)] text-[rgb(220,170,80)]" :
+    type === "example" ? "bg-[rgba(80,180,120,0.12)] text-[rgb(80,180,120)]" :
+    "bg-[rgba(128,128,128,0.12)] text-(--text-secondary)";
+  return `${ai.typeBadgeBase} ${tone}`;
+};
+
+const aiConfidenceClass = (similarity: number) =>
+  similarity >= 0.7 ? "bg-[color-mix(in_srgb,var(--bg-secondary)_94%,var(--text-primary)_6%)]" :
+  similarity >= 0.5 ? "" :
+  "opacity-75";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -101,7 +169,7 @@ interface AIPageProps {
   onToggleFullScreen?: () => void;
 }
 
-type AITab = "suggestions" | "insights" | "query" | "spaces";
+type AITab = "suggestions" | "insights";
 
 export function AIPage({
   vaultPath,
@@ -132,16 +200,6 @@ export function AIPage({
   }, []);
 
   const hasApiKey = !!aiSettings.apiKey;
-  const models = getModelsForProvider(aiSettings.provider);
-  const matchedModel = models.find((m) => m.id === aiSettings.modelId);
-  const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
-  const currentModel = matchedModel || (isCustomModel ? {
-    id: aiSettings.modelId,
-    label: aiSettings.modelId,
-    shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
-    description: "Custom OpenRouter Model",
-    supportsGrounding: false
-  } : models[0]);
 
   // ── Model status ───────────────────────────────────
   const [modelStatus, setModelStatus] = useState<string>(
@@ -370,81 +428,6 @@ export function AIPage({
     [api],
   );
 
-  // ── Spaces: Export/Import ──────────────────────────
-  const [spaceTitle, setSpaceTitle] = useState("");
-  const [spaceDesc, setSpaceDesc] = useState("");
-  const [includeEmbeddings, setIncludeEmbeddings] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleExport = useCallback(async () => {
-    if (!spaceTitle.trim()) return;
-    setIsExporting(true);
-    try {
-      await exportSpace({
-        title: spaceTitle.trim(),
-        description: spaceDesc.trim(),
-        includeEmbeddings,
-      });
-    } catch (err) {
-      console.error("Export failed:", err);
-    } finally {
-      setIsExporting(false);
-    }
-  }, [spaceTitle, spaceDesc, includeEmbeddings]);
-
-  const handleImport = useCallback(async (file: File) => {
-    setIsImporting(true);
-    setImportResult(null);
-    try {
-      const result = await importSpace(file);
-      setImportResult(result);
-    } catch (err) {
-      console.error("Import failed:", err);
-    } finally {
-      setIsImporting(false);
-    }
-  }, []);
-
-  // ── Query (RAG) ────────────────────────────────────
-  const [queryInput, setQueryInput] = useState("");
-  const [queryResult, setQueryResult] = useState<{ answer: string; sources: string[] } | null>(null);
-  const [isQuerying, setIsQuerying] = useState(false);
-
-  const handleQuery = useCallback(async () => {
-    const q = queryInput.trim();
-    if (!q || indexedCount === 0) return;
-    setIsQuerying(true);
-    setQueryResult(null);
-    try {
-      const relevant = await searchByQuery(loadStore(), q, 8);
-      const results = await Promise.all(
-        relevant.map(async (r) => {
-          try {
-            const content = await api.readFile(r.path);
-            return { title: getNoteName(r.path), content, similarity: r.similarity };
-          } catch {
-            return null;
-          }
-        }),
-      );
-      const notesWithContent = results.filter((n): n is { title: string; content: string; similarity: number } => n !== null);
-      const result = await queryRAG(q, notesWithContent);
-      setQueryResult(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Query failed";
-      setQueryResult({ answer: `⚠️ ${msg}`, sources: [] });
-    } finally {
-      setIsQuerying(false);
-    }
-  }, [queryInput, indexedCount, api]);
-
-  const handleQueryKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleQuery(); }
-  };
-
   // ── Enriched suggestion renderer ──────────────────────────────────────────
 
   const renderEnrichedSuggestion = (
@@ -455,51 +438,42 @@ export function AIPage({
     onReject: (path: string) => void,
     onOpen: (path: string) => void,
   ) => {
-    const confidenceClass =
-      s.similarity >= 0.7 ? "ai-confidence-high" :
-      s.similarity >= 0.5 ? "ai-confidence-medium" : "ai-confidence-low";
-
-    const typeBadgeClass =
-      s.type === "expands" ? "ai-type-expands" :
-      s.type === "contradicts" ? "ai-type-contradicts" :
-      s.type === "example" ? "ai-type-example" : "ai-type-related";
-
     return (
-      <div key={s.path} className={`ai-suggestion-item ${confidenceClass} ${s.isLinked ? "ai-suggestion-linked" : ""}`}>
-        <div className="ai-suggestion-content">
-          <div className="ai-suggestion-top-row">
-            <span className={`ai-suggestion-type-badge ${typeBadgeClass}`}>
+      <div key={s.path} className={`${ai.suggestionItem} ${aiConfidenceClass(s.similarity)} ${s.isLinked ? "opacity-50" : ""}`}>
+        <div className={ai.suggestionContent}>
+          <div className={ai.suggestionTopRow}>
+            <span className={aiTypeBadgeClass(s.type)}>
               {s.typeSymbol} {s.typeLabel}
             </span>
-            <button className="ai-suggestion-info" onClick={() => onOpen(s.path)}>
-              <span className="ai-suggestion-title">{s.title}</span>
+            <button className={ai.suggestionInfo} onClick={() => onOpen(s.path)}>
+              <span className={ai.suggestionTitle}>{s.title}</span>
             </button>
-            <span className="ai-suggestion-score">{Math.round(s.similarity * 100)}%</span>
+            <span className={ai.suggestionScore}>{Math.round(s.similarity * 100)}%</span>
             {!s.isLinked && (
-              <span className="ai-suggestion-not-linked" title="Not yet linked">⊘</span>
+              <span className={ai.suggestionNotLinked} title="Not yet linked">⊘</span>
             )}
           </div>
-          <div className="ai-suggestion-reason">
+          <div className={ai.suggestionReason}>
             <Sparkles size={10} />
             <span>{s.reason}</span>
           </div>
         </div>
-        <div className="ai-suggestion-actions">
+        <div className={ai.suggestionActions}>
           {activeLinkSel === s.path ? (
-            <div className="ai-link-type-selector">
+            <div className={ai.linkTypeSelector}>
               {LINK_TYPES.map((lt) => (
-                <button key={lt.id} className="ai-link-type-btn" onClick={() => { onAccept(s.path, lt.id); setActiveLinkSel(null); }}>
+                <button key={lt.id} className={ai.linkTypeBtn} onClick={() => { onAccept(s.path, lt.id); setActiveLinkSel(null); }}>
                   <span>{lt.symbol}</span><span>{lt.label}</span>
                 </button>
               ))}
-              <button className="ai-link-cancel" onClick={() => setActiveLinkSel(null)}><X size={10} /></button>
+              <button className={ai.linkCancel} onClick={() => setActiveLinkSel(null)}><X size={10} /></button>
             </div>
           ) : (
             <>
-              <button className="ai-suggestion-accept" onClick={() => setActiveLinkSel(s.path)} title="Create link">
+              <button className={ai.suggestionAccept} onClick={() => setActiveLinkSel(s.path)} title="Create link">
                 <Check size={12} /> Link
               </button>
-              <button className="ai-suggestion-reject" onClick={() => onReject(s.path)} title="Dismiss"><X size={12} /></button>
+              <button className={ai.suggestionReject} onClick={() => onReject(s.path)} title="Dismiss"><X size={12} /></button>
             </>
           )}
         </div>
@@ -514,79 +488,86 @@ export function AIPage({
   return (
     <>
       {/* Header */}
-      <div className="graph-header thought-model-header">
-        <h2>
-          <Brain size={18} strokeWidth={1.5} style={{ opacity: 0.5 }} />
-          Knowledge Graph
-        </h2>
-        <div className="thought-model-controls">
+      <div className={tm.header}>
+        <div className={tm.titleBlock}>
+          <div>
+            <h2 className={tm.title}>Semantic Intelligence</h2>
+            <div className={tm.subtitle}>
+              {indexedCount > 0 ? `${indexedCount} indexed notes` : "Index pending"}
+              <span aria-hidden="true"> / </span>
+              {hasApiKey ? "AI ready" : "Local analysis"}
+            </div>
+          </div>
+        </div>
+        <div className={tm.controls}>
           {indexedCount > 0 && (
-            <div className="thought-model-stats">
-              <span>{indexedCount} indexed</span>
+            <div className={tm.stats}>
+              <Sparkles size={12} />
+              <span>{suggestions.length + missingLinks.length + unwrittenInsights.length} signals</span>
             </div>
           )}
           {onToggleFullScreen && (
-            <button className="btn btn-ghost" onClick={onToggleFullScreen}>
+            <button className={tm.iconBtn} onClick={onToggleFullScreen} aria-label={isFullScreen ? "Exit full screen" : "Enter full screen"}>
               {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onClose}>
+          <button className={tm.iconBtn} onClick={onClose} aria-label="Close AI assistant">
             <X size={16} />
           </button>
         </div>
       </div>
 
-      <div className="thought-model-content">
+      <div className={tm.content}>
         {/* Model loading indicator */}
         {modelStatus !== "ready" && modelStatus !== "not loaded" && modelStatus !== "Model ready" && (
-          <div className="ai-model-status">
-            <Loader2 size={12} className="thought-model-spinner" />
+          <div className={ai.modelStatus}>
+            <Loader2 size={12} className={tm.spinner} />
             <span>{modelStatus}</span>
             {modelProgress > 0 && modelProgress < 100 && (
-              <div className="ai-model-progress">
-                <div className="ai-model-progress-bar" style={{ width: `${modelProgress}%` }} />
+              <div className={ai.modelProgress}>
+                <div className={ai.modelProgressBar} style={{ width: `${modelProgress}%` }} />
               </div>
             )}
           </div>
         )}
 
         {/* Tabs */}
-        <div className="thought-model-tabs">
-          <button className={`thought-model-tab ${activeTab === "suggestions" ? "active" : ""}`} onClick={() => setActiveTab("suggestions")}>
+        <div className={tm.tabs}>
+          <button className={tmTabClass(activeTab === "suggestions")} onClick={() => setActiveTab("suggestions")}>
             <Link size={14} /> Suggest
           </button>
-          <button className={`thought-model-tab ${activeTab === "insights" ? "active" : ""}`} onClick={() => setActiveTab("insights")}>
+          <button className={tmTabClass(activeTab === "insights")} onClick={() => setActiveTab("insights")}>
             <Lightbulb size={14} /> Insights
-          </button>
-          <button className={`thought-model-tab ${activeTab === "query" ? "active" : ""}`} onClick={() => setActiveTab("query")}>
-            <Search size={14} /> Query
-          </button>
-          <button className={`thought-model-tab ${activeTab === "spaces" ? "active" : ""}`} onClick={() => setActiveTab("spaces")}>
-            <SpacesIcon size={14} /> Spaces
           </button>
         </div>
 
         {/* ══ Suggestions Tab ═════════════════════════════ */}
         {activeTab === "suggestions" && (
-          <div className="ai-suggest-tab">
+          <div className={ai.tabPanel}>
             {indexedCount === 0 ? (
-              <div className="ai-empty-state">
+              <div className={ai.empty}>
                 <Layers size={32} style={{ opacity: 0.15 }} />
                 <p>Open and save a note to start building the index automatically.</p>
               </div>
             ) : !activeNotePath ? (
-              <div className="ai-empty-state">
+              <div className={ai.empty}>
                 <Link size={28} style={{ opacity: 0.15 }} />
                 <p>Open a note to see similar notes suggested here.</p>
               </div>
             ) : suggestions.length > 0 ? (
-              <div className="ai-suggestions-list">
-                <div className="ai-suggestions-header">Connections for "{getNoteName(activeNotePath)}"</div>
+              <div className={ai.suggestionsList}>
+                <div className={ai.suggestionHero}>
+                  <div>
+                    <div className={ai.suggestionHeroTitle}>{getNoteName(activeNotePath)}</div>
+                    <div className={ai.suggestionHeroMeta}>Suggested note connections</div>
+                  </div>
+                  <div className={ai.suggestionHeroCount}>{suggestions.length}</div>
+                </div>
                 {/* Similarity threshold control */}
-                <div className="ai-threshold-control">
-                  <label className="ai-threshold-label">
+                <div className={ai.thresholdControl}>
+                  <label className={ai.thresholdLabel}>
                     <span>Sensitivity</span>
-                    <span className="ai-threshold-value">{Math.round(suggestionThreshold * 100)}%</span>
+                    <span className={ai.thresholdValue}>{Math.round(suggestionThreshold * 100)}%</span>
                   </label>
                   <input
                     type="range"
@@ -595,9 +576,9 @@ export function AIPage({
                     step="0.05"
                     value={suggestionThreshold}
                     onChange={(e) => updateThreshold(parseFloat(e.target.value))}
-                    className="ai-threshold-slider"
+                    className={ai.thresholdSlider}
                   />
-                  <div className="ai-threshold-labels">
+                  <div className={ai.thresholdLabels}>
                     <span>Broad</span>
                     <span>Precise</span>
                   </div>
@@ -610,18 +591,18 @@ export function AIPage({
                   return (
                     <>
                       {strong.length > 0 && (
-                        <div className="ai-suggestion-group">
-                          <div className="ai-suggestion-group-label">
-                            <span className="ai-dot ai-dot-strong" />
+                        <div className={ai.suggestionGroup}>
+                          <div className={ai.suggestionGroupLabel}>
+                            <span className={`${ai.dot} ${ai.dotStrong}`} />
                             Strong Matches
                           </div>
                           {strong.map((s) => renderEnrichedSuggestion(s, linkTypeSelector, setLinkTypeSelector, handleAcceptSuggestion, handleRejectSuggestion, onOpenNote))}
                         </div>
                       )}
                       {broader.length > 0 && (
-                        <div className="ai-suggestion-group">
-                          <div className="ai-suggestion-group-label">
-                            <span className="ai-dot ai-dot-broader" />
+                        <div className={ai.suggestionGroup}>
+                          <div className={ai.suggestionGroupLabel}>
+                            <span className={`${ai.dot} ${ai.dotBroader}`} />
                             Broader Connections
                           </div>
                           {broader.map((s) => renderEnrichedSuggestion(s, linkTypeSelector, setLinkTypeSelector, handleAcceptSuggestion, handleRejectSuggestion, onOpenNote))}
@@ -632,9 +613,9 @@ export function AIPage({
                 })()}
               </div>
             ) : (
-              <div className="ai-empty-state">
+              <div className={ai.empty}>
                 <p>No similar notes found for "{getNoteName(activeNotePath)}".</p>
-                <p className="ai-section-hint">Similarity updates automatically when notes are saved.</p>
+                <p className={ai.sectionHint}>Similarity updates automatically when notes are saved.</p>
               </div>
             )}
           </div>
@@ -642,9 +623,9 @@ export function AIPage({
 
         {/* ══ Insights Tab ════════════════════════════════ */}
         {activeTab === "insights" && (
-          <div className="ai-insights-tab">
+          <div className={ai.tabPanelScroll}>
             {indexedCount < 3 ? (
-              <div className="ai-empty-state">
+              <div className={ai.empty}>
                 <Layers size={32} style={{ opacity: 0.15 }} />
                 <p>Need at least 3 indexed notes for graph intelligence.</p>
               </div>
@@ -652,37 +633,37 @@ export function AIPage({
               <>
                 {/* Unwritten Insights */}
                 {unwrittenInsights.length > 0 && (
-                  <div className="ai-synthesis-section">
-                    <div className="ai-section-header">
+                  <div className={ai.section}>
+                    <div className={ai.sectionHeader}>
                       <Zap size={12} style={{ opacity: 0.5 }} />
                       <span>Unwritten Insights</span>
-                      <span className="ai-section-badge">{unwrittenInsights.length}</span>
+                      <span className={ai.sectionBadge}>{unwrittenInsights.length}</span>
                     </div>
-                    <div className="ai-unwritten-list">
+                    <div className={ai.unwrittenList}>
                       {unwrittenInsights.map((insight, idx) => (
-                        <div key={idx} className="ai-unwritten-item">
-                          <div className="ai-unwritten-description">
+                        <div key={idx} className={ai.unwrittenItem}>
+                          <div className={ai.unwrittenDescription}>
                             <Eye size={11} style={{ opacity: 0.4, flexShrink: 0, marginTop: 2 }} />
                             <span>{insight.description}</span>
                           </div>
-                          <div className="ai-unwritten-notes">
+                          <div className={ai.unwrittenNotes}>
                             {insight.relatedNotes.slice(0, 4).map((path) => (
-                              <button key={path} className="ai-cluster-member" onClick={() => onOpenNote(path)}>
+                              <button key={path} className={ai.clusterMember} onClick={() => onOpenNote(path)}>
                                 <FileText size={10} />
                                 <span>{getNoteName(path)}</span>
                               </button>
                             ))}
                           </div>
-                          <div className="ai-unwritten-actions">
+                          <div className={ai.unwrittenActions}>
                             <button
-                              className="btn btn-ghost btn-xs"
+                              className={`${panelBtnGhostClass} ${ai.compactBtn}`}
                               onClick={() => handleAcceptMissingLink(insight.relatedNotes[0], insight.relatedNotes[1])}
                             >
                               <Link size={10} /> Connect
                             </button>
                             {hasApiKey && insight.relatedNotes.length >= 2 && (
                               <button
-                                className="btn btn-ghost btn-xs"
+                                className={`${panelBtnGhostClass} ${ai.compactBtn}`}
                                 onClick={() => handleSynthesizeCluster(insight.relatedNotes)}
                                 disabled={isSynthesizing}
                               >
@@ -690,13 +671,13 @@ export function AIPage({
                               </button>
                             )}
                             <button
-                              className="btn btn-ghost btn-xs"
+                              className={`${panelBtnGhostClass} ${ai.compactBtn}`}
                               onClick={() => dismissInsight(idx)}
                             >
                               <X size={10} />
                             </button>
                           </div>
-                          <span className="ai-confidence-badge">{Math.round(insight.confidence * 100)}% confidence</span>
+                          <span className={ai.confidenceBadge}>{Math.round(insight.confidence * 100)}% confidence</span>
                         </div>
                       ))}
                     </div>
@@ -704,40 +685,40 @@ export function AIPage({
                 )}
 
                 {/* Clusters */}
-                <div className="ai-synthesis-section">
-                  <div className="ai-section-header">
+                <div className={ai.section}>
+                  <div className={ai.sectionHeader}>
                     <CircleDot size={12} style={{ opacity: 0.5 }} />
                     <span>Note Clusters</span>
-                    <span className="ai-section-badge">{clusters.length}</span>
+                    <span className={ai.sectionBadge}>{clusters.length}</span>
                   </div>
                   {clusters.length === 0 ? (
-                    <p className="ai-section-hint">No strong clusters detected yet.</p>
+                    <p className={ai.sectionHint}>No strong clusters detected yet.</p>
                   ) : (
-                    <div className="ai-cluster-list">
+                    <div className={ai.clusterList}>
                       {clusters.map((cluster, idx) => (
-                        <div key={idx} className={`ai-cluster-item ${selectedClusterIdx === idx ? "active" : ""}`}>
-                          <button className="ai-cluster-header-btn" onClick={() => setSelectedClusterIdx(selectedClusterIdx === idx ? null : idx)}>
+                        <div key={idx} className={`${ai.clusterItem} ${selectedClusterIdx === idx ? ai.clusterItemActive : ""}`}>
+                          <button className={ai.clusterHeaderBtn} onClick={() => setSelectedClusterIdx(selectedClusterIdx === idx ? null : idx)}>
                             <GitBranch size={12} />
-                            <span className="ai-cluster-name">{getNoteName(cluster.center)} + {cluster.members.length - 1} notes</span>
-                            <span className="ai-confidence-badge">{Math.round(cluster.confidence * 100)}%</span>
+                            <span className={ai.clusterName}>{getNoteName(cluster.center)} + {cluster.members.length - 1} notes</span>
+                            <span className={ai.confidenceBadge}>{Math.round(cluster.confidence * 100)}%</span>
                           </button>
                           {selectedClusterIdx === idx && (
-                            <div className="ai-cluster-members">
+                            <div className={ai.clusterMembers}>
                               {cluster.members.map((path) => (
-                                <button key={path} className="ai-cluster-member" onClick={() => onOpenNote(path)}>
+                                <button key={path} className={ai.clusterMember} onClick={() => onOpenNote(path)}>
                                   <FileText size={10} />
                                   <span>{getNoteName(path)}</span>
                                 </button>
                               ))}
                               {hasApiKey && cluster.confidence >= 0.3 && (
                                 <button
-                                  className="btn btn-ghost btn-xs"
+                                  className={`${panelBtnGhostClass} ${ai.compactBtn}`}
                                   onClick={() => handleSynthesizeCluster(cluster.members)}
                                   disabled={isSynthesizing}
                                   style={{ marginTop: 4 }}
                                 >
                                   {isSynthesizing ? (
-                                    <><Loader2 size={10} className="thought-model-spinner" /> Synthesizing...</>
+                                    <><Loader2 size={10} className={tm.spinner} /> Synthesizing...</>
                                   ) : (
                                     <><Sparkles size={10} /> Synthesize cluster</>
                                   )}
@@ -753,20 +734,20 @@ export function AIPage({
 
                 {/* Synthesis result */}
                 {synthesisResult && (
-                  <div className="ai-synthesis-section">
-                    <div className="ai-section-header">
+                  <div className={ai.section}>
+                    <div className={ai.sectionHeader}>
                       <Sparkles size={12} style={{ opacity: 0.5 }} />
                       <span>Synthesis</span>
-                      <span className="ai-confidence-badge">{Math.round(synthesisResult.confidence * 100)}% confidence</span>
+                      <span className={ai.confidenceBadge}>{Math.round(synthesisResult.confidence * 100)}% confidence</span>
                     </div>
-                    <div className="ai-synthesis-result">
+                    <div className={ai.result}>
                       <p>{synthesisResult.insight}</p>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button className="btn btn-ghost btn-xs" onClick={handleSaveSynthesis}>
+                      <button className={`${panelBtnGhostClass} ${ai.compactBtn}`} onClick={handleSaveSynthesis}>
                         <Save size={10} /> Save as note
                       </button>
-                      <button className="btn btn-ghost btn-xs" onClick={() => setSynthesisResult(null)}>
+                      <button className={`${panelBtnGhostClass} ${ai.compactBtn}`} onClick={() => setSynthesisResult(null)}>
                         <X size={10} /> Dismiss
                       </button>
                     </div>
@@ -774,33 +755,33 @@ export function AIPage({
                 )}
 
                 {/* Missing Links */}
-                <div className="ai-synthesis-section">
-                  <div className="ai-section-header">
+                <div className={ai.section}>
+                  <div className={ai.sectionHeader}>
                     <Link size={12} style={{ opacity: 0.5 }} />
                     <span>Missing Links</span>
-                    <span className="ai-section-badge">{missingLinks.length}</span>
+                    <span className={ai.sectionBadge}>{missingLinks.length}</span>
                   </div>
                   {missingLinks.length === 0 ? (
-                    <p className="ai-section-hint">All strongly related notes are already linked.</p>
+                    <p className={ai.sectionHint}>All strongly related notes are already linked.</p>
                   ) : (
-                    <div className="ai-suggestions-list" style={{ padding: 0 }}>
+                    <div className={ai.suggestionsListFlush}>
                       {missingLinks.map((ml, idx) => (
-                        <div key={idx} className="ai-suggestion-item">
-                          <div className="ai-missing-link-info">
-                            <button className="ai-cluster-member" onClick={() => onOpenNote(ml.from)}>
+                        <div key={idx} className={ai.suggestionItem}>
+                          <div className={ai.missingLinkInfo}>
+                            <button className={ai.clusterMember} onClick={() => onOpenNote(ml.from)}>
                               <FileText size={10} /><span>{getNoteName(ml.from)}</span>
                             </button>
-                            <span className="ai-missing-link-arrow">→</span>
-                            <button className="ai-cluster-member" onClick={() => onOpenNote(ml.to)}>
+                            <span className={ai.missingLinkArrow}>→</span>
+                            <button className={ai.clusterMember} onClick={() => onOpenNote(ml.to)}>
                               <FileText size={10} /><span>{getNoteName(ml.to)}</span>
                             </button>
-                            <span className="ai-suggestion-score">{ml.reason}</span>
+                            <span className={ai.suggestionScore}>{ml.reason}</span>
                           </div>
-                          <div className="ai-suggestion-actions">
-                            <button className="ai-suggestion-accept" onClick={() => handleAcceptMissingLink(ml.from, ml.to)}>
+                          <div className={ai.suggestionActions}>
+                            <button className={ai.suggestionAccept} onClick={() => handleAcceptMissingLink(ml.from, ml.to)}>
                               <Check size={10} /> Link
                             </button>
-                            <button className="ai-suggestion-reject" onClick={() => setMissingLinks((prev) => prev.filter((_, i) => i !== idx))}>
+                            <button className={ai.suggestionReject} onClick={() => setMissingLinks((prev) => prev.filter((_, i) => i !== idx))}>
                               <X size={10} />
                             </button>
                           </div>
@@ -811,166 +792,6 @@ export function AIPage({
                 </div>
               </>
             )}
-          </div>
-        )}
-
-        {/* ══ Query Tab (RAG) ═════════════════════════════ */}
-        {activeTab === "query" && (
-          <div className="ai-query-tab">
-            {indexedCount === 0 ? (
-              <div className="ai-empty-state">
-                <Layers size={32} style={{ opacity: 0.15 }} />
-                <p>Save some notes first to enable queries.</p>
-              </div>
-            ) : !hasApiKey ? (
-              <div className="ai-empty-state">
-                <Key size={28} style={{ opacity: 0.15 }} />
-                <p>Add an API key in Settings to ask questions about your notes.</p>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent("open-settings", { detail: { section: "ai" } }));
-                  }}
-                >
-                  <Settings size={14} /> Open Settings
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="ai-query-input-area">
-                  <div className="ai-query-box">
-                    <Search size={14} className="ai-query-icon" />
-                    <input
-                      type="text"
-                      className="ai-query-input"
-                      value={queryInput}
-                      onChange={(e) => setQueryInput(e.target.value)}
-                      onKeyDown={handleQueryKeyDown}
-                      placeholder="Ask about your notes..."
-                    />
-                    <button className="ai-query-send" onClick={handleQuery} disabled={!queryInput.trim() || isQuerying}>
-                      {isQuerying ? <Loader2 size={14} className="thought-model-spinner" /> : <Send size={14} />}
-                    </button>
-                  </div>
-                  <p className="ai-query-info">Finds relevant notes via semantic search, then asks AI for an answer.</p>
-                </div>
-                {queryResult && (
-                  <div className="ai-query-result">
-                    <div className="ai-query-answer"><p>{queryResult.answer}</p></div>
-                    {queryResult.sources.length > 0 && (
-                      <div className="ai-query-sources">
-                        <span className="ai-query-sources-label">Sources:</span>
-                        {queryResult.sources.map((s, i) => (
-                          <span key={i} className="ai-query-source">{s}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ══ Spaces Tab (Export/Import) ═══════════════════ */}
-        {activeTab === "spaces" && (
-          <div className="ai-spaces-tab">
-            {/* Export Section */}
-            <div className="ai-synthesis-section">
-              <div className="ai-section-header">
-                <Download size={12} style={{ opacity: 0.5 }} />
-                <span>Export Space</span>
-              </div>
-              <p className="ai-section-hint">
-                Package your vault as a shareable knowledge space with notes, links, and insights.
-              </p>
-              <div className="ai-space-form">
-                <input
-                  type="text"
-                  className="ai-setting-input"
-                  placeholder="Space title"
-                  value={spaceTitle}
-                  onChange={(e) => setSpaceTitle(e.target.value)}
-                />
-                <input
-                  type="text"
-                  className="ai-setting-input"
-                  placeholder="Description (optional)"
-                  value={spaceDesc}
-                  onChange={(e) => setSpaceDesc(e.target.value)}
-                />
-                <label className="ai-space-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={includeEmbeddings}
-                    onChange={(e) => setIncludeEmbeddings(e.target.checked)}
-                  />
-                  <span>Include analysis data (faster import)</span>
-                </label>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={handleExport}
-                  disabled={isExporting || !spaceTitle.trim()}
-                >
-                  {isExporting ? (
-                    <><Loader2 size={14} className="thought-model-spinner" /> Exporting...</>
-                  ) : (
-                    <><Download size={14} /> Export .openobsidian.zip</>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Import Section */}
-            <div className="ai-synthesis-section">
-              <div className="ai-section-header">
-                <Upload size={12} style={{ opacity: 0.5 }} />
-                <span>Import Space</span>
-              </div>
-              <p className="ai-section-hint">
-                Import a .openobsidian.zip archive to restore notes, links, and structure.
-              </p>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".zip"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleImport(file);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isImporting}
-              >
-                {isImporting ? (
-                  <><Loader2 size={14} className="thought-model-spinner" /> Importing...</>
-                ) : (
-                  <><Upload size={14} /> Select .openobsidian.zip</>
-                )}
-              </button>
-              {importResult && (
-                <div className="ai-import-result">
-                  <div className="ai-import-stat"><Check size={12} /> {importResult.notesImported} notes imported</div>
-                  {importResult.attachmentsImported > 0 && (
-                    <div className="ai-import-stat"><Check size={12} /> {importResult.attachmentsImported} attachments</div>
-                  )}
-                  {importResult.embeddingsRestored > 0 && (
-                    <div className="ai-import-stat"><Check size={12} /> {importResult.embeddingsRestored} analysis entries restored</div>
-                  )}
-                  {importResult.errors.length > 0 && (
-                    <div className="ai-import-errors">
-                      {importResult.errors.slice(0, 5).map((err, i) => (
-                        <div key={i} className="ai-import-error"><AlertCircle size={10} /> {err}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>

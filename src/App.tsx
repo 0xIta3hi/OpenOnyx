@@ -942,6 +942,10 @@ import { localDB, LocalGroup } from "./lib/localdb";
 import { authManager } from "./lib/auth";
 import { v4 as uuidv4 } from "uuid";
 
+const resizerClass =
+  "resizer relative z-10 w-1 shrink-0 cursor-ew-resize bg-transparent transition-colors duration-100 after:absolute after:inset-y-0 after:left-px after:w-0.5 after:bg-[var(--divider-color)] after:opacity-100 hover:after:left-0.5 hover:after:w-[3px] hover:after:bg-[var(--interactive-accent)] active:after:left-0.5 active:after:w-[3px] active:after:bg-[var(--interactive-accent)]";
+const rightResizerClass = `${resizerClass} right`;
+
 export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
@@ -1791,6 +1795,8 @@ export default function App() {
     // Determine and apply base theme mode (dark/light) for embeds and components
     const isDark = isDarkTheme(theme, settings);
     document.documentElement.setAttribute("data-theme-mode", isDark ? "dark" : "light");
+    document.body.classList.toggle("theme-dark", isDark);
+    document.body.classList.toggle("theme-light", !isDark);
 
     // Apply CSS custom properties from settings
     const root = document.documentElement;
@@ -1803,6 +1809,10 @@ export default function App() {
     root.style.setProperty(
       "--preview-font-size",
       `${settings.previewFontSize ?? settings.fontSize}px`,
+    );
+    root.style.setProperty(
+      "--reading-view-width",
+      `${settings.readingViewWidth ?? DEFAULT_SETTINGS.readingViewWidth}px`,
     );
     root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
 
@@ -2059,7 +2069,7 @@ export default function App() {
     if (!scroller || !activeTabId) return;
 
     const activeEl = Array.from(
-      scroller.querySelectorAll<HTMLElement>(".titlebar-tab, .editor-tab"),
+      scroller.querySelectorAll<HTMLElement>(".titlebar-tab"),
     ).find((el) => el.dataset.tabId === activeTabId);
 
     if (!activeEl) return;
@@ -5746,6 +5756,32 @@ export default function App() {
 
   // Sync active file path to plugin API
   (window as any).__oo_active_file = activeTab?.path || null;
+  useEffect(() => {
+    const app = ooAppRef.current;
+    if (!app) return;
+    const path = activeTab?.path;
+    const isFile = Boolean(
+      path
+      && path !== '__new_tab__'
+      && path !== GRAPH_TAB_PATH
+      && path !== SPACES_TAB_PATH
+      && !path.startsWith('__plugin__.'),
+    );
+    const file = isFile ? app.vault.getFileByPath(path!) : null;
+    const view = app.workspace.activeLeaf?.view;
+
+    if (view?.getViewType?.() === 'markdown') {
+      (view as any).file = file;
+      (view as any).data = file ? currentContentRef.current : '';
+    }
+    if (app.workspace.activeEditor) {
+      app.workspace.activeEditor.file = file;
+      app.workspace.activeEditor.view = view;
+    }
+    (app.workspace as any).lastActiveFile = file;
+    app.workspace.trigger('file-open', file);
+  }, [activeTab?.path]);
+
   const ftuxStage: FTUXStage = getFTUXStage(ftuxState);
   const isFTUXZeroState = Boolean(vaultPath) && ftuxStage === "zero";
   const isFTUXFirstNote = ftuxStage === "first_note";
@@ -6121,11 +6157,11 @@ export default function App() {
     const leafActiveTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
     if (!leafActiveTab) {
       return (
-        <div className="empty-state">
-          <div className="empty-icon">
-            <FileText size={48} strokeWidth={1} color="var(--text-muted)" />
+        <div className="flex h-full flex-col items-center justify-center gap-[var(--space-3)] text-[var(--text-muted)]">
+          <div className="opacity-30">
+            <FileText size={48} strokeWidth={1} />
           </div>
-          <div className="empty-text">Select a note or create a new one</div>
+          <div className="text-[length:var(--text-sm)]">Select a note or create a new one</div>
         </div>
       );
     }
@@ -6241,7 +6277,7 @@ export default function App() {
         />
 
       <div
-        className="app-body workspace"
+        className="app-body h-full"
         ref={appBodyRef}
         style={{ 
           "--sidebar-width": `${sidebarWidth}px`,
@@ -6320,14 +6356,14 @@ export default function App() {
 
         {showSidebar && vaultPath && !isFTUXZeroState && (
           <div
-            className="resizer"
+            className={resizerClass}
             onMouseDown={startSidebarDrag}
             style={{ zIndex: 100 }}
           />
         )}
 
         <div
-          className="main-content workspace-split mod-root"
+          className="main-content flex flex-1 overflow-hidden bg-[var(--bg-primary)]"
           ref={mainContentRef}
           style={{
             display: "flex",
@@ -6391,7 +6427,7 @@ export default function App() {
 
               {/* Resizer for Graph/Canvas */}
               {shouldShowPaneResizer && (
-                <div className="resizer" onMouseDown={startPaneDrag} />
+                <div className={resizerClass} onMouseDown={startPaneDrag} />
               )}
 
               {/* Graph View pane (legacy side pane mode) */}
@@ -6484,12 +6520,12 @@ export default function App() {
         {showThoughtModel && vaultPath && !isFTUXZeroState && (
           <>
             <div
-              className="resizer"
+              className={resizerClass}
               onMouseDown={startThoughtModelDrag}
               style={{ zIndex: 100 }}
             />
             <div
-              className="thought-model-panel"
+              className="thought-model-panel flex shrink-0 flex-col overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
               style={{ width: `${thoughtModelWidth}px` }}
             >
               <AIPage
@@ -6572,7 +6608,7 @@ export default function App() {
         {showRightSidebar && rightPluginViews.length > 0 && !isFTUXZeroState && (
           <>
             <div
-              className="resizer right"
+              className={rightResizerClass}
               onMouseDown={startRightSidebarDrag}
               style={{ zIndex: 100 }}
             />
@@ -6630,8 +6666,16 @@ export default function App() {
               id: pc.id,
               label: pc.name,
               action: () => {
-                if (pc.callback) pc.callback();
-                else if (pc.checkCallback) pc.checkCallback(false);
+                const activeEditor = ooAppRef.current?.workspace.activeEditor;
+                if (pc.editorCallback && activeEditor?.editor) {
+                  pc.editorCallback(activeEditor.editor, activeEditor);
+                } else if (pc.editorCheckCallback && activeEditor?.editor) {
+                  pc.editorCheckCallback(false, activeEditor.editor, activeEditor);
+                } else if (pc.callback) {
+                  pc.callback();
+                } else if (pc.checkCallback) {
+                  pc.checkCallback(false);
+                }
               },
               category: pc.pluginId,
             })),
@@ -6654,13 +6698,13 @@ export default function App() {
             await pluginManagerRef.current?.discoverPlugins();
           }}
           onReloadPlugin={async (id) => { await pluginManagerRef.current?.reloadPlugin(id); }}
-          onInstallPlugin={async (repo, id) => {
+          onInstallPlugin={async (repo, id, version) => {
             const pm = pluginManagerRef.current;
             if (!pm) {
               throw new Error('Plugin manager not initialized. Try restarting the app.');
             }
             try {
-              const result = await pm.installFromGithubRepo(repo, id);
+              const result = await pm.installFromGithubRepo(repo, id, version);
               return result;
             } catch (e: any) {
               console.error('[App] Plugin install error:', e);
@@ -6823,8 +6867,16 @@ export default function App() {
         </div>
       )}
       {toast && (
-        <div className="toast-container">
-          <div className={`toast ${toast.type}`}>
+        <div className="fixed bottom-[var(--space-8)] right-[var(--space-8)] z-[300] flex flex-col gap-[var(--space-2)]">
+          <div
+            className={`flex max-w-[360px] items-center gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-[var(--space-4)] py-[var(--space-3)] text-[length:var(--text-sm)] text-[var(--text-secondary)] shadow-[var(--shadow-lg)] ${
+              toast.type === "success"
+                ? "border-l-[3px] border-l-[var(--success)]"
+                : toast.type === "error"
+                  ? "border-l-[3px] border-l-[var(--danger)]"
+                  : "border-l-[3px] border-l-[var(--info)]"
+            }`}
+          >
             {toast.message}
           </div>
         </div>

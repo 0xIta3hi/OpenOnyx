@@ -113,12 +113,24 @@ export class FileSystemManager {
     return fs.promises.readFile(absolutePath, 'utf-8');
   }
 
+  async readBinary(filePath: string): Promise<Uint8Array> {
+    const absolutePath = this.resolvePath(filePath);
+    return new Uint8Array(await fs.promises.readFile(absolutePath));
+  }
+
   /** Write file content (auto-creates directories) */
   async writeFile(filePath: string, content: string): Promise<void> {
     const absolutePath = this.resolvePath(filePath);
     const dir = path.dirname(absolutePath);
     await fs.promises.mkdir(dir, { recursive: true });
     await fs.promises.writeFile(absolutePath, content, 'utf-8');
+  }
+
+  async writeBinary(filePath: string, content: Uint8Array): Promise<void> {
+    const absolutePath = this.resolvePath(filePath);
+    const dir = path.dirname(absolutePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(absolutePath, content);
   }
 
   /** Create a new file */

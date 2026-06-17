@@ -155,11 +155,8 @@ openobsidian/
 │   │   └── database.types.ts   # Supabase generated types
 │   │
 │   ├── styles/
-│   │   ├── index.css           # Global design system (with Tailwind)
-│   │   ├── spaces.css          # Spaces-specific styles
-│   │   ├── plugins.css         # Plugin system styles
-│   │   ├── collaboration.css   # Collaboration UI styles
-│   │   └── database.css        # Database view styles
+│   │   ├── index.css           # Tailwind entrypoint
+│   │   └── documentTailwindClasses.ts # Generated-DOM and theme utilities
 │   │
 │   └── components/
 │       ├── SpacesPage.tsx      # Knowledge Spaces entry point
@@ -286,7 +283,7 @@ await window.electronAPI.customAction(arg);
 
 ### Styling
 
-The project uses **Tailwind CSS v4** alongside an existing custom design system. For new components, you can use Tailwind utility classes directly. The existing CSS custom properties (design tokens) are defined in `src/styles/index.css` and are available globally.
+The project uses **Tailwind CSS v4** for application styling. Theme tokens and generated-DOM selectors are expressed as Tailwind arbitrary utilities in `src/styles/documentTailwindClasses.ts`.
 
 ## Privacy and Security
 

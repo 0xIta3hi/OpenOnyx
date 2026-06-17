@@ -253,6 +253,11 @@ export function createMockAPI(): ElectronAPI {
       if (stored) return JSON.parse(stored);
       return mockVaultPath ? [mockVaultPath] : [];
     },
+    showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
+    showSaveDialog: async () => ({ canceled: true, filePath: "" }),
+    openPath: async () => "",
+    showItemInFolder: async () => {},
+    getSystemPath: async (name: string) => name === "documents" ? "/documents" : "/",
 
     // File operations
     listFiles: async (dirPath?: string) => {
@@ -277,8 +282,16 @@ export function createMockAPI(): ElectronAPI {
       return mockFiles[filePath] || "";
     },
 
+    readBinary: async (filePath: string) => {
+      return new TextEncoder().encode(mockFiles[filePath] || "");
+    },
+
     writeFile: async (filePath: string, content: string) => {
       mockFiles[filePath] = content;
+    },
+
+    writeBinary: async (filePath: string, content: Uint8Array) => {
+      mockFiles[filePath] = new TextDecoder().decode(content);
     },
 
     createFile: async (filePath: string, content?: string) => {

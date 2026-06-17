@@ -9,6 +9,11 @@
  */
 
 import { Component, Notice, PluginSettingTab } from './components';
+import { setIcon } from './utils';
+import {
+  registerMarkdownCodeBlockProcessor,
+  registerMarkdownPostProcessor,
+} from './markdown';
 import type { IComponent } from './components';
 import type { PluginManifest } from '../../types/plugin';
 import { safePluginCall } from '../pluginDevTools';
@@ -37,20 +42,26 @@ function guardCallback(pluginId: string, fn: (...args: any[]) => any, context: s
 export interface IPlugin extends IComponent {
   app: any;
   manifest: PluginManifest;
+  settings: any;
   addCommand(command: any): any;
+  removeCommand(commandId: string): void;
   addRibbonIcon(icon: string, title: string, callback: (evt: MouseEvent) => void): HTMLElement;
   addStatusBarItem(): HTMLElement;
   addSettingTab(settingTab: PluginSettingTab): void;
   registerView(type: string, viewCreator: (leaf: any) => any): void;
+  registerExtensions(extensions: string[], viewType: string): void;
   registerMarkdownPostProcessor(postProcessor: any, sortOrder?: number): any;
   registerMarkdownCodeBlockProcessor(language: string, handler: any, sortOrder?: number): any;
   registerEditorExtension(extension: any): void;
+  registerBasesView(viewId: string, registration: any): void;
   registerEditorSuggest(editorSuggest: any): void;
+  registerCliHandler(command: string, description: string, flags: any, handler: any): void;
   registerObsidianProtocolHandler(action: string, handler: (params: any) => any): void;
   registerHoverLinkSource(id: string, info: { display: string, defaultMod: boolean }): void;
   loadData(): Promise<any>;
   saveData(data: any): Promise<void>;
   onUserEnable(): void;
+  onExternalSettingsChange(): void;
   load(): void;
 }
 
@@ -63,6 +74,7 @@ function _Plugin(this: any, app: any, manifest: PluginManifest) {
   (Component as any).call(this);
   this.app = app;
   this.manifest = manifest;
+  this.settings = [];
 
   // Internal registries for cleanup
   this._commands = [];
@@ -72,6 +84,12 @@ function _Plugin(this: any, app: any, manifest: PluginManifest) {
   this._registeredViews = [];
   this._styles = [];
   this._markdownPostProcessors = [];
+  this._editorExtensions = [];
+  this._editorSuggests = [];
+  this._protocolHandlers = [];
+  this._hoverLinkSources = [];
+  this._basesViews = [];
+  this._cliHandlers = [];
 }
 
 // Inherit from Component
@@ -120,6 +138,12 @@ _Plugin.prototype.addCommand = function (command: {
   return cmd;
 };
 
+_Plugin.prototype.removeCommand = function (commandId: string): void {
+  const fullId = commandId.includes(':') ? commandId : `${this.manifest.id}:${commandId}`;
+  this._commands = this._commands.filter((command: any) => command.id !== fullId);
+  (window as any).__oo_unregister_command?.(fullId);
+};
+
 // ── Ribbon ────────────────────────────────────────
 
 _Plugin.prototype.addRibbonIcon = function (icon: string, title: string, callback: (evt: MouseEvent) => void): HTMLElement {
@@ -128,7 +152,7 @@ _Plugin.prototype.addRibbonIcon = function (icon: string, title: string, callbac
   const el = document.createElement('div');
   el.className = 'ribbon-btn oo-plugin-ribbon-btn';
   el.title = title;
-  el.setAttribute('data-icon', icon);
+  setIcon(el, icon);
   el.addEventListener('click', guardedCallback);
 
   const action = { icon, title, callback: guardedCallback, el };
@@ -183,36 +207,86 @@ _Plugin.prototype.registerView = function (type: string, viewCreator: (leaf: any
   this.app.workspace.registerViewCreator(type, viewCreator);
 };
 
+_Plugin.prototype.registerExtensions = function (extensions: string[], viewType: string): void {
+  this.app.workspace.registerExtensions?.(extensions, viewType);
+  (window as any).__oo_register_extensions?.(this.manifest.id, extensions, viewType);
+  this.register(() => {
+    this.app.workspace.unregisterExtensions?.(extensions, viewType);
+    (window as any).__oo_unregister_extensions?.(this.manifest.id, extensions);
+  });
+};
+
 // ── Markdown Processing ───────────────────────────
 
-_Plugin.prototype.registerMarkdownPostProcessor = function (postProcessor: any, _sortOrder?: number): any {
+_Plugin.prototype.registerMarkdownPostProcessor = function (postProcessor: any, sortOrder?: number): any {
   this._markdownPostProcessors.push(postProcessor);
+  this.register(registerMarkdownPostProcessor(this.manifest.id, postProcessor, sortOrder));
   return postProcessor;
 };
 
-_Plugin.prototype.registerMarkdownCodeBlockProcessor = function (language: string, handler: (source: string, el: HTMLElement, ctx: any) => any, _sortOrder?: number): any {
+_Plugin.prototype.registerMarkdownCodeBlockProcessor = function (language: string, handler: (source: string, el: HTMLElement, ctx: any) => any, sortOrder?: number): any {
   const processor = { language, handler };
   this._markdownPostProcessors.push(processor);
+  this.register(registerMarkdownCodeBlockProcessor(this.manifest.id, language, handler, sortOrder));
   return processor;
 };
 
 // ── Editor Extensions ─────────────────────────────
 
 _Plugin.prototype.registerEditorExtension = function (extension: any): void {
-  // CM6 extensions — stored for future integration
+  this._editorExtensions.push(extension);
   (window as any).__oo_register_editor_ext?.(this.manifest.id, extension);
+  this.register(() => (window as any).__oo_unregister_editor_ext?.(this.manifest.id, extension));
 };
 
 _Plugin.prototype.registerEditorSuggest = function (editorSuggest: any) {
-  // Stub for editor suggest
+  this._editorSuggests.push(editorSuggest);
+  (window as any).__oo_register_editor_suggest?.(this.manifest.id, editorSuggest);
+  this.register(() => {
+    editorSuggest?.close?.();
+    editorSuggest?.unload?.();
+    (window as any).__oo_unregister_editor_suggest?.(this.manifest.id, editorSuggest);
+  });
 };
 
 _Plugin.prototype.registerObsidianProtocolHandler = function (action: string, handler: (params: any) => any) {
-  // Stub for protocol handler
+  const guarded = guardCallback(this.manifest.id, handler, `protocol:${action}`);
+  this._protocolHandlers.push({ action, handler: guarded });
+  (window as any).__oo_register_protocol_handler?.(this.manifest.id, action, guarded);
+  this.register(() => (window as any).__oo_unregister_protocol_handler?.(this.manifest.id, action));
 };
 
 _Plugin.prototype.registerHoverLinkSource = function (id: string, info: { display: string, defaultMod: boolean }) {
-  // Stub for hover link source (used by obsidian-git)
+  this._hoverLinkSources.push({ id, info });
+  this.app.workspace.registerHoverLinkSource?.(id, info);
+  (window as any).__oo_register_hover_link_source?.(this.manifest.id, id, info);
+  this.register(() => {
+    this.app.workspace.unregisterHoverLinkSource?.(id);
+    (window as any).__oo_unregister_hover_link_source?.(this.manifest.id, id);
+  });
+};
+
+_Plugin.prototype.registerBasesView = function (viewId: string, registration: any): void {
+  this._basesViews.push({ viewId, registration });
+  (window as any).__oo_register_bases_view?.(this.manifest.id, viewId, registration);
+  this.register(() => (window as any).__oo_unregister_bases_view?.(this.manifest.id, viewId));
+};
+
+_Plugin.prototype.registerCliHandler = function (
+  command: string,
+  description: string,
+  flags: any,
+  handler: any,
+): void {
+  const registration = {
+    command,
+    description,
+    flags,
+    handler: guardCallback(this.manifest.id, handler, `cli:${command}`),
+  };
+  this._cliHandlers.push(registration);
+  (window as any).__oo_register_cli_handler?.(this.manifest.id, registration);
+  this.register(() => (window as any).__oo_unregister_cli_handler?.(this.manifest.id, command));
 };
 
 // ── Data Management ───────────────────────────────
@@ -240,10 +314,11 @@ _Plugin.prototype.saveData = async function (data: any): Promise<void> {
 // ── Lifecycle Hooks ───────────────────────────────
 
 _Plugin.prototype.onUserEnable = function (): void { /* override */ };
+_Plugin.prototype.onExternalSettingsChange = function (): void { /* override */ };
 
 // ── Cleanup on unload ─────────────────────────────
 
-_Plugin.prototype.onunload = function (): void {
+_Plugin.prototype._cleanupPluginRegistrations = function (): void {
   // Remove commands
   for (const cmd of this._commands) {
     (window as any).__oo_unregister_command?.(cmd.id);
@@ -273,9 +348,21 @@ _Plugin.prototype.onunload = function (): void {
   // Unregister views
   for (const view of this._registeredViews) {
     this.app.workspace.detachLeavesOfType(view.type);
+    this.app.workspace.unregisterViewCreator?.(view.type);
   }
   this._registeredViews = [];
 };
+
+_Plugin.prototype.unload = function (): void {
+  if (!this._loaded) return;
+  try {
+    (Component as any).prototype.unload.call(this);
+  } finally {
+    this._cleanupPluginRegistrations();
+  }
+};
+
+_Plugin.prototype.onunload = function (): void { /* override */ };
 
 // Cast the function constructor to the class-like type
 export const Plugin = _Plugin as unknown as PluginConstructor;

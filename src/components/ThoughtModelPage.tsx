@@ -31,6 +31,60 @@ import type { ThoughtModelStatus, Theme } from "../types";
 
 const api = getAPI();
 
+const tm = {
+  header: "graph-header flex items-center justify-between",
+  title: "m-0 flex items-center gap-2 text-[var(--text-base)] font-semibold",
+  controls: "flex items-center gap-2",
+  stats: "flex gap-3 text-xs text-(--text-muted) mr-3",
+  content: "flex-1 overflow-auto bg-(--bg-secondary)",
+  center: "flex flex-col items-center justify-center h-full p-8 gap-4 text-center [&_h3]:text-[var(--text-lg)] [&_h3]:font-semibold [&_h3]:m-0 [&_p]:max-w-[320px] [&_p]:leading-normal",
+  icon: "text-(--accent-primary) opacity-80",
+  iconError: "text-(--danger) opacity-100",
+  spinner: "animate-spin text-(--text-muted)",
+  progress: "w-[200px] h-1 bg-(--bg-tertiary) rounded-full overflow-hidden",
+  progressBar: "h-full bg-(--accent-primary) transition-[width] duration-300",
+  code: "bg-(--bg-tertiary) p-3 rounded-md font-mono text-xs my-2 [&_code]:text-(--text-secondary)",
+  results: "h-full flex flex-col",
+  tabs: "flex items-center gap-1 px-3 py-2 border-b border-(--border-subtle) bg-(--bg-tertiary)",
+  tab: "flex items-center gap-2 px-3 py-2 bg-transparent border-none rounded text-[var(--text-sm)] text-(--text-muted) cursor-pointer transition-all duration-150 hover:text-(--text-secondary) hover:bg-(--bg-hover)",
+  tabActive: "text-(--text-primary) bg-(--bg-active)",
+  themes: "flex-1 overflow-auto p-3 flex flex-col gap-2",
+  themeCard: "bg-(--bg-tertiary) border border-(--border-subtle) rounded-md overflow-hidden",
+  themeHeader: "flex items-start w-full p-3 bg-transparent border-none cursor-pointer text-left text-(--text-primary) gap-2 hover:bg-(--bg-hover)",
+  themeInfo: "flex-1 flex flex-col gap-2",
+  keywords: "flex flex-wrap gap-1",
+  keyword: "px-2 py-0.5 bg-(--bg-active) rounded text-xs text-(--text-secondary)",
+  chunks: "px-3 pb-3 flex flex-col gap-2",
+  chunk: "p-3 bg-(--bg-secondary) rounded cursor-pointer transition-colors duration-150 hover:bg-(--bg-hover)",
+  chunkTitle: "flex items-center gap-2 text-[var(--text-sm)] font-medium mb-2 text-(--text-primary) [&_svg]:text-(--text-muted)",
+  chunkText: "m-0 text-xs text-(--text-muted) leading-normal line-clamp-3",
+  search: "flex-1 overflow-auto p-3 flex flex-col gap-3",
+  searchBox: "flex items-center gap-2 px-3 py-2 bg-(--bg-tertiary) border border-(--border-subtle) rounded-md focus-within:border-(--border-medium)",
+  searchIcon: "text-(--text-muted) shrink-0",
+  searchInput: "flex-1 py-1 bg-transparent border-none outline-none text-[var(--text-sm)] text-(--text-primary) placeholder:text-(--text-muted)",
+  searchResults: "flex flex-col gap-2",
+  result: "p-3 bg-(--bg-tertiary) border border-(--border-subtle) rounded-md cursor-pointer transition-all duration-150 hover:bg-(--bg-hover) hover:border-(--border-medium)",
+  resultHeader: "flex items-center justify-between mb-2",
+  resultTitle: "flex items-center gap-2 text-[var(--text-sm)] font-medium text-(--text-primary) [&_svg]:text-(--text-muted)",
+  score: "text-xs px-2 py-0.5 bg-(--bg-active) rounded text-(--text-secondary)",
+  resultText: "mt-0 mb-2 text-xs text-(--text-muted) leading-normal",
+  resultPath: "text-[10px] text-(--text-muted) opacity-70",
+  noResults: "flex flex-col items-center justify-center p-8 text-(--text-muted) gap-2 [&_p]:m-0 [&_p]:text-[var(--text-sm)]",
+};
+
+const tmTabClass = (active: boolean) => `${tm.tab} ${active ? tm.tabActive : ""}`;
+const panelBtnBaseClass =
+  "inline-flex cursor-pointer items-center justify-center gap-[var(--space-2)] whitespace-nowrap rounded-[var(--radius-md)] border-0 px-[var(--space-5)] py-[var(--space-2)] font-sans text-[length:var(--text-sm)] font-medium transition-[var(--transition-fast)] disabled:cursor-not-allowed disabled:opacity-60";
+const panelBtnPrimaryClass =
+  `${panelBtnBaseClass} bg-[var(--accent-primary)] text-[var(--text-on-accent)] hover:opacity-90`;
+const panelBtnSecondaryClass =
+  `${panelBtnBaseClass} border border-[var(--border-medium)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`;
+const panelBtnGhostClass =
+  `${panelBtnBaseClass} bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`;
+const panelBtnGhostSmClass = `${panelBtnGhostClass} px-2.5 py-1 text-[11px]`;
+const panelBtnPrimarySmClass = `${panelBtnPrimaryClass} px-2.5 py-1 text-[11px]`;
+const panelBtnPrimaryLgClass = `${panelBtnPrimaryClass} px-6 py-3 text-base`;
+
 /**
  * Strip YAML frontmatter and metadata from text for display
  */
@@ -254,41 +308,41 @@ export function ThoughtModelPage({
   if (serviceHealthy === false) {
     return (
       <>
-        <div className="graph-header thought-model-header">
-          <h2>
+        <div className={tm.header}>
+          <h2 className={tm.title}>
             <Brain size={20} strokeWidth={1.5} style={{ opacity: 0.6 }} />
             Thought Model
           </h2>
-          <div className="thought-model-controls">
+          <div className={tm.controls}>
             {onToggleFullScreen && (
               <button
-                className="btn btn-ghost"
+                className={panelBtnGhostClass}
                 onClick={onToggleFullScreen}
                 title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
               >
                 {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
               </button>
             )}
-            <button className="btn btn-ghost" onClick={onClose} title="Close">
+            <button className={panelBtnGhostClass} onClick={onClose} title="Close">
               <X size={16} />
             </button>
           </div>
         </div>
-        <div className="thought-model-content">
-          <div className="thought-model-center">
-            <AlertCircle size={40} className="thought-model-icon error" />
+        <div className={tm.content}>
+          <div className={tm.center}>
+            <AlertCircle size={40} className={tm.iconError} />
             <h3>Service Not Running</h3>
             <p className="text-muted">
               Start the Python ML service in a terminal:
             </p>
-            <div className="thought-model-code">
+            <div className={tm.code}>
               <code>
                 cd thought_model && pip install -r requirements.txt && python
                 main.py
               </code>
             </div>
             <button
-              className="btn btn-primary"
+              className={panelBtnPrimaryClass}
               onClick={() => window.location.reload()}
             >
               <RefreshCw size={14} />
@@ -302,14 +356,14 @@ export function ThoughtModelPage({
 
   return (
     <>
-      <div className="graph-header thought-model-header">
-        <h2>
+      <div className={tm.header}>
+        <h2 className={tm.title}>
           <Brain size={20} strokeWidth={1.5} style={{ opacity: 0.6 }} />
           Thought Model
         </h2>
-        <div className="thought-model-controls">
+        <div className={tm.controls}>
           {status === "done" && (
-            <div className="thought-model-stats">
+            <div className={tm.stats}>
               <span>{totalNotes} notes</span>
               <span>{totalChunks} chunks</span>
               <span>{themes.length} themes</span>
@@ -317,31 +371,31 @@ export function ThoughtModelPage({
           )}
           {onToggleFullScreen && (
             <button
-              className="btn btn-ghost"
+              className={panelBtnGhostClass}
               onClick={onToggleFullScreen}
               title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
             >
               {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onClose} title="Close">
+          <button className={panelBtnGhostClass} onClick={onClose} title="Close">
             <X size={16} />
           </button>
         </div>
       </div>
 
-      <div className="thought-model-content">
+      <div className={tm.content}>
         {/* Status: Idle - Show build button */}
         {status === "idle" && (
-          <div className="thought-model-center">
-            <Brain size={48} className="thought-model-icon" />
+          <div className={tm.center}>
+            <Brain size={48} className={tm.icon} />
             <h3>Build Your Thought Model</h3>
             <p className="text-muted">
               Analyze your vault using ML to discover themes and enable semantic
               search.
             </p>
             <button
-              className="btn btn-primary btn-lg"
+              className={panelBtnPrimaryLgClass}
               onClick={handleBuild}
               disabled={!vaultPath}
             >
@@ -356,13 +410,13 @@ export function ThoughtModelPage({
 
         {/* Status: Indexing - Show progress */}
         {status === "indexing" && (
-          <div className="thought-model-center">
-            <Loader2 size={40} className="thought-model-spinner" />
+          <div className={tm.center}>
+            <Loader2 size={40} className={tm.spinner} />
             <h3>Building...</h3>
             <p className="text-muted">{message}</p>
-            <div className="thought-model-progress">
+            <div className={tm.progress}>
               <div
-                className="thought-model-progress-bar"
+                className={tm.progressBar}
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -372,11 +426,11 @@ export function ThoughtModelPage({
 
         {/* Status: Failed - Show error */}
         {status === "failed" && (
-          <div className="thought-model-center">
-            <AlertCircle size={40} className="thought-model-icon error" />
+          <div className={tm.center}>
+            <AlertCircle size={40} className={tm.iconError} />
             <h3>Build Failed</h3>
             <p className="text-muted">{error}</p>
-            <button className="btn btn-secondary" onClick={handleBuild}>
+            <button className={panelBtnSecondaryClass} onClick={handleBuild}>
               <RefreshCw size={14} />
               Try Again
             </button>
@@ -385,18 +439,18 @@ export function ThoughtModelPage({
 
         {/* Status: Done - Show themes and search */}
         {status === "done" && (
-          <div className="thought-model-results">
+          <div className={tm.results}>
             {/* Tab switcher */}
-            <div className="thought-model-tabs">
+            <div className={tm.tabs}>
               <button
-                className={`thought-model-tab ${activeTab === "themes" ? "active" : ""}`}
+                className={tmTabClass(activeTab === "themes")}
                 onClick={() => setActiveTab("themes")}
               >
                 <Sparkles size={14} />
                 Themes
               </button>
               <button
-                className={`thought-model-tab ${activeTab === "search" ? "active" : ""}`}
+                className={tmTabClass(activeTab === "search")}
                 onClick={() => setActiveTab("search")}
               >
                 <Search size={14} />
@@ -404,7 +458,7 @@ export function ThoughtModelPage({
               </button>
               <div style={{ flex: 1 }} />
               <button
-                className="btn btn-ghost btn-sm"
+                className={panelBtnGhostSmClass}
                 onClick={handleRebuild}
                 title="Rebuild"
               >
@@ -414,14 +468,14 @@ export function ThoughtModelPage({
 
             {/* Themes Tab */}
             {activeTab === "themes" && (
-              <div className="thought-model-themes">
+              <div className={tm.themes}>
                 {themes.map((themeData) => (
                   <div
                     key={themeData.cluster_id}
-                    className="thought-model-theme-card"
+                    className={tm.themeCard}
                   >
                     <button
-                      className="thought-model-theme-header"
+                      className={tm.themeHeader}
                       onClick={() => toggleTheme(themeData.cluster_id)}
                     >
                       {expandedThemes.has(themeData.cluster_id) ? (
@@ -429,10 +483,10 @@ export function ThoughtModelPage({
                       ) : (
                         <ChevronRight size={16} />
                       )}
-                      <div className="thought-model-theme-info">
-                        <div className="thought-model-keywords">
+                      <div className={tm.themeInfo}>
+                        <div className={tm.keywords}>
                           {themeData.keywords.slice(0, 5).map((kw, i) => (
-                            <span key={i} className="thought-model-keyword">
+                            <span key={i} className={tm.keyword}>
                               {kw}
                             </span>
                           ))}
@@ -445,18 +499,18 @@ export function ThoughtModelPage({
                     </button>
 
                     {expandedThemes.has(themeData.cluster_id) && (
-                      <div className="thought-model-theme-chunks">
+                      <div className={tm.chunks}>
                         {themeData.representative_chunks.map((chunk) => (
                           <div
                             key={chunk.chunk_id}
-                            className="thought-model-chunk"
+                            className={tm.chunk}
                             onClick={() => onOpenNote(chunk.note_path)}
                           >
-                            <div className="thought-model-chunk-title">
+                            <div className={tm.chunkTitle}>
                               <FileText size={12} />
                               <span>{chunk.note_title}</span>
                             </div>
-                            <p className="thought-model-chunk-text">
+                            <p className={tm.chunkText}>
                               {cleanChunkText(chunk.chunk_text)}
                             </p>
                           </div>
@@ -470,9 +524,9 @@ export function ThoughtModelPage({
 
             {/* Search Tab */}
             {activeTab === "search" && (
-              <div className="thought-model-search">
-                <div className="thought-model-search-box">
-                  <Search size={16} className="thought-model-search-icon" />
+              <div className={tm.search}>
+                <div className={tm.searchBox}>
+                  <Search size={16} className={tm.searchIcon} />
                   <input
                     ref={queryInputRef}
                     type="text"
@@ -480,23 +534,23 @@ export function ThoughtModelPage({
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Ask a question about your notes..."
-                    className="thought-model-search-input"
+                    className={tm.searchInput}
                   />
                   {query && (
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className={panelBtnGhostSmClass}
                       onClick={() => setQuery("")}
                     >
                       <X size={14} />
                     </button>
                   )}
                   <button
-                    className="btn btn-primary btn-sm"
+                    className={panelBtnPrimarySmClass}
                     onClick={handleQuery}
                     disabled={!query.trim() || isQuerying}
                   >
                     {isQuerying ? (
-                      <Loader2 size={14} className="thought-model-spinner" />
+                      <Loader2 size={14} className={tm.spinner} />
                     ) : (
                       <Search size={14} />
                     )}
@@ -505,26 +559,26 @@ export function ThoughtModelPage({
 
                 {/* Results */}
                 {queryResults.length > 0 && (
-                  <div className="thought-model-search-results">
+                  <div className={tm.searchResults}>
                     <p className="text-muted text-sm">
                       {queryResults.length} results
                     </p>
                     {queryResults.map((result, index) => (
                       <div
                         key={index}
-                        className="thought-model-result"
+                        className={tm.result}
                         onClick={() => onOpenNote(result.note_path)}
                       >
-                        <div className="thought-model-result-header">
-                          <div className="thought-model-result-title">
+                        <div className={tm.resultHeader}>
+                          <div className={tm.resultTitle}>
                             <FileText size={12} />
                             <span>{result.note_title}</span>
                           </div>
-                          <span className="thought-model-score">
+                          <span className={tm.score}>
                             {(result.score * 100).toFixed(0)}%
                           </span>
                         </div>
-                        <p className="thought-model-result-text">
+                        <p className={tm.resultText}>
                           {(() => {
                             const cleaned = cleanChunkText(result.chunk_text);
                             return cleaned.length > 200
@@ -532,7 +586,7 @@ export function ThoughtModelPage({
                               : cleaned;
                           })()}
                         </p>
-                        <span className="thought-model-result-path">
+                        <span className={tm.resultPath}>
                           {result.note_path}
                         </span>
                       </div>
@@ -541,7 +595,7 @@ export function ThoughtModelPage({
                 )}
 
                 {queryResults.length === 0 && query && !isQuerying && (
-                  <div className="thought-model-no-results">
+                  <div className={tm.noResults}>
                     <Search size={24} style={{ opacity: 0.3 }} />
                     <p>No results for "{query}"</p>
                   </div>

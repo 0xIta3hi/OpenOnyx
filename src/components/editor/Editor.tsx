@@ -37,7 +37,7 @@ import { tags as t } from "@lezer/highlight";
 import { Tab, ViewMode } from "../../types";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SearchReplace } from "./SearchReplace";
-import { Menu, TFile } from "../../lib/obsidian-api";
+import { Editor as ObsidianEditor, MarkdownView, Menu, TFile } from "../../lib/obsidian-api";
 import { getAPI } from "../../utils/api";
 import {
   linkAutocomplete,
@@ -54,6 +54,63 @@ import { extractOperations } from "../../utils/collabOperations";
 import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { authManager } from "../../lib/auth";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
+
+const resizerClass =
+  "resizer relative z-10 w-1 shrink-0 cursor-ew-resize bg-transparent transition-colors duration-100 after:absolute after:inset-y-0 after:left-px after:w-0.5 after:bg-[var(--divider-color)] after:opacity-100 hover:after:left-0.5 hover:after:w-[3px] hover:after:bg-[var(--interactive-accent)] active:after:left-0.5 active:after:w-[3px] active:after:bg-[var(--interactive-accent)]";
+const inlineAiToolbarClass =
+  "inline-ai-toolbar flex min-w-[400px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] p-0 shadow-[var(--shadow-md)] transition-all duration-150";
+const inlineAiButtonsRowClass = "flex w-full items-center";
+const inlineAiButtonsRowPromptClass =
+  "border-b border-[var(--border-subtle)]";
+const inlineAiButtonClass =
+  "inline-ai-btn flex flex-1 cursor-pointer items-center justify-center rounded-none border-0 bg-transparent px-3.5 py-2.5 text-center text-[12.5px] font-semibold text-[var(--text-secondary)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] [&:not(:last-child)]:border-r [&:not(:last-child)]:border-[var(--border-subtle)]";
+const inlineAiButtonActiveClass =
+  "bg-[var(--bg-active)] text-[var(--text-primary)]";
+const inlineAiPromptRowClass =
+  "flex w-full items-center gap-2 bg-[var(--bg-primary)] px-2.5 py-2";
+const inlineAiPromptInputClass =
+  "inline-ai-prompt-input flex-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-[7px] text-[12.5px] text-[var(--text-primary)] outline-none transition-all duration-150 placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:bg-[var(--bg-primary)]";
+const inlineAiPromptSubmitClass =
+  "inline-ai-prompt-submit cursor-pointer rounded-[var(--radius-sm)] border-0 bg-[var(--accent-primary)] px-3.5 py-[7px] text-xs font-semibold text-[var(--text-on-accent)] transition-all duration-150 hover:bg-[var(--accent-secondary)] disabled:cursor-not-allowed disabled:bg-[var(--bg-active)] disabled:text-[var(--text-muted)]";
+const inlineAiLoadingClass =
+  "inline-ai-toolbar flex min-w-[200px] items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] px-5 py-2.5 text-[12.5px] text-[var(--text-secondary)]";
+const inlineAiExplanationClass =
+  "flex w-[340px] flex-col overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--color-base-25)] shadow-[var(--shadow-lg)] backdrop-blur-xl";
+const inlineAiExplanationHeaderClass =
+  "flex items-center justify-between border-b border-[var(--border-strong)] bg-[var(--bg-hover)] px-3 py-2 text-[11px] font-semibold text-[var(--text-primary)]";
+const inlineAiExplanationCloseClass =
+  "flex cursor-pointer rounded border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-all duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)]";
+const inlineAiExplanationBodyClass =
+  "max-h-[200px] overflow-y-auto p-3 text-[11px] leading-normal text-[var(--text-secondary)]";
+const editorAnnotationClass =
+  "mx-[clamp(24px,5vw,72px)] my-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-5 py-4 shadow-[0_6px_18px_rgba(0,0,0,0.12)]";
+const editorAnnotationHeaderClass =
+  "mb-2 flex items-center justify-between";
+const editorAnnotationTitleClass =
+  "flex items-center text-[13px] font-semibold uppercase tracking-[0.05em] text-[var(--text-primary)]";
+const editorAnnotationActionsClass = "flex items-center gap-2";
+const editorAnnotationIconBtnClass =
+  "flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const editorAnnotationTextClass =
+  "text-sm leading-normal text-[var(--text-secondary)]";
+const editorAnnotationLoadingClass =
+  "flex items-center gap-2 text-[13px] text-[var(--text-muted)]";
+const editorAnnotationEmptyClass =
+  "flex flex-col items-start gap-2";
+const editorAnnotationEmptyTextClass =
+  "text-[13px] text-[var(--text-muted)]";
+const editorAnnotationGenerateClass =
+  "flex cursor-pointer items-center gap-1.5 rounded border-0 bg-[var(--accent-color,#3b82f6)] px-3 py-1.5 text-xs font-medium text-white";
+const editorContainerClass =
+  "editor-container relative flex min-h-0 flex-1 flex-row overflow-auto";
+const editorLightboxBackdropClass =
+  "fixed inset-0 z-[9999] flex items-center justify-center bg-[color-mix(in_srgb,var(--bg-primary)_45%,transparent)] backdrop-blur-[3px]";
+const editorLightboxModalClass =
+  "relative flex max-h-[min(88vh,900px)] max-w-[min(92vw,1200px)] items-center justify-center rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] p-[var(--space-3)] shadow-[var(--shadow-xl)]";
+const editorLightboxCloseClass =
+  "absolute right-2 top-2 h-7 w-7 cursor-pointer rounded-full border border-[var(--border-medium)] bg-[var(--bg-secondary)] text-xl leading-none text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--text-primary)]";
+const editorLightboxImageClass =
+  "h-auto max-h-[min(82vh,820px)] w-auto max-w-[min(88vw,1120px)] rounded-[var(--radius-md)] object-contain";
 
 interface EditorProps {
   tabs: Tab[];
@@ -1980,6 +2037,7 @@ export function Editor({
   };
   const wheelRemainderRef = useRef(0);
   const suggestionContentCompartmentRef = useRef(new Compartment());
+  const pluginExtensionsCompartmentRef = useRef(new Compartment());
   const typingPauseTimerRef = useRef<number | null>(null);
   const flowTriggerDelayTimerRef = useRef<number | null>(null);
   const flowTriggerWindowTimerRef = useRef<number | null>(null);
@@ -2757,6 +2815,9 @@ export function Editor({
         imageWidgetPlugin(handleOpenImageLightbox),
         headingLivePreviewPlugin(),
         vimCompartment.of([]),
+        pluginExtensionsCompartmentRef.current.of(
+          (window as any).__oo_editor_extensions || [],
+        ),
         suggestionContentCompartmentRef.current.of(
           suggestionContentStateField({
             endSuggestions: endOfNoteSuggestions,
@@ -2860,7 +2921,7 @@ export function Editor({
           },
           ".cm-content": {
             padding: "20px 40px",
-            maxWidth: "850px",
+            maxWidth: "var(--reading-view-width)",
             margin: "0 auto",
             caretColor: "var(--editor-caret)",
           },
@@ -2940,6 +3001,20 @@ export function Editor({
     });
 
     viewRef.current = view;
+    const obsidianEditor = new ObsidianEditor(view);
+    const obsidianApp = (window as any).__oo_app;
+    const activeLeaf = obsidianApp?.workspace?.activeLeaf;
+    if (activeLeaf?.view instanceof (MarkdownView as any)) {
+      activeLeaf.view.editor = obsidianEditor;
+      activeLeaf.view.sourceMode = { cmEditor: obsidianEditor };
+      activeLeaf.view.file = obsidianApp.vault.getFileByPath((window as any).__oo_active_file || '');
+    }
+    if (obsidianApp?.workspace) {
+      obsidianApp.workspace.activeEditor = {
+        editor: obsidianEditor,
+        file: obsidianApp.vault.getFileByPath((window as any).__oo_active_file || ''),
+      };
+    }
     if (initialScroll > 0) {
       setTimeout(() => {
         if (view.scrollDOM) {
@@ -2960,11 +3035,27 @@ export function Editor({
     }
 
     return () => {
+      if (obsidianApp?.workspace?.activeEditor?.editor === obsidianEditor) {
+        obsidianApp.workspace.activeEditor = null;
+      }
       view.destroy();
       viewRef.current = null;
       onEditorViewReady?.(null);
     };
   }, [activeTabId, isSpecialTab, readOnly]); // Re-create when tab changes or read-only mode flips
+
+  useEffect(() => {
+    const applyPluginExtensions = () => {
+      if (!viewRef.current) return;
+      viewRef.current.dispatch({
+        effects: pluginExtensionsCompartmentRef.current.reconfigure(
+          (window as any).__oo_editor_extensions || [],
+        ),
+      });
+    };
+    window.addEventListener('obsidian:editor-extensions-changed', applyPluginExtensions);
+    return () => window.removeEventListener('obsidian:editor-extensions-changed', applyPluginExtensions);
+  }, []);
 
   useEffect(() => {
     if (isSpecialTab) return;
@@ -3550,7 +3641,7 @@ export function Editor({
     <>
       {selectionRange && !isInlineQuerying && !explanation && createPortal(
         <div
-          className="inline-ai-toolbar"
+          className={inlineAiToolbarClass}
           style={{
             position: "absolute",
             ...getClampedToolbarCoords(),
@@ -3571,31 +3662,31 @@ export function Editor({
             e.preventDefault();
           }}
         >
-          <div className={`inline-ai-buttons-row${showPromptInput ? " has-prompt-row" : ""}`}>
-            <button className="inline-ai-btn" onClick={() => handleInlineAction("rewrite")}>
+          <div className={`${inlineAiButtonsRowClass}${showPromptInput ? ` ${inlineAiButtonsRowPromptClass}` : ""}`}>
+            <button className={inlineAiButtonClass} onClick={() => handleInlineAction("rewrite")}>
               Rewrite
             </button>
-            <button className="inline-ai-btn" onClick={() => handleInlineAction("expand")}>
+            <button className={inlineAiButtonClass} onClick={() => handleInlineAction("expand")}>
               Expand
             </button>
-            <button className="inline-ai-btn" onClick={() => handleInlineAction("simplify")}>
+            <button className={inlineAiButtonClass} onClick={() => handleInlineAction("simplify")}>
               Simplify
             </button>
-            <button className="inline-ai-btn" onClick={() => handleInlineAction("explain")}>
+            <button className={inlineAiButtonClass} onClick={() => handleInlineAction("explain")}>
               Explain
             </button>
             <button
-              className={`inline-ai-btn${showPromptInput ? " active" : ""}`}
+              className={`${inlineAiButtonClass}${showPromptInput ? ` ${inlineAiButtonActiveClass}` : ""}`}
               onClick={() => setShowPromptInput(!showPromptInput)}
             >
               Prompt
             </button>
           </div>
           {showPromptInput && (
-            <div className="inline-ai-prompt-row">
+            <div className={inlineAiPromptRowClass}>
               <input
                 type="text"
-                className="inline-ai-prompt-input"
+                className={inlineAiPromptInputClass}
                 placeholder="Tell AI exactly what to do..."
                 value={customPromptText}
                 onChange={(e) => setCustomPromptText(e.target.value)}
@@ -3614,7 +3705,7 @@ export function Editor({
                 autoFocus
               />
               <button
-                className="inline-ai-prompt-submit"
+                className={inlineAiPromptSubmitClass}
                 onClick={() => handleInlineAction("custom", customPromptText)}
                 disabled={!customPromptText.trim()}
               >
@@ -3628,14 +3719,14 @@ export function Editor({
 
       {isInlineQuerying && selectionRange && !explanation && createPortal(
         <div
-          className="inline-ai-toolbar loading"
+          className={inlineAiLoadingClass}
           style={{
             position: "absolute",
             ...getClampedLoadingCoords(),
             zIndex: 5000,
           }}
         >
-          <div className="flat-spinner" style={{ marginRight: 8, display: "inline-block" }} />
+          <div className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border-subtle)] border-t-[var(--text-muted)]" />
           <span>Processing selection...</span>
         </div>,
         document.body
@@ -3643,7 +3734,7 @@ export function Editor({
 
       {explanation && explanationCoords && createPortal(
         <div
-          className="inline-ai-explanation-popover"
+          className={inlineAiExplanationClass}
           style={{
             position: "absolute",
             top: explanationCoords.y,
@@ -3651,13 +3742,13 @@ export function Editor({
             zIndex: 5000,
           }}
         >
-          <div className="explanation-popover-header">
+          <div className={inlineAiExplanationHeaderClass}>
             <span>Explanation</span>
-            <button className="explanation-popover-close" onClick={() => setExplanation(null)}>
+            <button className={inlineAiExplanationCloseClass} onClick={() => setExplanation(null)}>
               <X size={12} />
             </button>
           </div>
-          <div className="explanation-popover-body">
+          <div className={inlineAiExplanationBodyClass}>
             {explanation}
           </div>
         </div>,
@@ -3666,70 +3757,40 @@ export function Editor({
 
       {/* Inline annotation content */}
       {isInsightVisible && (
-        <div className="editor-annotation readable-insight">
-          <div className="editor-annotation-header">
-            <span className="editor-annotation-title">
-              <Lightbulb size={14} style={{ marginRight: 6 }} />
+        <div className={editorAnnotationClass}>
+          <div className={editorAnnotationHeaderClass}>
+            <span className={editorAnnotationTitleClass}>
+              <Lightbulb size={14} className="mr-1.5" />
               Note Insight
             </span>
-            <div className="editor-annotation-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className={editorAnnotationActionsClass}>
               {annotation && !isGeneratingInsight && (
                 <button
-                  className="editor-annotation-refresh"
+                  className={editorAnnotationIconBtnClass}
                   onClick={onGenerateInsight}
                   title="Regenerate Insight"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted, #888)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '4px',
-                    borderRadius: '4px',
-                  }}
-                  onMouseOver={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
-                    (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
-                  }}
-                  onMouseOut={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'none';
-                    (e.currentTarget as HTMLElement).style.color = 'var(--text-muted, #888)';
-                  }}
                 >
                   <RefreshCw size={14} />
                 </button>
               )}
-              <button className="editor-annotation-close" onClick={() => toggleInsight(false)} title="Close Insight">
+              <button className={editorAnnotationIconBtnClass} onClick={() => toggleInsight(false)} title="Close Insight">
                 <X size={14} />
               </button>
             </div>
           </div>
-          <div className="editor-annotation-text">
+          <div className={editorAnnotationTextClass}>
             {isGeneratingInsight ? (
-              <span style={{ color: 'var(--text-muted)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <RefreshCw size={14} className="spin-animation" /> Generating insight...
+              <span className={editorAnnotationLoadingClass}>
+                <RefreshCw size={14} className="animate-spin" /> Generating insight...
               </span>
             ) : annotation ? (
               annotation
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
-                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No insight generated yet for this note.</span>
+              <div className={editorAnnotationEmptyClass}>
+                <span className={editorAnnotationEmptyTextClass}>No insight generated yet for this note.</span>
                 <button
                   onClick={onGenerateInsight}
-                  style={{
-                    background: 'var(--accent-color, #3b82f6)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 500,
-                  }}
+                  className={editorAnnotationGenerateClass}
                 >
                   <Sparkles size={12} /> Generate Insight
                 </button>
@@ -3741,15 +3802,8 @@ export function Editor({
 
       {/* Editor & Preview Container */}
       <div
-        className="editor-container"
+        className={editorContainerClass}
         ref={containerRef}
-        style={{
-          display: "flex",
-          flexDirection: "row",
-          flex: 1,
-          minHeight: 0,
-          position: "relative",
-        }}
       >
         {isSpecialTab ? (
           <div
@@ -3787,7 +3841,7 @@ export function Editor({
             />
 
             {viewMode === "split" && (
-              <div className="resizer" onMouseDown={startDrag} />
+              <div className={resizerClass} onMouseDown={startDrag} />
             )}
 
             {(viewMode === "preview" || viewMode === "split") && (
@@ -3822,16 +3876,16 @@ export function Editor({
 
       {imageLightbox && (
         <div
-          className="editor-image-lightbox-backdrop"
+          className={editorLightboxBackdropClass}
           onClick={() => setImageLightbox(null)}
         >
           <div
-            className="editor-image-lightbox-modal"
+            className={editorLightboxModalClass}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
-              className="editor-image-lightbox-close"
+              className={editorLightboxCloseClass}
               onClick={() => setImageLightbox(null)}
               aria-label="Close image preview"
             >
@@ -3840,7 +3894,7 @@ export function Editor({
             <img
               src={imageLightbox.src}
               alt={imageLightbox.alt || "Image preview"}
-              className="editor-image-lightbox-image"
+              className={editorLightboxImageClass}
             />
           </div>
         </div>

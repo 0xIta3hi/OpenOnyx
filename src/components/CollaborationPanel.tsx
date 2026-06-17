@@ -26,6 +26,34 @@ interface CollaborationPanelProps {
   onGoToAccount?: () => void;
 }
 
+const settingCardClass =
+  "setting-card flex items-center justify-between border-b border-[var(--border-subtle)] py-4 last:border-b-0";
+const settingCenteredCardClass =
+  "setting-card flex justify-center border-none py-10";
+const settingInfoClass = "setting-info flex min-w-0 flex-1 flex-col gap-1 pr-6";
+const settingTitleClass =
+  "setting-title text-sm font-medium text-[var(--text-primary)]";
+const settingTitleWithIconClass =
+  "setting-title-with-icon flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]";
+const settingTitleIconClass = "setting-title-icon shrink-0 text-[var(--text-muted)]";
+const settingDescriptionClass =
+  "setting-description text-xs leading-[1.4] text-[var(--text-muted)]";
+const settingControlClass = "setting-control flex shrink-0 items-center gap-2";
+const settingInputClass =
+  "setting-input w-full max-w-60 rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
+const settingSelectClass =
+  "setting-select min-w-40 cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 font-[inherit] text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 focus:border-[var(--color-accent)]";
+const settingBtnPrimaryClass =
+  "setting-btn-primary cursor-pointer rounded border-0 bg-[var(--color-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-on-accent)] transition-[background-color,transform] duration-150 hover:bg-[var(--color-accent-1)] active:scale-[0.98] active:bg-[var(--color-accent-2)] disabled:cursor-not-allowed disabled:opacity-60";
+const settingBtnSecondaryClass =
+  "setting-btn-secondary cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-[background-color,border-color,transform] duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] active:scale-[0.98] active:bg-[var(--bg-active)] disabled:cursor-not-allowed disabled:opacity-60";
+const settingGroupHeaderClass =
+  "setting-group-header mb-3 mt-8 select-none border-b border-[var(--border-subtle)] pb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]";
+const settingToggleClass = "relative inline-block h-5 w-[38px] shrink-0 cursor-pointer";
+const settingToggleInputClass = "peer absolute h-0 w-0 opacity-0";
+const toggleSliderClass =
+  "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:bottom-0.5 before:left-0.5 before:h-3.5 before:w-3.5 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
+
 export function CollaborationPanel({
   vaultPath,
   onVaultReconstructed,
@@ -267,11 +295,11 @@ export function CollaborationPanel({
 
   if (authLoading || isInitialLoading) {
     return (
-      <div className="setting-card" style={{ justifyContent: 'center', padding: '40px 0', border: 'none' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center' }}>
-          <Loader size={24} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite', color: 'var(--color-accent)' }} />
-          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>Initializing collaboration...</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Connecting to secure space service...</div>
+      <div className={settingCenteredCardClass}>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Loader size={24} className="animate-spin shrink-0 text-(--color-accent)" />
+          <div className="text-sm font-medium text-(--text-primary)">Initializing collaboration...</div>
+          <div className="text-xs text-(--text-muted)">Connecting to secure space service...</div>
         </div>
       </div>
     );
@@ -281,18 +309,17 @@ export function CollaborationPanel({
 
   if (!user) {
     return (
-      <div className="setting-card" style={{ justifyContent: 'center', padding: '40px 0', border: 'none' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center' }}>
-          <Users size={32} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
-          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>Collaborate on Vaults</div>
-          <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', maxWidth: '280px', lineHeight: '1.5' }}>
+      <div className={settingCenteredCardClass}>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Users size={32} strokeWidth={1.5} className="text-(--text-muted)" />
+          <div className="text-sm font-medium text-(--text-primary)">Collaborate on Vaults</div>
+          <div className="text-[12.5px] text-(--text-muted) max-w-[280px] leading-relaxed">
             Sign in to collaborate on vaults and share pages with other users in real time.
           </div>
           {onGoToAccount && (
             <button
-              className="setting-btn-secondary"
+              className={`${settingBtnSecondaryClass} mt-2`}
               onClick={onGoToAccount}
-              style={{ marginTop: '8px' }}
             >
               Go to Account Settings
             </button>
@@ -308,17 +335,17 @@ export function CollaborationPanel({
     const prog = collabStatus.progress;
     const pct = prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
     return (
-      <div className="setting-card" style={{ justifyContent: 'center', padding: '40px 0', border: 'none' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center', width: '100%', maxWidth: '320px' }}>
-          <CloudUpload size={24} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite', color: 'var(--color-accent)' }} />
-          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>Creating cloud space...</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{prog.message}</div>
+      <div className={settingCenteredCardClass}>
+        <div className="flex flex-col items-center gap-3 text-center w-full max-w-[320px]">
+          <CloudUpload size={24} className="animate-spin shrink-0 text-(--color-accent)" />
+          <div className="text-sm font-medium text-(--text-primary)">Creating cloud space...</div>
+          <div className="text-xs text-(--text-secondary)">{prog.message}</div>
           {prog.total > 0 && (
-            <div style={{ width: '100%', marginTop: '4px' }}>
-              <div className="collab-progress-bar" style={{ height: '4px', background: 'var(--bg-active)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div className="collab-progress-fill" style={{ width: `${pct}%`, height: '100%', background: 'var(--color-accent)', borderRadius: '2px', transition: 'width 0.3s ease' }} />
+            <div className="w-full mt-1">
+              <div className="h-1 bg-(--bg-active) rounded-sm overflow-hidden">
+                <div className="h-full bg-(--color-accent) rounded-sm transition-all duration-300" style={{ width: `${pct}%` }} />
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', fontWeight: 500 }}>{pct}%</div>
+              <div className="text-[11px] text-(--text-muted) mt-1 font-medium">{pct}%</div>
             </div>
           )}
         </div>
@@ -331,29 +358,29 @@ export function CollaborationPanel({
   return (
     <div className="collaboration-panel-container">
       {error && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', color: '#ef4444', fontSize: '12.5px', marginBottom: '16px' }}>
-          <AlertCircle size={14} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{error}</span>
-          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', padding: '2px' }} aria-label="Dismiss error"><X size={12} /></button>
+        <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/[0.08] border border-red-500/20 rounded-md text-red-500 text-[12.5px] mb-4">
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="bg-transparent border-none text-inherit cursor-pointer flex p-0.5" aria-label="Dismiss error"><X size={12} /></button>
         </div>
       )}
 
       {/* Incoming Invites */}
       {invitesIn.length > 0 && (
-        <div style={{ marginBottom: '24px' }}>
-          <h3 className="setting-group-header">Incoming Invites</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+        <div className="mb-6">
+          <h3 className={settingGroupHeaderClass}>Incoming Invites</h3>
+          <div className="flex flex-col gap-2 mt-3">
             {invitesIn.map(invite => (
-              <div key={invite.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px', gap: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{invite.space_title}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>From: {invite.sender_email}</div>
+              <div key={invite.id} className="flex items-center justify-between px-4 py-3 bg-(--bg-secondary) border border-(--border-subtle) rounded-md gap-4">
+                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                  <div className="text-[13.5px] font-semibold text-(--text-primary) truncate">{invite.space_title}</div>
+                  <div className="text-[11px] text-(--text-muted)">From: {invite.sender_email}</div>
                 </div>
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                  <button className="setting-btn-primary" onClick={() => handleAcceptInvite(invite)} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '4px 10px' }}>
+                <div className="flex gap-1.5 shrink-0">
+                  <button className={`${settingBtnPrimaryClass} flex items-center gap-1 px-2.5 py-1 text-[11.5px]`} onClick={() => handleAcceptInvite(invite)}>
                     <Check size={12} /> Accept
                   </button>
-                  <button className="setting-btn-secondary" onClick={() => handleRejectInvite(invite)} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '4px 10px' }}>
+                  <button className={`${settingBtnSecondaryClass} flex items-center gap-1 px-2.5 py-1 text-[11.5px]`} onClick={() => handleRejectInvite(invite)}>
                     <X size={12} /> Decline
                   </button>
                 </div>
@@ -365,24 +392,23 @@ export function CollaborationPanel({
 
       {/* Cloud Space Status */}
       {!cloudSpace && vaultPath && (
-        <div style={{ marginBottom: '24px' }}>
-          <h3 className="setting-group-header">Setup Cloud Sharing</h3>
-          <div className="setting-card">
-            <div className="setting-info">
-              <div className="setting-title-with-icon">
-                <Cloud size={16} className="setting-title-icon" />
+        <div className="mb-6">
+          <h3 className={settingGroupHeaderClass}>Setup Cloud Sharing</h3>
+          <div className={settingCardClass}>
+            <div className={settingInfoClass}>
+              <div className={settingTitleWithIconClass}>
+                <Cloud size={16} className={settingTitleIconClass} />
                 <span>Create new cloud space</span>
               </div>
-              <div className="setting-description">
+              <div className={settingDescriptionClass}>
                 Establish a secure private space on the cloud to enable synchronization and invite users.
                 Recovery warning: this password cannot be recovered.
               </div>
             </div>
-            <div className="setting-control" style={{ gap: '8px' }}>
+            <div className={`${settingControlClass} gap-2`}>
               <input
                 type="text"
-                className="setting-input"
-                style={{ width: '180px' }}
+                className={`${settingInputClass} w-[180px]`}
                 placeholder="Space name..."
                 value={spaceName}
                 onChange={e => setSpaceName(e.target.value)}
@@ -390,42 +416,39 @@ export function CollaborationPanel({
               />
               <input
                 type="password"
-                className="setting-input"
-                style={{ width: '210px' }}
+                className={`${settingInputClass} w-[210px]`}
                 placeholder="Encryption password"
                 value={encryptionPassword}
                 onChange={e => setEncryptionPassword(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && encryptionPassword.length >= 8) handleCreateSpace(); }}
               />
               <button
-                className="setting-btn-primary"
+                className={`${settingBtnPrimaryClass} flex items-center gap-1`}
                 onClick={handleCreateSpace}
                 disabled={isCreating || !spaceName.trim() || encryptionPassword.length < 8}
-                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
               >
-                {isCreating ? <Loader size={12} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite' }} /> : <CloudUpload size={12} />} Create
+                {isCreating ? <Loader size={12} className="animate-spin" /> : <CloudUpload size={12} />} Create
               </button>
             </div>
           </div>
 
           {/* Link to an existing space */}
           {availableSpaces.length > 0 && (
-            <div className="setting-card">
-              <div className="setting-info">
-                <div className="setting-title-with-icon">
-                  <FolderOpen size={16} className="setting-title-icon" />
+            <div className={settingCardClass}>
+              <div className={settingInfoClass}>
+                <div className={settingTitleWithIconClass}>
+                  <FolderOpen size={16} className={settingTitleIconClass} />
                   <span>Link existing cloud space</span>
                 </div>
-                <div className="setting-description">
+                <div className={settingDescriptionClass}>
                   Connect this local folder to a cloud space you are already a collaborator in.
                 </div>
               </div>
-              <div className="setting-control" style={{ gap: '8px' }}>
+              <div className={`${settingControlClass} gap-2`}>
                 <select
-                  className="setting-select"
+                  className={`${settingSelectClass} w-[180px]`}
                   value={selectedSpaceId}
                   onChange={e => setSelectedSpaceId(e.target.value)}
-                  style={{ width: '180px' }}
                 >
                   {availableSpaces.map(s => (
                     <option key={s.id} value={s.id}>
@@ -434,12 +457,11 @@ export function CollaborationPanel({
                   ))}
                 </select>
                 <button
-                  className="setting-btn-secondary"
+                  className={`${settingBtnSecondaryClass} flex items-center gap-1`}
                   onClick={handleLinkSpace}
                   disabled={isLinking || !selectedSpaceId}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  {isLinking ? <Loader size={12} className="collab-spinner" style={{ animation: 'collab-spin 1s linear infinite' }} /> : <Check size={12} />} Link
+                  {isLinking ? <Loader size={12} className="animate-spin" /> : <Check size={12} />} Link
                 </button>
               </div>
             </div>
@@ -449,51 +471,50 @@ export function CollaborationPanel({
 
       {cloudSpace && (
         <>
-          <h3 className="setting-group-header">Cloud Space Status</h3>
-          <div className="setting-card">
-            <div className="setting-info">
-              <div className="setting-title-with-icon">
-                {isUnlocked ? <Unlock size={16} className="setting-title-icon" style={{ color: '#10b981' }} /> : <Lock size={16} className="setting-title-icon" style={{ color: '#eab308' }} />}
+          <h3 className={settingGroupHeaderClass}>Cloud Space Status</h3>
+          <div className={settingCardClass}>
+            <div className={settingInfoClass}>
+              <div className={settingTitleWithIconClass}>
+                {isUnlocked ? <Unlock size={16} className={`${settingTitleIconClass} text-emerald-500`} /> : <Lock size={16} className={`${settingTitleIconClass} text-yellow-500`} />}
                 <span>{cloudSpace.title}</span>
               </div>
-              <div className="setting-description" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                <span className={`collab-status-dot collab-status-${cloudSpace.status}`} style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: cloudSpace.status === 'ready' ? '#10b981' : cloudSpace.status === 'processing' ? '#eab308' : '#d76464', boxShadow: cloudSpace.status === 'ready' ? '0 0 6px rgba(16, 185, 129, 0.4)' : 'none' }} />
-                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+              <div className={`${settingDescriptionClass} mt-0.5 flex items-center gap-1.5`}>
+                <span className={`inline-block w-2 h-2 rounded-full ${cloudSpace.status === 'ready' ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]' : cloudSpace.status === 'processing' ? 'bg-yellow-500 animate-pulse' : 'bg-red-400'}`} />
+                <span className="text-(--text-muted) text-[11px]">
                   {cloudSpace.status === 'ready' ? 'Connected and synced' : cloudSpace.status === 'processing' ? 'Uploading snapshot...' : 'Offline / Error'}
                 </span>
               </div>
             </div>
-            <div className="setting-control">
-              <button className="setting-btn-secondary" onClick={() => loadSpaceData(false)} title="Refresh collaboration data" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div className={settingControlClass}>
+              <button className={`${settingBtnSecondaryClass} flex items-center gap-1.5`} onClick={() => loadSpaceData(false)} title="Refresh collaboration data">
                 <RefreshCw size={12} /> Refresh
               </button>
             </div>
           </div>
 
-          <div className="setting-card">
-            <div className="setting-info">
-              <div className="setting-title">Private Space Encryption</div>
-              <div className="setting-description">
+          <div className={settingCardClass}>
+            <div className={settingInfoClass}>
+              <div className={settingTitleClass}>Private Space Encryption</div>
+              <div className={settingDescriptionClass}>
                 {isUnlocked ? 'Unlocked locally. Supabase only receives encrypted notes and encrypted realtime payloads.' : 'Locked. Unlock this private space to sync content, collaborate, search, or use AI.'}
               </div>
             </div>
-            <div className="setting-control" style={{ gap: '8px', flexWrap: 'wrap' }}>
+            <div className={`${settingControlClass} flex-wrap gap-2`}>
               {isUnlocked ? (
-                <button className="setting-btn-secondary" onClick={handleLockSpace} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button className={`${settingBtnSecondaryClass} flex items-center gap-1`} onClick={handleLockSpace}>
                   <Lock size={12} /> Lock Space
                 </button>
               ) : (
                 <>
                   <input
                     type="password"
-                    className="setting-input"
-                    style={{ width: '210px' }}
+                    className={`${settingInputClass} w-[210px]`}
                     placeholder="Encryption password"
                     value={unlockPassword}
                     onChange={e => setUnlockPassword(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleUnlockSpace(); }}
                   />
-                  <button className="setting-btn-primary" onClick={handleUnlockSpace} disabled={!unlockPassword} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button className={`${settingBtnPrimaryClass} flex items-center gap-1`} onClick={handleUnlockSpace} disabled={!unlockPassword}>
                     <Unlock size={12} /> Unlock Space
                   </button>
                 </>
@@ -502,17 +523,17 @@ export function CollaborationPanel({
           </div>
 
           {isUnlocked && cloudSpace.owner_id === user.id && (
-            <div className="setting-card">
-              <div className="setting-info">
-                <div className="setting-title">Change Password</div>
-                <div className="setting-description">
+            <div className={settingCardClass}>
+              <div className={settingInfoClass}>
+                <div className={settingTitleClass}>Change Password</div>
+                <div className={settingDescriptionClass}>
                   Re-encrypts the same space key. Existing notes are not re-encrypted.
                 </div>
               </div>
-              <div className="setting-control" style={{ gap: '8px', flexWrap: 'wrap' }}>
-                <input type="password" className="setting-input" style={{ width: '170px' }} placeholder="Old password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} />
-                <input type="password" className="setting-input" style={{ width: '170px' }} placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-                <button className="setting-btn-secondary" onClick={handleChangePassword} disabled={!oldPassword || newPassword.length < 8} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div className={`${settingControlClass} flex-wrap gap-2`}>
+                <input type="password" className={`${settingInputClass} w-[170px]`} placeholder="Old password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} />
+                <input type="password" className={`${settingInputClass} w-[170px]`} placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <button className={`${settingBtnSecondaryClass} flex items-center gap-1`} onClick={handleChangePassword} disabled={!oldPassword || newPassword.length < 8}>
                   <KeyRound size={12} /> Change
                 </button>
               </div>
@@ -520,16 +541,17 @@ export function CollaborationPanel({
           )}
 
           {/* Local collaboration active toggle card */}
-          <div className="setting-card">
-            <div className="setting-info">
-              <div className="setting-title">Enable Collaboration</div>
-              <div className="setting-description">
+          <div className={settingCardClass}>
+            <div className={settingInfoClass}>
+              <div className={settingTitleClass}>Enable Collaboration</div>
+              <div className={settingDescriptionClass}>
                 Temporarily pause or resume real-time collaboration and presence syncing for yourself.
               </div>
             </div>
-            <div className="setting-control">
-              <label className="setting-toggle">
+            <div className={settingControlClass}>
+              <label className={settingToggleClass}>
                 <input
+                  className={settingToggleInputClass}
                   type="checkbox"
                   checked={isCollabActive}
                   onChange={(e) => {
@@ -538,38 +560,37 @@ export function CollaborationPanel({
                     collaborationEngine.setCollabPaused(!checked);
                   }}
                 />
-                <span className="toggle-slider"></span>
+                <span className={toggleSliderClass} />
               </label>
             </div>
           </div>
 
           {/* Invite & Management */}
           {cloudSpace.status === 'ready' && (
-            <div className="setting-card">
-              <div className="setting-info">
-                <div className="setting-title">Invite collaborators</div>
-                <div className="setting-description">
+            <div className={settingCardClass}>
+              <div className={settingInfoClass}>
+                <div className={settingTitleClass}>Invite collaborators</div>
+                <div className={settingDescriptionClass}>
                   {cloudSpace.owner_id === user.id ? 'Invite members by entering their email address.' : 'Only the space owner can invite new collaborators.'}
                 </div>
               </div>
-              <div className="setting-control">
+              <div className={settingControlClass}>
                 {cloudSpace.owner_id === user.id ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="flex gap-2">
                     <input
                       type="email"
-                      className="setting-input"
-                      style={{ width: '180px' }}
+                      className={`${settingInputClass} w-[180px]`}
                       placeholder="user@example.com"
                       value={inviteEmail}
                       onChange={e => setInviteEmail(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') handleSendInvite(); }}
                     />
-                    <button className="setting-btn-primary" onClick={handleSendInvite} disabled={!inviteEmail.trim()}>
+                    <button className={settingBtnPrimaryClass} onClick={handleSendInvite} disabled={!inviteEmail.trim()}>
                       Invite
                     </button>
                   </div>
                 ) : (
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>View only</span>
+                  <span className="text-xs text-(--text-muted) italic">View only</span>
                 )}
               </div>
             </div>
@@ -577,13 +598,13 @@ export function CollaborationPanel({
 
           {/* Sent Invites List */}
           {invitesOut.filter(inv => inv.status === 'pending').length > 0 && (
-            <div style={{ marginTop: '12px', padding: '12px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '8px' }}>Pending Invites</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div className="mt-3 p-3 px-4 bg-(--bg-secondary) border border-(--border-subtle) rounded-md">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-(--text-muted) mb-2">Pending Invites</div>
+              <div className="flex flex-col gap-1.5">
                 {invitesOut.filter(inv => inv.status === 'pending').map(inv => (
-                  <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12.5px', padding: '4px 0' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{inv.receiver_email}</span>
-                    <span className={`collab-invite-status collab-invite-${inv.status}`} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '10px', fontWeight: 500, textTransform: 'capitalize', background: 'rgba(234, 179, 8, 0.12)', color: '#eab308' }}>
+                  <div key={inv.id} className="flex items-center justify-between text-[12.5px] py-1">
+                    <span className="text-(--text-secondary)">{inv.receiver_email}</span>
+                    <span className="text-[10.5px] px-2 py-0.5 rounded-xl font-medium capitalize bg-yellow-500/[0.12] text-yellow-500">
                       {inv.status}
                     </span>
                   </div>
@@ -593,22 +614,22 @@ export function CollaborationPanel({
           )}
 
           {/* Active Collaborators */}
-          <div style={{ marginTop: '24px' }}>
-            <h3 className="setting-group-header">Collaborators ({collaborators.length})</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+          <div className="mt-6">
+            <h3 className={settingGroupHeaderClass}>Collaborators ({collaborators.length})</h3>
+            <div className="flex flex-col gap-2 mt-3">
               {collaborators.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12.5px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>No collaborators yet.</div>
+                <div className="p-4 text-center text-(--text-muted) text-[12.5px] bg-(--bg-secondary) border border-(--border-subtle) rounded-md">No collaborators yet.</div>
               ) : (
                 collaborators.map(c => {
                   const isOwner = c.role === 'owner';
                   return (
-                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
-                      <div className="collab-avatar" style={{ width: '28px', height: '28px', borderRadius: '50%', background: isOwner ? 'var(--color-accent)' : 'var(--bg-active)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: isOwner ? 'var(--text-on-accent)' : 'var(--text-muted)', border: '1px solid var(--border-medium)' }}>
+                    <div key={c.id} className="flex items-center gap-3 px-3.5 py-2.5 bg-(--bg-secondary) border border-(--border-subtle) rounded-md">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border border-(--border-medium) ${isOwner ? 'bg-(--color-accent) text-(--text-on-accent)' : 'bg-(--bg-active) text-(--text-muted)'}`}>
                         {(c.email || c.user_id || '?')[0].toUpperCase()}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0, flex: 1 }}>
-                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.email || c.user_id}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{c.role}</span>
+                      <div className="flex flex-col gap-px min-w-0 flex-1">
+                        <span className="text-[13px] text-(--text-primary) truncate">{c.email || c.user_id}</span>
+                        <span className="text-[11px] text-(--text-muted) capitalize">{c.role}</span>
                       </div>
                     </div>
                   );

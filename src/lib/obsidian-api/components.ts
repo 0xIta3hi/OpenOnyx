@@ -60,6 +60,7 @@ export interface IComponent {
   _events: EventRef[];
   _domEvents: Array<{ el: EventTarget; type: string; handler: any }>;
   _intervals: number[];
+  _registeredCallbacks: Array<() => any>;
   load(): void;
   onload(): void;
   unload(): void;
@@ -84,11 +85,12 @@ function _Component(this: any) {
   this._events = [];
   this._domEvents = [];
   this._intervals = [];
+  this._registeredCallbacks = [];
 }
 
 _Component.prototype.load = function () {
   this._loaded = true;
-  this.onload();
+  return this.onload();
 };
 
 _Component.prototype.onload = function () { /* override */ };
@@ -107,6 +109,9 @@ _Component.prototype.unload = function () {
   this._events = [];
   for (const id of this._intervals) window.clearInterval(id);
   this._intervals = [];
+  for (const cb of this._registeredCallbacks.splice(0).reverse()) {
+    try { cb(); } catch (e) { console.error('[Plugin Cleanup Error]', e); }
+  }
   this.onunload();
 };
 
@@ -124,7 +129,9 @@ _Component.prototype.removeChild = function (child: any) {
   return child;
 };
 
-_Component.prototype.register = function (_cb: () => any) { /* no-op compat */ };
+_Component.prototype.register = function (cb: () => any) {
+  this._registeredCallbacks.push(cb);
+};
 
 _Component.prototype.registerEvent = function (eventRef: EventRef) {
   this._events.push(eventRef);
@@ -198,6 +205,9 @@ export interface Modal {
   close(): void;
   onOpen(): void;
   onClose(): void;
+  setTitle(title: string): this;
+  setContent(content: string | DocumentFragment): this;
+  setCloseCallback(callback: () => void): this;
 }
 export function Modal(this: any, app: any) {
   this.app = app || (window as any).__oo_app;
@@ -249,6 +259,24 @@ Modal.prototype.close = function() {
 
 Modal.prototype.onOpen = function() {};
 Modal.prototype.onClose = function() {};
+Modal.prototype.setTitle = function(title: string) {
+  this.titleEl.textContent = title;
+  return this;
+};
+Modal.prototype.setContent = function(content: string | DocumentFragment) {
+  this.contentEl.empty();
+  if (typeof content === 'string') this.contentEl.textContent = content;
+  else this.contentEl.appendChild(content);
+  return this;
+};
+Modal.prototype.setCloseCallback = function(callback: () => void) {
+  const previous = this.onClose.bind(this);
+  this.onClose = () => {
+    previous();
+    callback();
+  };
+  return this;
+};
 
 // ── Setting ─────────────────────────────────────────
 export interface Setting {
@@ -257,7 +285,10 @@ export interface Setting {
   nameEl: HTMLElement;
   descEl: HTMLElement;
   controlEl: HTMLElement;
+  errorEl: HTMLElement | null;
   components: any[];
+  setErrorMessage(message: string | null): this;
+  addDisplayValue(cb: (component: any) => any): this;
   setName(name: string | DocumentFragment): this;
   setDesc(desc: string | DocumentFragment): this;
   setClass(cls: string): this;
@@ -295,8 +326,44 @@ export function Setting(this: any, containerEl: HTMLElement) {
   this.settingEl.appendChild(this.infoEl);
   this.settingEl.appendChild(this.controlEl);
   this.components = [];
+  this.errorEl = null;
   containerEl.appendChild(this.settingEl);
 }
+
+Setting.prototype.setErrorMessage = function(message: string | null) {
+  if (!message) {
+    this.errorEl?.remove();
+    this.errorEl = null;
+    return this;
+  }
+  if (!this.errorEl) {
+    this.errorEl = document.createElement('div');
+    this.errorEl.className = 'setting-item-error';
+    this.infoEl.appendChild(this.errorEl);
+  }
+  this.errorEl.textContent = message;
+  return this;
+};
+
+Setting.prototype.addDisplayValue = function(cb: (component: any) => any) {
+  const valueEl = document.createElement('span');
+  valueEl.className = 'setting-item-display-value';
+  this.controlEl.appendChild(valueEl);
+  const component = {
+    valueEl,
+    setValue(value: any) {
+      valueEl.textContent = value?.toString?.() ?? String(value ?? '');
+      return this;
+    },
+    then(callback: (value: any) => any) {
+      callback(this);
+      return this;
+    },
+  };
+  this.components.push(component);
+  cb(component);
+  return this;
+};
 
 Setting.prototype.setName = function(name: string | DocumentFragment) {
   this.nameEl.textContent = '';
@@ -446,11 +513,33 @@ export class Menu {
   dom: HTMLElement;
   items: MenuItem[] = [];
   activeSubmenu: Menu | null = null;
+  private _onHideCallbacks: Array<() => void> = [];
+  private _parentEl: HTMLElement | null = null;
+  private _useNativeMenu = false;
+  private _component = new (Component as any)();
 
   constructor() {
     this.dom = document.createElement('div');
     this.dom.className = 'menu oo-plugin-menu';
   }
+
+  load(): void { this._component.load(); }
+  onload(): void {}
+  unload(): void { this.close(); this._component.unload(); }
+  onunload(): void {}
+  addChild(child: any): any { return this._component.addChild(child); }
+  removeChild(child: any): any { return this._component.removeChild(child); }
+  register(callback: () => any): void { this._component.register(callback); }
+  registerEvent(eventRef: EventRef): void { this._component.registerEvent(eventRef); }
+  registerDomEvent(
+    el: EventTarget,
+    type: string,
+    callback: (evt: any) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    this._component.registerDomEvent(el, type, callback, options);
+  }
+  registerInterval(id: number): number { return this._component.registerInterval(id); }
 
   addItem(cb: (item: MenuItem) => any): this {
     const item = new MenuItem();
@@ -468,6 +557,30 @@ export class Menu {
     return this;
   }
 
+  setNoIcon(): this {
+    this.dom.classList.add('menu-no-icons');
+    return this;
+  }
+
+  setUseNativeMenu(useNativeMenu: boolean): this {
+    this._useNativeMenu = useNativeMenu;
+    return this;
+  }
+
+  setParentElement(el: HTMLElement): this {
+    this._parentEl = el;
+    return this;
+  }
+
+  onHide(callback: () => void): this {
+    this._onHideCallbacks.push(callback);
+    return this;
+  }
+
+  forEvent(evt: MouseEvent): this {
+    return this.showAtMouseEvent(evt);
+  }
+
   hideActiveSubmenu() {
     if (this.activeSubmenu) {
       this.activeSubmenu.close();
@@ -478,7 +591,7 @@ export class Menu {
   showAtMouseEvent(evt: MouseEvent): this {
     this.dom.style.position = 'fixed';
     this.dom.style.visibility = 'hidden';
-    document.body.appendChild(this.dom);
+    (this._parentEl || document.body).appendChild(this.dom);
 
     // Use requestAnimationFrame to ensure the DOM has been updated so we can measure it
     requestAnimationFrame(() => {
@@ -519,7 +632,7 @@ export class Menu {
     this.dom.style.position = 'fixed';
     this.dom.style.left = `${pos.x}px`;
     this.dom.style.top = `${pos.y}px`;
-    document.body.appendChild(this.dom);
+    (this._parentEl || document.body).appendChild(this.dom);
     return this;
   }
 
@@ -527,6 +640,7 @@ export class Menu {
   close(): void {
     this.hideActiveSubmenu();
     this.dom.remove();
+    for (const callback of this._onHideCallbacks.splice(0)) callback();
   }
 }
 
@@ -628,6 +742,7 @@ export class MenuItem {
 
   setChecked(checked: boolean): this { this.dom.classList.toggle('is-checked', checked); return this; }
   setDisabled(disabled: boolean): this { this.dom.classList.toggle('is-disabled', disabled); return this; }
+  setWarning(isWarning: boolean): this { this.dom.classList.toggle('mod-warning', isWarning); return this; }
   setIsLabel(isLabel: boolean): this { this.dom.classList.toggle('is-label', isLabel); return this; }
   setSection(section: string): this { return this; }
 
@@ -651,7 +766,7 @@ export class ButtonComponent {
   setWarning(): this { this.buttonEl.classList.add('mod-warning'); return this; }
   setDisabled(disabled: boolean): this { this.buttonEl.disabled = disabled; return this; }
   setIcon(icon: string): this {
-    this.buttonEl.setAttribute('data-icon', icon);
+    setIcon(this.buttonEl, icon);
     this.buttonEl.classList.add('has-icon');
     return this;
   }
@@ -817,7 +932,7 @@ export class ExtraButtonComponent {
     containerEl.appendChild(this.extraSettingsEl);
     this.extraSettingsEl.addEventListener('click', (e) => this._onClick?.(e));
   }
-  setIcon(icon: string): this { this.extraSettingsEl.setAttribute('data-icon', icon); return this; }
+  setIcon(icon: string): this { setIcon(this.extraSettingsEl, icon); return this; }
   setTooltip(tooltip: string): this { this.extraSettingsEl.title = tooltip; return this; }
   setDisabled(disabled: boolean): this { this.extraSettingsEl.classList.toggle('is-disabled', disabled); return this; }
   onClick(callback: (evt: MouseEvent) => any): this { this._onClick = callback; return this; }
@@ -1172,4 +1287,3 @@ _AbstractInputSuggest.prototype.setValue = function(value: string) {
 
 export type AbstractInputSuggest = IAbstractInputSuggest;
 export const AbstractInputSuggest = _AbstractInputSuggest as unknown as AbstractInputSuggestConstructor;
-

@@ -79,8 +79,8 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const WHEEL_ZOOM_SENSITIVITY = 0.0016;
 const ZOOM_STEP_INTENSITY = 0.1;
-const ZOOM_LERP = 0.2;
-const PAN_LERP = 0.2;
+const ZOOM_LERP = 0.28;
+const PAN_LERP = 0.28;
 const PAN_VELOCITY_BLEND = 0.22;
 const PAN_VELOCITY_MAX_SAMPLE_MS = 80;
 const PAN_INERTIA_DECAY = 0.9;
@@ -744,10 +744,13 @@ export function CanvasView({
   const eraseChangedRef = useRef(false);
   const vpRef = useRef<CanvasViewport>(vp);
   const targetVpRef = useRef<CanvasViewport>(vp);
-  const zoomAnimFrameRef = useRef<number | null>(null);
+  const directViewportFrameRef = useRef<number | null>(null);
   const panInertiaFrameRef = useRef<number | null>(null);
   const transformElRef = useRef<HTMLDivElement>(null);
   const vpSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vpSettledSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const lastCullVpRef = useRef<CanvasViewport>({ x: 0, y: 0, zoom: 1 });
   const panVelocityRef = useRef({ x: 0, y: 0 });
   const panSampleRef = useRef<{ x: number; y: number; at: number } | null>(
@@ -765,6 +768,7 @@ export function CanvasView({
   const pendingInitialZoomFitRef = useRef(false);
   const lastSavedPayloadRef = useRef("");
   const [suspendMarkdownPreviews, setSuspendMarkdownPreviews] = useState(false);
+  const suspendMarkdownPreviewsRef = useRef(false);
   const [canvasLoadTick, setCanvasLoadTick] = useState(0);
   nodesRef.current = nodes;
   edgesRef.current = edges;
@@ -772,6 +776,7 @@ export function CanvasView({
   activeScribbleRef.current = activeScribble;
   selectedScribbleIdsRef.current = selectedScribbleIds;
   lassoPointsRef.current = lassoPoints;
+  suspendMarkdownPreviewsRef.current = suspendMarkdownPreviews;
 
   /* ── history ── */
   const [hist, setHist] = useState<Snap[]>([
@@ -890,9 +895,13 @@ export function CanvasView({
   }, [hist, histIdx]);
 
   const stopSmoothZoom = useCallback(() => {
-    if (zoomAnimFrameRef.current !== null) {
-      cancelAnimationFrame(zoomAnimFrameRef.current);
-      zoomAnimFrameRef.current = null;
+    if (directViewportFrameRef.current !== null) {
+      cancelAnimationFrame(directViewportFrameRef.current);
+      directViewportFrameRef.current = null;
+    }
+    if (vpSettledSyncTimerRef.current !== null) {
+      clearTimeout(vpSettledSyncTimerRef.current);
+      vpSettledSyncTimerRef.current = null;
     }
   }, []);
 
@@ -972,10 +981,61 @@ export function CanvasView({
       clearTimeout(vpSyncTimerRef.current);
       vpSyncTimerRef.current = null;
     }
+    if (vpSettledSyncTimerRef.current !== null) {
+      clearTimeout(vpSettledSyncTimerRef.current);
+      vpSettledSyncTimerRef.current = null;
+    }
     const cur = vpRef.current;
     lastCullVpRef.current = { ...cur };
     setVp({ ...cur });
   }, []);
+
+  const scheduleSettledVpSync = useCallback(
+    (delayMs = 140) => {
+      if (vpSettledSyncTimerRef.current !== null) {
+        clearTimeout(vpSettledSyncTimerRef.current);
+      }
+      vpSettledSyncTimerRef.current = setTimeout(() => {
+        vpSettledSyncTimerRef.current = null;
+        flushVpSync();
+      }, delayMs);
+    },
+    [flushVpSync],
+  );
+
+  const applyViewportDirect = useCallback(
+    (next: CanvasViewport, syncDelayMs = 140) => {
+      targetVpRef.current = next;
+
+      if (directViewportFrameRef.current === null) {
+        const animate = () => {
+          const current = vpRef.current;
+          const target = targetVpRef.current;
+          const zoomDiff = Math.abs(target.zoom - current.zoom);
+          const xDiff = Math.abs(target.x - current.x);
+          const yDiff = Math.abs(target.y - current.y);
+
+          if (zoomDiff <= 0.001 && xDiff <= 0.5 && yDiff <= 0.5) {
+            applyViewportToDOM(target);
+            directViewportFrameRef.current = null;
+            return;
+          }
+
+          applyViewportToDOM({
+            x: current.x + (target.x - current.x) * PAN_LERP,
+            y: current.y + (target.y - current.y) * PAN_LERP,
+            zoom: current.zoom + (target.zoom - current.zoom) * ZOOM_LERP,
+          });
+          directViewportFrameRef.current = requestAnimationFrame(animate);
+        };
+
+        directViewportFrameRef.current = requestAnimationFrame(animate);
+      }
+
+      scheduleSettledVpSync(syncDelayMs);
+    },
+    [applyViewportToDOM, scheduleSettledVpSync],
+  );
 
   const setViewportImmediate = useCallback(
     (nextVp: React.SetStateAction<CanvasViewport>) => {
@@ -993,37 +1053,6 @@ export function CanvasView({
     },
     [stopSmoothZoom, stopPanInertia, applyViewportToDOM],
   );
-
-  const startSmoothZoom = useCallback(() => {
-    if (zoomAnimFrameRef.current !== null) return;
-
-    const animate = () => {
-      const prev = vpRef.current;
-      const target = targetVpRef.current;
-      const zoomDiff = Math.abs(target.zoom - prev.zoom);
-      const xDiff = Math.abs(target.x - prev.x);
-      const yDiff = Math.abs(target.y - prev.y);
-
-      if (zoomDiff <= 0.001 && xDiff <= 0.5 && yDiff <= 0.5) {
-        applyViewportToDOM(target);
-        targetVpRef.current = target;
-        flushVpSync();
-        zoomAnimFrameRef.current = null;
-        return;
-      }
-
-      const next = {
-        x: prev.x + (target.x - prev.x) * PAN_LERP,
-        y: prev.y + (target.y - prev.y) * PAN_LERP,
-        zoom: prev.zoom + (target.zoom - prev.zoom) * ZOOM_LERP,
-      };
-      applyViewportToDOM(next);
-      scheduleVpSync();
-      zoomAnimFrameRef.current = requestAnimationFrame(animate);
-    };
-
-    zoomAnimFrameRef.current = requestAnimationFrame(animate);
-  }, [applyViewportToDOM, scheduleVpSync, flushVpSync]);
 
   const startPanInertia = useCallback(() => {
     if (panInertiaFrameRef.current !== null) return;
@@ -1084,16 +1113,28 @@ export function CanvasView({
         clearTimeout(vpSyncTimerRef.current);
         vpSyncTimerRef.current = null;
       }
+      if (vpSettledSyncTimerRef.current !== null) {
+        clearTimeout(vpSettledSyncTimerRef.current);
+        vpSettledSyncTimerRef.current = null;
+      }
+      if (directViewportFrameRef.current !== null) {
+        cancelAnimationFrame(directViewportFrameRef.current);
+        directViewportFrameRef.current = null;
+      }
     },
     [stopSmoothZoom, stopPanInertia],
   );
 
   const delayMarkdownPreviews = useCallback(() => {
-    setSuspendMarkdownPreviews(true);
+    if (!suspendMarkdownPreviewsRef.current) {
+      suspendMarkdownPreviewsRef.current = true;
+      setSuspendMarkdownPreviews(true);
+    }
     if (previewResumeTimerRef.current !== null) {
       clearTimeout(previewResumeTimerRef.current);
     }
     previewResumeTimerRef.current = setTimeout(() => {
+      suspendMarkdownPreviewsRef.current = false;
       setSuspendMarkdownPreviews(false);
       previewResumeTimerRef.current = null;
     }, MD_PREVIEW_RESUME_DELAY_MS);
@@ -2978,17 +3019,16 @@ export function CanvasView({
         my = e.clientY - r.top;
       const worldX = (mx - base.x) / base.zoom;
       const worldY = (my - base.y) / base.zoom;
-      targetVpRef.current = {
+      applyViewportDirect({
         x: mx - worldX * nz,
         y: my - worldY * nz,
         zoom: nz,
-      };
+      });
       delayMarkdownPreviews();
-      startSmoothZoom();
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [delayMarkdownPreviews, startSmoothZoom, stopPanInertia]);
+  }, [applyViewportDirect, delayMarkdownPreviews, stopPanInertia]);
 
   const zoomBy = useCallback(
     (d: number) => {
@@ -3003,15 +3043,14 @@ export function CanvasView({
       const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, base.zoom * zoomFactor));
       const worldX = (cx - base.x) / base.zoom;
       const worldY = (cy - base.y) / base.zoom;
-      targetVpRef.current = {
+      applyViewportDirect({
         x: cx - worldX * nz,
         y: cy - worldY * nz,
         zoom: nz,
-      };
+      }, 80);
       delayMarkdownPreviews();
-      startSmoothZoom();
     },
-    [delayMarkdownPreviews, startSmoothZoom, stopPanInertia],
+    [applyViewportDirect, delayMarkdownPreviews, stopPanInertia],
   );
 
   const zoomFit = useCallback(() => {
@@ -3535,7 +3574,7 @@ export function CanvasView({
           The canvas file <code style={{ wordBreak: 'break-all', backgroundColor: 'var(--bg-secondary, var(--background-secondary, #1e1e2e))', padding: '2px 4px', borderRadius: '4px' }}>{canvasFilePath}</code> could not be found. It may have been renamed or deleted.
         </div>
         <button 
-          className="setting-btn-secondary"
+          className="cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition-[background-color,border-color,transform] duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] active:scale-[0.98] active:bg-[var(--bg-active)]"
           onClick={onClose}
           style={{ padding: '6px 12px', fontSize: '12px' }}
         >
@@ -5053,15 +5092,21 @@ function EmbeddedFileNode({
       setContent(cached);
     }
 
-    const refreshContent = () => {
-      getAPI()
-        .readFile(node.file)
-        .then((c) => {
-          if (!mounted) return;
-          embeddedMarkdownCache.set(node.file, c);
-          setContent((prev) => (prev === c ? prev : c));
-        })
-        .catch((e) => console.error("Failed to load embedded note:", e));
+    const refreshContent = async () => {
+      try {
+        const api = getAPI();
+        if (!(await api.fileExists(node.file))) {
+          embeddedMarkdownCache.delete(node.file);
+          if (mounted) setContent(null);
+          return;
+        }
+        const c = await api.readFile(node.file);
+        if (!mounted) return;
+        embeddedMarkdownCache.set(node.file, c);
+        setContent((prev) => (prev === c ? prev : c));
+      } catch (e) {
+        console.error("Failed to load embedded note:", e);
+      }
     };
 
     const onLiveNoteChange = (event: Event) => {
@@ -5128,7 +5173,7 @@ function EmbeddedFileNode({
         data-cv-no-drag="true"
         style={{ overflowY: "auto" }}
       >
-        <MarkdownPreview content={content} onLinkClick={() => {}} />
+        <MarkdownPreview content={content} onLinkClick={() => {}} constrainWidth={false} />
       </div>
     );
   }
@@ -5323,6 +5368,7 @@ function NodeCard({
               <MarkdownPreview
                 content={(node as CanvasTextNode).text || ""}
                 onLinkClick={() => {}}
+                constrainWidth={false}
                 onContentChange={(newText) => {
                   onUpdateNode?.(node.id, { text: newText });
                 }}

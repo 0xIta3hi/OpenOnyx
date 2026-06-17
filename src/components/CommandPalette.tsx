@@ -51,13 +51,13 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="command-palette" onClick={(e) => e.stopPropagation()}>
-        <div className="search-input-wrapper">
-          <span className="search-icon">⌘</span>
+    <div className="fixed inset-0 bg-black/50 flex items-start justify-center pt-[15vh] z-[9999]" onClick={onClose}>
+      <div className="w-full max-w-[520px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-subtle)">
+          <span className="text-(--text-muted) text-lg shrink-0">{'\u2318'}</span>
           <input
             ref={inputRef}
-            className="search-input"
+            className="flex-1 bg-transparent border-none outline-none text-(--text-primary) text-base placeholder:text-(--text-muted)"
             type="text"
             placeholder="Type a command..."
             value={query}
@@ -69,36 +69,34 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           />
         </div>
 
-        <div className="search-results">
+        <div className="max-h-[50vh] overflow-y-auto">
           {filteredCommands.map((cmd, index) => (
             <button
               key={cmd.id}
-              className={`command-item ${index === selectedIndex ? "selected" : ""}`}
+              className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 border-none text-left cursor-pointer transition-colors duration-100 ${index === selectedIndex ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-primary) hover:bg-(--bg-hover)"}`}
               onClick={() => {
                 cmd.action();
                 onClose();
               }}
               onMouseEnter={() => setSelectedIndex(index)}
             >
-              <span className="command-label">
+              <span className="text-[13px]">
                 {cmd.category && (
-                  <span
-                    style={{ color: "var(--text-muted)", marginRight: "8px" }}
-                  >
-                    {cmd.category} ›
+                  <span className="text-(--text-muted) mr-2">
+                    {cmd.category} {'\u203A'}
                   </span>
                 )}
                 {cmd.label}
               </span>
               {cmd.shortcut && (
-                <span className="command-shortcut">{cmd.shortcut}</span>
+                <span className="text-[11px] text-(--text-muted) font-mono px-1.5 py-0.5 rounded bg-(--bg-active) shrink-0">{cmd.shortcut}</span>
               )}
             </button>
           ))}
 
           {filteredCommands.length === 0 && (
-            <div className="empty-state" style={{ padding: "2rem" }}>
-              <div className="empty-text">No commands found</div>
+            <div className="flex items-center justify-center py-8">
+              <div className="text-xs text-(--text-muted)">No commands found</div>
             </div>
           )}
         </div>

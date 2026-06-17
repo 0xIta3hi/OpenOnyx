@@ -1017,7 +1017,7 @@ export function LeafPaneEditor({
           The file <code style={{ wordBreak: 'break-all', backgroundColor: 'var(--bg-secondary, var(--background-secondary))', padding: '2px 4px', borderRadius: '4px' }}>{activeTab.path}</code> could not be found. It may have been renamed or deleted.
         </div>
         <button 
-          className="setting-btn-secondary"
+          className="cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition-[background-color,border-color,transform] duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] active:scale-[0.98] active:bg-[var(--bg-active)]"
           onClick={() => onTabClose(activeTab.id)}
           style={{ padding: '6px 12px', fontSize: '12px' }}
         >

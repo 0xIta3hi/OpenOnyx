@@ -47,17 +47,8 @@ export function VimModeIndicator({ vimEnabled }: VimModeIndicatorProps) {
 
   return (
     <span
-      className="status-item"
+      className="inline-flex items-center justify-center px-2 py-px rounded-full text-[10px] font-bold tracking-wide uppercase"
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1px 8px",
-        borderRadius: 999,
-        fontSize: "10px",
-        fontWeight: 700,
-        letterSpacing: "0.35px",
-        textTransform: "uppercase",
         color: "#0b0f14",
         backgroundColor: modeColor,
       }}

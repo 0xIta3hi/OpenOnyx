@@ -14,6 +14,10 @@ import {
 import type { PluginRibbonAction } from '../types/plugin';
 import { SpacesIcon } from "./SpacesIcon";
 
+const ribbonRootClass = "flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
+const ribbonGroupClass = "flex flex-col items-center gap-1";
+const ribbonBtnClass = "flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)";
+
 interface RibbonProps {
   onNewNote: () => void;
   onSearch: () => void;
@@ -63,20 +67,20 @@ export function Ribbon({
 
   return (
     <div 
-      className={`app-ribbon side-dock-ribbon workspace-ribbon ${hoveringRibbon ? "tooltips-ready" : ""}`}
+      className={`${ribbonRootClass} ${hoveringRibbon ? "tooltips-ready" : ""}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="ribbon-top">
+      <div className={ribbonGroupClass}>
         <button
-          className="ribbon-btn"
+          className={ribbonBtnClass}
           onClick={handleSearch}
           data-tooltip="Search inside file (Ctrl+F)"
         >
           <Search size={20} strokeWidth={1.5} />
         </button>
         <button
-          className="ribbon-btn"
+          className={ribbonBtnClass}
           onClick={onNewNote}
           data-tooltip="New Note (Ctrl+N)"
         >
@@ -84,7 +88,7 @@ export function Ribbon({
         </button>
         {onDailyNote && (
           <button
-            className="ribbon-btn"
+            className={ribbonBtnClass}
             onClick={onDailyNote}
             data-tooltip="Daily Note"
           >
@@ -92,7 +96,7 @@ export function Ribbon({
           </button>
         )}
         <button
-          className="ribbon-btn"
+          className={ribbonBtnClass}
           onClick={onGraph}
           data-tooltip="Graph View (Ctrl+G)"
         >
@@ -100,7 +104,7 @@ export function Ribbon({
         </button>
         {onToggleOutline && (
           <button
-            className="ribbon-btn"
+            className={ribbonBtnClass}
             onClick={onToggleOutline}
             data-tooltip="Toggle Outline"
           >
@@ -109,7 +113,7 @@ export function Ribbon({
         )}
         {onThoughtModel && (
           <button
-            className="ribbon-btn"
+            className={ribbonBtnClass}
             onClick={onThoughtModel}
             data-tooltip="AI Assistant"
           >
@@ -118,7 +122,7 @@ export function Ribbon({
         )}
         {onSpaces && (
           <button
-            className="ribbon-btn"
+            className={ribbonBtnClass}
             onClick={onSpaces}
             data-tooltip="Spaces"
           >
@@ -127,7 +131,7 @@ export function Ribbon({
         )}
         {onCanvas && (
           <button
-            className="ribbon-btn"
+            className={ribbonBtnClass}
             onClick={onCanvas}
             data-tooltip="Canvas (Ctrl+Shift+C)"
           >
@@ -138,7 +142,7 @@ export function Ribbon({
         {pluginRibbonActions.map((action, i) => (
           <button
             key={`plugin-ribbon-${action.pluginId}-${i}`}
-            className="ribbon-btn oo-plugin-ribbon-btn"
+            className={ribbonBtnClass}
             onClick={(e) => action.callback(e.nativeEvent)}
             data-tooltip={action.title}
           >

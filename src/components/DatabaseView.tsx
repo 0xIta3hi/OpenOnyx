@@ -102,45 +102,45 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({ folderNode, onOpenFi
   };
 
   if (isLoading) {
-    return <div className="p-8 text-text-muted flex items-center gap-2">
-       <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-text-muted"></span> Loading Database...
+    return <div className="p-8 text-(--text-muted) flex items-center gap-2">
+       <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-(--text-muted)"></span> Loading Database...
     </div>;
   }
 
   return (
-    <div className="database-view-container">
-      <div className="database-view-content">
-        <div className="database-header">
-          <Table size={28} className="database-header-icon" />
-          <h1 className="database-title">{folderNode.name}</h1>
+    <div className="flex-1 w-full h-full overflow-auto bg-(--bg-primary) text-(--text-primary)">
+      <div className="max-w-[1200px] mx-auto px-12 py-8">
+        <div className="flex items-center gap-3 mb-6 pt-4">
+          <Table size={28} className="text-(--text-muted)" />
+          <h1 className="text-2xl font-bold tracking-tight m-0">{folderNode.name}</h1>
         </div>
 
-        <div className="database-view-tabs">
-          <div className="database-tab">
+        <div className="mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-sm text-(--text-secondary) font-medium transition-all duration-200 border border-transparent hover:bg-(--bg-hover) hover:border-(--border-subtle)">
             <Table size={16} />
             Table
           </div>
         </div>
 
-        <div className="database-table-wrapper">
+        <div className="border border-(--border-subtle) rounded-lg shadow-sm overflow-hidden bg-(--bg-primary) w-full overflow-x-auto">
           <div className="overflow-x-auto">
-            <table className="database-table">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
                 <tr>
                   {columns.map(col => (
                     <th 
                       key={col} 
-                      className="database-th group"
+                      className="group px-4 py-2 font-normal text-(--text-muted) text-sm border-r border-b border-(--border-subtle) last:border-r-0 cursor-pointer transition-colors duration-200 select-none hover:bg-(--bg-hover)"
                       onClick={() => handleSort(col)}
                     >
-                      <div className="database-th-inner">
+                      <div className="flex items-center gap-1.5">
                         {col === 'name' ? (
-                          <span className="database-icon-label">Aa</span>
+                          <span className="font-mono text-xs opacity-70 flex items-center transition-opacity duration-200 group-hover:opacity-100">Aa</span>
                         ) : (
-                          <span className="database-icon-label opacity-70">≡</span>
+                          <span className="font-mono text-xs opacity-70 flex items-center transition-opacity duration-200 group-hover:opacity-100">{'\u2261'}</span>
                         )}
                         <span>{col}</span>
-                        {sortCol === col && <ArrowUpDown size={12} className="database-sort-icon" />}
+                        {sortCol === col && <ArrowUpDown size={12} className="opacity-50 ml-1" />}
                       </div>
                     </th>
                   ))}
@@ -148,12 +148,12 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({ folderNode, onOpenFi
               </thead>
               <tbody>
                 {sortedRows.map(row => (
-                  <tr key={row._path} className="database-tr group">
+                  <tr key={row._path} className="group border-b border-(--border-subtle) last:border-b-0 transition-colors duration-150 hover:bg-(--bg-hover)">
                     {columns.map(col => (
-                      <td key={col} className="database-td">
+                      <td key={col} className="px-4 py-2 border-r border-(--border-subtle) last:border-r-0 min-w-[150px] max-w-[300px] text-ellipsis overflow-hidden text-sm">
                         {col === 'name' ? (
                           <span 
-                            className="database-cell-name font-medium"
+                            className="font-medium cursor-pointer inline-block w-full overflow-hidden text-ellipsis hover:underline hover:decoration-(--border-strong) hover:underline-offset-4"
                             onClick={() => onOpenFile(row._path)}
                           >
                             {row[col]}
@@ -161,7 +161,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({ folderNode, onOpenFi
                         ) : (
                           <input
                             type="text"
-                            className="database-cell-input"
+                            className="w-full bg-transparent border-none outline-none p-0 text-(--text-secondary) transition-colors duration-200 focus:text-(--text-primary)"
                             value={row[col] !== undefined ? (Array.isArray(row[col]) ? row[col].join(", ") : row[col]) : ''}
                             placeholder=""
                             onChange={(e) => {
@@ -177,14 +177,14 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({ folderNode, onOpenFi
                 ))}
                 {sortedRows.length === 0 && (
                   <tr>
-                    <td colSpan={columns.length} className="database-empty-row">
+                    <td colSpan={columns.length} className="px-4 py-8 text-center text-(--text-muted) italic text-sm">
                       No files with frontmatter found.
                     </td>
                   </tr>
                 )}
-                <tr className="database-new-row group">
+                <tr className="group border-t border-(--border-subtle) cursor-pointer text-(--text-muted) text-sm transition-colors duration-150 hover:bg-(--bg-hover)">
                    <td colSpan={columns.length}>
-                       <div className="database-new-row-content">
+                       <div className="px-4 py-2 opacity-70 flex items-center gap-2 transition-opacity duration-200 group-hover:opacity-100">
                          <Plus size={16} /> New
                        </div>
                    </td>
@@ -193,7 +193,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({ folderNode, onOpenFi
             </table>
           </div>
         </div>
-        <div className="database-footer">
+        <div className="mt-4 text-[13px] text-(--text-muted) opacity-80 px-1">
           {sortedRows.length} {sortedRows.length === 1 ? 'item' : 'items'}
         </div>
       </div>

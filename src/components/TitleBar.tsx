@@ -14,12 +14,11 @@ import { DragCtx } from "../context/DragContext";
 import { LocalGroup } from "../lib/localdb";
 import {
   PanelLeft,
+  PanelRight,
   Search,
   FilePlus,
   Plus,
   FolderOpen,
-  PanelRightClose,
-  PanelRightOpen,
   X,
   Trash2,
   Copy,
@@ -83,6 +82,91 @@ function groupAndSortTabs(tabsList: Tab[], groupsList: LocalGroup[]): Tab[] {
   }
   return sorted;
 }
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const titlebarClass =
+  "titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--bg-secondary)] text-[length:var(--font-ui-small)] [-webkit-app-region:no-drag]";
+const titlebarDragHandleClass =
+  "absolute inset-0 z-[1] pointer-events-none [-webkit-app-region:drag]";
+const titlebarLeftClass =
+  "relative z-[2] flex h-full shrink-0 items-center bg-transparent pointer-events-auto [-webkit-app-region:no-drag]";
+const titlebarRibbonSlotClass =
+  "flex h-full w-[var(--ribbon-width)] shrink-0 items-center justify-center";
+const titlebarActionBtnClass =
+  "titlebar-action-btn flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-[var(--text-secondary)] transition-all duration-120 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const titlebarVaultActionsClass = "flex items-center gap-0.5 px-2";
+const titlebarTabsClass =
+  "relative z-[2] flex h-full min-w-0 flex-1 items-end overflow-hidden pl-1 pr-3 pointer-events-none [-webkit-app-region:no-drag]";
+const titlebarTabScrollClass =
+  "flex h-full min-w-0 items-end overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+const titlebarTabClass =
+  "titlebar-tab group relative z-[2] flex h-[30px] min-w-[100px] max-w-[200px] shrink cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[var(--transition-fast)] [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:absolute [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bottom-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:right-0 [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:top-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:w-px [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bg-[var(--border-strong,rgba(255,255,255,0.15))] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:content-['']";
+const titlebarTabActiveClass =
+  "active z-[4] border-b-2 border-[var(--tab-background-active)] bg-[var(--tab-background-active)] text-[var(--tab-text-color-focused-active-current)] shadow-[inset_0_var(--tab-outline-width)_0_var(--tab-outline-color),inset_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_calc(var(--tab-outline-width)*-1)_0_0_var(--tab-outline-color),inset_0_-2px_0_var(--tab-background-active)] before:absolute before:bottom-0 before:left-[calc(var(--tab-curve)*-2)] before:-z-[1] before:block before:h-[calc(var(--tab-curve)*2)] before:w-[calc(var(--tab-curve)*2)] before:rounded-full before:shadow-[0_0_0_calc(var(--tab-curve)*3)_var(--tab-background-active)] before:[clip-path:inset(50%_calc(var(--tab-curve)*-1)_0_50%)] before:content-[''] after:absolute after:bottom-0 after:right-[calc(var(--tab-curve)*-2)] after:-z-[1] after:block after:h-[calc(var(--tab-curve)*2)] after:w-[calc(var(--tab-curve)*2)] after:rounded-full after:shadow-[0_0_0_calc(var(--tab-curve)*3)_var(--tab-background-active)] after:[clip-path:inset(50%_50%_0_calc(var(--tab-curve)*-1))] after:content-['']";
+const titlebarTabDropLeftClass =
+  "drop-target-left !shadow-[inset_2px_0_0_var(--accent-color,#7c6ef6)]";
+const titlebarTabDropRightClass =
+  "drop-target-right !shadow-[inset_-2px_0_0_var(--accent-color,#7c6ef6)]";
+const titlebarGroupedTabClass =
+  "grouped-tab !rounded-t-[var(--radius-sm,4px)] border-t-[3px] border-solid opacity-75 transition-[background-color,border-top-color,opacity] hover:opacity-95 before:!hidden after:!hidden";
+const titlebarGroupedActiveTabClass =
+  "!bg-[var(--tab-background-active)] !shadow-none opacity-100";
+const titlebarTabInnerClass =
+  "tab-inner flex h-full w-full items-center gap-1 overflow-hidden rounded-[var(--tab-radius)] px-1.5 group-hover:bg-[var(--bg-hover)] group-[.active]:relative group-[.active]:overflow-visible group-[.active]:bg-transparent";
+const titlebarTabDotClass = "shrink-0 text-[8px] text-[var(--text-muted)]";
+const titlebarTabTitleClass =
+  "flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left leading-none";
+const titlebarTabCloseClass =
+  "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent p-0 text-[10px] text-[var(--text-muted)] opacity-0 transition-[var(--transition-fast)] group-hover:opacity-100 group-hover:text-[var(--tab-text-color-focused)] group-[.active]:opacity-100 group-[.active]:text-[var(--tab-text-color-focused)] hover:bg-[var(--bg-hover)] hover:text-[var(--tab-text-color-focused-active-current)]";
+const titlebarNewTabClass =
+  "titlebar-new-tab titlebar-btn mb-0.5 ml-0.5 !h-7 !w-7 shrink-0";
+const titlebarRightControlsClass =
+  "relative z-[2] flex shrink-0 items-center pl-3 pr-4 pointer-events-auto [-webkit-app-region:no-drag]";
+const titlebarControlsClass =
+  "titlebar-controls relative z-[2] flex shrink-0 gap-0 pointer-events-auto [-webkit-app-region:no-drag]";
+const titlebarBtnClass =
+  "titlebar-btn flex h-[var(--titlebar-height)] w-[46px] cursor-pointer items-center justify-center rounded-none border-0 bg-transparent text-[length:var(--font-ui-small)] text-[var(--text-secondary)] transition-colors duration-100 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const titlebarCloseBtnClass = "close hover:bg-[#e81123] hover:text-white";
+const titlebarTooltipClass =
+  "titlebar-tooltip pointer-events-none absolute z-[5000] -translate-x-1/2 whitespace-nowrap rounded bg-black px-2.5 py-[5px] text-[12.5px] font-medium text-white opacity-100 shadow-[0_4px_12px_rgba(0,0,0,0.5)] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-x-4 after:border-b-4 after:border-x-transparent after:border-b-black after:content-['']";
+const titlebarGroupPillClass =
+  "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97]";
+const titlebarGroupActiveClass =
+  "active-group shadow-[0_0_0_1px_currentColor,0_1.5px_3px_rgba(0,0,0,0.2)]";
+const titlebarGroupNameClass =
+  "titlebar-group-name max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap leading-none";
+const groupEditorPopupClass =
+  "group-editor-popup fixed z-[3301] flex w-60 flex-col gap-2 rounded-lg border border-[var(--border-medium,#2d2f33)] bg-[var(--bg-elevated,#1e1f22)] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.4),0_2px_4px_rgba(0,0,0,0.2)] backdrop-blur-2xl pointer-events-auto";
+const groupEditorInputClass =
+  "group-editor-input box-border w-full rounded border-[1.5px] border-[var(--border-medium,#2d2f33)] bg-[var(--bg-secondary,#18191c)] px-2.5 py-1.5 font-sans text-[13px] text-[var(--text-primary,#ffffff)] outline-none transition-colors duration-150 focus:border-current";
+const groupEditorColorsClass =
+  "group-editor-colors flex flex-wrap justify-between gap-2 px-0.5 py-1";
+const groupEditorColorBtnClass =
+  "group-editor-color-btn relative h-5 w-5 cursor-pointer rounded-full border-0 p-0 transition-[transform,box-shadow] duration-120 hover:scale-115";
+const groupEditorColorSelectedClass =
+  "selected shadow-[0_0_0_2px_var(--bg-elevated,#1e1f22),0_0_0_4px_currentColor]";
+const groupEditorDividerClass =
+  "group-editor-divider my-0.5 h-px bg-[var(--border-subtle,rgba(255,255,255,0.08))]";
+const groupEditorItemClass =
+  "group-editor-item flex w-full cursor-pointer items-center gap-2.5 rounded border-0 bg-transparent px-2 py-1.5 text-left font-sans text-[13px] text-[var(--text-secondary,#b0b0bc)] transition-colors duration-120 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
+const groupEditorDangerItemClass =
+  "danger text-[var(--danger,#ef4444)] hover:bg-[rgba(239,68,68,0.12)] hover:text-[var(--danger,#ef4444)]";
+const groupEditorCheckClass =
+  "group-editor-check inline-flex w-[15px] items-center justify-center text-xs font-bold text-[var(--color-accent,#3b82f6)]";
+const contextMenuBackdropClass =
+  "context-menu-backdrop fixed inset-0 z-[3300] bg-transparent pointer-events-auto";
+const contextMenuClass =
+  "context-menu fixed z-[3301] flex min-w-[180px] flex-col rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl pointer-events-auto";
+const contextMenuItemClass =
+  "context-menu-item flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-sans text-[13px] text-[var(--text-secondary,#b0b0bc)] transition-colors duration-150 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
+const contextSubmenuContainerClass = "context-menu-submenu-container group relative";
+const contextSubmenuHeaderClass = `${contextMenuItemClass} submenu-header justify-between`;
+const contextSubmenuClass =
+  "context-menu-submenu absolute left-[98%] top-[-4px] z-[3302] hidden min-w-40 rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl group-hover:block";
+const contextGroupDotClass = "group-color-dot inline-block h-2 w-2 shrink-0 rounded-full";
 
 interface TitleBarProps {
   theme: Theme;
@@ -331,33 +415,35 @@ export function TitleBar({
   }, [tabScrollRef]);
 
   return (
-    <div className="titlebar" ref={titlebarRef}>
+    <div className={titlebarClass} ref={titlebarRef}>
       {/* Background drag handle for window movement */}
-      <div className="titlebar-drag-handle" />
+      <div className={titlebarDragHandleClass} />
 
       {/* Left action icons - spans over ribbon + sidebar */}
       <div
-        className="titlebar-left"
+        className={titlebarLeftClass}
         style={{
           width: leftWidth ? `${leftWidth}px` : undefined,
           minWidth: leftWidth ? `${leftWidth}px` : undefined,
         }}
       >
         {onToggleSidebar && (
-          <button
-            className="titlebar-action-btn titlebar-toggle-btn"
-            onClick={onToggleSidebar}
-            title={showSidebar ? "Close left sidebar" : "Open left sidebar"}
-          >
-            <PanelLeft size={20} strokeWidth={1.5} />
-          </button>
+          <div className={titlebarRibbonSlotClass}>
+            <button
+              className={titlebarActionBtnClass}
+              onClick={onToggleSidebar}
+              title={showSidebar ? "Close left sidebar" : "Open left sidebar"}
+            >
+              <PanelLeft size={20} strokeWidth={1.5} />
+            </button>
+          </div>
         )}
         
         {showSidebar && (
-          <div className="titlebar-vault-actions">
+          <div className={titlebarVaultActionsClass}>
             {onToggleExplorer && (
               <button
-                className="titlebar-action-btn"
+                className={titlebarActionBtnClass}
                 onClick={onToggleExplorer}
                 title="File Explorer"
               >
@@ -366,7 +452,7 @@ export function TitleBar({
             )}
             {onSearch && (
               <button
-                className="titlebar-action-btn"
+                className={titlebarActionBtnClass}
                 onClick={onSearch}
                 title="Search (Ctrl+F)"
               >
@@ -375,7 +461,7 @@ export function TitleBar({
             )}
             {onNewNote && (
               <button
-                className="titlebar-action-btn"
+                className={titlebarActionBtnClass}
                 onClick={onNewNote}
                 title="New Note (Ctrl+N)"
               >
@@ -387,9 +473,9 @@ export function TitleBar({
       </div>
 
       {/* Center: tabs - starts at editor content boundary */}
-      <div className="titlebar-tabs">
+      <div className={titlebarTabsClass}>
         <div 
-          className="titlebar-tab-scroll" 
+          className={titlebarTabScrollClass}
           ref={tabScrollRef}
         >
           {renderItems.map((item) => {
@@ -398,9 +484,11 @@ export function TitleBar({
               return (
                 <div
                   key={item.key}
-                  className={`titlebar-group-pill ${activeGroupId === group.id ? "active-group" : ""} ${
-                    isCollapsed ? "is-collapsed" : ""
-                  }`}
+                  className={cx(
+                    titlebarGroupPillClass,
+                    activeGroupId === group.id && titlebarGroupActiveClass,
+                    isCollapsed && "is-collapsed",
+                  )}
                   style={{
                     backgroundColor: group.color,
                     color: getContrastColor(group.color),
@@ -423,7 +511,7 @@ export function TitleBar({
                   }}
                   title={`Group: ${group.name} (${tabsCount} tabs)`}
                 >
-                  <span className="titlebar-group-name">
+                  <span className={titlebarGroupNameClass}>
                     {group.name}
                     {group.id === activeGroupId && hasUnsavedChanges ? " *" : ""}
                   </span>
@@ -435,9 +523,14 @@ export function TitleBar({
                 <div
                   key={item.key}
                   data-tab-id={tab.id}
-                  className={`titlebar-tab ${tab.id === activeTabId ? "active" : ""} ${
-                    dragOverTabId === tab.id ? `drop-target-${dragDirection}` : ""
-                  } ${tabGroup ? "grouped-tab" : ""}`}
+                  className={cx(
+                    titlebarTabClass,
+                    tab.id === activeTabId && titlebarTabActiveClass,
+                    dragOverTabId === tab.id && dragDirection === "left" && titlebarTabDropLeftClass,
+                    dragOverTabId === tab.id && dragDirection === "right" && titlebarTabDropRightClass,
+                    tabGroup && titlebarGroupedTabClass,
+                    tabGroup && tab.id === activeTabId && titlebarGroupedActiveTabClass,
+                  )}
                   style={{
                     borderTop: tabGroup ? `3px solid ${tabGroup.color}` : undefined,
                   }}
@@ -459,13 +552,13 @@ export function TitleBar({
                     });
                   }}
                 >
-                  <div className="tab-inner">
+                  <div className={titlebarTabInnerClass}>
                     {tab.isModified && (
-                      <span className="titlebar-tab-dot">{"\u25CF"}</span>
+                      <span className={titlebarTabDotClass}>{"\u25CF"}</span>
                     )}
-                    <span className="titlebar-tab-title">{tab.name}</span>
+                    <span className={titlebarTabTitleClass}>{tab.name}</span>
                     <button
-                      className="titlebar-tab-close"
+                      className={titlebarTabCloseClass}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
@@ -482,7 +575,7 @@ export function TitleBar({
           })}
           {onNewTab && (
             <button
-              className="titlebar-new-tab titlebar-btn"
+              className={titlebarNewTabClass}
               onClick={() => onNewTab?.()}
               title="New tab"
             >
@@ -493,7 +586,7 @@ export function TitleBar({
       </div>
 
       {/* Right: window controls */}
-      <div className="titlebar-right-controls" style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingRight: '4px', position: 'relative', zIndex: 2, pointerEvents: 'auto', WebkitAppRegion: 'no-drag' } as any}>
+      <div className={titlebarRightControlsClass}>
         <div style={{ display: 'flex', alignItems: 'center', marginRight: '16px', gap: '4px' }}>
           {activeUsers.slice(0, 3).map((u, i) => (
             <div 
@@ -530,7 +623,7 @@ export function TitleBar({
           )}
           {onInvite && (
             <button
-              className="titlebar-action-btn"
+              className={titlebarActionBtnClass}
               style={{ marginLeft: '4px', width: '24px', height: '24px', padding: 0 }}
               onClick={onInvite}
               title="Invite collaborators"
@@ -542,36 +635,31 @@ export function TitleBar({
         
         {onToggleRightSidebar && (
           <button
-            className="titlebar-action-btn"
-            style={{ marginRight: '8px' }}
+            className={titlebarActionBtnClass}
             onClick={onToggleRightSidebar}
             title={showRightSidebar ? "Close right sidebar" : "Open right sidebar"}
           >
-            {showRightSidebar ? (
-              <PanelRightClose size={20} strokeWidth={1.5} />
-            ) : (
-              <PanelRightOpen size={20} strokeWidth={1.5} />
-            )}
+            <PanelRight size={20} strokeWidth={1.5} />
           </button>
         )}
         {!isMac && (
-          <div className="titlebar-controls">
+          <div className={titlebarControlsClass}>
           <button
-            className="titlebar-btn"
+            className={titlebarBtnClass}
             onClick={() => api.minimizeWindow()}
             aria-label="Minimize"
           >
             &#x2500;
           </button>
           <button
-            className="titlebar-btn"
+            className={titlebarBtnClass}
             onClick={() => api.maximizeWindow()}
             aria-label="Maximize"
           >
             &#x25A1;
           </button>
           <button
-            className="titlebar-btn close"
+            className={`${titlebarBtnClass} ${titlebarCloseBtnClass}`}
             onClick={() => api.closeWindow()}
             aria-label="Close"
           >
@@ -583,7 +671,7 @@ export function TitleBar({
 
       {hoveredTab && (
         <div
-          className="titlebar-tooltip"
+          className={titlebarTooltipClass}
           style={{
             left: `${hoveredTab.x}px`,
             top: `${hoveredTab.y}px`,
@@ -595,7 +683,7 @@ export function TitleBar({
 
       {tabContextMenu && (
         <div
-          className="context-menu-backdrop"
+          className={contextMenuBackdropClass}
           onClick={() => setTabContextMenu(null)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -603,14 +691,14 @@ export function TitleBar({
           }}
         >
           <div
-            className="context-menu"
+            className={contextMenuClass}
             style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
             onClick={(e) => e.stopPropagation()}
           >
             {tabContextMenu.tab.groupId ? (
               <>
                 <button
-                  className="context-menu-item"
+                  className={contextMenuItemClass}
                   onClick={() => {
                     onRemoveTabFromGroup?.(tabContextMenu.tab.id);
                     setTabContextMenu(null);
@@ -619,21 +707,21 @@ export function TitleBar({
                   Remove from Group
                 </button>
                 {groups.filter(g => g.id !== tabContextMenu.tab.groupId).length > 0 && (
-                  <div className="context-menu-submenu-container">
-                    <div className="context-menu-item submenu-header">
+                  <div className={contextSubmenuContainerClass}>
+                    <div className={contextSubmenuHeaderClass}>
                       Move to Group &rarr;
                     </div>
-                    <div className="context-menu-submenu">
+                    <div className={contextSubmenuClass}>
                       {groups.filter(g => g.id !== tabContextMenu.tab.groupId).map(g => (
                         <button
                           key={g.id}
-                          className="context-menu-item"
+                          className={contextMenuItemClass}
                           onClick={() => {
                             onMoveTabToGroup?.(tabContextMenu.tab.id, g.id);
                             setTabContextMenu(null);
                           }}
                         >
-                          <span className="group-color-dot" style={{ backgroundColor: g.color }} />
+                          <span className={contextGroupDotClass} style={{ backgroundColor: g.color }} />
                           {g.name}
                         </button>
                       ))}
@@ -644,21 +732,21 @@ export function TitleBar({
             ) : (
               <>
                 {groups.length > 0 && (
-                  <div className="context-menu-submenu-container">
-                    <div className="context-menu-item submenu-header">
+                  <div className={contextSubmenuContainerClass}>
+                    <div className={contextSubmenuHeaderClass}>
                       Add to Group &rarr;
                     </div>
-                    <div className="context-menu-submenu">
+                    <div className={contextSubmenuClass}>
                       {groups.map(g => (
                         <button
                           key={g.id}
-                          className="context-menu-item"
+                          className={contextMenuItemClass}
                           onClick={() => {
                             onAddTabToGroup?.(tabContextMenu.tab.id, g.id);
                             setTabContextMenu(null);
                           }}
                         >
-                          <span className="group-color-dot" style={{ backgroundColor: g.color }} />
+                          <span className={contextGroupDotClass} style={{ backgroundColor: g.color }} />
                           {g.name}
                         </button>
                       ))}
@@ -666,7 +754,7 @@ export function TitleBar({
                   </div>
                 )}
                 <button
-                  className="context-menu-item"
+                  className={contextMenuItemClass}
                   onClick={() => {
                     onCreateGroupFromTab?.(tabContextMenu.tab.id);
                     setTabContextMenu(null);
@@ -682,7 +770,7 @@ export function TitleBar({
 
       {groupPopup && (
         <div
-          className="context-menu-backdrop"
+          className={contextMenuBackdropClass}
           onClick={() => setGroupPopup(null)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -690,14 +778,14 @@ export function TitleBar({
           }}
         >
           <div
-            className="group-editor-popup"
+            className={groupEditorPopupClass}
             style={{ left: groupPopup.x, top: groupPopup.y }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Input name field */}
             <input
               type="text"
-              className="group-editor-input"
+              className={groupEditorInputClass}
               style={{ borderColor: groupPopup.group.color }}
               defaultValue={groupPopup.group.name}
               placeholder="Group name"
@@ -716,13 +804,13 @@ export function TitleBar({
             />
 
             {/* Color picker circles */}
-            <div className="group-editor-colors">
+            <div className={groupEditorColorsClass}>
               {GROUP_COLORS.map((c) => {
                 const isSelected = groupPopup.group.color.toLowerCase() === c.value.toLowerCase();
                 return (
                   <button
                     key={c.value}
-                    className={`group-editor-color-btn ${isSelected ? "selected" : ""}`}
+                    className={cx(groupEditorColorBtnClass, isSelected && groupEditorColorSelectedClass)}
                     style={{
                       backgroundColor: c.value,
                       color: c.value,
@@ -740,11 +828,11 @@ export function TitleBar({
               })}
             </div>
 
-            <div className="group-editor-divider" />
+            <div className={groupEditorDividerClass} />
 
             {/* Action list */}
             <button
-              className="group-editor-item"
+              className={groupEditorItemClass}
               onClick={() => {
                 onNewTab?.(groupPopup.group.id);
                 setGroupPopup(null);
@@ -755,7 +843,7 @@ export function TitleBar({
             </button>
 
             <button
-              className="group-editor-item"
+              className={groupEditorItemClass}
               onClick={() => {
                 const tabsToUngroup = tabs.filter(t => t.groupId === groupPopup.group.id);
                 tabsToUngroup.forEach(t => {
@@ -770,7 +858,7 @@ export function TitleBar({
             </button>
 
             <button
-              className="group-editor-item"
+              className={groupEditorItemClass}
               onClick={() => {
                 const tabsToClose = sortedTabs.filter(t => t.groupId === groupPopup.group.id);
                 tabsToClose.forEach(t => {
@@ -783,10 +871,10 @@ export function TitleBar({
               <span>Close grouped tabs</span>
             </button>
 
-            <div className="group-editor-divider" />
+            <div className={groupEditorDividerClass} />
 
             <button
-              className="group-editor-item"
+              className={groupEditorItemClass}
               onClick={() => {
                 onSaveGroup?.(groupPopup.group.id);
                 setGroupPopup(null);
@@ -797,7 +885,7 @@ export function TitleBar({
             </button>
 
             <button
-              className="group-editor-item"
+              className={groupEditorItemClass}
               onClick={() => {
                 onToggleGroupAutoSave?.(groupPopup.group.id);
                 setGroupPopup(prev => prev ? {
@@ -806,14 +894,14 @@ export function TitleBar({
                 } : null);
               }}
             >
-              <span className="group-editor-check">
+              <span className={groupEditorCheckClass}>
                 {groupPopup.group.auto_save_enabled ? "✓" : ""}
               </span>
               <span>Enable Auto-save</span>
             </button>
 
             <button
-              className="group-editor-item"
+              className={groupEditorItemClass}
               onClick={() => {
                 onDuplicateGroup?.(groupPopup.group.id);
                 setGroupPopup(null);
@@ -823,10 +911,10 @@ export function TitleBar({
               <span>Duplicate group</span>
             </button>
 
-            <div className="group-editor-divider" />
+            <div className={groupEditorDividerClass} />
 
             <button
-              className="group-editor-item danger"
+              className={cx(groupEditorItemClass, groupEditorDangerItemClass)}
               onClick={() => {
                 onDeleteGroup?.(groupPopup.group.id);
                 setGroupPopup(null);

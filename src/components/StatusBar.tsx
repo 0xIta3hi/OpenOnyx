@@ -21,6 +21,13 @@ import { countWords, countCharacters } from "../utils/helpers";
 import type { PluginStatusBarItem } from '../types/plugin';
 import { VimModeIndicator } from "./VimModeIndicator";
 
+const statusBarClass =
+  "flex h-[24px] shrink-0 items-center justify-between gap-6 bg-(--status-bar-background) border-t border-(--status-bar-border-color) px-6 text-[var(--status-bar-font-size)] text-(--status-bar-text-color)";
+const statusGroupClass = "flex min-w-0 items-center gap-2";
+const statusRightGroupClass = `${statusGroupClass} justify-end`;
+const statusItemClass = "inline-flex items-center text-xs text-(--text-muted) px-1.5";
+const statusItemGapClass = `${statusItemClass} gap-1`;
+
 interface StatusBarProps {
   activeTab: Tab | null;
   content: string;
@@ -87,13 +94,12 @@ export function StatusBar({
   const vaultStats = useMemo(() => countEntries(fileTree), [fileTree]);
 
   return (
-    <div className="status-bar">
-      <div className="status-bar-left">
+    <div className={statusBarClass}>
+      <div className={statusGroupClass}>
         {activeTab ? (
           <>
             <span
-              className="status-item"
-              style={{ display: "flex", alignItems: "center", gap: "4px" }}
+              className={statusItemGapClass}
             >
               {activeTab.isModified ? (
                 <>
@@ -105,36 +111,36 @@ export function StatusBar({
                 </>
               )}
             </span>
-            <span className="status-item">{wordCount} words</span>
-            <span className="status-item">{charCount} chars</span>
-            <span className="status-item">{lineCount} lines</span>
+            <span className={statusItemClass}>{wordCount} words</span>
+            <span className={statusItemClass}>{charCount} chars</span>
+            <span className={statusItemClass}>{lineCount} lines</span>
             {linkCount > 0 && (
-              <span className="status-item" title="Links in this note">
-                <Link2 size={12} style={{ opacity: 0.7 }} /> {linkCount}
+              <span className={statusItemGapClass} title="Links in this note">
+                <Link2 size={12} className="opacity-70" /> {linkCount}
               </span>
             )}
             {tagCount > 0 && (
-              <span className="status-item" title="Tags in this note">
-                <Hash size={12} style={{ opacity: 0.7 }} /> {tagCount}
+              <span className={statusItemGapClass} title="Tags in this note">
+                <Hash size={12} className="opacity-70" /> {tagCount}
               </span>
             )}
           </>
         ) : (
-          <span className="status-item">OpenObsidian</span>
+          <span className={statusItemClass}>OpenObsidian</span>
         )}
       </div>
       {queueStatus && queueStatus.isRunning && (
-        <div className="status-bar-queue">
-          <span className="status-bar-queue-dot" />
+        <div className="flex items-center gap-1.5 text-[11px] text-(--text-muted)">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--text-muted)]" />
           <span>{queueStatus.message}</span>
           {queueStatus.progress > 0 && queueStatus.progress < 100 && (
-            <span className="status-bar-queue-progress">{queueStatus.progress}%</span>
+            <span className="font-semibold [font-variant-numeric:tabular-nums]">{queueStatus.progress}%</span>
           )}
         </div>
       )}
       {/* Plugin status bar items */}
       {pluginStatusBarItems.length > 0 && (
-        <div className="status-bar-plugins" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className={statusGroupClass}>
           {pluginStatusBarItems.map((item, i) => (
             <span
               key={`plugin-status-${item.pluginId}-${i}`}
@@ -148,23 +154,22 @@ export function StatusBar({
           ))}
         </div>
       )}
-      <div className="status-bar-right">
+      <div className={statusRightGroupClass}>
         <VimModeIndicator vimEnabled={vimEnabled} />
         {vaultStats.notes > 0 && (
-          <span className="status-item" title="Notes in vault">
-            <FileText size={12} style={{ opacity: 0.7 }} /> {vaultStats.notes}
+          <span className={statusItemGapClass} title="Notes in vault">
+            <FileText size={12} className="opacity-70" /> {vaultStats.notes}
           </span>
         )}
         {vaultStats.folders > 0 && (
-          <span className="status-item" title="Folders in vault">
-            <FolderOpen size={12} style={{ opacity: 0.7 }} />{" "}
+          <span className={statusItemGapClass} title="Folders in vault">
+            <FolderOpen size={12} className="opacity-70" />{" "}
             {vaultStats.folders}
           </span>
         )}
-        <span className="status-item">{viewMode}</span>
+        <span className={statusItemClass}>{viewMode}</span>
         <span
-          className="status-item"
-          style={{ display: "flex", alignItems: "center" }}
+          className={statusItemClass}
         >
           {theme === "dark" || theme === "oceanic" || theme === "dark-plus" ? (
             <Moon size={14} />
@@ -172,7 +177,7 @@ export function StatusBar({
             <Sun size={14} />
           )}
         </span>
-        <span className="status-item">Markdown</span>
+        <span className={statusItemClass}>Markdown</span>
       </div>
     </div>
   );

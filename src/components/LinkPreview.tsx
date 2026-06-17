@@ -16,6 +16,11 @@ interface LinkPreviewProps {
   onClose: () => void;
 }
 
+const linkPreviewClass = "bg-(--bg-elevated) border border-(--border-medium) rounded-lg shadow-xl max-w-[400px] max-h-[300px] overflow-hidden flex flex-col animate-fade-in";
+const linkPreviewHeaderClass = "px-3 py-2 border-b border-(--border-subtle) bg-(--bg-secondary)";
+const linkPreviewTitleClass = "font-semibold text-[var(--text-sm)] text-(--text-link)";
+const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em]";
+
 export function LinkPreview({
   noteName,
   content,
@@ -70,7 +75,7 @@ export function LinkPreview({
   return (
     <div
       ref={previewRef}
-      className="link-preview"
+      className={linkPreviewClass}
       style={{
         position: "fixed",
         left: adjustedPosition.x,
@@ -79,75 +84,13 @@ export function LinkPreview({
       }}
       onMouseLeave={onClose}
     >
-      <div className="link-preview-header">
-        <span className="link-preview-title">{noteName}</span>
+      <div className={linkPreviewHeaderClass}>
+        <span className={linkPreviewTitleClass}>{noteName}</span>
       </div>
       <div
-        className="link-preview-content"
+        className={linkPreviewContentClass}
         dangerouslySetInnerHTML={{ __html: previewContent }}
       />
     </div>
   );
 }
-
-// CSS for link preview (add to index.css)
-export const linkPreviewStyles = `
-.link-preview {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
-  max-width: 400px;
-  max-height: 300px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.link-preview-header {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
-}
-
-.link-preview-title {
-  font-weight: 600;
-  font-size: var(--text-sm);
-  color: var(--text-link);
-}
-
-.link-preview-content {
-  padding: 12px;
-  overflow: auto;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-.link-preview-content p {
-  margin: 0 0 8px 0;
-}
-
-.link-preview-content p:last-child {
-  margin-bottom: 0;
-}
-
-.link-preview-content .preview-empty {
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.link-preview-content h1,
-.link-preview-content h2,
-.link-preview-content h3 {
-  font-size: var(--text-base);
-  margin: 0 0 8px 0;
-}
-
-.link-preview-content code {
-  background: var(--bg-code);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-`;

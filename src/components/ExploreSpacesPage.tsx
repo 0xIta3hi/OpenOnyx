@@ -1,9 +1,9 @@
 /**
- * ExploreSpacesPage — Public space discovery with 4 sections[Not Implemented yet]:
- *  1. 🔥 Trending (by score) 
- *  2. 🧠 Recommended (based on user's spaces)
- *  3. 🆕 Recently Published
- *  4. 🔎 Semantic Search
+ * ExploreSpacesPage -- Public space discovery with 4 sections[Not Implemented yet]:
+ *  1. Trending (by score)
+ *  2. Recommended (based on user's spaces)
+ *  3. Recently Published
+ *  4. Semantic Search
  *
  * Each card shows title, description, tags, views/forks, and a fork button.
  */
@@ -161,34 +161,34 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
   ];
 
   return (
-    <div className="spaces-page explore-page">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-(--bg-primary) text-(--text-primary) font-(--font-sans) relative">
       {/* Header */}
-      <div className="spaces-header">
-        <h2>
+      <div className="flex items-center justify-between px-7 pt-6 pb-4 shrink-0">
+        <h2 className="flex items-center gap-2 text-lg font-semibold m-0">
           <SpacesIcon size={18} style={{ opacity: 0.5 }} />
           Explore Spaces
         </h2>
-        <div className="spaces-header-actions">
-          <button className="btn btn-ghost" onClick={onClose}>
+        <div className="flex items-center gap-2">
+          <button className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-(--border-subtle) bg-transparent text-(--text-primary) cursor-pointer transition-all duration-150 hover:bg-(--bg-active)" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
       </div>
 
       {/* Search Bar */}
-      <div className="explore-search-bar">
-        <Search size={14} className="explore-search-icon" />
+      <div className="relative flex items-center gap-2 mx-7 mb-4 px-3 py-2 rounded border border-(--border-subtle) bg-(--bg-secondary)">
+        <Search size={14} className="text-(--text-muted) shrink-0" />
         <input
           type="text"
           placeholder="Search spaces semantically..."
           value={searchQuery}
           onChange={e => onSearchChange(e.target.value)}
-          className="explore-search-input"
+          className="flex-1 bg-transparent border-none outline-none text-(--text-primary) text-xs placeholder:text-(--text-muted)"
         />
-        {isSearching && <Loader2 size={14} className="spinner" />}
+        {isSearching && <Loader2 size={14} className="animate-spin text-(--text-muted)" />}
         {searchQuery && (
           <button
-            className="explore-search-clear"
+            className="bg-transparent border-none text-(--text-muted) cursor-pointer flex p-0.5 hover:text-(--text-primary)"
             onClick={() => { setSearchQuery(''); setSearchResults(null); }}
           >
             <X size={12} />
@@ -198,11 +198,11 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
 
       {/* Section Tabs */}
       {!searchResults && (
-        <div className="explore-tabs">
+        <div className="flex gap-1 px-7 mb-4">
           {sectionTabs.map(tab => (
             <button
               key={tab.key}
-              className={`explore-tab ${activeSection === tab.key ? 'active' : ''}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none transition-all duration-150 ${activeSection === tab.key ? 'bg-(--bg-active) text-(--text-primary) font-semibold' : 'bg-transparent text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)'}`}
               onClick={() => setActiveSection(tab.key)}
             >
               {tab.icon}
@@ -214,23 +214,23 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
 
       {/* Search result label */}
       {searchResults && (
-        <div className="explore-search-label">
+        <div className="flex items-center gap-1.5 px-7 mb-3 text-[11px] text-(--text-muted) font-medium">
           <Search size={12} />
           {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for "{searchQuery}"
         </div>
       )}
 
       {/* Grid */}
-      <div className="spaces-body">
+      <div className="flex-1 overflow-y-auto px-7 pb-12">
         {isLoading ? (
-          <div className="spaces-empty">
-            <Loader2 size={24} className="spinner" />
-            <p>Loading spaces...</p>
+          <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
+            <Loader2 size={24} className="animate-spin text-(--text-muted)" />
+            <p className="text-(--text-secondary) text-xs">Loading spaces...</p>
           </div>
         ) : displaySpaces.length === 0 ? (
-          <div className="spaces-empty">
+          <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
             <SpacesIcon size={40} style={{ opacity: 0.12 }} />
-            <p>
+            <p className="text-(--text-secondary) text-xs max-w-[320px] leading-relaxed">
               {searchResults
                 ? 'No spaces matched your search.'
                 : activeSection === 'recommended'
@@ -239,67 +239,67 @@ export function ExploreSpacesPage({ onClose, onOpenSpace }: ExploreSpacesPagePro
             </p>
           </div>
         ) : (
-          <div className="spaces-grid explore-grid">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             {displaySpaces.map(space => (
               <div
                 key={space.id}
-                className="space-card explore-card"
+                className="bg-(--bg-secondary) border border-(--border-subtle) rounded-lg p-4 cursor-pointer flex flex-col gap-2.5 relative transition-all duration-150 hover:border-(--border-medium) hover:bg-(--bg-hover)"
                 onClick={() => handleViewSpace(space)}
               >
-                <h3 className="space-card-title">{space.title}</h3>
+                <h3 className="text-[13px] font-semibold text-(--text-primary) m-0 leading-snug tracking-tight">{space.title}</h3>
 
                 {space.description && (
-                  <p className="space-card-desc">{space.description}</p>
+                  <p className="text-[11px] text-(--text-secondary) leading-snug m-0 line-clamp-2">{space.description}</p>
                 )}
 
                 {(space.helps_with || []).length > 0 && (
-                  <div className="space-card-tags">
+                  <div className="flex flex-wrap gap-1">
                     {(space.helps_with || []).slice(0, 4).map(tag => (
-                      <span key={tag} className="space-tag">{tag}</span>
+                      <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-(--bg-active) text-(--text-secondary) font-medium">{tag}</span>
                     ))}
                   </div>
                 )}
 
                 {space.forked_from && (
-                  <div className="space-card-fork-badge">
+                  <div className="flex items-center gap-1 text-[10px] text-(--text-muted) font-medium">
                     <GitFork size={10} /> Forked
                   </div>
                 )}
 
-                <div className="space-card-meta explore-meta">
-                  <div className="explore-stats">
-                    <span title="Views"><Eye size={11} /> {space.stats?.views ?? 0}</span>
-                    <span title="Forks"><GitFork size={11} /> {space.stats?.forks ?? 0}</span>
-                    <span title="Score">
+                <div className="flex items-center justify-between text-[11px] text-(--text-muted) mt-auto pt-2 border-t border-(--border-subtle)">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1" title="Views"><Eye size={11} /> {space.stats?.views ?? 0}</span>
+                    <span className="flex items-center gap-1" title="Forks"><GitFork size={11} /> {space.stats?.forks ?? 0}</span>
+                    <span className="flex items-center gap-1" title="Score">
                       <TrendingUp size={11} /> {(space.stats?.score ?? 0).toFixed(1)}
                     </span>
                   </div>
 
                   <div
-                    className="explore-card-actions"
+                    className="flex items-center gap-1"
                     onClick={e => e.stopPropagation()}
                   >
                     <button
-                      className="explore-vote-btn"
+                      className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)"
                       onClick={() => handleVote(space.id, 1)}
                       title="Upvote"
                     >
                       <ThumbsUp size={12} />
                     </button>
                     <button
-                      className="explore-vote-btn"
+                      className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)"
                       onClick={() => handleVote(space.id, -1)}
                       title="Downvote"
                     >
                       <ThumbsDown size={12} />
                     </button>
                     <button
-                      className="explore-fork-btn"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-(--bg-active) text-(--text-secondary) border-none cursor-pointer transition-all duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)"
                       onClick={() => handleFork(space.id)}
                       disabled={forkingId === space.id}
                     >
                       {forkingId === space.id ? (
-                        <Loader2 size={12} className="spinner" />
+                        <Loader2 size={12} className="animate-spin" />
                       ) : (
                         <GitFork size={12} />
                       )}

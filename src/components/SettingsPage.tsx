@@ -68,6 +68,7 @@ export interface AppSettings {
   fontSize: number;
   editorFontSize: number;
   previewFontSize: number;
+  readingViewWidth: number;
   lineHeight: number;
   tabSize: number;
   showLineNumbers: boolean;
@@ -93,6 +94,118 @@ export interface AppSettings {
   showOrphans: boolean;
 }
 
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const settingsOverlayClass =
+  "settings-overlay fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur";
+const settingsPageClass =
+  "settings-page relative flex h-[840px] max-h-[92vh] w-[1180px] max-w-[95vw] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-primary)] shadow-[var(--shadow-lg)]";
+const settingsHeaderClass =
+  "settings-header absolute right-0 top-0 z-[999] h-0 w-0 overflow-visible !border-b-0 !p-0";
+const settingsTitleClass = "hidden";
+const settingsCloseClass =
+  "settings-close absolute right-5 top-4 flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1.5 text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const settingsBodyClass = "settings-body flex h-full flex-1 overflow-hidden";
+const settingsNavClass =
+  "settings-nav flex w-60 shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-4";
+const settingsNavSubheaderClass =
+  "settings-nav-subheader mt-4 select-none px-3 pb-1.5 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] first:mt-0";
+const settingsNavItemClass =
+  "settings-nav-item flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] font-normal text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const settingsNavItemActiveClass =
+  "active bg-[var(--bg-active)] font-medium text-[var(--text-primary)]";
+const settingsNavIconClass =
+  "nav-icon shrink-0 text-[var(--text-muted)] opacity-70";
+const settingsNavIconActiveClass =
+  "text-[var(--color-accent)] opacity-100";
+const settingsContentClass =
+  "settings-content relative flex-1 overflow-y-auto bg-[var(--bg-primary)] px-10 pb-10 pt-[30px]";
+const settingsSectionClass =
+  "settings-section animate-fade-in mx-auto max-w-[800px]";
+const settingCardClass =
+  "setting-card flex items-center justify-between gap-6 border-b border-[var(--divider-color)] py-4 last:border-b-0";
+const settingSubCardClass = `${settingCardClass} sub-card border-[var(--border-subtle)] py-3 pl-4`;
+const settingInfoClass = "setting-info flex min-w-0 flex-1 flex-col gap-1 pr-6";
+const settingTitleClass =
+  "setting-title text-sm font-medium text-[var(--text-primary)]";
+const settingTitleWithIconClass =
+  "setting-title-with-icon flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]";
+const settingTitleIconClass = "setting-title-icon shrink-0 text-[var(--text-muted)]";
+const settingDescriptionClass =
+  "setting-description mt-1 text-[12px] leading-[1.45] text-[var(--text-muted)]";
+const settingLinkClass =
+  "setting-link font-medium text-[var(--text-link)] no-underline hover:underline";
+const settingControlClass = "setting-control flex shrink-0 items-center gap-2";
+const buttonRowClass = `${settingControlClass} button-row`;
+const settingBtnPrimaryClass =
+  "setting-btn-primary cursor-pointer rounded border-0 bg-[var(--color-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-on-accent)] transition-[background-color,transform] duration-150 hover:bg-[var(--color-accent-1)] active:scale-[0.98] active:bg-[var(--color-accent-2)]";
+const settingBtnSecondaryClass =
+  "setting-btn-secondary cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-[background-color,border-color,transform] duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] active:scale-[0.98] active:bg-[var(--bg-active)]";
+const settingIconBtnSecondaryClass =
+  `${settingBtnSecondaryClass} icon-btn flex shrink-0 items-center justify-center p-1.5`;
+const settingSelectClass =
+  "setting-select min-w-40 cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 font-[inherit] text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 focus:border-[var(--color-accent)]";
+const settingInputClass =
+  "setting-input w-full max-w-60 rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
+const browseControlClass =
+  "setting-control browse-control flex w-full max-w-60 items-center gap-1.5 [&_.setting-input]:max-w-none [&_.setting-input]:flex-1";
+const settingGroupHeaderClass =
+  "setting-group-header mb-3 mt-8 select-none border-b border-[var(--border-subtle)] pb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]";
+const rangeControlClass =
+  "setting-control range-control flex w-full max-w-60 items-center gap-3";
+const settingRangeSliderClass =
+  "setting-range-slider h-1 flex-1 cursor-pointer appearance-none rounded-sm bg-[var(--bg-tertiary)] outline-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--color-accent)] [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.2)] [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-100 [&::-webkit-slider-thumb:hover]:scale-120";
+const rangeIndicatorClass =
+  "range-indicator min-w-8 text-right font-mono text-xs text-[var(--text-secondary)]";
+const customThemeSubpanelClass =
+  "custom-theme-subpanel my-2 mb-4 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-1";
+const toggleRowClass =
+  "setting-control toggle-row flex gap-1 rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] p-[3px]";
+const settingBtnTabClass =
+  "setting-btn-tab flex-1 cursor-pointer rounded border-0 bg-transparent px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)]";
+const settingBtnTabActiveClass =
+  "active bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.1)]";
+const settingColorPickerClass =
+  "setting-color-picker h-7 w-12 cursor-pointer appearance-none overflow-hidden rounded border border-[var(--border-medium)] bg-transparent p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[3px] [&::-webkit-color-swatch]:border-0";
+const hotkeySearchBoxClass =
+  "hotkey-search-box mt-2.5 flex items-center gap-2 rounded-md border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 transition-colors duration-150 focus-within:border-[var(--color-accent)]";
+const hotkeysHeaderRowClass = "hotkeys-header-row mb-5";
+const hotkeySearchIconClass = "search-icon text-[var(--text-muted)]";
+const hotkeySearchInputClass =
+  "hotkey-search-input w-full border-0 bg-transparent text-[13px] text-[var(--text-primary)] outline-none";
+const hotkeyListClass =
+  "hotkey-list grid max-h-[480px] grid-cols-1 gap-2 overflow-y-auto pr-1";
+const hotkeyCardClass =
+  "hotkey-card flex items-center justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)]";
+const hotkeyDescClass = "hotkey-desc text-[13px] text-[var(--text-primary)]";
+const hotkeyKbdClass =
+  "hotkey-kbd rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-1.5 py-[3px] font-mono text-[11px] text-[var(--text-secondary)] shadow-[0_1px_1px_rgba(0,0,0,0.1)]";
+const hotkeysEmptyClass =
+  "hotkeys-empty p-[30px] text-center text-[13px] text-[var(--text-muted)]";
+const aboutInfoClass =
+  "about-info flex flex-col items-center py-5 text-center";
+const aboutLogoWrapperClass = "about-logo-wrapper mb-5";
+const aboutLogoImgClass = "about-logo-img h-16 w-auto object-contain";
+const aboutVersionClass = "about-version mb-4 text-xs text-[var(--text-muted)]";
+const aboutDescriptionClass =
+  "about-description mb-6 max-w-[440px] text-[13px] leading-normal text-[var(--text-secondary)]";
+const aboutHeadingClass =
+  "m-0 mb-1.5 border-0 p-0 text-lg font-semibold text-[var(--text-primary)]";
+const aboutLinksClass = "about-links flex items-center gap-2 text-[13px]";
+const aboutLinkClass = "about-link text-[var(--text-link)] no-underline hover:underline";
+const linkDividerClass = "link-divider text-[var(--text-faint)]";
+const resetContainerClass =
+  "reset-container mt-10 flex justify-center border-t border-[var(--border-subtle)] pt-6";
+const settingResetBtnClass =
+  "setting-reset-btn flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-[var(--border-medium)] bg-transparent px-4 py-2.5 text-[13px] text-[var(--text-muted)] transition-colors duration-150 hover:border-[rgba(239,68,68,0.3)] hover:bg-[rgba(239,68,68,0.05)] hover:text-[var(--danger)]";
+const resetIconClass = "reset-icon shrink-0";
+const settingToggleClass = "relative inline-block h-5 w-[38px] shrink-0 cursor-pointer";
+const settingToggleInputClass = "peer absolute h-0 w-0 opacity-0";
+const toggleSliderClass =
+  "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:bottom-0.5 before:left-0.5 before:h-3.5 before:w-3.5 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   accentColor: "#3b82f6",
@@ -105,6 +218,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 15,
   editorFontSize: 15,
   previewFontSize: 15,
+  readingViewWidth: 960,
   lineHeight: 1.6,
   tabSize: 2,
   showLineNumbers: false,
@@ -137,7 +251,7 @@ interface SettingsPageProps {
   onDisablePlugin?: (pluginId: string) => Promise<void>;
   onRefreshPlugins?: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
-  onInstallPlugin?: (repo: string, pluginId: string) => Promise<boolean>;
+  onInstallPlugin?: (repo: string, pluginId: string, version?: string) => Promise<boolean>;
 
   // Collaboration props
   collaborators?: LocalVaultCollaborator[];
@@ -272,6 +386,24 @@ export function SettingsPage({
     onSettingsChange(DEFAULT_SETTINGS);
   };
 
+  const resetEditorSettings = () => {
+    const updated = {
+      ...localSettings,
+      fontSize: DEFAULT_SETTINGS.fontSize,
+      editorFontSize: DEFAULT_SETTINGS.editorFontSize,
+      previewFontSize: DEFAULT_SETTINGS.previewFontSize,
+      readingViewWidth: DEFAULT_SETTINGS.readingViewWidth,
+      lineHeight: DEFAULT_SETTINGS.lineHeight,
+      tabSize: DEFAULT_SETTINGS.tabSize,
+      showLineNumbers: DEFAULT_SETTINGS.showLineNumbers,
+      wordWrap: DEFAULT_SETTINGS.wordWrap,
+      spellcheck: DEFAULT_SETTINGS.spellcheck,
+      vimMode: DEFAULT_SETTINGS.vimMode,
+    };
+    setLocalSettings(updated);
+    onSettingsChange(updated);
+  };
+
   // Sections definitions for grouped sidebar navigation
   const optionSectionsList = [
     { id: "general" as const, label: "General", icon: Settings },
@@ -300,7 +432,7 @@ export function SettingsPage({
     { description: "Fuzzy search vault (Quick Switcher)", keys: "Ctrl+O" },
     { description: "Search all notes in vault", keys: "Ctrl+Shift+F" },
     { description: "Toggle Command Palette", keys: "Ctrl+P" },
-    { description: "Toggle Knowledge Graph view", keys: "Ctrl+G" },
+    { description: "Toggle graph view", keys: "Ctrl+G" },
     { description: "Toggle sidebar panel layout", keys: "Ctrl+B" },
     { description: "Close active editor tab", keys: "Ctrl+W" },
     { description: "Zoom editor text size", keys: "Ctrl+Scroll" },
@@ -317,8 +449,8 @@ export function SettingsPage({
   );
 
   return (
-    <div className="settings-overlay">
-      <div className="settings-page" ref={pageRef}>
+    <div className={settingsOverlayClass}>
+      <div className={settingsPageClass} ref={pageRef}>
         {isBrowsingPlugins ? (
           <PluginMarketplace
             onClose={() => setIsBrowsingPlugins(false)}
@@ -327,87 +459,88 @@ export function SettingsPage({
           />
         ) : (
           <>
-            <div className="settings-header">
-              <h2>Settings</h2>
-              <button className="settings-close" onClick={onClose} aria-label="Close settings">
+            <div className={settingsHeaderClass}>
+              <h2 className={settingsTitleClass}>Settings</h2>
+              <button className={settingsCloseClass} onClick={onClose} aria-label="Close settings">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="settings-body">
-          <nav className="settings-nav">
-            <div className="settings-nav-subheader">Options</div>
+            <div className={settingsBodyClass}>
+          <nav className={settingsNavClass}>
+            <div className={settingsNavSubheaderClass}>Options</div>
             {optionSectionsList.map((section) => (
               <button
                 key={section.id}
-                className={`settings-nav-item ${activeSection === section.id ? "active" : ""}`}
+                className={cx(settingsNavItemClass, activeSection === section.id && settingsNavItemActiveClass)}
                 onClick={() => setActiveSection(section.id)}
               >
-                <section.icon size={16} className="nav-icon" />
+                <section.icon size={16} className={cx(settingsNavIconClass, activeSection === section.id && settingsNavIconActiveClass)} />
                 <span>{section.label}</span>
               </button>
             ))}
 
-            <div className="settings-nav-subheader">Core plugins</div>
+            <div className={settingsNavSubheaderClass}>Core plugins</div>
             {corePluginsList.map((section) => (
               <button
                 key={section.id}
-                className={`settings-nav-item ${activeSection === section.id ? "active" : ""}`}
+                className={cx(settingsNavItemClass, activeSection === section.id && settingsNavItemActiveClass)}
                 onClick={() => setActiveSection(section.id)}
               >
-                <section.icon size={16} className="nav-icon" />
+                <section.icon size={16} className={cx(settingsNavIconClass, activeSection === section.id && settingsNavIconActiveClass)} />
                 <span>{section.label}</span>
               </button>
             ))}
           </nav>
 
-          <div className="settings-content">
+          <div className={settingsContentClass}>
             {/* ── GENERAL SECTION ─────────────────────────────────── */}
             {activeSection === "general" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Version 1.0.0</div>
-                    <div className="setting-description">
-                      Installer version: 1.0.0. <a href="#" className="setting-link">Read the changelog</a>.
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Version 1.0.0</div>
+                    <div className={settingDescriptionClass}>
+                      Installer version: 1.0.0. <a href="#" className={settingLinkClass}>Read the changelog</a>.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <button className="setting-btn-primary">Check for updates</button>
+                  <div className={settingControlClass}>
+                    <button className={settingBtnPrimaryClass}>Check for updates</button>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Automatic updates</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Automatic updates</div>
+                    <div className={settingDescriptionClass}>
                       Turn this off to prevent the app from checking for updates.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={autoUpdates}
                         onChange={(e) => setAutoUpdates(e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Language</div>
-                    <div className="setting-description">
-                      Change the display language. <a href="#" className="setting-link">Learn how to add languages</a>.
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Language</div>
+                    <div className={settingDescriptionClass}>
+                      Change the display language. <a href="#" className={settingLinkClass}>Learn how to add languages</a>.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <select
                       value={selectedLanguage}
                       onChange={(e) => setSelectedLanguage(e.target.value)}
-                      className="setting-select"
+                      className={settingSelectClass}
                     >
                       <option value="English">English</option>
                       <option value="Deutsch">Deutsch</option>
@@ -419,24 +552,24 @@ export function SettingsPage({
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Help</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Help</div>
+                    <div className={settingDescriptionClass}>
                       Learn how to use OpenObsidian and get help from the community.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <button className="setting-btn-secondary">Open</button>
+                  <div className={settingControlClass}>
+                    <button className={settingBtnSecondaryClass}>Open</button>
                   </div>
                 </div>
 
-                <h3 className="setting-group-header">Account</h3>
+                <h3 className={settingGroupHeaderClass}>Account</h3>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Your account</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Your account</div>
+                    <div className={settingDescriptionClass}>
                       {currentUser ? (
                         <span>Logged in as <strong>{currentUser.email}</strong>. Your account is connected and ready for cloud sync and collaboration.</span>
                       ) : (
@@ -444,10 +577,10 @@ export function SettingsPage({
                       )}
                     </div>
                   </div>
-                  <div className="setting-control button-row">
+                  <div className={buttonRowClass}>
                     {currentUser ? (
                       <button
-                        className="setting-btn-secondary"
+                        className={settingBtnSecondaryClass}
                         onClick={async () => {
                           try {
                             await authManager.signOut();
@@ -461,7 +594,7 @@ export function SettingsPage({
                     ) : (
                       <>
                         <button
-                          className="setting-btn-secondary"
+                          className={settingBtnSecondaryClass}
                           onClick={() => {
                             setAuthModalMode('login');
                             setShowAuthModal(true);
@@ -470,7 +603,7 @@ export function SettingsPage({
                           Log in
                         </button>
                         <button
-                          className="setting-btn-secondary"
+                          className={settingBtnSecondaryClass}
                           onClick={() => {
                             setAuthModalMode('signup');
                             setShowAuthModal(true);
@@ -483,58 +616,60 @@ export function SettingsPage({
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Commercial license</div>
-                    <div className="setting-description">
-                      Help keep OpenObsidian 100% user-supported and independent. <a href="#" className="setting-link">Learn more</a>.
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Commercial license</div>
+                    <div className={settingDescriptionClass}>
+                      Help keep OpenObsidian 100% user-supported and independent. <a href="#" className={settingLinkClass}>Learn more</a>.
                     </div>
                   </div>
-                  <div className="setting-control button-row">
-                    <button className="setting-btn-primary">Activate</button>
-                    <button className="setting-btn-secondary">Purchase</button>
+                  <div className={buttonRowClass}>
+                    <button className={settingBtnPrimaryClass}>Activate</button>
+                    <button className={settingBtnSecondaryClass}>Purchase</button>
                   </div>
                 </div>
 
-                <h3 className="setting-group-header">Advanced</h3>
+                <h3 className={settingGroupHeaderClass}>Advanced</h3>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title-with-icon">
-                      <Clock size={16} className="setting-title-icon" />
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleWithIconClass}>
+                      <Clock size={16} className={settingTitleIconClass} />
                       <span>Notify if startup takes longer than expected</span>
                     </div>
-                    <div className="setting-description">
+                    <div className={settingDescriptionClass}>
                       Diagnose performance bugs with your vault by seeing what is causing notes and graph indexers to load slowly.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={notifyStartup}
                         onChange={(e) => setNotifyStartup(e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Command line interface</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Command line interface</div>
+                    <div className={settingDescriptionClass}>
                       Allow advanced system interactions and shell execution with OpenObsidian vaults from your terminal.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={cliEnabled}
                         onChange={(e) => setCliEnabled(e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
@@ -543,15 +678,15 @@ export function SettingsPage({
 
             {/* ── EDITOR SECTION ──────────────────────────────────── */}
             {activeSection === "editor" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Font size</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Font size</div>
+                    <div className={settingDescriptionClass}>
                       Adjust the general font size across notes, sidebar, and panels.
                     </div>
                   </div>
-                  <div className="setting-control range-control">
+                  <div className={rangeControlClass}>
                     <input
                       type="range"
                       min="12"
@@ -568,20 +703,20 @@ export function SettingsPage({
                         setLocalSettings(updated);
                         onSettingsChange(updated);
                       }}
-                      className="setting-range-slider"
+                      className={settingRangeSliderClass}
                     />
-                    <span className="range-indicator">{localSettings.fontSize}px</span>
+                    <span className={rangeIndicatorClass}>{localSettings.fontSize}px</span>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Line height</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Line height</div>
+                    <div className={settingDescriptionClass}>
                       Define the vertical spacing between text lines in the editor view.
                     </div>
                   </div>
-                  <div className="setting-control range-control">
+                  <div className={rangeControlClass}>
                     <input
                       type="range"
                       min="1.2"
@@ -589,24 +724,45 @@ export function SettingsPage({
                       step="0.1"
                       value={localSettings.lineHeight}
                       onChange={(e) => updateSetting("lineHeight", parseFloat(e.target.value))}
-                      className="setting-range-slider"
+                      className={settingRangeSliderClass}
                     />
-                    <span className="range-indicator">{localSettings.lineHeight}</span>
+                    <span className={rangeIndicatorClass}>{localSettings.lineHeight}</span>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Tab size</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Note content width</div>
+                    <div className={settingDescriptionClass}>
+                      Set the maximum note width used in both editing and reading views.
+                    </div>
+                  </div>
+                  <div className={rangeControlClass}>
+                    <input
+                      type="range"
+                      min="720"
+                      max="1280"
+                      step="20"
+                      value={localSettings.readingViewWidth}
+                      onChange={(e) => updateSetting("readingViewWidth", parseInt(e.target.value))}
+                      className={settingRangeSliderClass}
+                    />
+                    <span className={rangeIndicatorClass}>{localSettings.readingViewWidth}px</span>
+                  </div>
+                </div>
+
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Tab size</div>
+                    <div className={settingDescriptionClass}>
                       Number of spaces that a tab represents when writing indentation inside notes.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <select
                       value={localSettings.tabSize}
                       onChange={(e) => updateSetting("tabSize", parseInt(e.target.value))}
-                      className="setting-select"
+                      className={settingSelectClass}
                     >
                       <option value="2">2 spaces</option>
                       <option value="4">4 spaces</option>
@@ -615,176 +771,189 @@ export function SettingsPage({
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Word wrap</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Word wrap</div>
+                    <div className={settingDescriptionClass}>
                       Force long lines of text to wrap to the width of the editor screen automatically.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.wordWrap}
                         onChange={(e) => updateSetting("wordWrap", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Spell check</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Spell check</div>
+                    <div className={settingDescriptionClass}>
                       Enable system spell checking to highlight typos and grammatical errors inside note files.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.spellcheck}
                         onChange={(e) => updateSetting("spellcheck", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Show line numbers</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Show line numbers</div>
+                    <div className={settingDescriptionClass}>
                       Display line numbers along the left margin of the editor pane.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.showLineNumbers}
                         onChange={(e) => updateSetting("showLineNumbers", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Vim Mode</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Vim Mode</div>
+                    <div className={settingDescriptionClass}>
                       Neovim-style modal editing and : commands
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.vimMode}
                         onChange={(e) => updateSetting("vimMode", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
+                </div>
+
+                <div className={resetContainerClass}>
+                  <button className={settingResetBtnClass} onClick={resetEditorSettings}>
+                    <RotateCcw size={14} className={resetIconClass} />
+                    Reset editor settings
+                  </button>
                 </div>
               </div>
             )}
 
             {/* ── FILES & LINKS SECTION ───────────────────────────── */}
             {activeSection === "files" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Default location for new notes</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Default location for new notes</div>
+                    <div className={settingDescriptionClass}>
                       Specifies where newly created note files will be stored in your vault folder hierarchy.
                     </div>
                   </div>
-                  <div className="setting-control browse-control">
+                  <div className={browseControlClass}>
                     <input
                       type="text"
                       value={localSettings.defaultNoteLocation}
                       onChange={(e) => updateSetting("defaultNoteLocation", e.target.value)}
                       placeholder="Vault root"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
-                    <button className="setting-btn-secondary icon-btn" aria-label="Browse notes directory">
+                    <button className={settingIconBtnSecondaryClass} aria-label="Browse notes directory">
                       <FolderOpen size={16} />
                     </button>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Attachment folder</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Attachment folder</div>
+                    <div className={settingDescriptionClass}>
                       Target subdirectory name for all pasted or dropped images, files, and media.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <input
                       type="text"
                       value={localSettings.attachmentLocation}
                       onChange={(e) => updateSetting("attachmentLocation", e.target.value)}
                       placeholder="attachments"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Use [[Wiki Links]]</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Use [[Wiki Links]]</div>
+                    <div className={settingDescriptionClass}>
                       Create connections using [[WikiLink]] brackets. When off, regular markdown link syntax `[text](path)` is used.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.useWikiLinks}
                         onChange={(e) => updateSetting("useWikiLinks", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Auto-Create Notes</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Auto-Create Notes</div>
+                    <div className={settingDescriptionClass}>
                       Automatically initialize a blank Markdown note when clicking on unresolved Wiki links.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.autoCreateNotes}
                         onChange={(e) => updateSetting("autoCreateNotes", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">New link format</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>New link format</div>
+                    <div className={settingDescriptionClass}>
                       Specify the format of note links constructed inside references (Relative paths, shortest names, or absolute).
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <select
                       value={localSettings.linkFormat}
                       onChange={(e) => updateSetting("linkFormat", e.target.value as AppSettings["linkFormat"])}
-                      className="setting-select"
+                      className={settingSelectClass}
                     >
                       <option value="shortest">Shortest path when possible</option>
                       <option value="relative">Relative path to file</option>
@@ -797,19 +966,19 @@ export function SettingsPage({
 
             {/* ── APPEARANCE SECTION ──────────────────────────────── */}
             {activeSection === "appearance" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Theme</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Theme</div>
+                    <div className={settingDescriptionClass}>
                       Select the application color theme. Custom settings will unlock advanced color tuning options.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <select
                       value={localSettings.theme}
                       onChange={(e) => updateSetting("theme", e.target.value as AppSettings["theme"])}
-                      className="setting-select"
+                      className={settingSelectClass}
                     >
                       <option value="dark">Dark</option>
                       <option value="dark-plus">Dark+</option>
@@ -825,23 +994,23 @@ export function SettingsPage({
                 </div>
 
                 {localSettings.theme === "custom" && (
-                  <div className="custom-theme-subpanel">
-                    <div className="setting-card sub-card">
-                      <div className="setting-info">
-                        <div className="setting-title">Base Theme Type</div>
-                        <div className="setting-description">
+                  <div className={customThemeSubpanelClass}>
+                    <div className={settingSubCardClass}>
+                      <div className={settingInfoClass}>
+                        <div className={settingTitleClass}>Base Theme Type</div>
+                        <div className={settingDescriptionClass}>
                           Sets the foundation defaults (light background base or dark background base) for text colors.
                         </div>
                       </div>
-                      <div className="setting-control toggle-row">
+                      <div className={toggleRowClass}>
                         <button
-                          className={`setting-btn-tab ${localSettings.customThemeType === "light" ? "active" : ""}`}
+                          className={cx(settingBtnTabClass, localSettings.customThemeType === "light" && settingBtnTabActiveClass)}
                           onClick={() => updateSetting("customThemeType", "light")}
                         >
                           Light base
                         </button>
                         <button
-                          className={`setting-btn-tab ${localSettings.customThemeType === "dark" ? "active" : ""}`}
+                          className={cx(settingBtnTabClass, localSettings.customThemeType === "dark" && settingBtnTabActiveClass)}
                           onClick={() => updateSetting("customThemeType", "dark")}
                         >
                           Dark base
@@ -849,65 +1018,65 @@ export function SettingsPage({
                       </div>
                     </div>
 
-                    <div className="setting-card sub-card">
-                      <div className="setting-info">
-                        <div className="setting-title">Custom Background Color</div>
-                        <div className="setting-description">Pick a background color for the general workspace.</div>
+                    <div className={settingSubCardClass}>
+                      <div className={settingInfoClass}>
+                        <div className={settingTitleClass}>Custom Background Color</div>
+                        <div className={settingDescriptionClass}>Pick a background color for the general workspace.</div>
                       </div>
-                      <div className="setting-control">
+                      <div className={settingControlClass}>
                         <input
                           type="color"
                           value={localSettings.customBgPrimary}
                           onChange={(e) => updateSetting("customBgPrimary", e.target.value)}
-                          className="setting-color-picker"
+                          className={settingColorPickerClass}
                         />
                       </div>
                     </div>
 
-                    <div className="setting-card sub-card">
-                      <div className="setting-info">
-                        <div className="setting-title">Custom Text Color</div>
-                        <div className="setting-description">Pick the primary typography color.</div>
+                    <div className={settingSubCardClass}>
+                      <div className={settingInfoClass}>
+                        <div className={settingTitleClass}>Custom Text Color</div>
+                        <div className={settingDescriptionClass}>Pick the primary typography color.</div>
                       </div>
-                      <div className="setting-control">
+                      <div className={settingControlClass}>
                         <input
                           type="color"
                           value={localSettings.customTextPrimary}
                           onChange={(e) => updateSetting("customTextPrimary", e.target.value)}
-                          className="setting-color-picker"
+                          className={settingColorPickerClass}
                         />
                       </div>
                     </div>
 
-                    <div className="setting-card sub-card">
-                      <div className="setting-info">
-                        <div className="setting-title">Accent Color</div>
-                        <div className="setting-description">Pick a color for highlights, selected buttons, active toggles.</div>
+                    <div className={settingSubCardClass}>
+                      <div className={settingInfoClass}>
+                        <div className={settingTitleClass}>Accent Color</div>
+                        <div className={settingDescriptionClass}>Pick a color for highlights, selected buttons, active toggles.</div>
                       </div>
-                      <div className="setting-control">
+                      <div className={settingControlClass}>
                         <input
                           type="color"
                           value={localSettings.accentColor}
                           onChange={(e) => updateSetting("accentColor", e.target.value)}
-                          className="setting-color-picker"
+                          className={settingColorPickerClass}
                         />
                       </div>
                     </div>
                   </div>
                 )}
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Font family</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Font family</div>
+                    <div className={settingDescriptionClass}>
                       Choose a typeface for notes rendering, markdown headers, and the UI elements.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <select
                       value={localSettings.fontFamily}
                       onChange={(e) => updateSetting("fontFamily", e.target.value)}
-                      className="setting-select"
+                      className={settingSelectClass}
                     >
                       <option value="Inter, system-ui, sans-serif">Inter (Default)</option>
                       <option value="'SF Pro Display', system-ui, sans-serif">SF Pro (Apple System)</option>
@@ -922,33 +1091,33 @@ export function SettingsPage({
 
             {/* ── HOTKEYS SECTION ─────────────────────────────────── */}
             {activeSection === "hotkeys" && (
-              <div className="settings-section animate-fade-in">
-                <div className="hotkeys-header-row">
-                  <p className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={hotkeysHeaderRowClass}>
+                  <p className={settingDescriptionClass}>
                     Review and search global keyboard shortcuts programmed for common vault editing triggers.
                   </p>
-                  <div className="hotkey-search-box">
-                    <Search size={14} className="search-icon" />
+                  <div className={hotkeySearchBoxClass}>
+                    <Search size={14} className={hotkeySearchIconClass} />
                     <input
                       type="text"
                       placeholder="Search hotkeys..."
                       value={searchHotkey}
                       onChange={(e) => setSearchHotkey(e.target.value)}
-                      className="hotkey-search-input"
+                      className={hotkeySearchInputClass}
                     />
                   </div>
                 </div>
 
-                <div className="hotkey-list">
+                <div className={hotkeyListClass}>
                   {filteredHotkeys.length > 0 ? (
                     filteredHotkeys.map((hotkey, idx) => (
-                      <div className="hotkey-card" key={idx}>
-                        <span className="hotkey-desc">{hotkey.description}</span>
-                        <kbd className="hotkey-kbd">{hotkey.keys}</kbd>
+                      <div className={hotkeyCardClass} key={idx}>
+                        <span className={hotkeyDescClass}>{hotkey.description}</span>
+                        <kbd className={hotkeyKbdClass}>{hotkey.keys}</kbd>
                       </div>
                     ))
                   ) : (
-                    <div className="hotkeys-empty">No hotkeys match your search query</div>
+                    <div className={hotkeysEmptyClass}>No hotkeys match your search query</div>
                   )}
                 </div>
               </div>
@@ -956,26 +1125,26 @@ export function SettingsPage({
 
             {/* ── AI SECTION ──────────────────────────────────────── */}
             {activeSection === "ai" && (
-              <div className="settings-section animate-fade-in">
+              <div className={settingsSectionClass}>
                 <div className="setting-description-box" style={{ marginBottom: "20px" }}>
-                  <p className="setting-description" style={{ fontSize: "13px", lineHeight: "1.5" }}>
+                  <p className={settingDescriptionClass} style={{ fontSize: "13px", lineHeight: "1.5" }}>
                     Analysis and suggestions work locally. LLM is used for annotations, synthesis, and queries.
                   </p>
                 </div>
 
                 {/* Provider Selector */}
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Provider</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Provider</div>
+                    <div className={settingDescriptionClass}>
                       Choose which AI provider you want to use for advanced reasoning.
                     </div>
                   </div>
-                  <div className="setting-control button-row">
+                  <div className={buttonRowClass}>
                     {AI_PROVIDER_PRESETS.map((preset) => (
                       <button
                         key={preset.id}
-                        className={`setting-btn-tab ${aiSettings.provider === preset.id ? "active" : ""}`}
+                        className={cx(settingBtnTabClass, aiSettings.provider === preset.id && settingBtnTabActiveClass)}
                         onClick={() => {
                           const nextKey = aiSettings.providerKeys?.[preset.id] || "";
                           const nextModels = getModelsForProvider(preset.id);
@@ -995,15 +1164,15 @@ export function SettingsPage({
                 </div>
 
                 {/* API Key */}
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>
                       API Key
                     </div>
-                    <div className="setting-description">
+                    <div className={settingDescriptionClass}>
                       Enter credentials for your provider.{" "}
                       <a
-                        className="setting-link inline-flex items-center gap-1"
+                        className={`${settingLinkClass} inline-flex items-center gap-1`}
                         href={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyUrl}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -1013,10 +1182,10 @@ export function SettingsPage({
                       </a>
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <input
                       type="password"
-                      className="setting-input"
+                      className={settingInputClass}
                       style={{ width: "240px" }}
                       value={aiSettings.apiKey}
                       onChange={(e) => updateAISettings({ apiKey: e.target.value })}
@@ -1026,12 +1195,12 @@ export function SettingsPage({
                 </div>
 
                 {/* Model list */}
-                <h3 className="setting-group-header">Available Models</h3>
-                <div className="ai-setting-models" style={{ width: "100%", marginTop: "12px", border: "1px solid var(--border-medium)", borderRadius: "6px", overflow: "hidden" }}>
+                <h3 className={settingGroupHeaderClass}>Available Models</h3>
+                <div className="flex flex-col gap-1" style={{ width: "100%", marginTop: "12px", border: "1px solid var(--border-medium)", borderRadius: "6px", overflow: "hidden" }}>
                   {models.map((model) => (
                     <button
                       key={model.id}
-                      className={`ai-setting-model ${aiSettings.modelId === model.id ? "active" : ""}`}
+                      className={`transition-colors duration-150 hover:bg-(--bg-hover) ${aiSettings.modelId === model.id ? "bg-(--bg-active) border-(--border-subtle) text-(--text-primary)" : "text-(--text-secondary)"}`}
                       onClick={() => updateAISettings({ modelId: model.id })}
                       style={{
                         width: "100%",
@@ -1049,9 +1218,9 @@ export function SettingsPage({
                         color: "inherit"
                       }}
                     >
-                      <div className="setting-info">
-                        <div className="setting-title" style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>{model.label}</div>
-                        <div className="setting-description" style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{model.description}</div>
+                      <div className={settingInfoClass}>
+                        <div className={settingTitleClass} style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>{model.label}</div>
+                        <div className={settingDescriptionClass} style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{model.description}</div>
                       </div>
                       {aiSettings.modelId === model.id && <Check size={16} style={{ color: "var(--color-accent)", marginRight: "8px" }} />}
                     </button>
@@ -1059,7 +1228,7 @@ export function SettingsPage({
 
                   {aiSettings.provider === "openrouter" && (
                     <button
-                      className={`ai-setting-model ${isCustomModel ? "active" : ""}`}
+                      className={`transition-colors duration-150 hover:bg-(--bg-hover) ${isCustomModel ? "bg-(--bg-active) border-(--border-subtle) text-(--text-primary)" : "text-(--text-secondary)"}`}
                       onClick={() => {
                         const isPreset = models.some((m) => m.id === aiSettings.customModelId);
                         const nextModelId = (!aiSettings.customModelId || isPreset)
@@ -1083,9 +1252,9 @@ export function SettingsPage({
                         color: "inherit"
                       }}
                     >
-                      <div className="setting-info">
-                        <div className="setting-title" style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>Custom Model</div>
-                        <div className="setting-description" style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>Use any other OpenRouter model by entering its ID</div>
+                      <div className={settingInfoClass}>
+                        <div className={settingTitleClass} style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>Custom Model</div>
+                        <div className={settingDescriptionClass} style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>Use any other OpenRouter model by entering its ID</div>
                       </div>
                       {isCustomModel && <Check size={16} style={{ color: "var(--color-accent)", marginRight: "8px" }} />}
                     </button>
@@ -1094,17 +1263,17 @@ export function SettingsPage({
 
                 {/* Custom Model Input */}
                 {aiSettings.provider === "openrouter" && isCustomModel && (
-                  <div className="setting-card animate-fade-in" style={{ marginTop: "16px" }}>
-                    <div className="setting-info">
-                      <div className="setting-title">Custom Model ID</div>
-                      <div className="setting-description">
+                  <div className={`${settingCardClass} animate-fade-in`} style={{ marginTop: "16px" }}>
+                    <div className={settingInfoClass}>
+                      <div className={settingTitleClass}>Custom Model ID</div>
+                      <div className={settingDescriptionClass}>
                         Enter the exact model identifier from OpenRouter (e.g. poolside/laguna-m.1:free).
                       </div>
                     </div>
-                    <div className="setting-control">
+                    <div className={settingControlClass}>
                       <input
                         type="text"
-                        className="setting-input"
+                        className={settingInputClass}
                         style={{ width: "240px" }}
                         value={aiSettings.modelId}
                         onChange={(e) => {
@@ -1121,17 +1290,17 @@ export function SettingsPage({
                 )}
 
                 {/* Status indicators */}
-                <h3 className="setting-group-header">System Status</h3>
+                <h3 className={settingGroupHeaderClass}>System Status</h3>
                 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Analysis Engine</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Analysis Engine</div>
+                    <div className={settingDescriptionClass}>
                       State of the background note indexer and vector embeddings store.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <div className={isModelLoaded() ? "ai-setting-status-ok" : "ai-setting-status-warn"} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
+                  <div className={settingControlClass}>
+                    <div className={`flex items-center gap-1.5 text-[12.5px] ${isModelLoaded() ? "text-(--text-secondary) [&_svg]:text-(--success)" : "text-(--text-muted) [&_svg]:text-(--warning)"}`} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
                       {isModelLoaded() ? <Check size={14} style={{ color: "#22c55e" }} /> : <AlertCircle size={14} style={{ color: "#eab308" }} />}
                       <span style={{ color: isModelLoaded() ? "var(--text-primary)" : "var(--text-muted)" }}>
                         {isModelLoaded()
@@ -1142,15 +1311,15 @@ export function SettingsPage({
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">LLM Service Connection</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>LLM Service Connection</div>
+                    <div className={settingDescriptionClass}>
                       Verification of the active remote large language model connection.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <div className={hasApiKey ? "ai-setting-status-ok" : "ai-setting-status-warn"} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
+                  <div className={settingControlClass}>
+                    <div className={`flex items-center gap-1.5 text-[12.5px] ${hasApiKey ? "text-(--text-secondary) [&_svg]:text-(--success)" : "text-(--text-muted) [&_svg]:text-(--warning)"}`} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
                       {hasApiKey ? <Check size={14} style={{ color: "#22c55e" }} /> : <AlertCircle size={14} style={{ color: "#eab308" }} />}
                       <span style={{ color: hasApiKey ? "var(--text-primary)" : "var(--text-muted)" }}>
                         {hasApiKey ? `Connected: ${currentModel?.shortLabel || currentModel?.label}` : "No API key — local analysis still works"}
@@ -1163,48 +1332,51 @@ export function SettingsPage({
 
             {/* ── BACKLINKS SECTION ────────────────────────────────── */}
             {activeSection === "backlinks" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Show Backlinks pane by default</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Show Backlinks pane by default</div>
+                    <div className={settingDescriptionClass}>
                       Always open the Backlinks panel on the right sidebar when loading a note file.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
-                      <input type="checkbox" defaultChecked={true} />
-                      <span className="toggle-slider"></span>
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
+                      <input
+                        className={settingToggleInputClass} type="checkbox" defaultChecked={true} />
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Integrate backlinks at the end of notes</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Integrate backlinks at the end of notes</div>
+                    <div className={settingDescriptionClass}>
                       Inject a collapsible list of all referencing notes directly beneath your note contents.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
-                      <input type="checkbox" defaultChecked={false} />
-                      <span className="toggle-slider"></span>
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
+                      <input
+                        className={settingToggleInputClass} type="checkbox" defaultChecked={false} />
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Include unlinked mentions</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Include unlinked mentions</div>
+                    <div className={settingDescriptionClass}>
                       Search and surface notes that write this note's name but do not wrap it inside brackets.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
-                      <input type="checkbox" defaultChecked={true} />
-                      <span className="toggle-slider"></span>
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
+                      <input
+                        className={settingToggleInputClass} type="checkbox" defaultChecked={true} />
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
@@ -1213,62 +1385,63 @@ export function SettingsPage({
 
             {/* ── CANVAS SECTION ──────────────────────────────────── */}
             {activeSection === "canvas" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Graph node scale</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Graph node scale</div>
+                    <div className={settingDescriptionClass}>
                       Specify the visual circumference diameter of note nodes on the d3 graph view.
                     </div>
                   </div>
-                  <div className="setting-control range-control">
+                  <div className={rangeControlClass}>
                     <input
                       type="range"
                       min="2"
                       max="12"
                       value={localSettings.nodeSize}
                       onChange={(e) => updateSetting("nodeSize", parseInt(e.target.value))}
-                      className="setting-range-slider"
+                      className={settingRangeSliderClass}
                     />
-                    <span className="range-indicator">{localSettings.nodeSize}px</span>
+                    <span className={rangeIndicatorClass}>{localSettings.nodeSize}px</span>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Node separation constraint</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Node separation constraint</div>
+                    <div className={settingDescriptionClass}>
                       Force spacing distance threshold between d3 coordinates on the active layout.
                     </div>
                   </div>
-                  <div className="setting-control range-control">
+                  <div className={rangeControlClass}>
                     <input
                       type="range"
                       min="50"
                       max="200"
                       value={localSettings.nodeSpacing}
                       onChange={(e) => updateSetting("nodeSpacing", parseInt(e.target.value))}
-                      className="setting-range-slider"
+                      className={settingRangeSliderClass}
                     />
-                    <span className="range-indicator">{localSettings.nodeSpacing}px</span>
+                    <span className={rangeIndicatorClass}>{localSettings.nodeSpacing}px</span>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Show orphans</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Show orphans</div>
+                    <div className={settingDescriptionClass}>
                       Render isolated note files on the knowledge graph that have no links connected to other notes.
                     </div>
                   </div>
-                  <div className="setting-control">
-                    <label className="setting-toggle">
+                  <div className={settingControlClass}>
+                    <label className={settingToggleClass}>
                       <input
+                        className={settingToggleInputClass}
                         type="checkbox"
                         checked={localSettings.showOrphans}
                         onChange={(e) => updateSetting("showOrphans", e.target.checked)}
                       />
-                      <span className="toggle-slider"></span>
+                      <span className={toggleSliderClass} />
                     </label>
                   </div>
                 </div>
@@ -1277,59 +1450,59 @@ export function SettingsPage({
 
             {/* ── DAILY NOTES SECTION ─────────────────────────────── */}
             {activeSection === "daily-notes" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Daily notes folder</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Daily notes folder</div>
+                    <div className={settingDescriptionClass}>
                       Subdirectory folder name where daily journal notes are created (defaults to root if empty).
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <input
                       type="text"
                       value={localSettings.dailyNoteFolder}
                       onChange={(e) => updateSetting("dailyNoteFolder", e.target.value)}
                       placeholder="Daily Notes"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Date format template</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Date format template</div>
+                    <div className={settingDescriptionClass}>
                       Specify the filename date convention. Example: `YYYY-MM-DD` or `YYYY-MM-DD-dddd`.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <input
                       type="text"
                       value={localSettings.dailyNoteFormat}
                       onChange={(e) => updateSetting("dailyNoteFormat", e.target.value)}
                       placeholder="YYYY-MM-DD"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Daily note template</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Daily note template</div>
+                    <div className={settingDescriptionClass}>
                       Optionally specify a Markdown file path to pre-fill content when daily logs are auto-created.
                     </div>
                   </div>
-                  <div className="setting-control browse-control">
+                  <div className={browseControlClass}>
                     <input
                       type="text"
                       value={localSettings.dailyNoteTemplate}
                       onChange={(e) => updateSetting("dailyNoteTemplate", e.target.value)}
                       placeholder="No template selected"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
-                    <button className="setting-btn-secondary icon-btn" aria-label="Browse daily template path">
+                    <button className={settingIconBtnSecondaryClass} aria-label="Browse daily template path">
                       <FolderOpen size={16} />
                     </button>
                   </div>
@@ -1339,9 +1512,9 @@ export function SettingsPage({
 
             {/* ── COLLABORATION SECTION ───────────────────────────── */}
             {activeSection === "collaboration" && (
-              <div className="settings-section animate-fade-in">
+              <div className={settingsSectionClass}>
                 <div className="setting-description-box">
-                  <p className="setting-description">
+                  <p className={settingDescriptionClass}>
                     Manage secure, local-first real-time vault sharing and collaborator panels for the currently loaded vault path.
                   </p>
                   {currentUser?.email && (
@@ -1361,55 +1534,55 @@ export function SettingsPage({
 
             {/* ── TEMPLATES SECTION ───────────────────────────────── */}
             {activeSection === "templates" && (
-              <div className="settings-section animate-fade-in">
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Templates folder</div>
-                    <div className="setting-description">
+              <div className={settingsSectionClass}>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Templates folder</div>
+                    <div className={settingDescriptionClass}>
                       The vault directory location where layout and boilerplate pre-fill markdown files reside.
                     </div>
                   </div>
-                  <div className="setting-control browse-control">
+                  <div className={browseControlClass}>
                     <input
                       type="text"
                       placeholder="templates"
                       defaultValue="templates"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
-                    <button className="setting-btn-secondary icon-btn" aria-label="Browse templates path">
+                    <button className={settingIconBtnSecondaryClass} aria-label="Browse templates path">
                       <FolderOpen size={16} />
                     </button>
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Template date format</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Template date format</div>
+                    <div className={settingDescriptionClass}>
                       Date structure format applied when replacing {"{{date}}"} tags.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <input
                       type="text"
                       defaultValue="YYYY-MM-DD"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
                   </div>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-info">
-                    <div className="setting-title">Template time format</div>
-                    <div className="setting-description">
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Template time format</div>
+                    <div className={settingDescriptionClass}>
                       Time structure format applied when replacing {"{{time}}"} tags.
                     </div>
                   </div>
-                  <div className="setting-control">
+                  <div className={settingControlClass}>
                     <input
                       type="text"
                       defaultValue="HH:mm"
-                      className="setting-input"
+                      className={settingInputClass}
                     />
                   </div>
                 </div>
@@ -1418,7 +1591,7 @@ export function SettingsPage({
 
             {/* ── COMMUNITY PLUGINS SECTION ───────────────────────── */}
             {activeSection === "plugins" && (
-              <div className="settings-section animate-fade-in">
+              <div className={settingsSectionClass}>
                 <PluginSettingsPanel
                   plugins={plugins}
                   settingTabs={pluginSettingTabs}
@@ -1434,34 +1607,34 @@ export function SettingsPage({
 
             {/* ── ABOUT SECTION ───────────────────────────────────── */}
             {activeSection === "about" && (
-              <div className="settings-section animate-fade-in">
-                <div className="about-info">
-                  <div className="about-logo-wrapper">
+              <div className={settingsSectionClass}>
+                <div className={aboutInfoClass}>
+                  <div className={aboutLogoWrapperClass}>
                     <img
                       src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
                       alt="OpenObsidian logo"
-                      className="about-logo-img"
+                      className={aboutLogoImgClass}
                     />
                   </div>
-                  <h4>OpenObsidian</h4>
-                  <p className="about-version">Version 1.0.0 (Core Engine)</p>
-                  <p className="about-description">
+                  <h4 className={aboutHeadingClass}>OpenObsidian</h4>
+                  <p className={aboutVersionClass}>Version 1.0.0 (Core Engine)</p>
+                  <p className={aboutDescriptionClass}>
                     A local-first, offline-ready knowledge management tool for creating,
                     linking, and mapping Markdown note networks. Powered by Electron, React, and TypeScript.
                   </p>
 
-                  <div className="about-links">
-                    <a href="#" className="about-link">Documentation</a>
-                    <span className="link-divider">•</span>
-                    <a href="#" className="about-link">Release notes</a>
-                    <span className="link-divider">•</span>
-                    <a href="#" className="about-link">Report issues</a>
+                  <div className={aboutLinksClass}>
+                    <a href="#" className={aboutLinkClass}>Documentation</a>
+                    <span className={linkDividerClass}>•</span>
+                    <a href="#" className={aboutLinkClass}>Release notes</a>
+                    <span className={linkDividerClass}>•</span>
+                    <a href="#" className={aboutLinkClass}>Report issues</a>
                   </div>
                 </div>
 
-                <div className="reset-container">
-                  <button className="setting-reset-btn" onClick={resetSettings}>
-                    <RotateCcw size={14} className="reset-icon" />
+                <div className={resetContainerClass}>
+                  <button className={settingResetBtnClass} onClick={resetSettings}>
+                    <RotateCcw size={14} className={resetIconClass} />
                     Reset all settings to factory default
                   </button>
                 </div>

@@ -13,6 +13,11 @@ import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
 import { registerIpcHandlers } from './ipc';
 
+// This app intentionally hosts trusted Obsidian plugins that generate code at
+// runtime. Electron's development warning cannot distinguish that from an
+// accidental unsafe-eval policy; packaged builds do not emit the warning.
+process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
+
 let mainWindow: BrowserWindow | null = null;
 let fsManager: FileSystemManager | null = null;
 let searchEngine: SearchEngine | null = null;
@@ -20,6 +25,15 @@ let searchEngine: SearchEngine | null = null;
 const isDevMode = !app.isPackaged;
 
 const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
+
+function configurePluginToolPath(): void {
+  const toolDirectories = [
+    process.env.OPENOBSIDIAN_PANDOC_DIR,
+    path.join(app.getPath('home'), '.local', 'share', 'openobsidian', 'tools', 'pandoc'),
+  ].filter((entry): entry is string => Boolean(entry));
+  const currentPath = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  process.env.PATH = [...new Set([...toolDirectories, ...currentPath])].join(path.delimiter);
+}
 
 function loadConfig() {
   try {
@@ -70,6 +84,9 @@ function configureLinuxFontConfig(): void {
 function configureChromiumRuntime(): void {
   configureLinuxFontConfig();
 
+  const debugPort = process.env.OPENOBSIDIAN_DEBUG_PORT;
+  if (debugPort) app.commandLine.appendSwitch('remote-debugging-port', debugPort);
+
   // Globally disable web security (CORS) so plugins can fetch anything
   app.commandLine.appendSwitch('disable-web-security');
 
@@ -95,6 +112,7 @@ function configureChromiumRuntime(): void {
   ]);
 }
 
+configurePluginToolPath();
 configureChromiumRuntime();
 
 function isExternalHttpUrl(url: string): boolean {
@@ -143,6 +161,7 @@ function createWindow(): void {
       nodeIntegration: true,
       sandbox: false,
       webSecurity: false,
+      webviewTag: true,
     },
   });
 

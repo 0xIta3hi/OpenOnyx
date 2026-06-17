@@ -20,8 +20,14 @@ export interface CachedMetadata {
 
 export class OOMetadataCache extends Events {
   private _cache: Map<string, CachedMetadata> = new Map();
+  private _blocks: Map<string, any[]> = new Map();
   resolvedLinks: Record<string, Record<string, number>> = {};
   unresolvedLinks: Record<string, Record<string, number>> = {};
+  blockCache = {
+    getForFile: (_token: any, file: TFile) => ({
+      blocks: this._blocks.get(file?.path) || [],
+    }),
+  };
 
   getFileCache(file: TFile): CachedMetadata | null {
     return this._cache.get(file.path) || null;
@@ -29,6 +35,72 @@ export class OOMetadataCache extends Events {
 
   getCache(path: string): CachedMetadata | null {
     return this._cache.get(path) || null;
+  }
+
+  getCachedFiles(): string[] {
+    return Array.from(this._cache.keys());
+  }
+
+  getLinks(): Record<string, CachedMetadata['links']> {
+    return Object.fromEntries(Array.from(this._cache, ([path, cache]) => [path, cache.links || []]));
+  }
+
+  getTags(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const cache of this._cache.values()) {
+      for (const tag of cache.tags || []) result[tag.tag] = (result[tag.tag] || 0) + 1;
+      for (const tag of this._frontmatterTags(cache.frontmatter?.tags)) {
+        result[tag] = (result[tag] || 0) + 1;
+      }
+    }
+    return result;
+  }
+
+  getLinkSuggestions(): Array<{ path: string; file: TFile | null }> {
+    const app = (window as any).__oo_app;
+    return this.getCachedFiles().map((path) => ({ path, file: app?.vault?.getFileByPath(path) || null }));
+  }
+
+  async updateFileCache(file: TFile): Promise<void> {
+    const app = (window as any).__oo_app;
+    if (!app?.vault || !file) return;
+    const content = await app.vault.read(file);
+    const metadata = this._parseMetadata(content);
+    this._cache.set(file.path, metadata);
+    this._blocks.set(file.path, this._parseBlocks(content));
+    this.trigger('changed', file, content, metadata);
+    this.trigger('resolved');
+  }
+
+  deletePath(path: string): void {
+    this._cache.delete(path);
+    this._blocks.delete(path);
+    delete this.resolvedLinks[path];
+    delete this.unresolvedLinks[path];
+  }
+
+  isSupportedFile(file: TFile): boolean {
+    return file?.extension === 'md' || file?.extension === 'excalidraw';
+  }
+
+  getBacklinksForFile(file: TFile): { data: Map<TFile, any[]> } {
+    const app = (window as any).__oo_app;
+    const data = new Map<TFile, any[]>();
+    for (const [sourcePath, cache] of this._cache) {
+      const matches = (cache.links || []).filter((link) =>
+        this.getFirstLinkpathDest(link.link.split('#')[0], sourcePath)?.path === file.path,
+      );
+      const source = app?.vault?.getFileByPath(sourcePath);
+      if (source && matches.length > 0) data.set(source, matches);
+    }
+    return { data };
+  }
+
+  iterateRefsForFile(file: TFile, callback: (ref: any) => any): void {
+    const cache = this.getFileCache(file);
+    for (const ref of [...(cache?.links || []), ...(cache?.embeds || []), ...(cache?.frontmatterLinks || [])]) {
+      callback(ref);
+    }
   }
 
   getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null {
@@ -45,16 +117,79 @@ export class OOMetadataCache extends Events {
     return allFiles.find((f: TFile) => f.basename.toLowerCase() === linkpath.toLowerCase()) || null;
   }
 
+  fileToLinktext(file: TFile, sourcePath: string, omitMdExtension?: boolean): string {
+    if (!file) return '';
+    if (omitMdExtension && file.extension === 'md') return file.path.slice(0, -3);
+    return file.path;
+  }
+
   /** Build cache from vault content */
   async buildCache(vault: any): Promise<void> {
-    const files = vault.getMarkdownFiles();
+    this._cache.clear();
+    this._blocks.clear();
+    this.resolvedLinks = {};
+    this.unresolvedLinks = {};
+    const files = vault.getFiles().filter((file: TFile) =>
+      file.extension === 'md' || file.extension === 'excalidraw',
+    );
     for (const file of files) {
       try {
         const content = await vault.read(file);
-        this._cache.set(file.path, this._parseMetadata(content));
+        const metadata = this._parseMetadata(content);
+        this._cache.set(file.path, metadata);
+        this._blocks.set(file.path, this._parseBlocks(content));
+        for (const link of metadata.links || []) {
+          const target = this.getFirstLinkpathDest(link.link.split('#')[0], file.path);
+          const index = target ? this.resolvedLinks : this.unresolvedLinks;
+          const targetPath = target?.path || link.link;
+          index[file.path] ||= {};
+          index[file.path][targetPath] = (index[file.path][targetPath] || 0) + 1;
+        }
       } catch { /* skip errored files */ }
     }
     this.trigger('resolved');
+  }
+
+  private _frontmatterTags(value: unknown): string[] {
+    const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\s,]+/) : [];
+    return values.filter(Boolean).map((tag) => String(tag).startsWith('#') ? String(tag) : `#${tag}`);
+  }
+
+  private _parseBlocks(content: string): any[] {
+    const lines = content.split('\n');
+    const offsets: number[] = [];
+    let offset = 0;
+    for (const line of lines) {
+      offsets.push(offset);
+      offset += line.length + 1;
+    }
+    return lines.flatMap((line, lineNumber) => {
+      const trimmed = line.trim();
+      if (!trimmed) return [];
+      const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+      const blockRef = trimmed.match(/\s\^([A-Za-z0-9-]+)\s*$/);
+      const nodeType = heading ? 'heading'
+        : /^> \[![^\]]+\]/.test(trimmed) ? 'callout'
+        : /^>/.test(trimmed) ? 'blockquote'
+        : /^([-*+]|\d+\.)\s+/.test(trimmed) ? 'listItem'
+        : /^\|.*\|$/.test(trimmed) ? 'table'
+        : /^```/.test(trimmed) ? 'codeblock'
+        : /^%%/.test(trimmed) ? 'comment'
+        : 'paragraph';
+      const display = heading ? heading[2] : trimmed.replace(/\s\^[A-Za-z0-9-]+\s*$/, '');
+      return [{
+        display,
+        position: {
+          start: { line: lineNumber, col: 0, offset: offsets[lineNumber] },
+          end: { line: lineNumber, col: line.length, offset: offsets[lineNumber] + line.length },
+        },
+        node: {
+          type: nodeType,
+          ...(heading ? { level: heading[1].length } : {}),
+          ...(blockRef ? { id: blockRef[1] } : {}),
+        },
+      }];
+    });
   }
 
   private _parseMetadata(content: string): CachedMetadata {

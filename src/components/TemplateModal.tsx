@@ -180,24 +180,24 @@ export function TemplateModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="template-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="template-modal-header">
-          <h3>Insert Template</h3>
-          <button className="modal-close" onClick={onClose}>
-            ×
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={onClose}>
+      <div className="w-full max-w-[640px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-subtle) bg-(--bg-secondary)">
+          <h3 className="text-sm font-semibold m-0 text-(--text-primary)">Insert Template</h3>
+          <button className="bg-transparent border-none text-(--text-muted) cursor-pointer p-1 rounded flex text-lg transition-colors duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)" onClick={onClose}>
+            {'\u00D7'}
           </button>
         </div>
 
-        <div className="template-modal-body">
-          <div className="template-list">
+        <div className="flex h-[360px]">
+          <div className="w-[200px] border-r border-(--border-subtle) overflow-y-auto p-2">
             {loading ? (
-              <div className="template-loading">Loading templates...</div>
+              <div className="flex items-center justify-center py-8 text-xs text-(--text-muted)">Loading templates...</div>
             ) : templates.length === 0 ? (
-              <div className="template-empty">
-                <FileText size={32} />
-                <p>No templates found.</p>
-                <small>
+              <div className="flex flex-col items-center justify-center py-8 gap-2 text-center px-4">
+                <FileText size={32} className="text-(--text-muted) opacity-30" />
+                <p className="text-xs text-(--text-muted)">No templates found.</p>
+                <small className="text-[11px] text-(--text-muted) leading-relaxed">
                   Create a "Templates" folder in your vault and add .md files.
                 </small>
               </div>
@@ -205,45 +205,45 @@ export function TemplateModal({
               templates.map((template) => (
                 <button
                   key={template.path}
-                  className={`template-item ${selectedTemplate?.path === template.path ? "selected" : ""}`}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded text-[13px] border-none cursor-pointer transition-colors duration-100 ${selectedTemplate?.path === template.path ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-secondary) hover:bg-(--bg-hover)"}`}
                   onClick={() => handleSelectTemplate(template)}
                 >
-                  <FileText size={16} />
-                  <span>{template.name}</span>
+                  <FileText size={16} className="shrink-0 text-(--text-muted)" />
+                  <span className="truncate">{template.name}</span>
                 </button>
               ))
             )}
           </div>
 
-          <div className="template-preview">
+          <div className="flex-1 flex flex-col overflow-hidden">
             {selectedTemplate ? (
               <>
-                <div className="template-preview-header">
+                <div className="px-4 py-2 border-b border-(--border-subtle) text-[11px] font-semibold uppercase tracking-wider text-(--text-muted)">
                   <span>Preview</span>
                 </div>
-                <div className="template-preview-content">
-                  <pre>{preview}</pre>
+                <div className="flex-1 overflow-y-auto p-4">
+                  <pre className="text-xs text-(--text-secondary) whitespace-pre-wrap font-mono leading-relaxed m-0">{preview}</pre>
                 </div>
               </>
             ) : (
-              <div className="template-preview-empty">
+              <div className="flex items-center justify-center h-full text-xs text-(--text-muted)">
                 Select a template to preview
               </div>
             )}
           </div>
         </div>
 
-        <div className="template-modal-footer">
-          <div className="template-variables-hint">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-(--border-subtle) bg-(--bg-secondary)">
+          <div className="text-[11px] text-(--text-muted)">
             <strong>Variables:</strong> {"{{date}}"}, {"{{time}}"},{" "}
             {"{{title}}"}, {"{{day}}"}, {"{{timestamp}}"}
           </div>
-          <div className="template-actions">
-            <button className="btn btn-ghost" onClick={onClose}>
+          <div className="flex gap-2">
+            <button className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-(--border-subtle) bg-transparent text-(--text-primary) cursor-pointer transition-all duration-150 hover:bg-(--bg-active)" onClick={onClose}>
               Cancel
             </button>
             <button
-              className="btn btn-primary"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-(--accent-primary) text-(--text-on-accent) border border-(--accent-primary) cursor-pointer transition-all duration-150 hover:bg-(--accent-secondary) disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleInsert}
               disabled={!preview}
             >

@@ -5,14 +5,14 @@
  * Stored locally (or synced with Supabase), fully indexed using AI embeddings.
  *
  * Redesigned UI/UX:
- *  1. Marketplace — Gorgeous glassmorphic grid with search, filter tabs, stats.
+ *  1. Marketplace — Minimal workspace surface with search, filters, stats.
  *  2. Dual-Column Workspace — Sidebar (details & indexed notes explorer) + AI Chat.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Plus, X, Trash2, ArrowLeft, ArrowUp, Loader2,
-  Copy, FileText, Globe, RefreshCw, LogIn, LogOut, Search, Sparkles,
+  Copy, FileText, Globe, RefreshCw, Sparkles,
   Zap, Layers, Brain, Check, GitBranch, MessageSquare, Edit2, Square
 } from "lucide-react";
 import {
@@ -28,7 +28,6 @@ import { isAIConfigured } from "../utils/ai-core";
 import { getAPI } from "../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility, SpaceConversation } from "../types/spaces";
 import type { FileEntry } from "../types/index";
-import { SpacesIcon } from "./SpacesIcon";
 import { MarkdownPreview } from "./editor/MarkdownPreview";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
@@ -57,6 +56,274 @@ const SUGGESTED_QUERIES = [
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const spaceBtnClass =
+  "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)] transition-all duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-60";
+const spaceBtnPrimaryClass =
+  `${spaceBtnClass} border-[var(--accent-primary)] bg-[var(--accent-primary)] text-[var(--text-on-accent)] hover:border-[var(--accent-secondary)] hover:bg-[var(--accent-secondary)]`;
+const spaceBtnSecondaryClass =
+  `${spaceBtnClass} border-[var(--border-medium)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`;
+const spaceBtnGhostClass =
+  `${spaceBtnClass} border-[var(--border-subtle)] bg-transparent hover:bg-[var(--bg-active)]`;
+const spaceBtnDangerClass =
+  `${spaceBtnClass} border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.12)] text-[var(--danger)] hover:border-[rgba(239,68,68,0.55)] hover:bg-[rgba(239,68,68,0.18)]`;
+const spaceBtnSmClass = "px-2.5 py-1 text-[11px]";
+const spaceSidebarNewBtnClass = `${spaceBtnPrimaryClass} ${spaceBtnSmClass} h-8 px-3`;
+const spaceActionBtnClass = `${spaceBtnPrimaryClass} self-start px-3.5 py-1.5 text-[11px]`;
+const spaceReviewBtnClass = `${spaceBtnSecondaryClass} px-1.5 py-0.5 text-[11px]`;
+const spacesPageClass =
+  "relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-primary)] font-[var(--font-sans)] text-[var(--text-primary)] transition-colors duration-150";
+const marketplaceContainerClass = "flex min-h-0 flex-1 overflow-hidden";
+const marketplaceSidebarClass = "flex w-[280px] shrink-0 flex-col gap-4 border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4";
+const spacesBrandClass = "space-y-1 border-b border-[var(--border-subtle)] pb-4";
+const spacesBrandTitleClass = "m-0 text-[15px] font-semibold text-[var(--text-primary)]";
+const spacesBrandSubtitleClass = "m-0 text-[12px] leading-normal text-[var(--text-muted)]";
+const spacesMenuListClass = "flex flex-col gap-1";
+const spacesMenuItemClass =
+  "flex h-8 cursor-pointer items-center rounded-[var(--radius-sm)] border-0 bg-transparent px-3 text-left text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spacesMenuItemActiveClass = "bg-[var(--bg-active)] text-[var(--text-primary)]";
+const spacesUserSectionClass = "mt-auto space-y-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-3";
+const spacesUserStatusClass = "text-[11px] leading-normal text-[var(--text-muted)]";
+const marketplaceContentClass = "flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-primary)]";
+const marketplaceHeaderClass = "flex min-h-[58px] shrink-0 items-center justify-between gap-4 border-b border-[var(--border-subtle)] px-5";
+const spacesSearchWrapperClass = "min-w-0 flex-1";
+const spacesSearchInputClass = "h-8 w-full max-w-[420px] rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--border-medium)]";
+const marketplaceHeaderRightClass = "flex shrink-0 items-center gap-3";
+const marketplaceStatsClass = "text-[12px] text-[var(--text-muted)]";
+const spacesCloseBtnClass = "cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-transparent px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spacesBodyClass = "min-h-0 flex-1 overflow-y-auto p-5";
+const spacesGridClass = "space-y-2";
+const spacesEmptyClass = "flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-8 text-center";
+const spacesEmptyTextClass = "m-0 max-w-[440px] text-[13px] leading-normal text-[var(--text-muted)]";
+const spacesTableHeadClass = "grid grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.4fr)_110px_90px_140px] gap-3 px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
+const spaceCardClass = "grid cursor-pointer grid-cols-[minmax(180px,1.2fr)_minmax(220px,1.4fr)_110px_90px_140px] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-3 transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)]";
+const spaceCardMainClass = "min-w-0 space-y-1";
+const spaceCardTitleClass = "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold text-[var(--text-primary)]";
+const spaceCardDescriptionClass = "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--text-muted)]";
+const spaceCardTagsClass = "flex flex-wrap gap-1";
+const spaceTagClass = "rounded border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]";
+const spaceCardMetaClass = "text-[12px] text-[var(--text-secondary)]";
+const spaceCardMetaLeftClass = "whitespace-nowrap";
+const spaceCardActionsClass = "flex justify-end gap-1";
+const spaceCardActionBtnClass = "cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-transparent px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)]";
+const visibilityBadgeBaseClass = "inline-flex w-fit items-center rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.04em]";
+const visibilityBadgeClasses: Record<SpaceVisibility, string> = {
+  local: `${visibilityBadgeBaseClass} border-[var(--border-subtle)] bg-[var(--bg-primary)] text-[var(--text-muted)]`,
+  private: `${visibilityBadgeBaseClass} border-[rgba(80,140,220,0.25)] bg-[rgba(80,140,220,0.1)] text-[rgb(110,165,235)]`,
+  public: `${visibilityBadgeBaseClass} border-[rgba(80,180,120,0.25)] bg-[rgba(80,180,120,0.1)] text-[rgb(95,190,130)]`,
+};
+const modalOverlayClass =
+  "fixed inset-0 z-[9999] flex items-center justify-center bg-black/50";
+const modalContentClass =
+  "w-full max-w-[440px] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-primary)]";
+const modalHeaderClass =
+  "flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-5 py-4";
+const modalTitleClass = "m-0 text-[13px] font-semibold";
+const modalCloseClass =
+  "flex cursor-pointer rounded-[var(--radius-sm)] border-0 bg-transparent p-1 text-[var(--text-muted)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spaceCreateFormClass = "flex flex-col gap-3.5 p-5";
+const spaceFormFieldClass = "flex flex-col gap-1";
+const spaceFormLabelClass =
+  "text-[10px] font-semibold uppercase tracking-[0.04em] text-[var(--text-secondary)]";
+const spaceFormInputClass =
+  "rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-muted)] focus:border-[var(--border-strong)]";
+const spaceFormTextareaClass = `${spaceFormInputClass} min-h-[70px] resize-y font-[inherit]`;
+const spaceFormTagsInputClass =
+  "flex min-h-9 flex-wrap items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1.5 focus-within:border-[var(--border-strong)]";
+const spaceFormTagClass =
+  "inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-active)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-primary)]";
+const spaceFormTagRemoveClass =
+  "flex cursor-pointer border-0 bg-transparent p-0 text-[var(--text-muted)]";
+const spaceFormTagInputClass =
+  "min-w-20 flex-1 border-0 bg-transparent text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+const spaceVisibilityOptionsClass = "flex gap-1";
+const spaceVisibilityOptionClass =
+  "flex-1 cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-2 text-[11px] font-semibold text-[var(--text-muted)] transition-all duration-150 hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-40";
+const spaceVisibilityOptionActiveClass =
+  "border-[var(--border-strong)] bg-[var(--bg-active)] text-[var(--text-primary)]";
+const spaceFormHintClass = "text-[11px] leading-[1.4] text-[var(--text-muted)]";
+const spaceFormWarningClass = "text-[#c58a2a]";
+const spaceFormErrorClass =
+  "rounded-[var(--radius-sm)] border border-red-500/10 bg-red-500/5 px-2.5 py-2 text-xs text-red-500";
+const spaceFormActionsClass =
+  "mt-2 flex justify-end gap-1.5 border-t border-[var(--border-subtle)] pt-3";
+const spaceWorkspaceClass = "flex min-h-0 flex-1 gap-0 overflow-hidden bg-[var(--bg-primary)]";
+const spaceViewSidebarClass = "flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3";
+const spaceSidebarActionsClass = "flex shrink-0 gap-1";
+const spaceSidebarBtnClass = "inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-transparent px-2.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50";
+const spaceSidebarBtnPrimaryClass = "border-[var(--accent-primary)] bg-[var(--accent-primary)] text-[var(--text-on-accent)] hover:bg-[var(--accent-secondary)]";
+const spaceSidebarSectionClass = "space-y-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-3";
+const spaceSidebarFillSectionClass = `${spaceSidebarSectionClass} flex-1 overflow-hidden`;
+const spaceSidebarSectionHeaderClass = "flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
+const spaceSidebarBadgeClass = "ml-auto rounded bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]";
+const spaceProjectCardClass = "space-y-2";
+const spaceProjectHeaderClass = "flex min-w-0 items-center gap-2";
+const spaceProjectTitleClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold text-[var(--text-primary)]";
+const spaceProjectDescriptionClass = "m-0 text-[12px] leading-normal text-[var(--text-muted)]";
+const spaceProjectTagsClass = "flex flex-wrap gap-1";
+const spaceProjectTagClass = "rounded border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]";
+const spaceProjectMetaClass = "text-[11px] text-[var(--text-muted)]";
+const spaceProjectActionsClass = "flex flex-wrap gap-1";
+const spaceProjectBtnClass = "inline-flex h-7 cursor-pointer items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-transparent px-2 text-[11px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50";
+const spaceSidebarEmptyClass = "rounded border border-dashed border-[var(--border-subtle)] p-3 text-center text-[12px] text-[var(--text-muted)]";
+const spaceConversationsListClass = "flex max-h-full min-h-0 flex-col gap-1 overflow-y-auto";
+const spaceConversationItemClass = "group flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-transparent px-2 py-1.5 text-left transition-colors duration-150 hover:bg-[var(--bg-hover)]";
+const spaceConversationActiveClass = "border-[var(--border-subtle)] bg-[var(--bg-active)]";
+const spaceConversationIconClass = "shrink-0 text-[var(--text-muted)]";
+const spaceConversationTitleClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]";
+const spaceConversationRenameClass = "min-w-0 flex-1 rounded border border-[var(--border-medium)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[12px] text-[var(--text-primary)] outline-none";
+const spaceConversationActionsClass = "ml-auto flex shrink-0 gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100";
+const spaceConversationActionClass = "flex h-6 w-6 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)]";
+const spaceConversationDeleteClass = "hover:text-[var(--danger)]";
+const spaceChatContainerClass = "flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-primary)]";
+const spaceIndexingIndicatorClass = "mx-5 mt-3 flex shrink-0 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-[12px] text-[var(--text-muted)]";
+const spaceMessagesScrollClass = "flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5";
+const spaceChatWelcomeClass = "flex min-h-full items-center justify-center py-8";
+const spaceChatWelcomeContentClass = "flex w-full max-w-[760px] flex-col items-center text-center";
+const spaceChatWelcomeTitleClass = "m-0 text-[22px] font-semibold tracking-normal text-[var(--text-primary)]";
+const spaceChatWelcomeTextClass = "mb-6 mt-2 max-w-[560px] text-[13px] leading-normal text-[var(--text-muted)]";
+const spaceChatCentralInputClass = "w-full max-w-[640px]";
+const spaceChatWelcomeSuggestionsClass = "mt-5 w-full max-w-[640px]";
+const spaceChatSuggestionsGridClass = "grid grid-cols-1 gap-2 sm:grid-cols-2";
+const spaceChatSuggestionClass = "cursor-pointer rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-left text-[12px] leading-normal text-[var(--text-secondary)] transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spaceChatMessageClass =
+  "mx-auto flex w-full max-w-[820px] flex-col";
+const spaceChatUserMessageClass = "items-end";
+const spaceChatAssistantMessageClass = "items-start";
+const spaceChatUserBubbleClass =
+  "max-w-[70%] break-words rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-2.5 text-[13px] leading-normal text-[var(--text-primary)] shadow-[0_4px_12px_rgba(0,0,0,0.12)]";
+const spaceChatAssistantContentClass =
+  "w-full border-0 bg-transparent p-0 text-sm leading-[1.6] text-[var(--text-primary)] [&_.markdown-preview]:min-h-0 [&_.markdown-preview]:max-w-none [&_.markdown-preview]:p-0 [&_.markdown-preview_p]:mb-3 [&_.markdown-preview_p]:mt-0 [&_.markdown-preview_p:last-child]:mb-0 [&_.markdown-preview_ul]:mb-3 [&_.markdown-preview_ul]:mt-0 [&_.markdown-preview_ul]:pl-5 [&_.markdown-preview_ol]:mb-3 [&_.markdown-preview_ol]:mt-0 [&_.markdown-preview_ol]:pl-5 [&_.markdown-preview_li]:mb-1 [&_.markdown-preview_h1]:mb-2 [&_.markdown-preview_h1]:mt-[18px] [&_.markdown-preview_h1]:text-base [&_.markdown-preview_h1]:font-semibold [&_.markdown-preview_h1]:leading-[1.3] [&_.markdown-preview_h2]:mb-2 [&_.markdown-preview_h2]:mt-[18px] [&_.markdown-preview_h2]:text-sm [&_.markdown-preview_h2]:font-semibold [&_.markdown-preview_h2]:leading-[1.3] [&_.markdown-preview_h3]:mb-2 [&_.markdown-preview_h3]:mt-[18px] [&_.markdown-preview_h3]:text-xs [&_.markdown-preview_h3]:font-semibold [&_.markdown-preview_h3]:leading-[1.3] [&_.markdown-preview_pre]:my-3 [&_.markdown-preview_pre]:overflow-x-auto [&_.markdown-preview_pre]:rounded-[var(--radius-md)] [&_.markdown-preview_pre]:border [&_.markdown-preview_pre]:border-[var(--border-subtle)] [&_.markdown-preview_pre]:bg-[var(--bg-secondary)] [&_.markdown-preview_pre]:p-3 [&_.markdown-preview_pre]:font-[var(--font-mono)] [&_.markdown-preview_pre]:text-xs [&_.markdown-preview_code]:rounded-[var(--radius-sm)] [&_.markdown-preview_code]:bg-[var(--bg-secondary)] [&_.markdown-preview_code]:px-1.5 [&_.markdown-preview_code]:py-0.5 [&_.markdown-preview_code]:font-[var(--font-mono)] [&_.markdown-preview_code]:text-xs [&_.markdown-preview_code]:text-[var(--text-primary)] [&_.markdown-preview_pre_code]:bg-transparent [&_.markdown-preview_pre_code]:p-0";
+const spaceChatSourcesClass =
+  "mt-3.5 flex w-full flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2.5";
+const spaceChatSourcesLabelClass =
+  "text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]";
+const spaceChatSourcesListClass = "flex flex-wrap gap-1.5";
+const spaceChatSourcePillClass =
+  "cursor-pointer rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-all duration-150 hover:border-[var(--border-medium)] hover:text-[var(--text-primary)]";
+const spaceChatLoadingClass =
+  "mx-auto flex w-full max-w-[820px] items-center gap-2 self-start rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-muted)]";
+const spaceChatLoadingSpinnerClass =
+  "h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border-subtle)] border-t-[var(--text-muted)]";
+const spaceChatInputPanelClass = "shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] px-6 py-4";
+const spaceChatInputWrapperClass = "relative mx-auto flex w-full max-w-[760px] flex-col rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] shadow-[0_8px_24px_rgba(0,0,0,0.12)] focus-within:border-[var(--border-medium)]";
+const spaceChatInputClass = "min-h-[52px] w-full resize-none border-0 bg-transparent px-4 py-3 text-[13px] leading-normal text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+const spaceChatInputActionsClass = "flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-3 py-2";
+const spaceChatTokenCounterClass = "text-[10px] text-[var(--text-muted)] opacity-80";
+const spaceChatSendClass =
+  "flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--accent-primary)] text-[var(--text-on-accent)] transition-all duration-150 hover:bg-[var(--accent-secondary)] disabled:cursor-not-allowed disabled:bg-[var(--bg-active)] disabled:text-[var(--text-muted)] disabled:opacity-30";
+const spaceChatAbortClass =
+  "bg-[var(--accent-red,#ff5252)] text-white hover:bg-[#ff7b7b]";
+const spaceChatNoAiClass =
+  "mt-1.5 text-center text-[9px] text-[var(--text-muted)]";
+const spaceChatFooterClass =
+  "mt-1.5 text-center text-[9px] text-[var(--text-muted)] opacity-70";
+const spaceChatMemoryClass =
+  "absolute -top-[18px] right-4 text-[9px] font-medium tracking-[0.02em] text-[var(--text-muted)] opacity-80";
+const spaceToastBaseClass =
+  "fixed bottom-6 left-1/2 z-[9999] max-w-[400px] -translate-x-1/2 cursor-pointer rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] px-4 py-2 text-center text-xs font-semibold shadow-[var(--shadow-sm)]";
+const spaceToastSuccessClass =
+  "border border-[var(--border-medium)] text-[var(--text-primary)]";
+const spaceToastErrorClass =
+  "border border-red-500/20 text-red-400";
+const spaceOperationsGridClass = "flex flex-col gap-1";
+const spaceOperationsBtnClass = "flex w-full cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-2 text-left text-[11px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:text-[var(--accent-primary)]";
+const spaceActionCardClass =
+  "mt-3 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] shadow-[0_2px_6px_rgba(0,0,0,0.02)]";
+const spaceActionCardAppliedClass =
+  "border-[rgba(72,199,142,0.3)] bg-[rgba(72,199,142,0.03)]";
+const spaceActionCardRejectedClass =
+  "border-[rgba(255,82,82,0.3)] bg-[rgba(255,82,82,0.03)]";
+const spaceActionCardHeaderClass =
+  "flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-hover)] px-3.5 py-2.5 text-xs font-semibold text-[var(--text-primary)] [&_svg]:text-[var(--accent-primary)]";
+const actionAppliedBadgeClass =
+  "ml-auto rounded border border-[rgba(72,199,142,0.2)] bg-[rgba(72,199,142,0.1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#48c78e]";
+const actionRejectedBadgeClass =
+  "ml-auto rounded border border-[rgba(255,82,82,0.2)] bg-[rgba(255,82,82,0.1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[#ff5252]";
+const spaceActionCardBodyClass = "flex flex-col gap-2.5 p-3.5";
+const spaceActionDetailsClass =
+  "mb-3 flex flex-col gap-1 text-xs leading-normal text-[var(--text-secondary)]";
+const spaceActionButtonsClass = "mt-3 flex flex-wrap gap-2";
+const spaceMultiActionListClass =
+  "mb-3 flex max-h-[180px] flex-col gap-1.5 overflow-y-auto pr-1";
+const multiActionItemClass =
+  "flex items-center justify-between gap-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs";
+const actionNumberClass = "font-bold text-[var(--text-muted)]";
+const actionDescriptionClass =
+  "flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
+const actionMiniAppliedClass =
+  "rounded bg-[rgba(72,199,142,0.1)] px-1.5 py-0.5 text-[10px] font-medium text-[#48c78e]";
+const spaceActionStructureListClass = "flex flex-col gap-2";
+const structureChangeItemClass =
+  "flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-2.5 py-2 text-[11px]";
+const changeTypeBadgeClass =
+  "rounded-[var(--radius-sm)] bg-[var(--bg-active)] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[var(--text-secondary)]";
+const changeDetailsClass =
+  "flex-1 text-[var(--text-secondary)] [&_code]:rounded-[var(--radius-sm)] [&_code]:bg-[var(--bg-hover)] [&_code]:px-[3px] [&_code]:py-px";
+const spaceActionTableClass =
+  "w-full border-collapse text-left text-[11px] [&_td]:border [&_td]:border-[var(--border-subtle)] [&_td]:px-2 [&_td]:py-1.5 [&_td_code]:rounded-[var(--radius-sm)] [&_td_code]:bg-[var(--bg-primary)] [&_td_code]:px-[3px] [&_td_code]:py-px [&_th]:border [&_th]:border-[var(--border-subtle)] [&_th]:bg-[var(--bg-hover)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_th]:text-[var(--text-primary)]";
+const spaceActionInsightsClass = "flex flex-col gap-2.5";
+const insightItemClass =
+  "flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-2.5 text-[11px]";
+const insightTypeClass = "text-[11px] text-[var(--text-primary)]";
+const insightDescriptionClass = "leading-[1.4] text-[var(--text-secondary)]";
+const insightNotesClass = "italic text-[var(--text-muted)]";
+const mentionDropdownClass =
+  "absolute bottom-[calc(100%+8px)] left-0 z-[10000] max-h-[220px] w-full max-w-[360px] overflow-y-auto rounded-md border border-[var(--border-strong)] bg-[var(--color-base-25)] p-1 shadow-[var(--shadow-lg)]";
+const mentionItemClass =
+  "flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const mentionItemActiveClass =
+  "bg-[var(--bg-hover)] text-[var(--text-primary)]";
+const mentionItemIconClass = "shrink-0 text-[var(--text-muted)]";
+const mentionItemTitleClass =
+  "overflow-hidden text-ellipsis whitespace-nowrap";
+const activeActionStatusClass =
+  "mt-2 inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium [&_.status-icon]:shrink-0";
+const activeActionProcessingClass =
+  "border-[rgba(198,198,198,0.15)] bg-[rgba(198,198,198,0.08)] text-[var(--text-secondary)]";
+const activeActionCompletedClass =
+  "border-[rgba(72,199,142,0.15)] bg-[rgba(72,199,142,0.08)] text-[#48c78e]";
+const spaceRightSidebarClass =
+  "flex h-full w-[440px] shrink-0 flex-col gap-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]";
+const spaceRightSidebarHeaderClass =
+  "flex shrink-0 flex-col items-stretch gap-2.5 border-b border-[var(--border-subtle)] pb-2.5";
+const spaceRightSidebarHeaderRowClass =
+  "flex items-center justify-between";
+const spaceRightSidebarTitleClass =
+  "overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold text-[var(--text-primary)]";
+const spaceRightSidebarCloseClass =
+  "flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-[var(--text-muted)] transition-all duration-150 hover:bg-white/5 hover:text-[var(--text-primary)]";
+const spaceRightSidebarTabsClass = "mt-2 flex shrink-0 gap-3";
+const spaceRightSidebarTabClass =
+  "cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-all duration-150 hover:text-[var(--text-secondary)]";
+const spaceRightSidebarTabActiveClass =
+  "border-b-[#48c78e] text-[var(--text-primary)]";
+const spaceRightSidebarBodyClass =
+  "flex flex-1 flex-col gap-3 overflow-y-auto";
+const spaceRightSidebarPreviewClass =
+  "flex-1 overflow-y-auto rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-5 [&_.markdown-preview]:min-h-0 [&_.markdown-preview]:max-w-none [&_.markdown-preview]:p-0";
+const spaceRightSidebarEditClass =
+  "flex h-full flex-col gap-2.5";
+const spaceRightSidebarEditHintClass =
+  "text-[11px] text-[var(--text-muted)]";
+const spaceRightSidebarTextareaClass =
+  "h-full min-h-[200px] w-full flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-4 font-[var(--font-monospace,monospace)] text-xs leading-normal text-[var(--text-primary)] outline-none transition-[border-color,box-shadow] duration-150 focus:border-[var(--interactive-accent)] focus:shadow-[0_0_0_2px_rgba(122,162,247,0.18)]";
+const spaceRightSidebarReviewListClass = "flex flex-col";
+const spaceRightSidebarReviewItemsClass =
+  "mt-3 flex flex-col gap-2.5";
+const spaceRightSidebarReviewItemClass =
+  "flex items-center justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-2.5";
+const spaceRightSidebarReviewInfoClass = "flex flex-col gap-0.5";
+const spaceRightSidebarReviewTypeClass = "text-xs font-medium";
+const spaceRightSidebarReviewPathClass =
+  "text-[11px] text-[var(--text-muted)]";
+const spaceRightSidebarFooterClass =
+  "mt-auto flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-4";
+const spaceRightSidebarBackBtnClass = "mr-auto";
 
 /** Count .md files in a file tree */
 function countNotes(entries: FileEntry[] = []): number {
@@ -196,7 +463,7 @@ function ActiveActionStatus({ actionType, isApplied }: ActiveActionStatusProps) 
 
   if (isApplied) {
     return (
-      <div className="active-action-status completed">
+      <div className={cx(activeActionStatusClass, activeActionCompletedClass)}>
         <Check size={13} className="status-icon" />
         <span>Changes successfully saved and integrated</span>
       </div>
@@ -213,8 +480,8 @@ function ActiveActionStatus({ actionType, isApplied }: ActiveActionStatusProps) 
   }
 
   return (
-    <div className="active-action-status processing">
-      <Loader2 size={13} className="spinner status-icon" />
+    <div className={cx(activeActionStatusClass, activeActionProcessingClass)}>
+      <Loader2 size={13} className="status-icon animate-spin" />
       <span>{steps[step]}</span>
     </div>
   );
@@ -1340,50 +1607,52 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
   if (view === "marketplace") {
     return (
-      <div className="spaces-page">
+      <div className={spacesPageClass}>
         {/* Toast Notification */}
         {toastMessage && (
-          <div className={`space-toast ${toastType}`} onClick={() => setToastMessage(null)}>
+          <div
+            className={cx(spaceToastBaseClass, toastType === "success" ? spaceToastSuccessClass : spaceToastErrorClass)}
+            onClick={() => setToastMessage(null)}
+          >
             {toastMessage}
           </div>
         )}
 
-        <div className="spaces-marketplace-container">
+        <div className={marketplaceContainerClass}>
           {/* Left Sidebar Panel */}
-          <div className="spaces-marketplace-sidebar">
-            <div className="spaces-sidebar-brand">
-              <SpacesIcon size={26} />
-              <span>Spaces</span>
+          <div className={marketplaceSidebarClass}>
+            <div className={spacesBrandClass}>
+              <h1 className={spacesBrandTitleClass}>Spaces</h1>
+              <p className={spacesBrandSubtitleClass}>Private knowledge layers across your vault.</p>
             </div>
 
-            <button
-              className="btn btn-primary btn-sm spaces-sidebar-new-btn"
-              onClick={() => setShowCreateModal(true)}
-            >
-              <Plus size={14} /> New Space
-            </button>
-
-            <div className="spaces-menu-list">
+            <div className={spacesMenuListClass}>
               <button
-                className={`spaces-menu-item ${marketFilter === "all" ? "active" : ""}`}
+                className={spaceSidebarNewBtnClass}
+                onClick={() => setShowCreateModal(true)}
+              >
+                New Space
+              </button>
+              <button
+                className={cx(spacesMenuItemClass, marketFilter === "all" && spacesMenuItemActiveClass)}
                 onClick={() => setMarketFilter("all")}
               >
                 All Spaces
               </button>
               <button
-                className={`spaces-menu-item ${marketFilter === "local" ? "active" : ""}`}
+                className={cx(spacesMenuItemClass, marketFilter === "local" && spacesMenuItemActiveClass)}
                 onClick={() => setMarketFilter("local")}
               >
                 Local Spaces
               </button>
               <button
-                className={`spaces-menu-item ${marketFilter === "private" ? "active" : ""}`}
+                className={cx(spacesMenuItemClass, marketFilter === "private" && spacesMenuItemActiveClass)}
                 onClick={() => setMarketFilter("private")}
               >
                 Private Spaces
               </button>
               <button
-                className={`spaces-menu-item ${marketFilter === "public" ? "active" : ""}`}
+                className={cx(spacesMenuItemClass, marketFilter === "public" && spacesMenuItemActiveClass)}
                 onClick={() => setMarketFilter("public")}
               >
                 Public Spaces
@@ -1391,31 +1660,30 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
 
             {/* Cloud User Profile status in Sidebar */}
-            <div className="spaces-sidebar-user-section">
-              <div className="spaces-user-status-text">
+            <div className={spacesUserSectionClass}>
+              <div className={spacesUserStatusClass}>
                 {isSupabaseConfigured
                   ? authEmail
-                    ? `Cloud Connected\n${authEmail}`
+                    ? `Cloud connected: ${authEmail}`
                     : "Cloud database online. Sign in for sync."
                   : "Cloud offline (Local Mode)"}
               </div>
               <div>
                 {authEmail ? (
-                  <button className="btn btn-ghost btn-sm" onClick={handleSignOut} style={{ width: "100%", padding: "6px 12px", fontSize: 11 }}>
-                    <LogOut size={12} /> Sign out
+                  <button className={cx(spaceBtnGhostClass, spaceBtnSmClass, "w-full px-3 py-1.5 text-[11px]")} onClick={handleSignOut}>
+                    Sign out
                   </button>
                 ) : (
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className={cx(spaceBtnGhostClass, spaceBtnSmClass, "w-full px-3 py-1.5 text-[11px]")}
                     onClick={() => {
                       setAuthMessage("Sign in to sync your knowledge layers with the cloud.");
                       setShowAuthModal(true);
                     }}
                     disabled={!isSupabaseConfigured}
                     title={!isSupabaseConfigured ? "Configure Supabase vars in environment to enable cloud database" : undefined}
-                    style={{ width: "100%", padding: "6px 12px", fontSize: 11 }}
                   >
-                    <LogIn size={12} /> Sign in
+                    Sign in
                   </button>
                 )}
               </div>
@@ -1423,78 +1691,87 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
 
           {/* Right Main Content Panel */}
-          <div className="spaces-marketplace-content">
-            <div className="spaces-marketplace-header">
-              <div className="spaces-search-wrapper">
-                <Search size={13} className="spaces-search-icon" />
+          <div className={marketplaceContentClass}>
+            <div className={marketplaceHeaderClass}>
+              <div className={spacesSearchWrapperClass}>
                 <input
                   type="text"
-                  placeholder="Search custom spaces..."
-                  className="spaces-search-input"
+                  placeholder="Search spaces"
+                  className={spacesSearchInputClass}
                   value={marketSearch}
                   onChange={(e) => setMarketSearch(e.target.value)}
                 />
               </div>
 
-              <div className="spaces-marketplace-header-right">
-                <div className="spaces-marketplace-stats">
+              <div className={marketplaceHeaderRightClass}>
+                <div className={marketplaceStatsClass}>
                   Vault Notes: {vaultNoteCount} | Custom Layers: {spaces.length}
                 </div>
-                <button className="spaces-close-btn" onClick={onClose}>
-                  <X size={15} />
+                <button className={spacesCloseBtnClass} onClick={onClose}>
+                  Close
                 </button>
               </div>
             </div>
 
-            {/* Main Body Grid */}
-            <div className="spaces-body">
+            {/* Main Body */}
+            <div className={spacesBodyClass}>
               {filteredSpaces.length === 0 ? (
-                <div className="spaces-empty">
-                  <SpacesIcon size={36} style={{ opacity: 0.3, color: "var(--text-muted)", marginBottom: 8 }} />
-                  <p>
+                <div className={spacesEmptyClass}>
+                  <p className={spacesEmptyTextClass}>
                     {marketSearch
                       ? `No spaces matched the query "${marketSearch}".`
                       : `Build your first queryable AI knowledge layer over your ${vaultNoteCount} notes.`}
                   </p>
                   {!marketSearch && (
-                    <button className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
-                      <Plus size={14} /> Create a Space
+                    <button className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)} onClick={() => setShowCreateModal(true)}>
+                      Create a Space
                     </button>
                   )}
                 </div>
               ) : (
-                <div className="spaces-grid">
+                <div className={spacesGridClass}>
+                  <div className={spacesTableHeadClass} aria-hidden="true">
+                    <span>Space</span>
+                    <span>Description</span>
+                    <span>Access</span>
+                    <span>Notes</span>
+                    <span>Actions</span>
+                  </div>
                   {filteredSpaces.map((s) => (
-                    <div key={s.id} className="space-card" onClick={() => openSpace(s.id)}>
-                      <div className="space-card-header-row">
-                        <h3 className="space-card-title">{s.title}</h3>
-                        <span className={`visibility-badge ${s.visibility}`}>
-                          {getVisibilityLabel(s.visibility)}
-                        </span>
+                    <div key={s.id} className={spaceCardClass} onClick={() => openSpace(s.id)}>
+                      <div className={spaceCardMainClass}>
+                        <h3 className={spaceCardTitleClass}>{s.title}</h3>
+
+                        {(s.helpsWith || []).length > 0 && (
+                          <div className={spaceCardTagsClass}>
+                            {(s.helpsWith || []).map((tag) => (
+                              <span key={tag} className={spaceTagClass}>{tag}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
-                      {s.description && <p className="space-card-desc">{s.description}</p>}
+                      <p className={spaceCardDescriptionClass}>
+                        {s.description || "No description added."}
+                      </p>
 
-                      {(s.helpsWith || []).length > 0 && (
-                        <div className="space-card-tags">
-                          {(s.helpsWith || []).map((tag) => (
-                            <span key={tag} className="space-tag">{tag}</span>
-                          ))}
-                        </div>
-                      )}
+                      <span className={visibilityBadgeClasses[s.visibility]}>
+                        {getVisibilityLabel(s.visibility)}
+                      </span>
 
-                      <div className="space-card-meta">
-                        <div className="space-card-meta-left">
-                          <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""} index size</span>
+                      <div className={spaceCardMetaClass}>
+                        <div className={spaceCardMetaLeftClass}>
+                          <span>{s.noteCount} note{s.noteCount !== 1 ? "s" : ""}</span>
                         </div>
-                        <div className="space-card-actions" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => handleFork(s.id)} title="Remix/Save Space">
-                            <Copy size={11} /> Remix
-                          </button>
-                          <button onClick={() => setDeleteConfirmId(s.id)} title="Delete Space">
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
+                      </div>
+
+                      <div className={spaceCardActionsClass} onClick={(e) => e.stopPropagation()}>
+                        <button className={spaceCardActionBtnClass} onClick={() => handleFork(s.id)} title="Remix/Save Space">
+                          Remix
+                        </button>
+                        <button className={spaceCardActionBtnClass} onClick={() => setDeleteConfirmId(s.id)} title="Delete Space">
+                          Delete
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1506,23 +1783,23 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
         {/* Create Space Dialog Modal */}
         {showCreateModal && (
-          <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h3>New Knowledge Space</h3>
-                <button className="modal-close" onClick={() => setShowCreateModal(false)}>
+          <div className={modalOverlayClass} onClick={() => setShowCreateModal(false)}>
+            <div className={modalContentClass} onClick={(e) => e.stopPropagation()}>
+              <div className={modalHeaderClass}>
+                <h3 className={modalTitleClass}>New Knowledge Space</h3>
+                <button className={modalCloseClass} onClick={() => setShowCreateModal(false)}>
                   <X size={15} />
                 </button>
               </div>
-              <div className="space-create-form">
-                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+              <div className={spaceCreateFormClass}>
+                <div className={spaceFormHintClass}>
                   Creates an AI-queryable vector directory indexing all {vaultNoteCount} notes in your active vault.
                 </div>
 
-                <div className="space-form-field">
-                  <label>Title</label>
+                <div className={spaceFormFieldClass}>
+                  <label className={spaceFormLabelClass}>Title</label>
                   <input
-                    className="space-form-input"
+                    className={spaceFormInputClass}
                     placeholder="e.g. Research Hub, React Dev"
                     value={createTitle}
                     onChange={(e) => setCreateTitle(e.target.value)}
@@ -1530,28 +1807,29 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   />
                 </div>
 
-                <div className="space-form-field">
-                  <label>Description</label>
+                <div className={spaceFormFieldClass}>
+                  <label className={spaceFormLabelClass}>Description</label>
                   <textarea
-                    className="space-form-input"
+                    className={spaceFormTextareaClass}
                     placeholder="Describe the knowledge covered by this space..."
                     value={createDesc}
                     onChange={(e) => setCreateDesc(e.target.value)}
                   />
                 </div>
 
-                <div className="space-form-field">
-                  <label>Focus Tags (Press Enter / Comma)</label>
-                  <div className="space-form-tags-input">
+                <div className={spaceFormFieldClass}>
+                  <label className={spaceFormLabelClass}>Focus Tags (Press Enter / Comma)</label>
+                  <div className={spaceFormTagsInputClass}>
                     {createTags.map((tag) => (
-                      <span key={tag} className="space-form-tag">
+                      <span key={tag} className={spaceFormTagClass}>
                         {tag}
-                        <button onClick={() => setCreateTags((prev) => prev.filter((t) => t !== tag))}>
+                        <button className={spaceFormTagRemoveClass} onClick={() => setCreateTags((prev) => prev.filter((t) => t !== tag))}>
                           <X size={8} />
                         </button>
                       </span>
                     ))}
                     <input
+                      className={spaceFormTagInputClass}
                       placeholder={createTags.length === 0 ? "e.g. backend, hooks, styling" : ""}
                       value={createTagInput}
                       onChange={(e) => setCreateTagInput(e.target.value)}
@@ -1560,19 +1838,19 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </div>
                 </div>
 
-                <div className="space-form-field">
-                  <label>Vault Visibility</label>
-                  <div className="space-visibility-options">
+                <div className={spaceFormFieldClass}>
+                  <label className={spaceFormLabelClass}>Vault Visibility</label>
+                  <div className={spaceVisibilityOptionsClass}>
                     <button
                       type="button"
-                      className={`space-visibility-option ${createVisibility === "local" ? "active" : ""}`}
+                      className={cx(spaceVisibilityOptionClass, createVisibility === "local" && spaceVisibilityOptionActiveClass)}
                       onClick={() => setCreateVisibility("local")}
                     >
                       Local-Only
                     </button>
                     <button
                       type="button"
-                      className={`space-visibility-option ${createVisibility === "private" ? "active" : ""}`}
+                      className={cx(spaceVisibilityOptionClass, createVisibility === "private" && spaceVisibilityOptionActiveClass)}
                       onClick={() => setCreateVisibility("private")}
                       disabled={!isSupabaseConfigured}
                     >
@@ -1580,14 +1858,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     </button>
                     <button
                       type="button"
-                      className={`space-visibility-option ${createVisibility === "public" ? "active" : ""}`}
+                      className={cx(spaceVisibilityOptionClass, createVisibility === "public" && spaceVisibilityOptionActiveClass)}
                       onClick={() => setCreateVisibility("public")}
                       disabled={!isSupabaseConfigured}
                     >
                       Public Cloud
                     </button>
                   </div>
-                  <div className="space-form-hint">
+                  <div className={spaceFormHintClass}>
                     {createVisibility === "local"
                       ? "Securely cached on this local device only."
                       : createVisibility === "private"
@@ -1595,36 +1873,36 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         : "Published dynamically. Discoverable and remixable by others."}
                   </div>
                   {!isSupabaseConfigured && (
-                    <div className="space-form-hint warning">
+                    <div className={cx(spaceFormHintClass, spaceFormWarningClass)}>
                       Cloud DB parameters (Supabase environment keys) are required to toggle remote features.
                     </div>
                   )}
                 </div>
 
                 {createVisibility === "private" && (
-                  <div className="space-form-field">
-                    <label>Encryption Password</label>
+                  <div className={spaceFormFieldClass}>
+                    <label className={spaceFormLabelClass}>Encryption Password</label>
                     <input
-                      className="space-form-input"
+                      className={spaceFormInputClass}
                       type="password"
                       placeholder="Required to unlock this private space"
                       value={createEncryptionPassword}
                       onChange={(e) => setCreateEncryptionPassword(e.target.value)}
                     />
-                    <div className="space-form-hint warning">
+                    <div className={cx(spaceFormHintClass, spaceFormWarningClass)}>
                       Recovery warning: this password cannot be recovered. Changing it only re-encrypts the space key.
                     </div>
                   </div>
                 )}
 
-                {createError && <div className="space-form-error">{createError}</div>}
+                {createError && <div className={spaceFormErrorClass}>{createError}</div>}
 
-                <div className="space-form-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(false)}>
+                <div className={spaceFormActionsClass}>
+                  <button className={cx(spaceBtnGhostClass, spaceBtnSmClass)} onClick={() => setShowCreateModal(false)}>
                     Cancel
                   </button>
                   <button
-                    className="btn btn-primary btn-sm"
+                    className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
                     onClick={handleCreate}
                     disabled={!createTitle.trim() || (createVisibility === "private" && createEncryptionPassword.length < 8)}
                   >
@@ -1645,16 +1923,16 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           const canDelete = !isCloud || (authManager.isLoggedIn() && isOwner);
 
           return (
-            <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
-                <div className="modal-header">
-                  <h3>Delete Space</h3>
-                  <button className="modal-close" onClick={() => setDeleteConfirmId(null)}>
+            <div className={modalOverlayClass} onClick={() => setDeleteConfirmId(null)}>
+              <div className={`${modalContentClass} max-w-[380px]`} onClick={(e) => e.stopPropagation()}>
+                <div className={modalHeaderClass}>
+                  <h3 className={modalTitleClass}>Delete Space</h3>
+                  <button className={modalCloseClass} onClick={() => setDeleteConfirmId(null)}>
                     <X size={15} />
                   </button>
                 </div>
-                <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+                <div className="flex flex-col gap-3.5 p-6">
+                  <p className="m-0 text-[13px] leading-normal text-[var(--text-secondary)]">
                     Are you sure you want to delete <strong>{spaceToDelete?.title || "this layer"}</strong>?
                     {" "}
                     {spaceToDelete?.visibility === "local"
@@ -1665,23 +1943,23 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </p>
 
                   {isCloud && !authManager.isLoggedIn() && (
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+                    <p className="m-0 text-[11px] text-[var(--text-muted)]">
                       Account authentication is required to modify cloud states.
                     </p>
                   )}
 
                   {isCloud && authManager.isLoggedIn() && !isOwner && (
-                    <p style={{ fontSize: 11, color: "#e8a838", margin: 0 }}>
+                    <p className="m-0 text-[11px] text-[#e8a838]">
                       Only space authors can delete this layer from cloud directory.
                     </p>
                   )}
 
-                  <div className="space-form-actions" style={{ marginTop: 8 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirmId(null)}>
+                  <div className={spaceFormActionsClass}>
+                    <button className={cx(spaceBtnGhostClass, spaceBtnSmClass)} onClick={() => setDeleteConfirmId(null)}>
                       Cancel
                     </button>
                     <button
-                      className="btn btn-primary btn-sm btn-danger"
+                      className={cx(spaceBtnPrimaryClass, spaceBtnDangerClass, spaceBtnSmClass)}
                       onClick={() => handleDelete(deleteConfirmId)}
                       disabled={!canDelete}
                     >
@@ -1715,16 +1993,16 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   if (!activeSpace) return null;
 
   return (
-    <div className="spaces-page space-view">
+    <div className={spacesPageClass}>
       {/* Dual Column Workspace Container */}
-      <div className="space-view-workspace">
+      <div className={spaceWorkspaceClass}>
         
         {/* LEFT COLUMN: Sidebar (ChatGPT-Inspired Details & Notes Explorer) */}
-        <div className="space-view-sidebar">
+        <div className={spaceViewSidebarClass}>
           {/* ChatGPT-style Sidebar Header Actions */}
-          <div className="space-sidebar-actions-group">
+          <div className={spaceSidebarActionsClass}>
             <button
-              className="space-sidebar-btn primary-action"
+              className={cx(spaceSidebarBtnClass, spaceSidebarBtnPrimaryClass)}
               onClick={handleNewConversation}
               title="Start a new AI conversation session"
             >
@@ -1733,7 +2011,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </button>
 
             <button
-              className="space-sidebar-btn secondary-action"
+              className={spaceSidebarBtnClass}
               onClick={() => {
                 setView("marketplace");
                 setActiveSpace(null);
@@ -1753,47 +2031,47 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
 
           {/* Space Information Details block */}
-          <div className="space-sidebar-section">
-            <div className="space-sidebar-section-header">Space Layer</div>
-            <div className="space-sidebar-project-card">
-              <div className="space-sidebar-project-header">
-                <span className={`space-sidebar-visibility ${activeSpace.visibility}`}>
+          <div className={spaceSidebarSectionClass}>
+            <div className={spaceSidebarSectionHeaderClass}>Space Layer</div>
+            <div className={spaceProjectCardClass}>
+              <div className={spaceProjectHeaderClass}>
+                <span className={visibilityBadgeClasses[activeSpace.visibility]}>
                   {getVisibilityLabel(activeSpace.visibility)}
                 </span>
-                <span className="space-sidebar-project-title">{activeSpace.title}</span>
+                <span className={spaceProjectTitleClass}>{activeSpace.title}</span>
               </div>
               
               {activeSpace.description && (
-                <p className="space-sidebar-project-desc">{activeSpace.description}</p>
+                <p className={spaceProjectDescriptionClass}>{activeSpace.description}</p>
               )}
 
               {(activeSpace.helpsWith || []).length > 0 && (
-                <div className="space-sidebar-project-tags">
+                <div className={spaceProjectTagsClass}>
                   {(activeSpace.helpsWith || []).map((tag) => (
-                    <span key={tag} className="space-sidebar-project-tag">{tag}</span>
+                    <span key={tag} className={spaceProjectTagClass}>{tag}</span>
                   ))}
                 </div>
               )}
 
-              <div className="space-sidebar-project-meta">
+              <div className={spaceProjectMetaClass}>
                 {activeSpace.visibility === "local" 
                   ? `${activeSpace.noteCount || vaultNoteCount} notes indexed` 
                   : `${activeSpace.noteCount ?? 0} notes indexed`}
               </div>
 
-              <div className="space-sidebar-project-actions">
+              <div className={spaceProjectActionsClass}>
                 {!isRemote && (
                   <button
-                    className="space-sidebar-project-btn"
+                    className={spaceProjectBtnClass}
                     onClick={handleBuildIndex}
                     disabled={isIndexing}
                     title="Recompute vector indexes over note database"
                   >
-                    <RefreshCw size={11} className={isIndexing ? "spinner" : ""} />
+                    <RefreshCw size={11} className={isIndexing ? "animate-spin" : ""} />
                     <span>Re-index</span>
                   </button>
                 )}
-                <button className="space-sidebar-project-btn" onClick={() => handleFork(activeSpace.id)}>
+                <button className={spaceProjectBtnClass} onClick={() => handleFork(activeSpace.id)}>
                   <Copy size={11} />
                   <span>Remix</span>
                 </button>
@@ -1802,11 +2080,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
 
           {/* Space Operations Dashboard */}
-          <div className="space-sidebar-section">
-            <div className="space-sidebar-section-header">Space Operations</div>
-            <div className="space-operations-grid">
+          <div className={spaceSidebarSectionClass}>
+            <div className={spaceSidebarSectionHeaderClass}>Space Operations</div>
+            <div className={spaceOperationsGridClass}>
               <button
-                className="space-operations-btn"
+                className={spaceOperationsBtnClass}
                 onClick={handleGenerateSummary}
                 disabled={isQuerying || isIndexing}
                 title="Synthesize topics across the space into a structured summary note"
@@ -1815,7 +2093,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 <span>Generate Summary</span>
               </button>
               <button
-                className="space-operations-btn"
+                className={spaceOperationsBtnClass}
                 onClick={handleFindInsights}
                 disabled={isQuerying || isIndexing}
                 title="Look for repeated ideas, gaps, and contradictions in space"
@@ -1824,7 +2102,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 <span>Find Insights</span>
               </button>
               <button
-                className="space-operations-btn"
+                className={spaceOperationsBtnClass}
                 onClick={handleOrganizeSpace}
                 disabled={isQuerying || isIndexing}
                 title="Suggest renames, mergers, and folder restructuring changes"
@@ -1836,31 +2114,31 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           </div>
 
           {/* Conversations Explorer Session List */}
-          <div className="space-sidebar-section fill-height">
-            <div className="space-sidebar-section-header">
+          <div className={spaceSidebarFillSectionClass}>
+            <div className={spaceSidebarSectionHeaderClass}>
               <span>Conversations</span>
-              <span className="space-sidebar-section-badge">{conversations.length}</span>
+              <span className={spaceSidebarBadgeClass}>{conversations.length}</span>
             </div>
 
             {conversations.length === 0 ? (
-              <div className="space-sidebar-notes-empty">
+              <div className={spaceSidebarEmptyClass}>
                 No chat sessions.
               </div>
             ) : (
-              <div className="space-sidebar-conversations-list">
+              <div className={spaceConversationsListClass}>
                 {conversations.map((conv) => {
                   const isActive = activeConversationId === conv.id;
                   return (
                     <div
                       key={conv.id}
-                      className={`space-sidebar-conv-item ${isActive ? "active" : ""}`}
+                      className={cx(spaceConversationItemClass, isActive && `active ${spaceConversationActiveClass}`)}
                       onClick={() => selectConversation(conv.id)}
                     >
-                      <MessageSquare size={13} className="space-conv-icon" />
+                      <MessageSquare size={13} className={spaceConversationIconClass} />
                       {editingConvId === conv.id ? (
                         <input
                           type="text"
-                          className="space-conv-rename-input"
+                          className={spaceConversationRenameClass}
                           value={renameValue}
                           onChange={(e) => setRenameValue(e.target.value)}
                           onBlur={() => finishRename(conv.id)}
@@ -1872,13 +2150,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        <span className="space-conv-title" title={conv.title}>{conv.title}</span>
+                        <span className={spaceConversationTitleClass} title={conv.title}>{conv.title}</span>
                       )}
-                      <div className="space-conv-actions">
+                      <div className={spaceConversationActionsClass}>
                         {editingConvId !== conv.id && (
                           <>
                             <button
-                              className="space-conv-action-btn"
+                              className={spaceConversationActionClass}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 startRename(conv.id, conv.title);
@@ -1888,7 +2166,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                               <Edit2 size={11} />
                             </button>
                             <button
-                              className="space-conv-action-btn delete"
+                              className={cx(spaceConversationActionClass, spaceConversationDeleteClass)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteConversation(conv.id);
@@ -1909,43 +2187,42 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         </div>
 
         {/* RIGHT COLUMN: Interactive AI Conversation Interface */}
-        <div className="space-view-chat-container">
+        <div className={spaceChatContainerClass}>
           {isIndexing && (
-            <div className="space-view-indexing-indicator">
-              <Loader2 size={12} className="spinner" />
+            <div className={spaceIndexingIndicatorClass}>
+              <Loader2 size={12} className="animate-spin" />
               <span>AI Indexing Vault... ({indexProgress.done}/{indexProgress.total})</span>
             </div>
           )}
           
-          <div className="space-chat-messages-scroll">
+          <div className={spaceMessagesScrollClass}>
             {chatMessages.length > 0 && <div style={{ marginTop: "auto" }} />}
             {chatMessages.length === 0 && (
-              <div className="space-chat-welcome">
-                <div className="space-chat-welcome-glow" />
-                <div className="space-chat-welcome-content">
-                  <h2>Command your knowledge network</h2>
-                  <p>Query the knowledge layer of {activeSpace?.title || "this space"} using semantic context retrieval.</p>
+              <div className={spaceChatWelcomeClass}>
+                <div className={spaceChatWelcomeContentClass}>
+                  <h2 className={spaceChatWelcomeTitleClass}>Command your knowledge network</h2>
+                  <p className={spaceChatWelcomeTextClass}>Query the knowledge layer of {activeSpace?.title || "this space"} using semantic context retrieval.</p>
                   
                   {/* CENTRAL INPUT */}
-                  <div className="space-chat-central-input-wrapper">
-                    <div className="space-chat-input-wrapper">
+                  <div className={spaceChatCentralInputClass}>
+                    <div className={spaceChatInputWrapperClass}>
                       {showMentionDropdown && filteredNotes.length > 0 && (
-                        <div className="spaces-mention-dropdown">
+                        <div className={mentionDropdownClass}>
                           {filteredNotes.map((note: any, index: number) => (
                             <div
                               key={note.path}
-                              className={`spaces-mention-item ${index === mentionActiveIndex ? "active" : ""}`}
+                              className={cx(mentionItemClass, index === mentionActiveIndex && mentionItemActiveClass)}
                               onClick={() => selectNote(note)}
                             >
-                              <FileText size={12} className="mention-item-icon" />
-                              <span className="mention-item-title">{note.title}</span>
+                              <FileText size={12} className={mentionItemIconClass} />
+                              <span className={mentionItemTitleClass}>{note.title}</span>
                             </div>
                           ))}
                         </div>
                       )}
                       <textarea
                         ref={centralInputRef}
-                        className="space-chat-input"
+                        className={spaceChatInputClass}
                         placeholder="Ask anything..."
                         value={chatInput}
                         onChange={(e) => {
@@ -1959,14 +2236,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         rows={1}
                         disabled={isQuerying}
                       />
-                      <div className="space-chat-input-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                      <div className={spaceChatInputActionsClass}>
                         {inputTokens > 0 && (
-                          <span className="space-chat-token-counter" style={{ fontSize: "10px", color: "var(--text-muted)", opacity: 0.8 }}>
+                          <span className={spaceChatTokenCounterClass}>
                             {inputTokens} tokens
                           </span>
                         )}
                         <button
-                          className={`space-chat-send ${isQuerying ? "aborting" : ""}`}
+                          className={cx(spaceChatSendClass, isQuerying && spaceChatAbortClass)}
                           onClick={() => {
                             if (isQuerying) {
                               handleAbortChat();
@@ -1982,16 +2259,16 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       </div>
                     </div>
                     {!isAIConfigured() && (
-                      <div className="space-chat-no-ai-warning">
+                      <div className={spaceChatNoAiClass}>
                         Configure an API key in AI Settings to enable chat queries over vector layers.
                       </div>
                     )}
                   </div>
 
-                  <div className="space-chat-welcome-suggestions">
-                    <div className="space-chat-suggestions-grid">
+                  <div className={spaceChatWelcomeSuggestionsClass}>
+                    <div className={spaceChatSuggestionsGridClass}>
                       {SUGGESTED_QUERIES.map((q) => (
-                        <button key={q} className="space-chat-suggestion" onClick={() => handleChat(q)}>
+                        <button key={q} className={spaceChatSuggestionClass} onClick={() => handleChat(q)}>
                           {q}
                         </button>
                       ))}
@@ -2003,18 +2280,25 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
             {/* Conversation Flow */}
             {chatMessages.map((msg) => (
-              <div key={msg.id} className={`space-chat-message ${msg.role}`}>
+              <div
+                key={msg.id}
+                className={cx(
+                  spaceChatMessageClass,
+                  msg.role === "user" ? spaceChatUserMessageClass : spaceChatAssistantMessageClass,
+                )}
+              >
                 {msg.role === "user" ? (
-                  <div className="message-bubble">
-                    <div className="message-content">{msg.content}</div>
+                  <div className={spaceChatUserBubbleClass}>
+                    <div>{msg.content}</div>
                   </div>
                 ) : (
                   <>
                     {stripJSONBlock(msg.content) && (
-                      <div className="message-content">
+                      <div className={spaceChatAssistantContentClass}>
                         <MarkdownPreview
                           content={stripJSONBlock(msg.content)}
                           onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                          constrainWidth={false}
                         />
                       </div>
                     )}
@@ -2032,11 +2316,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       
                       if (isApplied) {
                         return (
-                          <div className="space-action-card applied">
-                            <div className="space-action-card-header">
+                          <div className={cx(spaceActionCardClass, spaceActionCardAppliedClass)}>
+                            <div className={spaceActionCardHeaderClass}>
                               <Check size={14} style={{ color: "var(--success)" }} />
                               <span>{summary}</span>
-                              <span className="action-applied-badge">Applied</span>
+                              <span className={actionAppliedBadgeClass}>Applied</span>
                             </div>
                           </div>
                         );
@@ -2044,11 +2328,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       
                       if (isRejected) {
                         return (
-                          <div className="space-action-card rejected">
-                            <div className="space-action-card-header">
+                          <div className={cx(spaceActionCardClass, spaceActionCardRejectedClass)}>
+                            <div className={spaceActionCardHeaderClass}>
                               <X size={14} style={{ color: "var(--error)" }} />
                               <span>{summary}</span>
-                              <span className="action-rejected-badge">Rejected</span>
+                              <span className={actionRejectedBadgeClass}>Rejected</span>
                             </div>
                           </div>
                         );
@@ -2063,19 +2347,19 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         const notePath = displayPath + (displayPath ? (displayPath.endsWith("/") ? "" : "/") : "") + displayTitle + ".md";
                         
                         return (
-                          <div className="space-action-card">
-                            <div className="space-action-card-header">
+                          <div className={spaceActionCardClass}>
+                            <div className={spaceActionCardHeaderClass}>
                               <FileText size={14} />
                               <span>AI Plan: Create Note</span>
                             </div>
-                            <div className="space-action-card-body">
-                              <div className="space-action-details">
+                            <div className={spaceActionCardBodyClass}>
+                              <div className={spaceActionDetailsClass}>
                                 <div><strong>Create:</strong> {displayTitle}.md</div>
                                 <div><strong>Location:</strong> {displayPath || "/"}</div>
                               </div>
-                              <div className="space-action-buttons">
+                              <div className={spaceActionButtonsClass}>
                                 <button
-                                  className="btn btn-secondary btn-sm"
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
                                   onClick={() => {
                                     setSidebarEditText(action.content || "");
                                     setRightSidebarMode("preview");
@@ -2091,7 +2375,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   Preview
                                 </button>
                                 <button
-                                  className="btn btn-secondary btn-sm"
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
                                   onClick={() => {
                                     setSidebarEditText(action.content || "");
                                     setRightSidebarMode("edit");
@@ -2107,7 +2391,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   Edit
                                 </button>
                                 <button
-                                  className="btn btn-primary btn-sm"
+                                  className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
                                   onClick={async () => {
                                     const ok = await handleApplySingleAction(action, msg.id);
                                     if (ok) setAppliedActions(prev => ({ ...prev, [msg.id]: true }));
@@ -2116,7 +2400,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   Confirm
                                 </button>
                                 <button
-                                  className="btn btn-danger btn-sm"
+                                  className={cx(spaceBtnDangerClass, spaceBtnSmClass)}
                                   onClick={() => {
                                     setRejectedActions(prev => ({ ...prev, [msg.id]: true }));
                                     showToast("Action rejected.");
@@ -2140,18 +2424,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         const afterContent = action.changes?.after || action.content || "";
                         
                         return (
-                          <div className="space-action-card">
-                            <div className="space-action-card-header">
+                          <div className={spaceActionCardClass}>
+                            <div className={spaceActionCardHeaderClass}>
                               <RefreshCw size={14} />
                               <span>AI Plan: Update Note</span>
                             </div>
-                            <div className="space-action-card-body">
-                              <div className="space-action-details">
+                            <div className={spaceActionCardBodyClass}>
+                              <div className={spaceActionDetailsClass}>
                                 <div><strong>Update:</strong> {filePath}</div>
                               </div>
-                              <div className="space-action-buttons">
+                              <div className={spaceActionButtonsClass}>
                                 <button
-                                  className="btn btn-secondary btn-sm"
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
                                   onClick={async () => {
                                     const { before, after } = await resolveActionContent(action);
                                     setSidebarEditText(after);
@@ -2168,7 +2452,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   Preview Changes
                                 </button>
                                 <button
-                                  className="btn btn-primary btn-sm"
+                                  className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
                                   onClick={async () => {
                                     const ok = await handleApplySingleAction(action, msg.id);
                                     if (ok) setAppliedActions(prev => ({ ...prev, [msg.id]: true }));
@@ -2177,7 +2461,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   Apply Changes
                                 </button>
                                 <button
-                                  className="btn btn-danger btn-sm"
+                                  className={cx(spaceBtnDangerClass, spaceBtnSmClass)}
                                   onClick={() => {
                                     setRejectedActions(prev => ({ ...prev, [msg.id]: true }));
                                     showToast("Changes rejected.");
@@ -2186,7 +2470,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   Reject
                                 </button>
                                 <button
-                                  className="btn btn-secondary btn-sm"
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
                                   onClick={() => {
                                     setSidebarEditText(afterContent);
                                     setRightSidebarMode("edit");
@@ -2212,29 +2496,29 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         const actions = payload.actions || [];
                         
                         return (
-                          <div className="space-action-card">
-                            <div className="space-action-card-header">
+                          <div className={spaceActionCardClass}>
+                            <div className={spaceActionCardHeaderClass}>
                               <Layers size={14} />
                               <span>{actions.length} Actions Found</span>
                             </div>
-                            <div className="space-action-card-body">
-                              <div className="space-multi-action-list">
+                            <div className={spaceActionCardBodyClass}>
+                              <div className={spaceMultiActionListClass}>
                                 {actions.map((act: any, idx: number) => {
                                   const isActApplied = appliedActions[`${msg.id}-${idx}`];
                                   const title = act.title || act.file_path || act.path || "Action";
                                   const displayTitle = title.startsWith("/") ? title.substring(1) : title;
                                   
                                   return (
-                                    <div key={idx} className="multi-action-item">
-                                      <span className="action-num">{idx + 1}.</span>
-                                      <span className="action-desc">
+                                    <div key={idx} className={multiActionItemClass}>
+                                      <span className={actionNumberClass}>{idx + 1}.</span>
+                                      <span className={actionDescriptionClass}>
                                         {act.type === "create_note" ? "Create" : "Update"} <code>{displayTitle}</code>
                                       </span>
                                       {isActApplied ? (
-                                        <span className="action-mini-applied">Applied</span>
+                                        <span className={actionMiniAppliedClass}>Applied</span>
                                       ) : (
                                         <button
-                                          className="btn btn-secondary btn-xs"
+                                          className={spaceReviewBtnClass}
                                           onClick={async () => {
                                             if (act.type === "create_note") {
                                               let displayPath = act.path || "";
@@ -2274,15 +2558,15 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   );
                                 })}
                               </div>
-                              <div className="space-action-buttons">
+                              <div className={spaceActionButtonsClass}>
                                 <button
-                                  className="btn btn-primary btn-sm"
+                                  className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
                                   onClick={() => handleApplyAllActions(actions, msg.id)}
                                 >
                                   Apply All
                                 </button>
                                 <button
-                                  className="btn btn-secondary btn-sm"
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
                                   onClick={() => {
                                     setRightSidebarMode("review_list");
                                     setRightSidebarData({
@@ -2305,28 +2589,28 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       switch (payload.action) {
                         case "suggest_structure":
                           return (
-                            <div className="space-action-card">
-                              <div className="space-action-card-header">
+                            <div className={spaceActionCardClass}>
+                              <div className={spaceActionCardHeaderClass}>
                                 <Layers size={14} />
                                 <span>Suggested Structure Restructuring</span>
                               </div>
-                              <div className="space-action-card-body">
-                                <div className="space-action-structure-list">
+                              <div className={spaceActionCardBodyClass}>
+                                <div className={spaceActionStructureListClass}>
                                   {payload.changes?.map((change: any, index: number) => (
-                                    <div key={index} className="structure-change-item">
-                                      <div className="change-type-badge">{change.type.toUpperCase()}</div>
+                                    <div key={index} className={structureChangeItemClass}>
+                                      <div className={changeTypeBadgeClass}>{change.type.toUpperCase()}</div>
                                       {change.type === "merge" && (
-                                        <div className="change-details">
+                                        <div className={changeDetailsClass}>
                                           Merge <code>{change.notes.join(", ")}</code> into <strong>{change.target}</strong>
                                         </div>
                                       )}
                                       {change.type === "rename" && (
-                                        <div className="change-details">
+                                        <div className={changeDetailsClass}>
                                           Rename <code>{change.note}</code> to <code>{change.target}</code>
                                         </div>
                                       )}
                                       {change.type === "move" && (
-                                        <div className="change-details">
+                                        <div className={changeDetailsClass}>
                                           Move <code>{change.note}</code> to <code>{change.target}</code>
                                         </div>
                                       )}
@@ -2334,7 +2618,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   ))}
                                 </div>
                                 <button
-                                  className="btn btn-primary btn-sm space-action-btn"
+                                  className={spaceActionBtnClass}
                                   onClick={() => handleApplyStructureAction(payload.changes, msg.id)}
                                 >
                                   Apply Restructuring
@@ -2344,13 +2628,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           );
                         case "suggest_links":
                           return (
-                            <div className="space-action-card">
-                              <div className="space-action-card-header">
+                            <div className={spaceActionCardClass}>
+                              <div className={spaceActionCardHeaderClass}>
                                 <GitBranch size={14} />
                                 <span>Suggested Wiki-Links</span>
                               </div>
-                              <div className="space-action-card-body">
-                                <table className="space-action-table">
+                              <div className={spaceActionCardBodyClass}>
+                                <table className={spaceActionTableClass}>
                                   <thead>
                                     <tr>
                                       <th>From</th>
@@ -2369,7 +2653,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                   </tbody>
                                 </table>
                                 <button
-                                  className="btn btn-primary btn-sm space-action-btn"
+                                  className={spaceActionBtnClass}
                                   onClick={() => handleInsertLinksAction(payload.links, msg.id)}
                                 >
                                   Insert Links
@@ -2379,25 +2663,25 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           );
                         case "insight_report":
                           return (
-                            <div className="space-action-card">
-                              <div className="space-action-card-header">
+                            <div className={spaceActionCardClass}>
+                              <div className={spaceActionCardHeaderClass}>
                                 <Sparkles size={14} />
                                 <span>Insight Report</span>
                               </div>
-                              <div className="space-action-card-body">
-                                <div className="space-action-insights">
+                              <div className={spaceActionCardBodyClass}>
+                                <div className={spaceActionInsightsClass}>
                                   {payload.insights?.map((insight: any, index: number) => (
-                                    <div key={index} className="insight-item">
-                                      <div className="insight-type">Type: <strong>{insight.type}</strong></div>
-                                      <div className="insight-desc">{insight.description}</div>
+                                    <div key={index} className={insightItemClass}>
+                                      <div className={insightTypeClass}>Type: <strong>{insight.type}</strong></div>
+                                      <div className={insightDescriptionClass}>{insight.description}</div>
                                       {insight.notes && (
-                                        <div className="insight-notes">Notes: {insight.notes.join(", ")}</div>
+                                        <div className={insightNotesClass}>Notes: {insight.notes.join(", ")}</div>
                                       )}
                                     </div>
                                   ))}
                                 </div>
                                 <button
-                                  className="btn btn-primary btn-sm space-action-btn"
+                                  className={spaceActionBtnClass}
                                   onClick={() => handleSaveInsightsAction(payload.insights, msg.id)}
                                 >
                                   Save Insight Report to Vault
@@ -2416,9 +2700,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       if (sources.length === 0) return null;
                       
                       return (
-                        <div className="space-chat-sources">
-                          <span className="space-chat-sources-label">Sources Used</span>
-                          <div className="space-chat-sources-list">
+                        <div className={spaceChatSourcesClass}>
+                          <span className={spaceChatSourcesLabelClass}>Sources Used</span>
+                          <div className={spaceChatSourcesListClass}>
                             {sources.map((s: any, i: number) => {
                               const isObject = typeof s === "object";
                               const noteTitle = isObject ? (s.note || s.noteTitle) : s;
@@ -2427,7 +2711,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                               return (
                                 <span
                                   key={i}
-                                  className="space-chat-source-pill"
+                                  className={spaceChatSourcePillClass}
                                   onClick={() => handleOpenSource(noteTitle, chunkText)}
                                   title={chunkText ? `Excerpt: ${chunkText.substring(0, 100)}...` : `Open ${noteTitle}`}
                                 >
@@ -2452,12 +2736,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               const actionType = detectActionType(streamingText, activeQuery);
               
               return (
-                <div className="space-chat-message assistant">
+                <div className={cx(spaceChatMessageClass, spaceChatAssistantMessageClass)}>
                   {cleanedText && (
-                    <div className="message-content">
+                    <div className={spaceChatAssistantContentClass}>
                       <MarkdownPreview
                         content={cleanedText}
                         onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                        constrainWidth={false}
                       />
                     </div>
                   )}
@@ -2473,8 +2758,8 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
             {/* AI thinking state loader */}
             {isQuerying && !streamingText && (
-              <div className="space-chat-loading-indicator">
-                <div className="flat-spinner" />
+              <div className={spaceChatLoadingClass}>
+                <div className={spaceChatLoadingSpinnerClass} />
                 <span>Synthesizing response...</span>
               </div>
             )}
@@ -2484,30 +2769,30 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
           {/* Sticky Anchored Query Drawer Input */}
           {chatMessages.length > 0 && (
-            <div className="space-chat-input-panel">
-              <div className="space-chat-input-wrapper">
+            <div className={spaceChatInputPanelClass}>
+              <div className={spaceChatInputWrapperClass}>
                 {estimatedHistoryTokens > 0 && (
-                  <div className="space-chat-memory-badge">
+                  <div className={spaceChatMemoryClass}>
                     Memory: ~{estimatedHistoryTokens} tokens
                   </div>
                 )}
                 {showMentionDropdown && filteredNotes.length > 0 && (
-                  <div className="spaces-mention-dropdown">
+                  <div className={mentionDropdownClass}>
                     {filteredNotes.map((note: any, index: number) => (
                       <div
                         key={note.path}
-                        className={`spaces-mention-item ${index === mentionActiveIndex ? "active" : ""}`}
+                        className={cx(mentionItemClass, index === mentionActiveIndex && mentionItemActiveClass)}
                         onClick={() => selectNote(note)}
                       >
-                        <FileText size={12} className="mention-item-icon" />
-                        <span className="mention-item-title">{note.title}</span>
+                        <FileText size={12} className={mentionItemIconClass} />
+                        <span className={mentionItemTitleClass}>{note.title}</span>
                       </div>
                     ))}
                   </div>
                 )}
                 <textarea
                   ref={bottomInputRef}
-                  className="space-chat-input"
+                  className={spaceChatInputClass}
                   placeholder="Ask anything..."
                   value={chatInput}
                   onChange={(e) => {
@@ -2521,14 +2806,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   rows={1}
                   disabled={isQuerying}
                 />
-                <div className="space-chat-input-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                <div className={spaceChatInputActionsClass}>
                   {inputTokens > 0 && (
-                    <span className="space-chat-token-counter" style={{ fontSize: "10px", color: "var(--text-muted)", opacity: 0.8 }}>
+                    <span className={spaceChatTokenCounterClass}>
                       {inputTokens} tokens
                     </span>
                   )}
                   <button
-                    className={`space-chat-send ${isQuerying ? "aborting" : ""}`}
+                    className={cx(spaceChatSendClass, isQuerying && spaceChatAbortClass)}
                     onClick={() => {
                       if (isQuerying) {
                         handleAbortChat();
@@ -2544,12 +2829,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 </div>
               </div>
               
-              <div className="space-chat-footer-info">
+              <div className={spaceChatFooterClass}>
                 Spaces chat can make mistakes. Verify key details.
               </div>
 
               {!isAIConfigured() && (
-                <div className="space-chat-no-ai-warning">
+                <div className={spaceChatNoAiClass}>
                   Configure an API key in AI Settings to enable chat queries over vector layers.
                 </div>
               )}
@@ -2558,35 +2843,35 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         </div>
 
         {rightSidebarMode && rightSidebarData && (
-          <div className="space-view-right-sidebar">
-            <div className="space-right-sidebar-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "10px", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "10px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div className="space-right-sidebar-title">
+          <div className={spaceRightSidebarClass}>
+            <div className={spaceRightSidebarHeaderClass}>
+              <div className={spaceRightSidebarHeaderRowClass}>
+                <div className={spaceRightSidebarTitleClass}>
                   {rightSidebarMode === "review_list" ? "Review Actions" : `Review: ${rightSidebarData.title || rightSidebarData.path || "Note"}`}
                 </div>
-                <button className="space-right-sidebar-close" onClick={() => setRightSidebarMode(null)}>
+                <button className={spaceRightSidebarCloseClass} onClick={() => setRightSidebarMode(null)}>
                   <X size={16} />
                 </button>
               </div>
 
               {rightSidebarMode !== "review_list" && (
-                <div className="space-right-sidebar-tabs">
+                <div className={spaceRightSidebarTabsClass}>
                   <button
-                    className={`space-sidebar-tab ${rightSidebarMode === "preview" ? "active" : ""}`}
+                    className={cx(spaceRightSidebarTabClass, rightSidebarMode === "preview" && spaceRightSidebarTabActiveClass)}
                     onClick={() => setRightSidebarMode("preview")}
                   >
                     Preview
                   </button>
                   {rightSidebarData.actionType !== "create_note" && (
                     <button
-                      className={`space-sidebar-tab ${rightSidebarMode === "diff" ? "active" : ""}`}
+                      className={cx(spaceRightSidebarTabClass, rightSidebarMode === "diff" && spaceRightSidebarTabActiveClass)}
                       onClick={() => setRightSidebarMode("diff")}
                     >
                       Diff Changes
                     </button>
                   )}
                   <button
-                    className={`space-sidebar-tab ${rightSidebarMode === "edit" ? "active" : ""}`}
+                    className={cx(spaceRightSidebarTabClass, rightSidebarMode === "edit" && spaceRightSidebarTabActiveClass)}
                     onClick={() => setRightSidebarMode("edit")}
                   >
                     Edit Content
@@ -2595,86 +2880,64 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               )}
             </div>
 
-            <div className="space-right-sidebar-body">
+            <div className={spaceRightSidebarBodyClass}>
               {rightSidebarMode === "preview" && (
-                <div className="space-right-sidebar-preview">
+                <div className={spaceRightSidebarPreviewClass}>
                   <MarkdownPreview
                     content={sidebarEditText || ""}
                     onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                    constrainWidth={false}
                   />
                 </div>
               )}
 
               {rightSidebarMode === "diff" && (
-                <div className="space-right-sidebar-preview">
+                <div className={spaceRightSidebarPreviewClass}>
                   <MarkdownPreview
                     content={generateDiffMarkdown(rightSidebarData.before || "", sidebarEditText || "")}
                     onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                    constrainWidth={false}
                   />
                 </div>
               )}
 
               {rightSidebarMode === "edit" && (
-                <div className="space-right-sidebar-edit" style={{ display: "flex", flexDirection: "column", height: "100%", gap: "10px" }}>
-                  <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                <div className={spaceRightSidebarEditClass}>
+                  <div className={spaceRightSidebarEditHintClass}>
                     Editing proposed content before committing to the vault. No emojis allowed.
                   </div>
                   <textarea
-                    className="space-right-sidebar-textarea"
+                    className={spaceRightSidebarTextareaClass}
                     value={sidebarEditText}
                     onChange={(e) => setSidebarEditText(e.target.value)}
-                    style={{
-                      flex: 1,
-                      width: "100%",
-                      height: "100%",
-                      minHeight: "200px",
-                      fontFamily: "var(--font-monospace, monospace)",
-                      fontSize: "12px",
-                      color: "var(--text-primary)",
-                      background: "var(--bg-primary)",
-                      border: "1px solid var(--border-subtle)",
-                      borderRadius: "6px",
-                      padding: "12px",
-                      resize: "none",
-                      outline: "none",
-                      lineHeight: "1.5"
-                    }}
                   />
                 </div>
               )}
 
               {rightSidebarMode === "review_list" && rightSidebarData.actions && (
-                <div className="space-right-sidebar-review-list">
-                  <div className="space-sidebar-section-header">Pending Changes ({rightSidebarData.actions.filter((_, idx) => !appliedActions[`${rightSidebarData.msgId}-${idx}`]).length})</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "12px" }}>
+                <div className={spaceRightSidebarReviewListClass}>
+                  <div className={spaceSidebarSectionHeaderClass}>Pending Changes ({rightSidebarData.actions.filter((_, idx) => !appliedActions[`${rightSidebarData.msgId}-${idx}`]).length})</div>
+                  <div className={spaceRightSidebarReviewItemsClass}>
                     {rightSidebarData.actions.map((act: any, idx: number) => {
                       const isActApplied = appliedActions[`${rightSidebarData.msgId}-${idx}`];
                       const title = act.title || act.file_path || act.path || "Action";
                       const displayTitle = title.startsWith("/") ? title.substring(1) : title;
                       
                       return (
-                        <div key={idx} className="review-list-item" style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "10px",
-                          background: "var(--bg-primary)",
-                          border: "1px solid var(--border-subtle)",
-                          borderRadius: "6px"
-                        }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <span style={{ fontSize: "12px", fontWeight: 500 }}>
+                        <div key={idx} className={spaceRightSidebarReviewItemClass}>
+                          <div className={spaceRightSidebarReviewInfoClass}>
+                            <span className={spaceRightSidebarReviewTypeClass}>
                               {act.type === "create_note" ? "Create Note" : "Update Note"}
                             </span>
-                            <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                            <span className={spaceRightSidebarReviewPathClass}>
                               {displayTitle}
                             </span>
                           </div>
                           {isActApplied ? (
-                            <span className="action-applied-badge">Applied</span>
+                            <span className={actionAppliedBadgeClass}>Applied</span>
                           ) : (
                             <button
-                              className="btn btn-secondary btn-sm"
+                              className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
                               onClick={() => {
                                 if (act.type === "create_note") {
                                   let displayPath = act.path || "";
@@ -2718,20 +2981,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               )}
             </div>
 
-            <div className="space-right-sidebar-footer" style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              gap: "8px",
-              borderTop: "1px solid var(--border-subtle)",
-              paddingTop: "16px",
-              marginTop: "auto",
-              flexShrink: 0
-            }}>
+            <div className={spaceRightSidebarFooterClass}>
               {rightSidebarMode === "review_list" ? (
                 <>
                   <button
-                    className="btn btn-primary btn-sm"
+                    className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
                     onClick={async () => {
                       await handleApplyAllActions(rightSidebarData.actions || [], rightSidebarData.msgId);
                       setRightSidebarMode(null);
@@ -2739,7 +2993,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   >
                     Apply All
                   </button>
-                  <button className="btn btn-secondary btn-sm" onClick={() => setRightSidebarMode(null)}>
+                  <button className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)} onClick={() => setRightSidebarMode(null)}>
                     Close
                   </button>
                 </>
@@ -2747,7 +3001,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 <>
                   {rightSidebarData.actionIndex !== undefined && (
                     <button 
-                      className="btn btn-secondary btn-sm" 
+                      className={cx(spaceBtnSecondaryClass, spaceBtnSmClass, spaceRightSidebarBackBtnClass)} 
                       onClick={() => {
                         setRightSidebarMode("review_list");
                         setRightSidebarData(prev => ({
@@ -2756,14 +3010,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           path: "",
                         }));
                       }}
-                      style={{ marginRight: "auto" }}
                     >
                       Back to List
                     </button>
                   )}
                   
                   <button
-                    className="btn btn-danger btn-sm"
+                    className={cx(spaceBtnDangerClass, spaceBtnSmClass)}
                     onClick={() => {
                       if (rightSidebarData.actionIndex !== undefined) {
                         setRightSidebarMode("review_list");
@@ -2782,7 +3035,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </button>
                   
                   <button
-                    className="btn btn-primary btn-sm"
+                    className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
                     onClick={async () => {
                       const action = rightSidebarData.actionIndex !== undefined
                         ? rightSidebarData.actions?.[rightSidebarData.actionIndex]

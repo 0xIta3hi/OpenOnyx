@@ -4,6 +4,7 @@
 
 import { Events, EventRef, Component } from './components';
 import { TFile } from './files';
+import { setIcon } from './utils';
 
 // ── WorkspaceLeaf ───────────────────────────────────
 export class WorkspaceLeaf extends Events {
@@ -15,6 +16,7 @@ export class WorkspaceLeaf extends Events {
   containerEl: HTMLElement;
   activeTime: number = 0;
   side: 'left' | 'right' | 'main' = 'main';
+  group: string | null = null;
 
   constructor(id: string) {
     super();
@@ -33,8 +35,17 @@ export class WorkspaceLeaf extends Events {
     return workspace?.rootSplit || this.parent || this;
   }
 
+  getContainer(): any { return this.getRoot(); }
+
   async openFile(file: TFile, openState?: any): Promise<void> {
-    // Delegate to app navigation
+    const workspace = (window as any).__oo_app?.workspace;
+    const viewType = workspace?.getViewTypeForExtension?.(file.extension) || 'markdown';
+    await this.setViewState({
+      type: viewType,
+      state: { file: file.path },
+      active: openState?.active,
+    }, openState?.eState);
+    if (openState?.active !== false) workspace?.setActiveLeaf(this);
     (window as any).__oo_open_file?.(file.path);
   }
 
@@ -42,25 +53,37 @@ export class WorkspaceLeaf extends Events {
     this.view = view;
   }
 
-  getViewState(): any { return { type: this.view?.getViewType?.() || '', state: {} }; }
+  getViewState(): any {
+    return {
+      type: this.view?.getViewType?.() || '',
+      state: this.view?.getState?.() || {},
+      pinned: this.pinned,
+    };
+  }
   async setViewState(viewState: any, eState?: any): Promise<void> {
-    // Create the view if a type is specified and we have a creator for it
     if (viewState?.type) {
       const workspace = (window as any).__oo_app?.workspace;
       if (workspace) {
-        await workspace._createViewOnLeaf(this, viewState.type);
+        await workspace._createViewOnLeaf(this, viewState.type, viewState.state, eState);
       }
     }
+    if (typeof viewState?.pinned === 'boolean') this.setPinned(viewState.pinned);
+    if (viewState?.group) this.setGroup(viewState.group);
+    if (viewState?.active) (window as any).__oo_app?.workspace?.setActiveLeaf(this);
   }
   get isDeferred(): boolean { return false; }
   async loadIfDeferred(): Promise<void> { /* compat */ }
   getEphemeralState(): any { return {}; }
   setEphemeralState(state: any): void { /* compat */ }
-  togglePinned(): void { /* compat */ }
-  setPinned(pinned: boolean): void { /* compat */ }
-  setGroupMember(other: WorkspaceLeaf): void { /* compat */ }
-  setGroup(group: string): void { /* compat */ }
-  detach(): void { /* compat */ }
+  togglePinned(): void { this.setPinned(!this.pinned); }
+  setPinned(pinned: boolean): void { this.pinned = pinned; this.trigger('pinned-change', pinned); }
+  setGroupMember(other: WorkspaceLeaf): void {
+    const group = other.group || `group-${Date.now()}`;
+    other.setGroup(group);
+    this.setGroup(group);
+  }
+  setGroup(group: string): void { this.group = group || null; }
+  detach(): void { (window as any).__oo_app?.workspace?._detachLeaf(this); }
   getIcon(): string { return this.view?.icon || 'file-text'; }
   getDisplayText(): string { return this.view?.getDisplayText?.() || ''; }
   onResize(): void { this.view?.onResize?.(); }
@@ -75,6 +98,7 @@ export interface View {
   containerEl: HTMLElement;
   pluginId?: string;
   scope: any;
+  unload(): void;
   onOpen(): Promise<void>;
   onClose(): Promise<void>;
   getViewType(): string;
@@ -165,7 +189,7 @@ ItemView.prototype.addAction = function(icon: string, title: string, callback: (
   const btn = document.createElement('div');
   btn.className = 'view-action clickable-icon';
   btn.title = title;
-  btn.setAttribute('data-icon', icon);
+  setIcon(btn, icon);
   btn.addEventListener('click', callback);
   if (this.actionListEl) {
     this.actionListEl.appendChild(btn);
@@ -301,18 +325,32 @@ export class OOWorkspace extends Events {
   leftRibbon: any = {};
   rightRibbon: any = {};
   rootSplit: any = { _isRootSplit: true };
+  floatingSplit: any = { children: [], win: window, doc: document };
+  editorExtensions: any[] = [];
+  editorSuggest: { suggests: any[]; add: (suggest: any) => void; remove: (suggest: any) => void };
   requestSaveLayout: any = () => {};
 
   private _leaves: Map<string, WorkspaceLeaf> = new Map();
   private _viewCreators: Map<string, (leaf: WorkspaceLeaf) => View> = new Map();
+  private _extensionViews: Map<string, string> = new Map();
   private _layoutReadyCallbacks: Array<() => any> = [];
   private _leafCounter = 0;
+  private _hoverLinkSources = new Map<string, any>();
   /** Active plugin views (viewType → leaf) — exposed for the React UI to render */
   private _activePluginViews: Map<string, WorkspaceLeaf> = new Map();
 
   constructor() {
     super();
     this.containerEl = document.body;
+    this.editorSuggest = {
+      suggests: [],
+      add: (suggest: any) => {
+        if (!this.editorSuggest.suggests.includes(suggest)) this.editorSuggest.suggests.push(suggest);
+      },
+      remove: (suggest: any) => {
+        this.editorSuggest.suggests = this.editorSuggest.suggests.filter((entry) => entry !== suggest);
+      },
+    };
     // Mark layout as ready after a tick
     setTimeout(() => {
       this.layoutReady = true;
@@ -326,6 +364,45 @@ export class OOWorkspace extends Events {
 
   registerViewCreator(type: string, creator: (leaf: WorkspaceLeaf) => View): void {
     this._viewCreators.set(type, creator);
+  }
+
+  unregisterViewCreator(type: string): void {
+    this._viewCreators.delete(type);
+  }
+
+  registerExtensions(extensions: string[], viewType: string): void {
+    for (const extension of extensions) {
+      this._extensionViews.set(extension.replace(/^\./, '').toLowerCase(), viewType);
+    }
+  }
+
+  unregisterExtensions(extensions: string[], viewType: string): void {
+    for (const extension of extensions) {
+      const normalized = extension.replace(/^\./, '').toLowerCase();
+      if (this._extensionViews.get(normalized) === viewType) this._extensionViews.delete(normalized);
+    }
+  }
+
+  getViewTypeForExtension(extension: string): string | null {
+    return this._extensionViews.get(extension.replace(/^\./, '').toLowerCase()) || null;
+  }
+
+  registerHoverLinkSource(id: string, info: any): void {
+    this._hoverLinkSources.set(id, info);
+  }
+
+  unregisterHoverLinkSource(id: string): void {
+    this._hoverLinkSources.delete(id);
+  }
+
+  registerEditorExtension(extension: any): void {
+    this.editorExtensions.push(extension);
+    (window as any).__oo_register_editor_ext?.('workspace', extension);
+  }
+
+  unregisterEditorExtension(extension: any): void {
+    this.editorExtensions = this.editorExtensions.filter((entry) => entry !== extension);
+    (window as any).__oo_unregister_editor_ext?.('workspace', extension);
   }
 
   onLayoutReady(callback: () => any): void {
@@ -353,6 +430,11 @@ export class OOWorkspace extends Events {
       return this.activeLeaf.view as T;
     }
     return null;
+  }
+
+  getActiveFileView(): FileView | null {
+    const view = this.activeLeaf?.view;
+    return view instanceof FileView ? view as unknown as FileView : null;
   }
 
   getActiveFile(): TFile | null {
@@ -386,6 +468,11 @@ export class OOWorkspace extends Events {
     this.iterateAllLeaves(callback);
   }
 
+  iterateLeaves(callback: (leaf: WorkspaceLeaf) => any): void { this.iterateAllLeaves(callback); }
+  iterateTabs(callback: (leaf: WorkspaceLeaf) => any): void { this.iterateAllLeaves(callback); }
+  isAttached(leaf: WorkspaceLeaf): boolean { return this._leaves.has(leaf.id); }
+  isInSidebar(leaf: WorkspaceLeaf): boolean { return leaf.side === 'left' || leaf.side === 'right'; }
+
   async revealLeaf(leaf: WorkspaceLeaf): Promise<void> {
     // If the leaf already has a view, just make it active
     if (leaf.view) {
@@ -406,8 +493,15 @@ export class OOWorkspace extends Events {
     return this._leaves.get(id) || null;
   }
 
-  getGroupLeaves(group: string): WorkspaceLeaf[] { return []; }
+  getGroupLeaves(group: string): WorkspaceLeaf[] {
+    return Array.from(this._leaves.values()).filter((leaf) => leaf.group === group);
+  }
   getMostRecentLeaf(): WorkspaceLeaf | null { return this.activeLeaf; }
+  getActiveLeafOfViewType(viewType: string): WorkspaceLeaf | null {
+    return this.activeLeaf?.view?.getViewType?.() === viewType
+      ? this.activeLeaf
+      : this.getLeavesOfType(viewType)[0] || null;
+  }
   
   getLeftLeaf(split: boolean): WorkspaceLeaf | null {
     const leaf = this._createSideLeaf();
@@ -439,20 +533,58 @@ export class OOWorkspace extends Events {
     return leaf;
   }
 
+  _detachLeaf(leaf: WorkspaceLeaf): void {
+    if (leaf.view) {
+      try { void leaf.view.onClose?.(); } catch { /* plugin cleanup is isolated elsewhere */ }
+      this._activePluginViews.delete(leaf.view.getViewType?.());
+    }
+    this._leaves.delete(leaf.id);
+    if (this._activeLeaf === leaf) this._activeLeaf = null;
+    leaf.containerEl.remove();
+    this.trigger('plugin-views-changed');
+    this.trigger('layout-change');
+  }
+
   /** Instantiate a view on a leaf using a registered creator */
-  async _createViewOnLeaf(leaf: WorkspaceLeaf, viewType: string): Promise<boolean> {
-    const creator = this._viewCreators.get(viewType);
+  async _createViewOnLeaf(
+    leaf: WorkspaceLeaf,
+    viewType: string,
+    state: Record<string, any> = {},
+    eState?: any,
+  ): Promise<boolean> {
+    const pluginCreator = this._viewCreators.get(viewType);
+    let creator = pluginCreator;
+    if (!creator && viewType === 'markdown') {
+      creator = (targetLeaf) => new MarkdownView(targetLeaf);
+    }
+    if (!creator && viewType === 'empty') {
+      creator = (targetLeaf) => new (View as any)(targetLeaf);
+    }
     if (!creator) {
       console.warn(`[Workspace] No view creator for type: ${viewType}`);
       return false;
     }
     
     try {
+      const previousViewType = leaf.view?.getViewType?.();
+      if (leaf.view?.getViewType?.() !== viewType) {
+        await leaf.view?.onClose?.();
+        leaf.view?.unload?.();
+        if (previousViewType && this._activePluginViews.get(previousViewType) === leaf) {
+          this._activePluginViews.delete(previousViewType);
+        }
+      }
       const view = creator(leaf);
       view.pluginId = (creator as any).__pluginId;
       leaf.view = view;
+      const filePath = state?.file;
+      if (filePath) {
+        (view as any).file = (window as any).__oo_app?.vault?.getFileByPath(filePath) || null;
+      }
+      await (view as any).load?.();
+      await view.setState?.(state || {}, eState);
       await view.onOpen?.();
-      this._activePluginViews.set(viewType, leaf);
+      if (pluginCreator) this._activePluginViews.set(viewType, leaf);
       this.trigger('plugin-views-changed');
       console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()} (plugin: ${view.pluginId})`);
       return true;
@@ -490,13 +622,47 @@ export class OOWorkspace extends Events {
   }
 
   async openLinkText(linktext: string, sourcePath: string, newLeaf?: any): Promise<void> {
-    (window as any).__oo_open_file?.(linktext);
+    const target = (window as any).__oo_app?.metadataCache
+      ?.getFirstLinkpathDest?.(linktext.split('#')[0], sourcePath);
+    (window as any).__oo_open_file?.(target?.path || linktext);
   }
   createLeafBySplit(leaf: WorkspaceLeaf): WorkspaceLeaf { return this.getLeaf(true); }
   createLeafInParent(parent: any, index: number): WorkspaceLeaf { return this.getLeaf(true); }
+  splitActiveLeaf(direction?: 'vertical' | 'horizontal'): WorkspaceLeaf {
+    return this.createLeafBySplit(this.activeLeaf);
+  }
+  duplicateLeaf(leaf: WorkspaceLeaf, direction?: any): WorkspaceLeaf {
+    const duplicate = this.getLeaf(true, direction);
+    void duplicate.setViewState(leaf.getViewState());
+    return duplicate;
+  }
+  async moveLeafToPopout(leaf: WorkspaceLeaf, data?: any): Promise<WorkspaceLeaf> { return leaf; }
+  async openPopoutLeaf(data?: any): Promise<WorkspaceLeaf> { return this.getLeaf(true); }
   getLastOpenFiles(): string[] { return []; }
   updateOptions(): void { /* compat */ }
   handleLinkContextMenu(menu: any, linktext: string, sourcePath: string): boolean { return false; }
+  handleExternalLinkContextMenu(menu: any, url: string): boolean { return false; }
+  focusLeaf(leaf: WorkspaceLeaf): void { this.setActiveLeaf(leaf); leaf.containerEl.focus?.(); }
+  getFocusedContainer(): HTMLElement { return this.activeLeaf?.containerEl || this.containerEl; }
+  async clearLayout(): Promise<void> {
+    for (const leaf of [...this._leaves.values()]) this._detachLeaf(leaf);
+  }
+  async loadLayout(layout: any): Promise<void> { await this.changeLayout(layout); }
+  async saveLayout(): Promise<void> { this.requestSaveLayout?.(); }
+  updateLayout(): void { this.trigger('layout-change'); }
+  updateTitle(): void { this.trigger('layout-change'); }
   async changeLayout(workspace: any): Promise<void> { /* compat */ }
-  getLayout(): Record<string, any> { return {}; }
+  getLayout(): Record<string, any> {
+    return {
+      main: {
+        type: 'split',
+        children: Array.from(this._leaves.values())
+          .filter((leaf) => leaf.side === 'main')
+          .map((leaf) => ({ type: 'leaf', state: leaf.getViewState() })),
+      },
+      left: { type: 'split', children: [] },
+      right: { type: 'split', children: [] },
+      active: this.activeLeaf?.id || null,
+    };
+  }
 }
