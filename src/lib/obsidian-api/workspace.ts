@@ -278,7 +278,7 @@ function _MarkdownView(this: any, leaf: WorkspaceLeaf) {
 
   Object.defineProperty(this, 'containerEl', {
     get: function() { 
-      return document.querySelector('.ftux-editor-host') as HTMLElement || this._containerEl; 
+      return document.querySelector('.leaf-editor-host') as HTMLElement || this._containerEl; 
     },
     set: function(el) { 
       this._containerEl = el; 

@@ -20,7 +20,8 @@ import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/editor/Editor";
 import { EditorHeader } from "./components/editor/EditorHeader";
 import { LeafPaneEditor } from "./components/LeafPaneEditor";
-import { AIKnowledgeGraphFTUX } from "./components/graph/AIKnowledgeGraphFTUX";
+import { GraphView } from "./components/graph/GraphView";
+import { AIKnowledgeGraph } from "./components/graph/AIKnowledgeGraph";
 import { CanvasView } from "./components/canvas/CanvasView";
 import { SearchModal } from "./components/SearchModal";
 import { CommandPalette } from "./components/CommandPalette";
@@ -31,6 +32,7 @@ import {
   type VaultEntryAction,
   type VaultEntryTransitionPhase,
 } from "./components/WelcomeScreen";
+import { VaultManager } from "./components/VaultManager";
 import { Modal } from "./components/Modal";
 import { Ribbon } from "./components/Ribbon";
 import { OutlinePane } from "./components/OutlinePane";
@@ -69,7 +71,7 @@ import { getAnnotation, getCachedAnnotation, generateFirstThoughtExpansion } fro
 import { initializeVault, setQueueStatusCallback, resetQueueState, type QueueStatus } from "./utils/background-queue";
 import { type LinkType } from "./components/SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-enrichment";
-import { generateSynthesis, resetSynthesisCache } from "./utils/synthesis";
+import { resetSynthesisCache } from "./utils/synthesis";
 import { clearCache as clearSpacesCache } from "./utils/spaces-store";
 import { FileText, Layout } from "lucide-react";
 import { Tab, ViewMode, Theme, Command, FileEntry, PaneNode, PaneLeaf } from "./types";
@@ -95,11 +97,7 @@ import { PluginViewPanel } from "./components/PluginViewPanel";
 import type { PluginPermission, PluginManifest } from "./types/plugin";
 import {
   FTUXState,
-  FTUXStage,
-  getFTUXStage,
-  loadFTUXNotNowSuppression,
   loadFTUXState,
-  saveFTUXNotNowSuppression,
   saveFTUXState,
 } from "./utils/ftux";
 import { readData, writeData } from "./utils/disk-store";
@@ -950,6 +948,7 @@ export default function App() {
   // ── Global State ────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
   const [previouslyOpenedVaults, setPreviouslyOpenedVaults] = useState<string[]>([]);
+  const [showVaultManager, setShowVaultManager] = useState(false);
   const [collabStatus, setCollabStatus] = useState<CollabStatus>({ state: 'idle' });
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
@@ -1045,15 +1044,9 @@ export default function App() {
   const [showFirstThoughtExpansionHint, setShowFirstThoughtExpansionHint] = useState(false);
   const [shownFirstThoughtExpansionDraftKey, setShownFirstThoughtExpansionDraftKey] = useState<string | null>(null);
   const [dismissedFirstThoughtExpansionDraftKey, setDismissedFirstThoughtExpansionDraftKey] = useState<string | null>(null);
-  const [ftuxInsightText, setFtuxInsightText] = useState<string | null>(null);
-  const [ftuxSuggestionIdle, setFtuxSuggestionIdle] = useState(false);
-  const [ftuxConnectionPulse, setFtuxConnectionPulse] = useState(false);
   const [vaultEntryTransitionPhase, setVaultEntryTransitionPhase] =
     useState<VaultEntryTransitionPhase>("idle");
   const [isVaultEntryCalmReady, setIsVaultEntryCalmReady] = useState(true);
-  const [notNowSuppressedUntilNotes, setNotNowSuppressedUntilNotes] = useState<number>(() =>
-    loadFTUXNotNowSuppression(),
-  );
   const firstThoughtInputRef = useRef<HTMLTextAreaElement | null>(null);
   const firstThoughtPromptIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstThoughtPromptFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1062,8 +1055,6 @@ export default function App() {
   const firstThoughtEntryHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstThoughtExpansionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstThoughtAutoFocusSkipRef = useRef(false);
-  const ftuxIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ftuxPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vaultEntryTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vaultEntryCalmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1098,30 +1089,50 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [dragCtx, setDragCtx] = useState<DragContextData | null>(null);
   const sidebarWidthRef = useRef(260);
+  const showSidebarRef = useRef(true);
   const appBodyRef = useRef<HTMLDivElement>(null);
+  const leftSidebarShellRef = useRef<HTMLDivElement>(null);
+  const rightSidebarShellRef = useRef<HTMLDivElement>(null);
 
   // Keep ref in sync with state (for non-drag updates)
   useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
+  useEffect(() => { showSidebarRef.current = showSidebar; }, [showSidebar]);
 
   const startSidebarDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     document.body.style.cursor = "ew-resize";
     // Disable pointer events on iframes/embeds during drag to prevent stealing mouse
     document.body.classList.add("is-dragging");
+    const shell = leftSidebarShellRef.current;
+    if (shell) {
+      shell.style.transition = "none";
+      shell.style.willChange = "width";
+    }
+
+    let pendingWidth = sidebarWidthRef.current;
+    let rafId: number | null = null;
+
+    const applyWidth = () => {
+      rafId = null;
+      const newWidth = pendingWidth;
+      sidebarWidthRef.current = newWidth;
+      if (shell) {
+        shell.style.width = `${newWidth}px`;
+      }
+      const tbLeft = document.querySelector('.titlebar-left') as HTMLElement;
+      if (tbLeft) {
+        const w = 44 + newWidth;
+        tbLeft.style.width = `${w}px`;
+        tbLeft.style.minWidth = `${w}px`;
+      }
+    };
 
     const onMove = (ev: MouseEvent) => {
       const newWidth = ev.clientX - 48;
       if (newWidth > 150 && newWidth < 600) {
-        sidebarWidthRef.current = newWidth;
-        // Direct DOM mutation -- zero React re-renders
-        const root = appBodyRef.current || document.querySelector('.app-body');
-        if (root) (root as HTMLElement).style.setProperty('--sidebar-width', `${newWidth}px`);
-        // Also update titlebar-left width directly
-        const tbLeft = document.querySelector('.titlebar-left') as HTMLElement;
-        if (tbLeft) {
-          const w = 44 + newWidth;
-          tbLeft.style.width = `${w}px`;
-          tbLeft.style.minWidth = `${w}px`;
+        pendingWidth = newWidth;
+        if (rafId === null) {
+          rafId = requestAnimationFrame(applyWidth);
         }
       }
     };
@@ -1129,8 +1140,17 @@ export default function App() {
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        applyWidth();
+      }
       document.body.style.cursor = "default";
       document.body.classList.remove("is-dragging");
+      if (shell) {
+        shell.style.transition = "";
+        shell.style.willChange = "";
+        shell.style.width = "var(--sidebar-width)";
+      }
       // Commit final value to React state (single re-render)
       setSidebarWidth(sidebarWidthRef.current);
     };
@@ -1149,11 +1169,28 @@ export default function App() {
     e.preventDefault();
     document.body.style.cursor = "ew-resize";
     document.body.classList.add("is-dragging");
+    const shell = rightSidebarShellRef.current;
+    if (shell) {
+      shell.style.transition = "none";
+      shell.style.willChange = "width";
+    }
+
+    let pendingWidth = rightSidebarWidthRef.current;
+    let rafId: number | null = null;
+
+    const applyWidth = () => {
+      rafId = null;
+      const newWidth = pendingWidth;
+      rightSidebarWidthRef.current = newWidth;
+      if (shell) {
+        shell.style.width = `${newWidth}px`;
+      }
+    };
 
     const onMove = (ev: MouseEvent) => {
       const ribbonWidth = 48;
       const curLeftWidth = sidebarWidthRef.current;
-      const leftUsed = document.querySelector('.sidebar.collapsed') ? 0 : curLeftWidth;
+      const leftUsed = showSidebarRef.current ? curLeftWidth : 0;
       const minCenterWidth = 40;
       const maxRightWidth = window.innerWidth - ribbonWidth - leftUsed - minCenterWidth;
 
@@ -1161,17 +1198,26 @@ export default function App() {
       if (newWidth < 200) newWidth = 200;
       if (newWidth > maxRightWidth) newWidth = maxRightWidth;
 
-      rightSidebarWidthRef.current = newWidth;
-      // Direct DOM mutation
-      const root = appBodyRef.current || document.querySelector('.app-body');
-      if (root) (root as HTMLElement).style.setProperty('--right-sidebar-width', `${newWidth}px`);
+      pendingWidth = newWidth;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(applyWidth);
+      }
     };
 
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        applyWidth();
+      }
       document.body.style.cursor = "default";
       document.body.classList.remove("is-dragging");
+      if (shell) {
+        shell.style.transition = "";
+        shell.style.willChange = "";
+        shell.style.width = "var(--right-sidebar-width)";
+      }
       setRightSidebarWidth(rightSidebarWidthRef.current);
     };
 
@@ -1938,6 +1984,14 @@ export default function App() {
     );
   }, [settings.vimMode]);
 
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("oo:spellcheck-setting-change", {
+        detail: { enabled: settings.spellcheck },
+      }),
+    );
+  }, [settings.spellcheck]);
+
   // ── Queue status listener ───────────────────────────
   useEffect(() => {
     setQueueStatusCallback((status) => setQueueStatus(status));
@@ -1947,10 +2001,6 @@ export default function App() {
   useEffect(() => {
     saveFTUXState(ftuxState);
   }, [ftuxState]);
-
-  useEffect(() => {
-    saveFTUXNotNowSuppression(notNowSuppressedUntilNotes);
-  }, [notNowSuppressedUntilNotes]);
 
   useEffect(() => {
     return () => {
@@ -1971,12 +2021,6 @@ export default function App() {
       }
       if (firstThoughtExpansionTimerRef.current) {
         clearTimeout(firstThoughtExpansionTimerRef.current);
-      }
-      if (ftuxIdleTimerRef.current) {
-        clearTimeout(ftuxIdleTimerRef.current);
-      }
-      if (ftuxPulseTimerRef.current) {
-        clearTimeout(ftuxPulseTimerRef.current);
       }
       if (vaultEntryTransitionTimerRef.current) {
         clearTimeout(vaultEntryTransitionTimerRef.current);
@@ -2583,6 +2627,8 @@ export default function App() {
         document.dispatchEvent(new CustomEvent("editor:open-search"));
       } else if (ctrl && shift && e.key.toLowerCase() === "f") {
         e.preventDefault();
+        setShowSidebar(true);
+        setSearchInitialMode("search");
         setShowSearch(true);
       } else if (ctrl && e.key === "n") {
         e.preventDefault();
@@ -2700,6 +2746,20 @@ export default function App() {
     }
   };
 
+  const refreshPreviouslyOpenedVaults = async () => {
+    try {
+      const previous = await api.getPreviouslyOpenedVaults();
+      setPreviouslyOpenedVaults(previous || []);
+    } catch (prevErr) {
+      console.warn("Failed to load previously opened vaults:", prevErr);
+    }
+  };
+
+  const handleShowVaultManager = async () => {
+    await refreshPreviouslyOpenedVaults();
+    setShowVaultManager(true);
+  };
+
   const handleOpenVault = async (): Promise<boolean> => {
     try {
       const path = await api.openVaultDialog();
@@ -2711,6 +2771,38 @@ export default function App() {
     } catch (e) {
       console.error("Failed to open vault:", e);
       alert("Failed to open vault. It may be too large or inaccessible.");
+      return false;
+    }
+  };
+
+  const handleCreateVault = async (): Promise<boolean> => {
+    try {
+      let defaultPath: string | undefined;
+      try {
+        const documentsPath = await api.getSystemPath("documents");
+        defaultPath = documentsPath
+          ? `${documentsPath}/Untitled vault`
+          : undefined;
+      } catch {
+        defaultPath = undefined;
+      }
+
+      const result = await api.showSaveDialog({
+        title: "Create new vault",
+        buttonLabel: "Create",
+        defaultPath,
+        properties: ["createDirectory"],
+      } as any);
+
+      if (result.canceled || !result.filePath) {
+        return false;
+      }
+
+      await loadVaultData(result.filePath);
+      return true;
+    } catch (e) {
+      console.error("Failed to create vault:", e);
+      alert("Failed to create vault. Please choose a writable location.");
       return false;
     }
   };
@@ -2727,16 +2819,17 @@ export default function App() {
   };
 
   const handleWelcomeVaultAction = useCallback(
-    async (_action: VaultEntryAction) => {
+    async (action: VaultEntryAction) => {
       if (vaultEntryTransitionPhase !== "idle") return;
 
       setVaultEntryTransitionPhase("transitioning");
-      const opened = await handleOpenVault();
+      const opened =
+        action === "create" ? await handleCreateVault() : await handleOpenVault();
       if (!opened) {
         setVaultEntryTransitionPhase("idle");
       }
     },
-    [vaultEntryTransitionPhase, handleOpenVault],
+    [vaultEntryTransitionPhase, handleCreateVault, handleOpenVault],
   );
 
   const refreshFileTree = async () => {
@@ -2770,6 +2863,99 @@ export default function App() {
           },
         });
       });
+    },
+    [],
+  );
+
+  const getParentPath = (targetPath: string): string => {
+    const normalized = targetPath.replace(/[\\/]+$/, "");
+    const index = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+    return index > 0 ? normalized.slice(0, index) : normalized;
+  };
+
+  const getPathLeafName = (targetPath: string): string =>
+    targetPath.replace(/[\\/]+$/, "").split(/[/\\]/).filter(Boolean).pop() ||
+    "Untitled vault";
+
+  const joinNativePath = (parentPath: string, name: string): string => {
+    const separator = parentPath.includes("\\") ? "\\" : "/";
+    return `${parentPath.replace(/[\\/]+$/, "")}${separator}${name}`;
+  };
+
+  const handleCopyVaultId = useCallback((targetPath: string) => {
+    void api.writeClipboardText(targetPath);
+    showToast("Copied vault ID", "success");
+  }, []);
+
+  const handleRenameVault = useCallback(
+    async (targetPath: string) => {
+      const currentName = getPathLeafName(targetPath);
+      const nextName = await promptForInput(
+        "Rename vault",
+        "Enter a new vault folder name:",
+        currentName,
+      );
+      if (!nextName || nextName === currentName) return;
+      if (/[\\/]/.test(nextName)) {
+        showToast("Vault name cannot contain path separators.", "error");
+        return;
+      }
+
+      const nextPath = joinNativePath(getParentPath(targetPath), nextName);
+      try {
+        await api.renamePath(targetPath, nextPath);
+        if (targetPath === vaultPath) {
+          await loadVaultData(nextPath);
+        } else {
+          await refreshPreviouslyOpenedVaults();
+        }
+        showToast("Vault renamed", "success");
+      } catch (error) {
+        console.error("Failed to rename vault:", error);
+        showToast("Failed to rename vault.", "error");
+      }
+    },
+    [promptForInput, vaultPath],
+  );
+
+  const handleMoveVault = useCallback(
+    async (targetPath: string) => {
+      try {
+        const result = await api.showOpenDialog({
+          title: "Move vault to folder",
+          buttonLabel: "Move here",
+          properties: ["openDirectory", "createDirectory"],
+        });
+        if (result.canceled || !result.filePaths[0]) return;
+
+        const nextPath = joinNativePath(result.filePaths[0], getPathLeafName(targetPath));
+        if (nextPath === targetPath) return;
+
+        await api.renamePath(targetPath, nextPath);
+        if (targetPath === vaultPath) {
+          await loadVaultData(nextPath);
+        } else {
+          await refreshPreviouslyOpenedVaults();
+        }
+        showToast("Vault moved", "success");
+      } catch (error) {
+        console.error("Failed to move vault:", error);
+        showToast("Failed to move vault.", "error");
+      }
+    },
+    [vaultPath],
+  );
+
+  const handleRemoveVaultFromList = useCallback(
+    async (targetPath: string) => {
+      try {
+        const next = await api.removePreviouslyOpenedVault(targetPath);
+        setPreviouslyOpenedVaults(next || []);
+        showToast("Vault removed from list", "success");
+      } catch (error) {
+        console.error("Failed to remove vault from list:", error);
+        showToast("Failed to remove vault from list.", "error");
+      }
     },
     [],
   );
@@ -3598,9 +3784,6 @@ export default function App() {
 
     setCurrentContent("");
     setBacklinks([]);
-    setFtuxState((prev: FTUXState) =>
-      prev.graphPromptShown ? prev : { ...prev, graphPromptShown: true },
-    );
   };
 
   const openSpacesAsTab = () => {
@@ -3859,14 +4042,6 @@ export default function App() {
   const [nextStepSuggestionsByPath, setNextStepSuggestionsByPath] = useState<Record<string, EnrichedSuggestion[]>>({});
   const [inlineAnnotationByPath, setInlineAnnotationByPath] = useState<Record<string, string | null>>({});
   const [generatingInsightPaths, setGeneratingInsightPaths] = useState<Set<string>>(new Set());
-  const ftuxConnectionSuggestion = useMemo(
-    () =>
-      inlineSuggestions
-        .filter((suggestion) => suggestion.similarity >= 0.7)
-        .sort((a, b) => b.similarity - a.similarity)[0] || null,
-    [inlineSuggestions],
-  );
-
   const refreshInlineSuggestions = useCallback(async (notePath: string) => {
     try {
       const store = loadStore();
@@ -4124,38 +4299,6 @@ export default function App() {
           timestamp: Date.now(),
         });
 
-        let acceptedConnection = false;
-        setFtuxState((prev: FTUXState) => {
-          const next: FTUXState = {
-            ...prev,
-            acceptedSuggestions: prev.acceptedSuggestions + 1,
-          };
-
-          const withinConnectionWindow = prev.notesCount >= 2 && prev.notesCount <= 3;
-          const isConnectionTarget = targetPath === (ftuxConnectionSuggestion?.path || "");
-          if (withinConnectionWindow && isConnectionTarget) {
-            next.acceptedConnections = prev.acceptedConnections + 1;
-            acceptedConnection = true;
-          }
-
-          if (next.acceptedSuggestions >= 2) {
-            next.trajectoryActivated = true;
-          }
-
-          return next;
-        });
-
-        if (acceptedConnection) {
-          setFtuxConnectionPulse(true);
-          if (ftuxPulseTimerRef.current) {
-            clearTimeout(ftuxPulseTimerRef.current);
-          }
-          ftuxPulseTimerRef.current = setTimeout(() => {
-            setFtuxConnectionPulse(false);
-            ftuxPulseTimerRef.current = null;
-          }, 1000);
-        }
-
         setInlineSuggestions((prev) => prev.filter((s) => s.path !== targetPath));
         // Reload editor content
         const updated = await api.readFile(tab.path);
@@ -4164,7 +4307,7 @@ export default function App() {
         console.error("Failed to create link:", err);
       }
     },
-    [activeTabId, ftuxConnectionSuggestion?.path, inlineSuggestions, tabs],
+    [activeTabId, inlineSuggestions, tabs],
   );
 
   const handleInlineReject = useCallback(
@@ -4178,43 +4321,10 @@ export default function App() {
         timestamp: Date.now(),
       });
 
-      const isConnectionWindow = ftuxState.notesCount >= 2 && ftuxState.notesCount <= 3;
-      const isConnectionSuggestion = targetPath === (ftuxConnectionSuggestion?.path || "");
-      if (isConnectionWindow && isConnectionSuggestion) {
-        setNotNowSuppressedUntilNotes(ftuxState.notesCount + 2);
-      }
-
       setInlineSuggestions((prev) => prev.filter((s) => s.path !== targetPath));
     },
-    [activeTabId, ftuxConnectionSuggestion?.path, ftuxState.notesCount, tabs],
+    [activeTabId, tabs],
   );
-
-  const handleSaveInsight = useCallback(async () => {
-    if (!ftuxInsightText) return;
-
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    let filePath = `insight-${stamp}.md`;
-    let suffix = 2;
-    while (await api.fileExists(filePath)) {
-      filePath = `insight-${stamp}-${suffix}.md`;
-      suffix += 1;
-    }
-
-    const content = `# Insight\n\n${ftuxInsightText}\n`;
-    await api.createFile(filePath, content);
-    await refreshFileTree();
-    await openFile(filePath, "preview");
-    setFtuxState((prev: FTUXState) => ({ ...prev, insightShown: true }));
-  }, [ftuxInsightText, refreshFileTree, openFile]);
-
-  const handleIgnoreInsight = useCallback(() => {
-    setFtuxState((prev: FTUXState) => ({ ...prev, insightShown: true }));
-  }, []);
-
-  const handleOpenGraphFromPrompt = () => {
-    setFtuxState((prev: FTUXState) => ({ ...prev, graphPromptShown: true }));
-    openGraphAsTab("manual");
-  };
 
   // Auto-embed a note after save (background, non-blocking)
   const autoEmbedNote = useCallback(async (path: string, content: string) => {
@@ -4292,16 +4402,6 @@ export default function App() {
 
   const handleContentChangeGlobal = useCallback(
     (path: string, content: string) => {
-      // Keep suggestion idle state updated immediately
-      setFtuxSuggestionIdle(false);
-      if (ftuxIdleTimerRef.current) {
-        clearTimeout(ftuxIdleTimerRef.current);
-      }
-      ftuxIdleTimerRef.current = setTimeout(() => {
-        setFtuxSuggestionIdle(true);
-        ftuxIdleTimerRef.current = null;
-      }, 600);
-
       // Keep currentContentRef updated synchronously
       if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
         currentContentRef.current = content;
@@ -4392,19 +4492,6 @@ export default function App() {
     },
     [activeTabId, tabs, clearAutoSaveTimer],
   );
-
-  useEffect(() => {
-    if (ftuxIdleTimerRef.current) {
-      clearTimeout(ftuxIdleTimerRef.current);
-      ftuxIdleTimerRef.current = null;
-    }
-    const tab = tabs.find((t) => t.id === activeTabId);
-    if (!tab || isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH) {
-      setFtuxSuggestionIdle(false);
-    } else {
-      setFtuxSuggestionIdle(true);
-    }
-  }, [activeTabId]);
 
   useEffect(() => {
     return () => {
@@ -4681,6 +4768,7 @@ export default function App() {
     };
 
     const onFuzzySearch = (_event: Event) => {
+      setShowSidebar(true);
       setShowSearch(true);
     };
 
@@ -4692,6 +4780,7 @@ export default function App() {
       const customEvent = event as CustomEvent<{ query?: string; mode?: "search" | "switcher" }>;
       setSearchInitialQuery(customEvent?.detail?.query || "");
       setSearchInitialMode(customEvent?.detail?.mode || "switcher");
+      setShowSidebar(true);
       setShowSearch(true);
     };
 
@@ -5262,16 +5351,6 @@ export default function App() {
   }, [allNoteNames.length]);
 
   useEffect(() => {
-    if (ftuxState.acceptedSuggestions < 2 || ftuxState.trajectoryActivated) {
-      return;
-    }
-    setFtuxState((prev: FTUXState) => ({
-      ...prev,
-      trajectoryActivated: true,
-    }));
-  }, [ftuxState.acceptedSuggestions, ftuxState.trajectoryActivated]);
-
-  useEffect(() => {
     const isZeroStage = vaultPath !== null && ftuxState.notesCount === 0;
     if (!isZeroStage) return;
 
@@ -5280,78 +5359,6 @@ export default function App() {
     setShowThoughtModel(false);
     setShowSidebar(false);
   }, [ftuxState.notesCount, vaultPath]);
-
-  useEffect(() => {
-    if (ftuxState.notesCount < 4 || ftuxState.insightShown) {
-      setFtuxInsightText(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const buildInsight = async () => {
-      try {
-        const candidatePaths = [...new Set([
-          ...recentFiles.filter((path) => path.toLowerCase().endsWith(".md")),
-          ...allNoteNames.map((note) => note.path),
-        ])].slice(0, 6);
-
-        if (candidatePaths.length < 2) {
-          if (!cancelled) setFtuxInsightText(null);
-          return;
-        }
-
-        const notes: { title: string; content: string }[] = [];
-        for (const path of candidatePaths) {
-          try {
-            const content = await api.readFile(path);
-            if (content.trim().length === 0) continue;
-            notes.push({ title: getNoteName(path), content });
-          } catch {
-            // ignore unreadable notes
-          }
-        }
-
-        if (notes.length < 2) {
-          if (!cancelled) setFtuxInsightText(null);
-          return;
-        }
-
-        const synthesis = await generateSynthesis(notes);
-        const fallbackConcept = inlineSuggestions[0]?.sharedConcepts[0] || "your recent notes";
-        const fallback = `You keep circling around ${fallbackConcept} from different angles.`;
-        const insightLine =
-          synthesis?.insight
-            ?.replace(/^INSIGHT:\s*/i, "")
-            .split("\n")
-            .find((line) => line.trim().length > 0)
-            ?.trim() || fallback;
-
-        if (!cancelled) {
-          setFtuxInsightText(insightLine);
-        }
-      } catch {
-        if (!cancelled) {
-          const fallbackConcept = inlineSuggestions[0]?.sharedConcepts[0] || "your ideas";
-          setFtuxInsightText(
-            `A recurring thread is forming around ${fallbackConcept}.`,
-          );
-        }
-      }
-    };
-
-    void buildInsight();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    allNoteNames,
-    ftuxState.insightShown,
-    ftuxState.notesCount,
-    inlineSuggestions,
-    recentFiles,
-  ]);
 
   // Get note content for embeds - uses cache or fetches
   const getNoteContent = useCallback(
@@ -5412,7 +5419,11 @@ export default function App() {
       id: "search-vault",
       label: "Search Entire Vault",
       shortcut: "Ctrl+Shift+F",
-      action: () => setShowSearch(true),
+      action: () => {
+        setShowSidebar(true);
+        setSearchInitialMode("search");
+        setShowSearch(true);
+      },
       category: "Search",
     },
     {
@@ -5782,68 +5793,7 @@ export default function App() {
     app.workspace.trigger('file-open', file);
   }, [activeTab?.path]);
 
-  const ftuxStage: FTUXStage = getFTUXStage(ftuxState);
-  const isFTUXZeroState = Boolean(vaultPath) && ftuxStage === "zero";
-  const isFTUXFirstNote = ftuxStage === "first_note";
-  const isFTUXConnectionStage =
-    ftuxStage === "connection" && ftuxState.notesCount >= 2 && ftuxState.notesCount <= 3;
-  const notNowSuppressed = ftuxState.notesCount <= notNowSuppressedUntilNotes;
-
-  const canShowFTUXPrompts =
-    !!activeTab &&
-    !activeTabIsCanvas &&
-    !activeTabIsGraph &&
-    !activeTabIsSpaces &&
-    ftuxSuggestionIdle &&
-    !showGraph &&
-    !showCanvas;
-
-  const showFTUXConnectionPrompt =
-    canShowFTUXPrompts &&
-    isFTUXConnectionStage &&
-    !notNowSuppressed &&
-    !!ftuxConnectionSuggestion;
-
-  const showFTUXInsightPrompt =
-    canShowFTUXPrompts &&
-    !showFTUXConnectionPrompt &&
-    ftuxStage === "insight" &&
-    !!ftuxInsightText;
-
-  const showFTUXGraphPrompt =
-    canShowFTUXPrompts &&
-    !showFTUXConnectionPrompt &&
-    !showFTUXInsightPrompt &&
-    ftuxStage === "graph" &&
-    ftuxState.notesCount >= 5 &&
-    ftuxState.acceptedConnections >= 1 &&
-    !ftuxState.graphPromptShown;
-
-  const showTrajectorySuggestions =
-    ftuxState.trajectoryActivated &&
-    ftuxState.acceptedSuggestions >= 2 &&
-    !showFTUXConnectionPrompt &&
-    !showFTUXInsightPrompt &&
-    !showFTUXGraphPrompt;
-
-  const editorSuggestions =
-    !ftuxSuggestionIdle ||
-    isFTUXFirstNote ||
-    isFTUXConnectionStage ||
-    showFTUXInsightPrompt ||
-    showFTUXGraphPrompt
-      ? []
-      : inlineSuggestions;
-
-  const editorNextStepSuggestions =
-    !showTrajectorySuggestions ||
-    !ftuxSuggestionIdle ||
-    isFTUXFirstNote ||
-    isFTUXConnectionStage ||
-    showFTUXInsightPrompt ||
-    showFTUXGraphPrompt
-      ? []
-      : nextStepSuggestions;
+  const isFTUXZeroState = Boolean(vaultPath) && ftuxState.notesCount === 0;
 
   const hasAuxPane = showGraph || showCanvas;
   const shouldShowEditorPane =
@@ -6094,23 +6044,12 @@ export default function App() {
     const activeTabIdPath = activeTab?.path || "";
 
     const leafSuggestions =
-      !ftuxSuggestionIdle ||
-      isFTUXFirstNote ||
-      isFTUXConnectionStage ||
-      showFTUXInsightPrompt ||
-      showFTUXGraphPrompt
-        ? []
-        : (inlineSuggestionsByPath[currentPath] || (currentPath === activeTabIdPath ? inlineSuggestions : []));
+      inlineSuggestionsByPath[currentPath] ||
+      (currentPath === activeTabIdPath ? inlineSuggestions : []);
 
     const leafNextStepSuggestions =
-      !showTrajectorySuggestions ||
-      !ftuxSuggestionIdle ||
-      isFTUXFirstNote ||
-      isFTUXConnectionStage ||
-      showFTUXInsightPrompt ||
-      showFTUXGraphPrompt
-        ? []
-        : (nextStepSuggestionsByPath[currentPath] || (currentPath === activeTabIdPath ? nextStepSuggestions : []));
+      nextStepSuggestionsByPath[currentPath] ||
+      (currentPath === activeTabIdPath ? nextStepSuggestions : []);
 
     return (
       <LeafPaneEditor
@@ -6122,7 +6061,6 @@ export default function App() {
         editorNextStepSuggestions={leafNextStepSuggestions}
         inlineAnnotation={inlineAnnotationByPath[leafActiveTab.path] || getCachedAnnotation(leafActiveTab.path)}
         showInlineInsight={!!showInlineInsightByTab[leafActiveTab.id]}
-        ftuxConnectionPulse={ftuxConnectionPulse}
         isFocused={isThisFocused}
         onTabSelect={(leafId, tabId) => handlePaneTabSelect(leafId, tabId)}
         onTabClose={closeTab}
@@ -6145,12 +6083,77 @@ export default function App() {
   }, [
     focusedLeafId, theme, vaultPath, fileTree, viewMode,
     inlineSuggestions, nextStepSuggestions, inlineSuggestionsByPath, nextStepSuggestionsByPath,
-    activeTabId, tabs, inlineAnnotationByPath, showInlineInsightByTab, ftuxConnectionPulse,
+    activeTabId, tabs, inlineAnnotationByPath, showInlineInsightByTab,
     mainPluginViews, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
-    ftuxSuggestionIdle, isFTUXFirstNote, isFTUXConnectionStage, showFTUXInsightPrompt, showFTUXGraphPrompt,
-    showTrajectorySuggestions, getViewState, handleScrollAndCursorChange, handleGenerateInsight,
+    getViewState, handleScrollAndCursorChange, handleGenerateInsight,
     generatingInsightPaths
   ]);
+
+  const renderGraphShell = useCallback(
+    ({
+      onNodeClick,
+      onClose,
+      isFullScreen,
+      localNodePath,
+    }: {
+      onNodeClick: (noteName: string, heading?: string, notePath?: string) => void;
+      onClose: () => void;
+      isFullScreen: boolean;
+      localNodePath?: string;
+    }) => (
+      <div className="graph-mode-shell">
+        <div className="graph-mode-switch" role="tablist" aria-label="Graph mode">
+          <button
+            type="button"
+            className={`graph-mode-btn ${graphMode !== "ai" ? "active" : ""}`}
+            onClick={() => setGraphMode("manual")}
+          >
+            Manual
+          </button>
+          <button
+            type="button"
+            className={`graph-mode-btn ${graphMode === "ai" ? "active" : ""}`}
+            onClick={() => setGraphMode("ai")}
+          >
+            AI View
+          </button>
+        </div>
+
+        {graphMode === "ai" ? (
+          <AIKnowledgeGraph
+            onNodeClick={onNodeClick}
+            onClose={onClose}
+            isFullScreen={isFullScreen}
+            onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
+            theme={theme}
+            vaultPath={vaultPath}
+            localNodePath={localNodePath}
+            onCreateGroupFromPaths={handleCreateGroupFromPaths}
+            onOpenPathsAsGroup={handleOpenPathsAsGroup}
+          />
+        ) : (
+          <GraphView
+            onNodeClick={onNodeClick}
+            onClose={onClose}
+            isFullScreen={isFullScreen}
+            onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
+            theme={theme}
+            vaultPath={vaultPath}
+            localNodePath={localNodePath}
+          />
+        )}
+      </div>
+    ),
+    [
+      graphMode,
+      handleCreateGroupFromPaths,
+      handleOpenPathsAsGroup,
+      setGraphFullScreen,
+      setGraphMode,
+      theme,
+      vaultPath,
+    ],
+  );
 
   // Render content for a single leaf pane in the split system
   const renderPaneContent = useCallback((leaf: PaneLeaf): React.ReactNode => {
@@ -6208,30 +6211,30 @@ export default function App() {
               height: "100%",
             }}
           >
-            <AIKnowledgeGraphFTUX
-              onNodeClick={async (linkName: string, heading?: string, notePath?: string) => {
+            {renderGraphShell({
+              onNodeClick: async (
+                linkName: string,
+                heading?: string,
+                notePath?: string,
+              ) => {
                 setViewMode("preview");
-                if (notePath) { await openFile(notePath, "preview"); return; }
+                if (notePath) {
+                  await openFile(notePath, "preview");
+                  return;
+                }
                 await handleLinkClick(linkName, heading);
-              }}
-              onClose={() => closeTab(graphTab.id)}
-              isFullScreen={false}
-              onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
-              theme={theme}
-              vaultPath={vaultPath!}
-              localNodePath={undefined}
-              initialAIView={graphMode === "ai"}
-              onAIViewChange={(enabled: boolean) => setGraphMode(enabled ? "ai" : "manual")}
-              onCreateGroupFromPaths={handleCreateGroupFromPaths}
-              onOpenPathsAsGroup={handleOpenPathsAsGroup}
-            />
+              },
+              onClose: () => closeTab(graphTab.id),
+              isFullScreen: false,
+              localNodePath: undefined,
+            })}
           </div>
         )}
       </div>
     );
   }, [
-    tabs, fileTree, theme, vaultPath, graphMode, closeTab, openFile,
-    renderActiveTabContent, handleLinkClick, setGraphFullScreen, setGraphMode
+    tabs, fileTree, closeTab, openFile,
+    renderActiveTabContent, handleLinkClick, renderGraphShell
   ]);
 
   return (
@@ -6246,9 +6249,14 @@ export default function App() {
           leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
           onNewNote={handleNewNote}
           onSearch={() => {
-            document.dispatchEvent(new CustomEvent("editor:open-search"));
+            setShowSidebar(true);
+            setSearchInitialMode("search");
+            setShowSearch(true);
           }}
-          onToggleExplorer={() => setShowSidebar((s) => !s)}
+          onToggleExplorer={() => {
+            setShowSidebar(true);
+            setShowSearch(false);
+          }}
           tabs={tabs}
           activeTabId={activeTabId}
           onTabSelect={handleTabSelect}
@@ -6287,9 +6295,6 @@ export default function App() {
         {vaultPath && !isFTUXZeroState && (
           <Ribbon
             onNewNote={handleNewNote}
-            onSearch={() => {
-              document.dispatchEvent(new CustomEvent("editor:open-search"));
-            }}
             onGraph={() => {
               openGraphAsTab();
             }}
@@ -6312,54 +6317,89 @@ export default function App() {
           />
         )}
         {vaultPath && !isFTUXZeroState && (
-          <Sidebar
-            visible={showSidebar}
-            fileTree={fileTree}
-            activeFilePath={activeTab?.path || null}
-            starredNotes={starredNotes}
-            onFileSelect={openFile}
-            onNewNote={handleNewNote}
-            onNewFolder={handleCreateFolder}
-            onDeleteFile={handleDeleteFile}
-            onRenameFile={handleRenameFile}
-            onMoveFile={handleMoveFile}
-            onRefresh={refreshFileTree}
-            onCollapse={() => setShowSidebar(false)}
-            onToggleStar={(path) => {
-              setStarredNotes((prev) =>
-                prev.includes(path)
-                  ? prev.filter((p) => p !== path)
-                  : [...prev, path],
-              );
-            }}
-            vaultPath={vaultPath}
-            onOpenVault={handleOpenVault}
-            previouslyOpenedVaults={previouslyOpenedVaults}
-            onSwitchVault={handleSwitchVault}
-            onSettings={() => setShowSettings(true)}
-            pluginViews={leftPluginViews}
-            onClosePluginView={(viewType) => {
-              const app = ooAppRef.current;
-              if (app) app.workspace.detachLeavesOfType(viewType);
-            }}
-            groups={groups}
-            activeGroupId={activeGroupId}
-            onCreateGroup={handleOpenCreateGroupModal}
-            onRestoreGroup={handleRestoreGroup}
-            onRenameGroup={handleRenameGroup}
-            onChangeGroupColor={handleChangeGroupColor}
-            onDeleteGroup={handleDeleteGroup}
-            onDuplicateGroup={handleDuplicateGroup}
-            onToggleGroupAutoSave={handleToggleGroupAutoSave}
-          />
-        )}
-
-        {showSidebar && vaultPath && !isFTUXZeroState && (
           <div
-            className={resizerClass}
-            onMouseDown={startSidebarDrag}
-            style={{ zIndex: 100 }}
-          />
+            ref={leftSidebarShellRef}
+            className="relative h-full shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width]"
+            style={{ width: showSidebar ? "var(--sidebar-width)" : 0 }}
+          >
+            <div className="h-full w-full">
+              {showSearch ? (
+                <SearchModal
+                  onClose={() => {
+                    setShowSearch(false);
+                  }}
+                  onSelect={(path) => {
+                    setShowSearch(false);
+                    openFile(path);
+                  }}
+                  recentFiles={recentFiles}
+                  starredNotes={starredNotes}
+                  fileTree={fileTree}
+                  initialQuery={searchInitialQuery}
+                  initialMode={searchInitialMode}
+                  onQueryChange={setSearchInitialQuery}
+                  onModeChange={setSearchInitialMode}
+                />
+              ) : (
+                <Sidebar
+                  visible={true}
+                  fileTree={fileTree}
+                  activeFilePath={activeTab?.path || null}
+                  starredNotes={starredNotes}
+                  onFileSelect={openFile}
+                  onNewNote={handleNewNote}
+                  onNewFolder={handleCreateFolder}
+                  onDeleteFile={handleDeleteFile}
+                  onRenameFile={handleRenameFile}
+                  onMoveFile={handleMoveFile}
+                  onRefresh={refreshFileTree}
+                  onCollapse={() => setShowSidebar(false)}
+                  onToggleStar={(path) => {
+                    setStarredNotes((prev) =>
+                      prev.includes(path)
+                        ? prev.filter((p) => p !== path)
+                        : [...prev, path],
+                    );
+                  }}
+                  vaultPath={vaultPath}
+                  onOpenVault={handleOpenVault}
+                  onManageVaults={() => {
+                    void handleShowVaultManager();
+                  }}
+                  previouslyOpenedVaults={previouslyOpenedVaults}
+                  onSwitchVault={handleSwitchVault}
+                  onSettings={() => setShowSettings(true)}
+                  pluginViews={leftPluginViews}
+                  onClosePluginView={(viewType) => {
+                    const app = ooAppRef.current;
+                    if (app) app.workspace.detachLeavesOfType(viewType);
+                  }}
+                  groups={groups}
+                  activeGroupId={activeGroupId}
+                  onCreateGroup={handleOpenCreateGroupModal}
+                  onRestoreGroup={handleRestoreGroup}
+                  onRenameGroup={handleRenameGroup}
+                  onChangeGroupColor={handleChangeGroupColor}
+                  onDeleteGroup={handleDeleteGroup}
+                  onDuplicateGroup={handleDuplicateGroup}
+                  onToggleGroupAutoSave={handleToggleGroupAutoSave}
+                />
+              )}
+            </div>
+            {showSidebar && (
+              <div
+                className={resizerClass}
+                onMouseDown={startSidebarDrag}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  height: "100%",
+                  zIndex: 100,
+                }}
+              />
+            )}
+          </div>
         )}
 
         <div
@@ -6444,8 +6484,8 @@ export default function App() {
                     overflow: "hidden",
                   }}
                 >
-                  <AIKnowledgeGraphFTUX
-                    onNodeClick={async (
+                  {renderGraphShell({
+                    onNodeClick: async (
                       linkName: string,
                       heading?: string,
                       notePath?: string,
@@ -6459,18 +6499,11 @@ export default function App() {
                         return;
                       }
                       await handleLinkClick(linkName, heading);
-                    }}
-                    onClose={() => setShowGraph(false)}
-                    isFullScreen={graphFullScreen}
-                    onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
-                    theme={theme}
-                    vaultPath={vaultPath}
-                    localNodePath={activeTab?.path}
-                    initialAIView={graphMode === "ai"}
-                    onAIViewChange={(enabled: boolean) =>
-                      setGraphMode(enabled ? "ai" : "manual")
-                    }
-                  />
+                    },
+                    onClose: () => setShowGraph(false),
+                    isFullScreen: graphFullScreen,
+                    localNodePath: activeTab?.path,
+                  })}
                 </div>
               )}
               {/* Canvas View pane */}
@@ -6605,24 +6638,38 @@ export default function App() {
         )}
 
         {/* Plugin Views (right sidebar) */}
-        {showRightSidebar && rightPluginViews.length > 0 && !isFTUXZeroState && (
-          <>
-            <div
-              className={rightResizerClass}
-              onMouseDown={startRightSidebarDrag}
-              style={{ zIndex: 100 }}
-            />
-            <PluginViewPanel
-              views={rightPluginViews}
-              width={rightSidebarWidth}
-              onClose={(viewType) => {
-                const app = ooAppRef.current;
-                if (app) {
-                  app.workspace.detachLeavesOfType(viewType);
-                }
-              }}
-            />
-          </>
+        {rightPluginViews.length > 0 && !isFTUXZeroState && (
+          <div
+            ref={rightSidebarShellRef}
+            className="relative h-full shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width]"
+            style={{ width: showRightSidebar ? "var(--right-sidebar-width)" : 0 }}
+          >
+            {showRightSidebar && (
+              <div
+                className={rightResizerClass}
+                onMouseDown={startRightSidebarDrag}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  height: "100%",
+                  zIndex: 100,
+                }}
+              />
+            )}
+            <div className="h-full w-full">
+              <PluginViewPanel
+                views={rightPluginViews}
+                width={rightSidebarWidth}
+                onClose={(viewType) => {
+                  const app = ooAppRef.current;
+                  if (app) {
+                    app.workspace.detachLeavesOfType(viewType);
+                  }
+                }}
+              />
+            </div>
+          </div>
         )}
       </div>
 
@@ -6636,25 +6683,6 @@ export default function App() {
           queueStatus={queueStatus}
           pluginStatusBarItems={pluginStatusBarItems}
           vimEnabled={settings.vimMode}
-        />
-      )}
-
-      {showSearch && (
-        <SearchModal
-          onClose={() => {
-            setShowSearch(false);
-            setSearchInitialQuery("");
-            setSearchInitialMode("switcher");
-          }}
-          onSelect={(path) => {
-            setShowSearch(false);
-            openFile(path);
-          }}
-          recentFiles={recentFiles}
-          starredNotes={starredNotes}
-          fileTree={fileTree}
-          initialQuery={searchInitialQuery}
-          initialMode={searchInitialMode}
         />
       )}
 
@@ -6865,6 +6893,24 @@ export default function App() {
             }
           `}</style>
         </div>
+      )}
+      {showVaultManager && (
+        <VaultManager
+          currentVaultPath={vaultPath}
+          previouslyOpenedVaults={previouslyOpenedVaults}
+          theme={theme}
+          onCreateVault={handleCreateVault}
+          onOpenVault={handleOpenVault}
+          onSwitchVault={handleSwitchVault}
+          onRevealVault={(path) => {
+            void api.showItemInFolder(path);
+          }}
+          onCopyVaultId={handleCopyVaultId}
+          onRenameVault={handleRenameVault}
+          onMoveVault={handleMoveVault}
+          onRemoveVaultFromList={handleRemoveVaultFromList}
+          onClose={() => setShowVaultManager(false)}
+        />
       )}
       {toast && (
         <div className="fixed bottom-[var(--space-8)] right-[var(--space-8)] z-[300] flex flex-col gap-[var(--space-2)]">

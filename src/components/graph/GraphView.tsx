@@ -554,7 +554,15 @@ export function GraphView({
 
     // Skip initialization if container has no size yet
     if (rect.width < 10 || rect.height < 10) {
-      return;
+      const resizeObserver = new ResizeObserver((entries) => {
+        const nextRect =
+          entries[0]?.contentRect || container.getBoundingClientRect();
+        if (nextRect.width >= 10 && nextRect.height >= 10) {
+          setReinitCounter((count) => count + 1);
+        }
+      });
+      resizeObserver.observe(container);
+      return () => resizeObserver.disconnect();
     }
 
     // Use app theme background colors

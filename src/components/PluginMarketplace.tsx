@@ -478,7 +478,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                   </div>
                 ) : readme ? (
                   <div
-                    className="readme-content"
+                    className="readme-content markdown-rendered"
                     dangerouslySetInnerHTML={{ __html: getReadmeHtml() }}
                   />
                 ) : (

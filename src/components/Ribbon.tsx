@@ -1,12 +1,8 @@
 import React, { useState, useRef } from "react";
 import {
   FilePlus,
-  Search,
   Network,
-  Settings,
-  FolderOpen,
   Calendar,
-  Hash,
   List,
   Sparkles,
   Layout,
@@ -20,7 +16,6 @@ const ribbonBtnClass = "flex h-8 w-8 cursor-pointer items-center justify-center 
 
 interface RibbonProps {
   onNewNote: () => void;
-  onSearch: () => void;
   onToggleExplorer?: () => void;
   onGraph: () => void;
   onSettings: () => void;
@@ -35,7 +30,6 @@ interface RibbonProps {
 
 export function Ribbon({
   onNewNote,
-  onSearch,
   onGraph,
   onToggleExplorer,
   onSettings,
@@ -47,10 +41,6 @@ export function Ribbon({
   onCanvas,
   pluginRibbonActions = [],
 }: RibbonProps) {
-  const handleSearch = () => {
-    document.dispatchEvent(new CustomEvent("editor:open-search"));
-  };
-
   const [hoveringRibbon, setHoveringRibbon] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -72,13 +62,6 @@ export function Ribbon({
       onMouseLeave={handleMouseLeave}
     >
       <div className={ribbonGroupClass}>
-        <button
-          className={ribbonBtnClass}
-          onClick={handleSearch}
-          data-tooltip="Search inside file (Ctrl+F)"
-        >
-          <Search size={20} strokeWidth={1.5} />
-        </button>
         <button
           className={ribbonBtnClass}
           onClick={onNewNote}

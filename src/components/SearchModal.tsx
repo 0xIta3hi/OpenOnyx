@@ -13,7 +13,7 @@ import React, {
   useRef,
   useMemo,
 } from "react";
-import { Search, Clock, FileText, Star } from "lucide-react";
+import { Search, Clock, FileText, Star, X } from "lucide-react";
 import { SearchResult, FileEntry } from "../types";
 import { debounce, getNoteName } from "../utils/helpers";
 import { getAPI } from "../utils/api";
@@ -26,9 +26,30 @@ interface SearchModalProps {
   fileTree?: FileEntry[];
   initialQuery?: string;
   initialMode?: "search" | "switcher";
+  onQueryChange?: (query: string) => void;
+  onModeChange?: (mode: "search" | "switcher") => void;
 }
 
 const api = getAPI();
+
+function highlightText(value: string, query: string): React.ReactNode {
+  const trimmed = query.trim();
+  if (!trimmed) return value;
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = value.split(new RegExp(`(${escaped})`, "ig"));
+  return parts.map((part, index) =>
+    part.toLowerCase() === trimmed.toLowerCase() ? (
+      <mark
+        key={`${part}-${index}`}
+        className="rounded-sm bg-[rgba(234,196,74,0.45)] px-0.5 text-[var(--text-primary)]"
+      >
+        {part}
+      </mark>
+    ) : (
+      <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+    ),
+  );
+}
 
 // Get all notes from file tree
 function getAllNotes(entries: FileEntry[]): { name: string; path: string }[] {
@@ -52,19 +73,14 @@ export function SearchModal({
   fileTree = [],
   initialQuery = "",
   initialMode = "switcher",
+  onQueryChange,
+  onModeChange,
 }: SearchModalProps) {
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mode, setMode] = useState<"search" | "switcher">(initialMode); // Start in switcher mode
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Trigger search on mount if initial query is provided in search mode
-  useEffect(() => {
-    if (initialMode === "search" && initialQuery.trim()) {
-      void performSearch(initialQuery);
-    }
-  }, []);
 
   // All notes for quick switching
   const allNotes = useMemo(() => getAllNotes(fileTree), [fileTree]);
@@ -99,8 +115,21 @@ export function SearchModal({
     [],
   );
 
+  // Sync persisted search state when the sidebar swaps between Explorer/Search.
+  useEffect(() => {
+    setQuery(initialQuery);
+    setMode(initialMode);
+    setSelectedIndex(0);
+    if (initialMode === "search" && initialQuery.trim()) {
+      void performSearch(initialQuery);
+    } else if (!initialQuery.trim()) {
+      setResults([]);
+    }
+  }, [initialQuery, initialMode, performSearch]);
+
   const handleInputChange = (value: string) => {
     setQuery(value);
+    onQueryChange?.(value);
     if (mode === "search") {
       performSearch(value);
     }
@@ -163,116 +192,127 @@ export function SearchModal({
       onClose();
     } else if (e.key === "Tab") {
       e.preventDefault();
-      setMode((m) => (m === "search" ? "switcher" : "search"));
+      setMode((m) => {
+        const nextMode = m === "search" ? "switcher" : "search";
+        onModeChange?.(nextMode);
+        if (nextMode === "search" && query.trim()) {
+          performSearch(query);
+        }
+        return nextMode;
+      });
       setSelectedIndex(0);
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-start justify-center pt-[15vh] z-[9999]" onClick={onClose}>
-      <div className="w-full max-w-[560px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex border-b border-(--border-subtle)">
-          <button
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium border-none cursor-pointer transition-colors duration-150 ${mode === "switcher" ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-muted) hover:text-(--text-secondary)"}`}
-            onClick={() => {
-              setMode("switcher");
-              setSelectedIndex(0);
-            }}
-          >
-            <FileText size={14} /> Quick Switch
-          </button>
-          <button
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium border-none cursor-pointer transition-colors duration-150 ${mode === "search" ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-muted) hover:text-(--text-secondary)"}`}
-            onClick={() => {
-              setMode("search");
-              setSelectedIndex(0);
-            }}
-          >
-            <Search size={14} /> Full Search
-          </button>
-        </div>
+  const groupedSearchResults = useMemo(
+    () =>
+      results.map((result) => ({
+        ...result,
+        title: getNoteName(result.name),
+        snippets: result.matches.slice(0, 3).map((match) => match.value),
+      })),
+    [results],
+  );
 
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-subtle)">
-          <span className="text-(--text-muted) shrink-0">
-            {mode === "search" ? <Search size={18} /> : <FileText size={18} />}
-          </span>
+  return (
+    <div className="sidebar relative flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-t border-[var(--divider-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
+        <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-[var(--border-medium)] bg-[var(--bg-primary)] px-2.5">
+          <Search size={16} className="shrink-0 text-[var(--text-muted)]" />
           <input
             ref={inputRef}
-            className="flex-1 bg-transparent border-none outline-none text-(--text-primary) text-base placeholder:text-(--text-muted)"
+            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
             type="text"
-            placeholder={
-              mode === "search"
-                ? "Search note contents..."
-                : "Quick switch to note..."
-            }
+            placeholder={mode === "search" ? "Search vault..." : "Quick switch..."}
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-        </div>
-
-        <div className="max-h-[50vh] overflow-y-auto">
-          {displayItems.length > 0 ? (
-            displayItems.map((item: any, index) => (
-              <button
-                key={item.path}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 border-none text-left cursor-pointer transition-colors duration-100 ${index === selectedIndex ? "bg-(--bg-active) text-(--text-primary)" : "bg-transparent text-(--text-primary) hover:bg-(--bg-hover)"}`}
-                onClick={() => onSelect(item.path)}
-                onMouseEnter={() => setSelectedIndex(index)}
-              >
-                <span className="shrink-0 text-(--text-muted)">
-                  {item.isStarred ? (
-                    <Star
-                      size={14}
-                      fill="var(--accent-warning)"
-                      stroke="var(--accent-warning)"
-                    />
-                  ) : item.isRecent ? (
-                    <Clock size={14} />
-                  ) : (
-                    <FileText size={14} />
-                  )}
-                </span>
-                <span className="text-[13px] font-medium truncate">{item.name}</span>
-                <span className="text-[11px] text-(--text-muted) truncate ml-auto">{item.path}</span>
-                {item.match && (
-                  <span className="text-[11px] text-(--text-muted) truncate max-w-[200px]">
-                    {item.match.substring(0, 100)}
-                  </span>
-                )}
-              </button>
-            ))
-          ) : query ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-xs text-(--text-muted)">No results found</div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-xs text-(--text-muted)">
-                {mode === "search"
-                  ? "Start typing to search contents..."
-                  : recentFiles.length === 0 && starredNotes.length === 0
-                    ? "Start typing to find notes..."
-                    : "Your starred and recent notes"}
-              </div>
-            </div>
+          {query && (
+            <button
+              className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              onClick={() => {
+                setQuery("");
+                setResults([]);
+                onQueryChange?.("");
+              }}
+            >
+              <X size={12} />
+            </button>
           )}
         </div>
+      </div>
 
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-(--border-subtle) text-[11px] text-(--text-muted)">
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">{'\u2191\u2193'}</kbd> Navigate
-          </span>
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">{'\u21B5'}</kbd> Open
-          </span>
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">Tab</kbd> Switch mode
-          </span>
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-(--bg-active) text-[10px] font-mono">Esc</kbd> Close
-          </span>
-        </div>
+      <div className="flex shrink-0 items-center justify-between px-4 pb-1 text-xs text-[var(--text-muted)]">
+        <span>
+          {mode === "search"
+            ? `${results.length} result${results.length === 1 ? "" : "s"}`
+            : `${displayItems.length} item${displayItems.length === 1 ? "" : "s"}`}
+        </span>
+        <span>{mode === "search" ? "File name (A to Z)" : "Quick switch"}</span>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        {mode === "search" ? (
+          groupedSearchResults.length > 0 ? (
+            groupedSearchResults.map((result) => (
+              <div key={result.path} className="mb-3">
+                <button
+                  className="flex w-full cursor-pointer items-center justify-between rounded border-0 bg-transparent px-1 py-1 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  onClick={() => onSelect(result.path)}
+                  title={result.path}
+                >
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                    {result.title}
+                  </span>
+                  <span className="ml-2 text-xs text-[var(--text-muted)]">
+                    {result.matches.length}
+                  </span>
+                </button>
+                <div className="overflow-hidden rounded-md border border-[var(--border-medium)] bg-[var(--bg-primary)]">
+                  {result.snippets.map((snippet, index) => (
+                    <button
+                      key={`${result.path}-${index}`}
+                      className="block w-full cursor-pointer border-0 border-b border-[var(--border-subtle)] bg-transparent px-3 py-2 text-left text-xs leading-relaxed text-[var(--text-secondary)] last:border-b-0 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      onClick={() => onSelect(result.path)}
+                    >
+                      ...{highlightText(snippet.slice(0, 220), query)}...
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="flex h-32 items-center justify-center text-xs text-[var(--text-muted)]">
+              {query ? "No results found" : "Type to search the vault"}
+            </div>
+          )
+        ) : displayItems.length > 0 ? (
+          displayItems.map((item: any, index) => (
+            <button
+              key={item.path}
+              className={`flex w-full cursor-pointer items-center gap-2 rounded border-0 px-2 py-1.5 text-left text-sm transition-colors ${
+                index === selectedIndex
+                  ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
+                  : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+              onClick={() => onSelect(item.path)}
+              onMouseEnter={() => setSelectedIndex(index)}
+              title={item.path}
+            >
+              <span className="shrink-0 text-[var(--text-muted)]">
+                {item.isStarred ? <Star size={14} /> : item.isRecent ? <Clock size={14} /> : <FileText size={14} />}
+              </span>
+              <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                {item.name}
+              </span>
+            </button>
+          ))
+        ) : (
+          <div className="flex h-32 items-center justify-center text-xs text-[var(--text-muted)]">
+            {query ? "No results found" : "Start typing to find notes"}
+          </div>
+        )}
       </div>
     </div>
   );

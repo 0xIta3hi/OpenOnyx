@@ -395,6 +395,30 @@ app.whenReady().then(async () => {
     return result.canceled ? null : result.filePaths[0];
   });
 
+  ipcMain.handle('vault:removePreviousPath', async (_event, vaultPath: string) => {
+    const config = loadConfig();
+    config.previouslyOpenedVaults = (config.previouslyOpenedVaults || []).filter(
+      (path: string) => path !== vaultPath,
+    );
+    saveConfig(config);
+    return config.previouslyOpenedVaults;
+  });
+
+  ipcMain.handle('desktop:renamePath', async (_event, oldPath: string, newPath: string) => {
+    if (!oldPath || !newPath || oldPath === newPath) return;
+    await fs.promises.mkdir(path.dirname(newPath), { recursive: true });
+    await fs.promises.rename(oldPath, newPath);
+
+    const config = loadConfig();
+    if (config.lastVaultPath === oldPath) {
+      config.lastVaultPath = newPath;
+    }
+    config.previouslyOpenedVaults = (config.previouslyOpenedVaults || []).map(
+      (vaultPath: string) => (vaultPath === oldPath ? newPath : vaultPath),
+    );
+    saveConfig(config);
+  });
+
   buildMenu();
   createWindow();
 

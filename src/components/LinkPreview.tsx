@@ -19,7 +19,7 @@ interface LinkPreviewProps {
 const linkPreviewClass = "bg-(--bg-elevated) border border-(--border-medium) rounded-lg shadow-xl max-w-[400px] max-h-[300px] overflow-hidden flex flex-col animate-fade-in";
 const linkPreviewHeaderClass = "px-3 py-2 border-b border-(--border-subtle) bg-(--bg-secondary)";
 const linkPreviewTitleClass = "font-semibold text-[var(--text-sm)] text-(--text-link)";
-const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em]";
+const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em] markdown-rendered";
 
 export function LinkPreview({
   noteName,

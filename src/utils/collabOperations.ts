@@ -55,6 +55,8 @@ export interface CollabOperation {
  */
 export interface CursorPresence {
   user_id: string;
+  /** Browser/client that produced this cursor. Used to suppress local echoes. */
+  client_id?: string;
   file_path: string;
   cursor: { from: number; to: number };
   name: string;

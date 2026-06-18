@@ -112,7 +112,7 @@ interface MarkdownPreviewProps {
 const linkPreviewClass = "bg-(--bg-elevated) border border-(--border-medium) rounded-lg shadow-xl max-w-[400px] max-h-[300px] overflow-hidden flex flex-col animate-fade-in";
 const linkPreviewHeaderClass = "px-3 py-2 border-b border-(--border-subtle) bg-(--bg-secondary)";
 const linkPreviewTitleClass = "font-semibold text-[var(--text-sm)] text-(--text-link)";
-const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em]";
+const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em] markdown-rendered";
 const markdownPreviewClass =
   "markdown-preview [&_.embed-container]:my-[var(--space-4)] [&_.embed-container]:overflow-hidden [&_.embed-container]:rounded-[var(--radius-md)] [&_.embed-container]:border [&_.embed-container]:border-[var(--border-medium)] [&_.embed-container]:bg-[var(--bg-secondary)] [&_.embed-content]:p-[var(--space-3)] [&_.embed-content]:text-[length:var(--text-sm)] [&_.embed-content]:text-[var(--text-secondary)] [&_.embed-icon]:opacity-60 [&_.embed-missing]:bg-[var(--bg-secondary)] [&_.embed-missing]:p-[var(--space-3)] [&_.embed-missing]:italic [&_.embed-missing]:text-[var(--text-muted)] [&_.embed-title]:flex [&_.embed-title]:items-center [&_.embed-title]:gap-[var(--space-2)] [&_.embed-title]:border-b [&_.embed-title]:border-[var(--border-subtle)] [&_.embed-title]:bg-[var(--bg-tertiary)] [&_.embed-title]:px-[var(--space-3)] [&_.embed-title]:py-[var(--space-2)] [&_.embed-title]:text-[length:var(--text-sm)] [&_.embed-title]:font-medium [&_.embed-title]:text-[var(--text-link)]";
 
@@ -225,13 +225,31 @@ export function MarkdownPreview({
 
   // Close callout blocks
   const closeCallouts = (html: string): string => {
-    // Find callout divs and close their content sections
-    return html
-      .replace(
-        /<div class="callout-content">\s*<\/p>/g,
-        '<div class="callout-content">',
-      )
-      .replace(/<\/blockquote>/g, "</div></div></blockquote>");
+    // Clean up empty paragraph tags inside callouts
+    let cleaned = html.replace(
+      /<div class="callout-content">\s*<\/p>/g,
+      '<div class="callout-content">',
+    );
+
+    // Safely close callouts only for blockquotes that actually opened them
+    const parts = cleaned.split(/(<\/blockquote>)/);
+    let openCalloutsCount = 0;
+    
+    return parts.map((part) => {
+      if (part === "</blockquote>") {
+        if (openCalloutsCount > 0) {
+          openCalloutsCount--;
+          return "</div></div></blockquote>";
+        }
+        return part;
+      }
+      
+      const matches = part.match(/<div class="callout callout-/g);
+      if (matches) {
+        openCalloutsCount += matches.length;
+      }
+      return part;
+    }).join("");
   };
 
   // Generate premium HTML wrapper card for URL previews

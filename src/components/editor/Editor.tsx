@@ -22,7 +22,6 @@ import {
   DecorationSet,
   ViewPlugin,
   WidgetType,
-  drawSelection,
 } from "@codemirror/view";
 import {
   defaultKeymap,
@@ -2038,6 +2037,7 @@ export function Editor({
   const wheelRemainderRef = useRef(0);
   const suggestionContentCompartmentRef = useRef(new Compartment());
   const pluginExtensionsCompartmentRef = useRef(new Compartment());
+  const spellcheckCompartmentRef = useRef(new Compartment());
   const typingPauseTimerRef = useRef<number | null>(null);
   const flowTriggerDelayTimerRef = useRef<number | null>(null);
   const flowTriggerWindowTimerRef = useRef<number | null>(null);
@@ -2102,6 +2102,17 @@ export function Editor({
       if (!saved) return false;
       const parsed = JSON.parse(saved) as { vimMode?: boolean };
       return !!parsed.vimMode;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const readSpellcheckSetting = useCallback((): boolean => {
+    try {
+      const saved = localStorage.getItem("openobsidian-settings");
+      if (!saved) return false;
+      const parsed = JSON.parse(saved) as { spellcheck?: boolean };
+      return !!parsed.spellcheck;
     } catch {
       return false;
     }
@@ -2799,7 +2810,6 @@ export function Editor({
       selection: { anchor: Math.min(initialCursor, content.length) },
       extensions: [
         history(),
-        drawSelection(),
         search(),
         highlightSelectionMatches(),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -2815,6 +2825,9 @@ export function Editor({
         imageWidgetPlugin(handleOpenImageLightbox),
         headingLivePreviewPlugin(),
         vimCompartment.of([]),
+        spellcheckCompartmentRef.current.of(
+          EditorView.contentAttributes.of({ spellcheck: readSpellcheckSetting() ? "true" : "false" })
+        ),
         pluginExtensionsCompartmentRef.current.of(
           (window as any).__oo_editor_extensions || [],
         ),
@@ -2928,17 +2941,18 @@ export function Editor({
           ".cm-line": {
             padding: "0 2px",
             borderRadius: "4px",
+            caretColor: "var(--editor-caret)",
           },
           ".cm-cursorLayer .cm-cursor": {
             borderLeft: "2px solid var(--editor-caret)",
             maxHeight: "1.2em !important",
             animation: "smooth-cursor-blink 1s ease-in-out infinite !important",
-            transition: "left 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) !important",
+            transition: "none !important",
           },
           ".cm-cursor": {
             maxHeight: "1.2em !important",
             animation: "smooth-cursor-blink 1s ease-in-out infinite !important",
-            transition: "left 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.08s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) !important",
+            transition: "none !important",
           },
           ".cm-dropCursor": {
             borderLeft: "2px solid var(--editor-caret)",
@@ -3086,6 +3100,38 @@ export function Editor({
   }, [isSpecialTab, readVimModeSetting]);
 
   useEffect(() => {
+    if (isSpecialTab) return;
+
+    const applySpellcheckSetting = (enabled: boolean) => {
+      if (!viewRef.current) return;
+      viewRef.current.dispatch({
+        effects: spellcheckCompartmentRef.current.reconfigure(
+          EditorView.contentAttributes.of({ spellcheck: enabled ? "true" : "false" })
+        ),
+      });
+    };
+
+    applySpellcheckSetting(readSpellcheckSetting());
+
+    const handleSpellcheckSettingChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ enabled?: boolean }>;
+      applySpellcheckSetting(!!customEvent.detail?.enabled);
+    };
+
+    window.addEventListener(
+      "oo:spellcheck-setting-change",
+      handleSpellcheckSettingChange as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "oo:spellcheck-setting-change",
+        handleSpellcheckSettingChange as EventListener,
+      );
+    };
+  }, [isSpecialTab, readSpellcheckSetting]);
+
+  useEffect(() => {
     if (isSpecialTab || !viewRef.current) return;
 
     viewRef.current.dispatch({
@@ -3151,11 +3197,18 @@ export function Editor({
 
   // Push remote cursor presence data into CodeMirror state
   useEffect(() => {
-    if (!viewRef.current || !remoteCursors) return;
-    viewRef.current.dispatch({
-      effects: setCursorsEffect.of(remoteCursors),
+    if (!viewRef.current) return;
+    const localUserId = authManager.getUserId();
+    const visibleRemoteCursors = (remoteCursors || []).filter((cursor) => {
+      if (activePath && cursor.file_path !== activePath) return false;
+      if (cursor.client_id && localClientId && cursor.client_id === localClientId) return false;
+      if (!cursor.client_id && localUserId && cursor.user_id === localUserId) return false;
+      return true;
     });
-  }, [remoteCursors]);
+    viewRef.current.dispatch({
+      effects: setCursorsEffect.of(visibleRemoteCursors),
+    });
+  }, [activePath, localClientId, remoteCursors]);
 
   // Handle custom search event from Ribbon or App
   useEffect(() => {

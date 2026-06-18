@@ -22,6 +22,9 @@ const electronAPI = {
   getPreviouslyOpenedVaults: (): Promise<string[]> =>
     ipcRenderer.invoke('vault:getPreviousPaths'),
 
+  removePreviouslyOpenedVault: (vaultPath: string): Promise<string[]> =>
+    ipcRenderer.invoke('vault:removePreviousPath', vaultPath),
+
   showOpenDialog: (options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue> =>
     ipcRenderer.invoke('desktop:showOpenDialog', options),
 
@@ -33,6 +36,9 @@ const electronAPI = {
 
   showItemInFolder: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('desktop:showItemInFolder', targetPath),
+
+  renamePath: (oldPath: string, newPath: string): Promise<void> =>
+    ipcRenderer.invoke('desktop:renamePath', oldPath, newPath),
 
   getSystemPath: (name: string): Promise<string> =>
     ipcRenderer.invoke('desktop:getPath', name),

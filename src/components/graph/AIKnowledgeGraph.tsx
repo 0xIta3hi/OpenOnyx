@@ -458,6 +458,7 @@ export function AIKnowledgeGraph({
   const [simulating, setSimulating] = useState(false);
   const [alpha, setAlpha] = useState(0);
   const [layoutResetTick, setLayoutResetTick] = useState(0);
+  const [rendererInitRetry, setRendererInitRetry] = useState(0);
   const [insightFocusNodeIds, setInsightFocusNodeIds] = useState<Set<string> | null>(null);
   const [activeInsight, setActiveInsight] = useState<{
     title: string;
@@ -1024,7 +1025,17 @@ export function AIKnowledgeGraph({
     const canvas = canvasRef.current;
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return;
+    if (rect.width < 10 || rect.height < 10) {
+      const resizeObserver = new ResizeObserver((entries) => {
+        const nextRect =
+          entries[0]?.contentRect || container.getBoundingClientRect();
+        if (nextRect.width >= 10 && nextRect.height >= 10) {
+          setRendererInitRetry((count) => count + 1);
+        }
+      });
+      resizeObserver.observe(container);
+      return () => resizeObserver.disconnect();
+    }
 
     const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
     let manualSettings = getManualDefaultSettings(theme);
@@ -1160,7 +1171,15 @@ export function AIKnowledgeGraph({
         rendererRef.current = null;
       }
     };
-  }, [loading, isDark, positionsKey, theme, vaultHash, manualSettingsTick]);
+  }, [
+    loading,
+    isDark,
+    positionsKey,
+    theme,
+    vaultHash,
+    manualSettingsTick,
+    rendererInitRetry,
+  ]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

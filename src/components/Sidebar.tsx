@@ -35,6 +35,9 @@ import {
   Plus,
   MoreVertical,
   Copy,
+  SortAsc,
+  SortDesc,
+  Clock,
 } from "lucide-react";
 import { FileEntry } from "../types";
 import { getNoteName } from "../utils/helpers";
@@ -57,6 +60,7 @@ interface SidebarProps {
   onCollapse: () => void;
   vaultPath?: string;
   onOpenVault?: () => void;
+  onManageVaults?: () => void;
   previouslyOpenedVaults?: string[];
   onSwitchVault?: (path: string) => void;
   onSettings?: () => void;
@@ -73,7 +77,13 @@ interface SidebarProps {
   onToggleGroupAutoSave?: (id: string) => void;
 }
 
-type SortMode = "name" | "modified" | "type";
+type SortMode =
+  | "name-asc"
+  | "name-desc"
+  | "modified-desc"
+  | "modified-asc"
+  | "type-asc"
+  | "type-desc";
 
 // ── File Type Helpers ────────────────────────────────────────────────────────
 
@@ -94,15 +104,25 @@ function sortEntries(entries: FileEntry[], mode: SortMode): FileEntry[] {
     if (!a.isDirectory && b.isDirectory) return 1;
 
     switch (mode) {
-      case "modified":
+      case "modified-desc":
         return (b.modifiedAt || 0) - (a.modifiedAt || 0);
-      case "type": {
+      case "modified-asc":
+        return (a.modifiedAt || 0) - (b.modifiedAt || 0);
+      case "type-asc": {
         const extA = a.extension || "";
         const extB = b.extension || "";
         if (extA !== extB) return extA.localeCompare(extB);
         return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
       }
-      case "name":
+      case "type-desc": {
+        const extA = a.extension || "";
+        const extB = b.extension || "";
+        if (extA !== extB) return extB.localeCompare(extA);
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }
+      case "name-desc":
+        return b.name.localeCompare(a.name, undefined, { sensitivity: "base" });
+      case "name-asc":
       default:
         return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     }
@@ -136,11 +156,11 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 const sidebarRootClass =
-  "sidebar relative flex w-[var(--sidebar-width)] min-w-0 shrink-0 flex-col overflow-hidden border-r border-t border-[var(--divider-color)] bg-[var(--bg-secondary)] pt-0";
+  "sidebar relative flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-t border-[var(--divider-color)] bg-[var(--bg-secondary)] pt-0";
 const sidebarCollapsedClass =
   "collapsed !m-0 hidden !w-0 !min-w-0 !max-w-0 !overflow-hidden !border-x-0 !p-0";
 const sidebarHeaderClass =
-  "flex min-h-10 shrink-0 items-center justify-between gap-1 px-2 py-1.5";
+  "flex min-h-9 shrink-0 items-center justify-between gap-1 px-2 py-1";
 const sidebarTitleClass =
   "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.5px] text-[var(--text-secondary)]";
 const sidebarActionsClass = "flex shrink-0 flex-nowrap gap-px";
@@ -155,14 +175,16 @@ const sidebarFilterInputClass =
   "flex-1 border-0 bg-transparent py-1 font-sans text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
 const sidebarFilterClearClass =
   "flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
-const sidebarSortClass =
-  "flex items-center gap-1 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-[3px] text-[10px] text-[var(--text-muted)]";
+const sidebarSortMenuClass =
+  "absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]";
+const sidebarSortMenuItemClass =
+  "flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const fileExplorerClass =
-  "file-explorer flex-1 overflow-y-auto overflow-x-hidden px-3 pb-6 pt-1.5 transition-[background-color,box-shadow] duration-200";
+  "file-explorer flex-1 overflow-y-auto overflow-x-hidden px-3 pb-6 pt-1 transition-[background-color,box-shadow] duration-200";
 const fileExplorerDragClass =
   "bg-[rgba(var(--accent-color-rgb,108,99,255),0.05)] shadow-[inset_0_0_0_2px_var(--accent-primary)]";
 const fileTreeItemBaseClass =
-  "file-tree-item group relative mb-px flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-1.5 pl-7 pr-2 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.25] text-[var(--nav-item-color)] transition-[background-color,color,transform,opacity,filter,box-shadow] duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
+  "file-tree-item group relative mb-0 flex min-h-[23px] w-full cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-6 pr-2 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.2] text-[var(--nav-item-color)] transition-[background-color,color,transform,opacity,filter,box-shadow] duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
 const fileTreeItemActiveClass =
   "active bg-[var(--nav-item-background-selected)] text-[var(--nav-item-color-active)]";
 const fileTreeItemDraggingClass =
@@ -171,13 +193,13 @@ const fileTreeItemDragOverClass =
   "z-10 translate-x-1 !bg-[var(--nav-item-background-hover)] shadow-[inset_0_0_0_2px_var(--accent-primary)]";
 const fileNameClass = "name flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
 const chevronClass =
-  "chevron absolute left-2 flex text-[var(--text-muted)] transition-transform duration-150";
+  "chevron absolute left-1.5 flex text-[var(--text-muted)] transition-transform duration-150";
 const folderCountClass =
   "folder-count ml-auto shrink-0 rounded-lg bg-[var(--bg-tertiary)] px-[5px] text-[10px] leading-4 text-[var(--text-muted)] opacity-0 transition-opacity duration-150 group-hover:opacity-100";
 const treeChildrenWrapperClass =
   "file-tree-children-wrapper grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)]";
 const treeChildrenClass =
-  "file-tree-children min-h-0 border-l border-[color-mix(in_srgb,var(--text-muted)_22%,transparent)] py-0.5 pl-2 ml-4";
+  "file-tree-children min-h-0 border-l border-[color-mix(in_srgb,var(--text-muted)_22%,transparent)] py-0 pl-2 ml-3.5";
 const emptyFolderHintClass =
   "py-1.5 pl-7 pr-2 text-[11px] italic text-[var(--text-muted)] opacity-60";
 const renameInputClass =
@@ -205,11 +227,11 @@ const groupsListWrapperClass =
   "grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]";
 const groupsListClass = "min-h-0 space-y-1 overflow-hidden pt-1";
 const groupItemContainerClass =
-  "group relative flex min-h-8 items-center rounded-[var(--radius-sm)]";
+  "group relative flex min-h-[24px] items-center rounded-[var(--radius-sm)]";
 const groupItemActiveClass =
   "bg-[var(--nav-item-background-selected)]";
 const groupItemBtnClass =
-  "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border-0 bg-transparent px-2 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border-0 bg-transparent px-2 py-0.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const groupColorDotClass =
   "h-2 w-2 shrink-0 rounded-full";
 const groupNameTextClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
@@ -232,7 +254,7 @@ const vaultMenuClass =
 const vaultMenuHeaderClass =
   "px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
 const vaultMenuItemClass =
-  "flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const vaultMenuCurrentClass = "text-[var(--text-primary)]";
 const vaultMenuActionClass = "[&_.action-icon]:text-[var(--text-muted)]";
 const vaultNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
@@ -263,6 +285,7 @@ export function Sidebar({
   onCollapse,
   vaultPath,
   onOpenVault,
+  onManageVaults,
   previouslyOpenedVaults = [],
   onSwitchVault,
   onSettings,
@@ -297,21 +320,13 @@ export function Sidebar({
     groupId: string;
   } | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
-  const [showFilter, setShowFilter] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>("name");
+  const [sortMode, setSortMode] = useState<SortMode>("name-asc");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showVaultMenu, setShowVaultMenu] = useState(false);
   const vaultMenuRef = useRef<HTMLDivElement>(null);
   const vaultButtonRef = useRef<HTMLButtonElement>(null);
   const renameInFlightRef = useRef(false);
-  const filterInputRef = useRef<HTMLInputElement>(null);
-
-  // Auto-focus filter input when shown
-  useEffect(() => {
-    if (showFilter && filterInputRef.current) {
-      filterInputRef.current.focus();
-    }
-  }, [showFilter]);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
 
   // Click outside handler for vault menu
   useEffect(() => {
@@ -329,6 +344,20 @@ export function Sidebar({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showVaultMenu]);
+
+  useEffect(() => {
+    if (!showSortMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        sortButtonRef.current &&
+        !sortButtonRef.current.contains(e.target as Node)
+      ) {
+        setShowSortMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showSortMenu]);
 
   const vaultName = vaultPath ? vaultPath.split(/[/\\]/).pop() : "Vault";
   const otherVaults = previouslyOpenedVaults.filter((p) => p !== vaultPath);
@@ -458,20 +487,18 @@ export function Sidebar({
     }
   };
 
-  const handleFilterKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setFilterQuery("");
-      setShowFilter(false);
-    }
-  };
-
-  const cycleSortMode = () => {
-    setSortMode((prev) => {
-      if (prev === "name") return "modified";
-      if (prev === "modified") return "type";
-      return "name";
-    });
-  };
+  const sortOptions: Array<{
+    mode: SortMode;
+    label: string;
+    icon: React.ReactNode;
+  }> = [
+    { mode: "name-asc", label: "File name (A to Z)", icon: <SortAsc size={14} /> },
+    { mode: "name-desc", label: "File name (Z to A)", icon: <SortDesc size={14} /> },
+    { mode: "modified-desc", label: "Modified time (new to old)", icon: <Clock size={14} /> },
+    { mode: "modified-asc", label: "Modified time (old to new)", icon: <Clock size={14} /> },
+    { mode: "type-asc", label: "File extension (A to Z)", icon: <ArrowUpDown size={14} /> },
+    { mode: "type-desc", label: "File extension (Z to A)", icon: <ArrowUpDown size={14} /> },
+  ];
 
   const renderFileTree = (entries: FileEntry[], depth: number = 0) => {
     return entries.map((entry) => {
@@ -566,24 +593,16 @@ export function Sidebar({
     return path.slice(0, idx);
   };
 
-  const sortLabel = sortMode === "name" ? "A-Z" : sortMode === "modified" ? "Recent" : "Type";
+  const sortLabel =
+    sortOptions.find((option) => option.mode === sortMode)?.label ||
+    "File name (A to Z)";
 
   return (
     <>
       <div className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}>
-        <div className={sidebarHeaderClass}>
+        <div className={`${sidebarHeaderClass} relative`}>
           <h3 className={sidebarTitleClass}>Explorer</h3>
           <div className={sidebarActionsClass}>
-            <button
-              className={cx(sidebarBtnClass, showFilter && sidebarBtnActiveClass)}
-              onClick={() => {
-                setShowFilter(!showFilter);
-                if (showFilter) setFilterQuery("");
-              }}
-              title="Filter files (Ctrl+Shift+F)"
-            >
-              <Search size={16} strokeWidth={1.5} />
-            </button>
             <button
               className={sidebarBtnClass}
               onClick={onNewNote}
@@ -599,8 +618,9 @@ export function Sidebar({
               <FolderPlus size={16} strokeWidth={1.5} />
             </button>
             <button
+              ref={sortButtonRef}
               className={sidebarBtnClass}
-              onClick={cycleSortMode}
+              onClick={() => setShowSortMenu((value) => !value)}
               title={`Sort: ${sortLabel}`}
             >
               <ArrowUpDown size={16} strokeWidth={1.5} />
@@ -608,47 +628,29 @@ export function Sidebar({
             <button className={sidebarBtnClass} onClick={onRefresh} title="Refresh">
               <RefreshCw size={16} strokeWidth={1.5} />
             </button>
-            <button
-              className={sidebarBtnClass}
-              onClick={onCollapse}
-              title="Collapse Explorer"
-            >
-              <ChevronLeft size={16} strokeWidth={1.5} />
-            </button>
           </div>
+          {showSortMenu && (
+            <div className={sidebarSortMenuClass}>
+              {sortOptions.map((option) => (
+                <button
+                  key={option.mode}
+                  type="button"
+                  className={sidebarSortMenuItemClass}
+                  onClick={() => {
+                    setSortMode(option.mode);
+                    setShowSortMenu(false);
+                  }}
+                >
+                  <span className="text-[var(--text-muted)]">{option.icon}</span>
+                  <span className="min-w-0 flex-1">{option.label}</span>
+                  {sortMode === option.mode && (
+                    <Check size={13} className="text-[var(--text-primary)]" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-
-        {/* Filter Bar */}
-        {showFilter && (
-          <div className={sidebarFilterClass}>
-            <Search size={13} className={sidebarFilterIconClass} />
-            <input
-              ref={filterInputRef}
-              type="text"
-              className={sidebarFilterInputClass}
-              placeholder="Filter files..."
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              onKeyDown={handleFilterKeyDown}
-            />
-            {filterQuery && (
-              <button
-                className={sidebarFilterClearClass}
-                onClick={() => setFilterQuery("")}
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Sort indicator */}
-        {sortMode !== "name" && (
-          <div className={sidebarSortClass}>
-            <ArrowUpDown size={10} />
-            <span>Sorted by {sortLabel.toLowerCase()}</span>
-          </div>
-        )}
 
         {/* Starred Notes Section */}
         {starredNotes.length > 0 && !filterQuery && (
@@ -839,40 +841,36 @@ export function Sidebar({
             
             {showVaultMenu && (
               <div className={vaultMenuClass} ref={vaultMenuRef}>
-                {otherVaults.length > 0 && (
-                  <>
-                    <div className={vaultMenuHeaderClass}>Recent vaults</div>
-                    {otherVaults.map((path) => {
-                      const name = path.split(/[/\\]/).pop() || path;
-                      return (
-                        <button
-                          key={path}
-                          className={vaultMenuItemClass}
-                          onClick={() => {
-                            setShowVaultMenu(false);
-                            onSwitchVault?.(path);
-                          }}
-                          title={path}
-                        >
-                          <span className={vaultNameClass}>{name}</span>
-                        </button>
-                      );
-                    })}
-                    <div className={vaultMenuSeparatorClass} />
-                  </>
-                )}
-                <div className={vaultMenuHeaderClass}>Current vault</div>
-                <button className={cx(vaultMenuItemClass, vaultMenuCurrentClass)}>
-                  <span className={vaultNameClass}>{vaultName}</span>
-                  <Check size={14} className={vaultCheckIconClass} />
-                </button>
+                {[vaultPath, ...otherVaults].filter(Boolean).map((path) => {
+                  const value = path as string;
+                  const name = value.split(/[/\\]/).pop() || value;
+                  const isCurrent = value === vaultPath;
+                  return (
+                    <button
+                      key={value}
+                      className={cx(vaultMenuItemClass, isCurrent && vaultMenuCurrentClass)}
+                      onClick={() => {
+                        setShowVaultMenu(false);
+                        if (!isCurrent) onSwitchVault?.(value);
+                      }}
+                      title={value}
+                    >
+                      <span className={vaultNameClass}>{name}</span>
+                      {isCurrent && <Check size={14} className={vaultCheckIconClass} />}
+                    </button>
+                  );
+                })}
                 <div className={vaultMenuSeparatorClass} />
-                {onOpenVault && (
+                {(onManageVaults || onOpenVault) && (
                   <button
                     className={cx(vaultMenuItemClass, vaultMenuActionClass)}
                     onClick={() => {
                       setShowVaultMenu(false);
-                      onOpenVault();
+                      if (onManageVaults) {
+                        onManageVaults();
+                      } else {
+                        onOpenVault?.();
+                      }
                     }}
                   >
                     <Library size={14} className="action-icon" />

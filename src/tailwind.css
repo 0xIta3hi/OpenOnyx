@@ -1,1 +1,190 @@
 @import "tailwindcss";
+
+/* Smooth drag resizing */
+body.is-dragging,
+body.is-dragging * {
+  transition: none !important;
+}
+
+/* Prevent iframe, webview, canvas, and SVG elements from stealing mouse events during dragging */
+body.is-dragging iframe,
+body.is-dragging webview,
+body.is-dragging canvas,
+body.is-dragging svg {
+  pointer-events: none !important;
+}
+
+/* Ensure Markdown elements render properly and beautifully (Obsidian theme compatibility) */
+.markdown-preview ul,
+.markdown-rendered ul,
+.markdown-preview-view ul,
+.readme-content ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.markdown-preview ol,
+.markdown-rendered ol,
+.markdown-preview-view ol,
+.readme-content ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.markdown-preview li,
+.markdown-rendered li,
+.markdown-preview-view li,
+.readme-content li {
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+/* Nested lists */
+.markdown-preview ul ul,
+.markdown-rendered ul ul,
+.markdown-preview-view ul ul,
+.readme-content ul ul {
+  list-style-type: circle !important;
+}
+
+.markdown-preview ul ul ul,
+.markdown-rendered ul ul ul,
+.markdown-preview-view ul ul ul,
+.readme-content ul ul ul {
+  list-style-type: square !important;
+}
+
+.markdown-preview hr,
+.markdown-rendered hr,
+.markdown-preview-view hr,
+.readme-content hr {
+  border: none !important;
+  border-top: var(--hr-thickness, 1px) solid var(--hr-color, var(--border-medium)) !important;
+  margin: 1.5rem 0 !important;
+  display: block !important;
+}
+
+.markdown-preview h1, .markdown-rendered h1, .markdown-preview-view h1, .readme-content h1 {
+  font-size: var(--h1-size, 2em) !important;
+  font-weight: var(--h1-weight, 700) !important;
+  color: var(--h1-color, var(--text-primary)) !important;
+  line-height: var(--h1-line-height, 1.2) !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.8rem !important;
+}
+
+.markdown-preview h2, .markdown-rendered h2, .markdown-preview-view h2, .readme-content h2 {
+  font-size: var(--h2-size, 1.6em) !important;
+  font-weight: var(--h2-weight, 600) !important;
+  color: var(--h2-color, var(--text-primary)) !important;
+  line-height: var(--h2-line-height, 1.2) !important;
+  margin-top: 1.4rem !important;
+  margin-bottom: 0.7rem !important;
+}
+
+.markdown-preview h3, .markdown-rendered h3, .markdown-preview-view h3, .readme-content h3 {
+  font-size: var(--h3-size, 1.37em) !important;
+  font-weight: var(--h3-weight, 600) !important;
+  color: var(--h3-color, var(--text-primary)) !important;
+  line-height: var(--h3-line-height, 1.3) !important;
+  margin-top: 1.3rem !important;
+  margin-bottom: 0.6rem !important;
+}
+
+.markdown-preview h4, .markdown-rendered h4, .markdown-preview-view h4, .readme-content h4 {
+  font-size: var(--h4-size, 1.25em) !important;
+  font-weight: var(--h4-weight, 600) !important;
+  color: var(--h4-color, var(--text-primary)) !important;
+  line-height: var(--h4-line-height, 1.4) !important;
+  margin-top: 1.2rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.markdown-preview blockquote,
+.markdown-rendered blockquote,
+.markdown-preview-view blockquote,
+.readme-content blockquote {
+  border-left: var(--blockquote-border-thickness, 3px) solid var(--blockquote-border-color, var(--interactive-accent, #3b82f6)) !important;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+  padding: 0.5rem 1rem !important;
+  margin: 1rem 0 !important;
+  font-style: italic !important;
+}
+
+.markdown-preview table,
+.markdown-rendered table,
+.markdown-preview-view table,
+.readme-content table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 1.5rem 0 !important;
+  border: var(--table-border-width, 1px) solid var(--table-border-color, var(--border-medium)) !important;
+}
+
+.markdown-preview th,
+.markdown-rendered th,
+.markdown-preview-view th,
+.readme-content th {
+  background-color: var(--table-header-background, var(--bg-tertiary)) !important;
+  color: var(--table-header-color, var(--text-primary)) !important;
+  font-weight: 600 !important;
+  padding: 0.6rem 1rem !important;
+  border: var(--table-border-width, 1px) solid var(--table-border-color, var(--border-medium)) !important;
+}
+
+.markdown-preview td,
+.markdown-rendered td,
+.markdown-preview-view td,
+.readme-content td {
+  padding: 0.6rem 1rem !important;
+  border: var(--table-border-width, 1px) solid var(--table-border-color, var(--border-medium)) !important;
+}
+
+.markdown-preview tr:nth-child(even),
+.markdown-rendered tr:nth-child(even),
+.markdown-preview-view tr:nth-child(even),
+.readme-content tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.01) !important;
+}
+
+.markdown-preview code,
+.markdown-rendered code,
+.markdown-preview-view code,
+.readme-content code {
+  background-color: var(--code-background, var(--bg-tertiary)) !important;
+  color: var(--code-normal, var(--editor-code, #f0c788)) !important;
+  padding: 0.2rem 0.4rem !important;
+  border-radius: var(--radius-sm) !important;
+  font-family: var(--font-mono, monospace) !important;
+  font-size: 0.9em !important;
+}
+
+.markdown-preview pre,
+.markdown-rendered pre,
+.markdown-preview-view pre,
+.readme-content pre {
+  background-color: var(--code-background, var(--bg-tertiary)) !important;
+  padding: 1rem !important;
+  border-radius: var(--radius-md) !important;
+  overflow-x: auto !important;
+  margin: 1rem 0 !important;
+  border: 1px solid var(--border-subtle) !important;
+}
+
+.markdown-preview pre code,
+.markdown-rendered pre code,
+.markdown-preview-view pre code,
+.readme-content pre code {
+  background: none !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  border-radius: 0 !important;
+}
+
+

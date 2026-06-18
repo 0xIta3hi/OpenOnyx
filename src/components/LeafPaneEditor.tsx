@@ -31,7 +31,6 @@ interface LeafPaneEditorProps {
   editorNextStepSuggestions: EnrichedSuggestion[];
   inlineAnnotation: string | null;
   showInlineInsight: boolean;
-  ftuxConnectionPulse: boolean;
   isFocused: boolean;
 
   onTabSelect: (leafId: string, tabId: string) => void;
@@ -61,7 +60,6 @@ export function LeafPaneEditor({
   editorNextStepSuggestions,
   inlineAnnotation,
   showInlineInsight,
-  ftuxConnectionPulse,
   isFocused,
 
   onTabSelect,
@@ -480,6 +478,7 @@ export function LeafPaneEditor({
       const userId = user.id;
       collaborationEngine.broadcastCursorPresence({
         user_id: userId,
+        client_id: collaborationEngine.currentClientId,
         file_path: activeTab.path,
         cursor,
         name: user.email?.split('@')[0] || 'Anonymous',
@@ -639,19 +638,35 @@ export function LeafPaneEditor({
     if (activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteCursor((presence) => {
+      const cursorKey = presence.client_id || presence.user_id;
+      const localUserId = authManager.getUserId();
+
+      if (
+        presence.client_id === collaborationEngine.currentClientId ||
+        (!presence.client_id && localUserId && presence.user_id === localUserId)
+      ) {
+        setRemoteCursors(prev =>
+          prev.filter(c => (c.client_id || c.user_id) !== cursorKey),
+        );
+        cursorLastSeenRef.current.delete(cursorKey);
+        return;
+      }
+
       // Only show cursors for the same file
       if (presence.file_path !== activeTab.path) {
         // Remove this user's cursor if they moved to a different file
-        setRemoteCursors(prev => prev.filter(c => c.user_id !== presence.user_id));
-        cursorLastSeenRef.current.delete(presence.user_id);
+        setRemoteCursors(prev =>
+          prev.filter(c => (c.client_id || c.user_id) !== cursorKey),
+        );
+        cursorLastSeenRef.current.delete(cursorKey);
         return;
       }
 
       // Update last-seen timestamp for stale cleanup
-      cursorLastSeenRef.current.set(presence.user_id, Date.now());
+      cursorLastSeenRef.current.set(cursorKey, Date.now());
 
       setRemoteCursors(prev => {
-        const existing = prev.findIndex(c => c.user_id === presence.user_id);
+        const existing = prev.findIndex(c => (c.client_id || c.user_id) === cursorKey);
         if (existing >= 0) {
           const next = [...prev];
           next[existing] = presence;
@@ -666,17 +681,19 @@ export function LeafPaneEditor({
     const cleanupInterval = setInterval(() => {
       const now = Date.now();
       const staleThreshold = 15_000;
-      const staleUserIds: string[] = [];
-      for (const [userId, lastSeen] of cursorLastSeenRef.current) {
+      const staleCursorKeys: string[] = [];
+      for (const [cursorKey, lastSeen] of cursorLastSeenRef.current) {
         if (now - lastSeen > staleThreshold) {
-          staleUserIds.push(userId);
+          staleCursorKeys.push(cursorKey);
         }
       }
-      if (staleUserIds.length > 0) {
-        for (const id of staleUserIds) {
+      if (staleCursorKeys.length > 0) {
+        for (const id of staleCursorKeys) {
           cursorLastSeenRef.current.delete(id);
         }
-        setRemoteCursors(prev => prev.filter(c => !staleUserIds.includes(c.user_id)));
+        setRemoteCursors(prev =>
+          prev.filter(c => !staleCursorKeys.includes(c.client_id || c.user_id)),
+        );
       }
     }, 10_000);
 
@@ -686,9 +703,10 @@ export function LeafPaneEditor({
       setRemoteCursors(prev => {
         const filtered = prev.filter(c => onlineUserIds.has(c.user_id));
         // Also prune the lastSeen map
-        for (const [userId] of cursorLastSeenRef.current) {
-          if (!onlineUserIds.has(userId)) {
-            cursorLastSeenRef.current.delete(userId);
+        for (const [cursorKey] of cursorLastSeenRef.current) {
+          const cursor = filtered.find(c => (c.client_id || c.user_id) === cursorKey);
+          if (!cursor) {
+            cursorLastSeenRef.current.delete(cursorKey);
           }
         }
         return filtered.length !== prev.length ? filtered : prev;
@@ -1028,7 +1046,7 @@ export function LeafPaneEditor({
   }
 
   return (
-    <div className={`ftux-editor-host ${ftuxConnectionPulse && isFocused ? "ftux-connection-highlight-pulse" : ""}`}>
+    <div className="leaf-editor-host">
       <EditorHeader
         filePath={activeTab.path}
         viewMode={viewMode}

@@ -87,7 +87,6 @@ const PAN_INERTIA_DECAY = 0.9;
 const PAN_INERTIA_MIN_SPEED = 0.02;
 const HISTORY_LIMIT = 60;
 const CULLING_PADDING = 320;
-const RECOVERY_SUFFIX = ".recovery.canvas";
 const MIN_MD_EMBED_PREVIEW_ZOOM = 1.05;
 const FULL_MD_EMBED_PREVIEW_ZOOM = 1.4;
 const MAX_SELECTED_MD_PREVIEWS = 2;
@@ -678,7 +677,6 @@ export function CanvasView({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
-  const [recoveryUsed, setRecoveryUsed] = useState(false);
   const [showRecentCanvasMenu, setShowRecentCanvasMenu] = useState(false);
   const [areaSize, setAreaSize] = useState({ width: 1, height: 1 });
   const [scribbles, setScribbles] = useState<CanvasScribbleStroke[]>([]);
@@ -1209,18 +1207,6 @@ export function CanvasView({
             setSaveState("saved");
             setLastSavedAt(Date.now());
           }
-
-          try {
-            await getAPI().writeFile(
-              `${current.path}${RECOVERY_SUFFIX}`,
-              current.payload,
-            );
-          } catch (snapshotError) {
-            console.warn(
-              "Failed to update canvas recovery snapshot:",
-              snapshotError,
-            );
-          }
         } catch (error) {
           console.error("Failed to save canvas file:", current.path, error);
           if (canvasFilePath === current.path) {
@@ -1263,7 +1249,6 @@ export function CanvasView({
         setDocMeta({});
         setDiagnostics(null);
         setShowDiagnostics(false);
-        setRecoveryUsed(false);
         setSaveState("saved");
         setLastSavedAt(null);
         setShowCustomizationPanel(false);
@@ -1300,30 +1285,7 @@ export function CanvasView({
         }
         setFileExists(true);
         const raw = await getAPI().readFile(canvasFilePath);
-        let parsed = parseCanvasDocument(raw || "");
-        let usedRecovery = false;
-
-        if (
-          parsed.diagnostics.parseError ||
-          parsed.diagnostics.errors.length > 0
-        ) {
-          try {
-            const recoveryRaw = await getAPI().readFile(
-              `${canvasFilePath}${RECOVERY_SUFFIX}`,
-            );
-            const recovered = parseCanvasDocument(recoveryRaw || "");
-            const hasUsableData =
-              (recovered.data.nodes?.length || 0) +
-                (recovered.data.edges?.length || 0) >
-              0;
-            if (!recovered.diagnostics.parseError && hasUsableData) {
-              parsed = recovered;
-              usedRecovery = true;
-            }
-          } catch {
-            // Recovery file may not exist yet.
-          }
-        }
+        const parsed = parseCanvasDocument(raw || "");
 
         const nextNodes = Array.isArray(parsed.data.nodes)
           ? (parsed.data.nodes as CanvasNode[])
@@ -1370,7 +1332,6 @@ export function CanvasView({
         setDocMeta(metadata);
         setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
         setShowDiagnostics(parsed.diagnostics.repaired);
-        setRecoveryUsed(usedRecovery);
         setSaveState("saved");
         setLastSavedAt(Date.now());
         setCanvasBackgroundColor(customization.backgroundColor || "");
@@ -1425,7 +1386,6 @@ export function CanvasView({
             error instanceof Error ? error.message : "Unknown file read error.",
         });
         setShowDiagnostics(true);
-        setRecoveryUsed(false);
         setSaveState("error");
         setLastSavedAt(null);
         const defaultViewport = { x: 0, y: 0, zoom: 1 };
@@ -1844,7 +1804,6 @@ export function CanvasView({
     setSaveState("saving");
     try {
       await getAPI().writeFile(canvasFilePath, payload);
-      await getAPI().writeFile(`${canvasFilePath}${RECOVERY_SUFFIX}`, payload);
       lastSavedPayloadRef.current = payload;
       setSaveState("saved");
       setLastSavedAt(Date.now());
@@ -1855,69 +1814,6 @@ export function CanvasView({
       setSaveState("error");
     }
   }, [canvasFilePath, nodes, edges, docMeta, scribbles, buildCanvasMetadata]);
-
-  const restoreFromRecovery = useCallback(async () => {
-    if (!canvasFilePath) return;
-    try {
-      const recoveryRaw = await getAPI().readFile(
-        `${canvasFilePath}${RECOVERY_SUFFIX}`,
-      );
-      const parsed = parseCanvasDocument(recoveryRaw || "");
-      const nextNodes = Array.isArray(parsed.data.nodes)
-        ? (parsed.data.nodes as CanvasNode[])
-        : [];
-      const nextEdges = Array.isArray(parsed.data.edges)
-        ? (parsed.data.edges as CanvasEdge[])
-        : [];
-      const metadata = { ...parsed.metadata };
-      const nextScribbles = sanitizeCanvasScribbles(
-        metadata[CANVAS_SCRIBBLES_KEY],
-      );
-      const customization = sanitizeCanvasCustomization(
-        metadata[CANVAS_CUSTOMIZATION_KEY],
-      );
-      const savedViewport = sanitizeCanvasViewport(
-        metadata[CANVAS_VIEWPORT_KEY],
-      );
-      delete metadata[CANVAS_SCRIBBLES_KEY];
-      delete metadata[CANVAS_CUSTOMIZATION_KEY];
-      delete metadata[CANVAS_VIEWPORT_KEY];
-      setNodes(nextNodes);
-      setEdges(nextEdges);
-      setScribbles(nextScribbles);
-      setActiveScribble(null);
-      setSelectedScribbleIds(new Set());
-      setLassoPoints([]);
-      setDocMeta(metadata);
-      setCanvasBackgroundColor(customization.backgroundColor || "");
-      setCanvasDotColor(customization.dotColor || "");
-      setCanvasDotOpacityMultiplier(
-        clampDotOpacityMultiplier(
-          customization.dotOpacityMultiplier ?? DEFAULT_DOT_OPACITY_MULTIPLIER,
-        ),
-      );
-      setDefaultNodeColor(customization.defaultNodeColor || "");
-      setDefaultEdgeColor(customization.defaultEdgeColor || "");
-      setScribbleColor(customization.defaultScribbleColor || "");
-      setScribbleWidth(
-        clampScribbleWidth(
-          customization.defaultScribbleWidth ?? DEFAULT_SCRIBBLE_WIDTH,
-        ),
-      );
-      if (savedViewport) {
-        setVp(savedViewport);
-        vpRef.current = savedViewport;
-        targetVpRef.current = savedViewport;
-      }
-      setDiagnostics(parsed.diagnostics.repaired ? parsed.diagnostics : null);
-      setShowDiagnostics(parsed.diagnostics.repaired);
-      setRecoveryUsed(true);
-      push(nextNodes, nextEdges, nextScribbles);
-    } catch (error) {
-      console.error("Failed to restore recovery snapshot:", error);
-      setSaveState("error");
-    }
-  }, [canvasFilePath, push]);
 
   const handleDragEnterZone = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -3860,14 +3756,7 @@ export function CanvasView({
       {/* Diagnostics panel */}
       {showDiagnostics && diagnostics && (
         <div className="cv-diagnostics">
-          <div className="cv-diagnostics-title">
-            Canvas import diagnostics
-            {recoveryUsed ? (
-              <span className="cv-diagnostics-badge">
-                Recovered from snapshot
-              </span>
-            ) : null}
-          </div>
+          <div className="cv-diagnostics-title">Canvas import diagnostics</div>
           {diagnostics.parseError ? (
             <div className="cv-diagnostics-line">
               Parse error: {diagnostics.parseError}
@@ -3892,16 +3781,6 @@ export function CanvasView({
             >
               Repair & Save
             </button>
-            {canvasFilePath ? (
-              <button
-                className="cv-file-row"
-                onClick={() => {
-                  void restoreFromRecovery();
-                }}
-              >
-                Restore Snapshot
-              </button>
-            ) : null}
             <button
               className="cv-file-row"
               onClick={() => setShowDiagnostics(false)}

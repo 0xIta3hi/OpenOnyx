@@ -32,6 +32,10 @@ export const setCursorsEffect = StateEffect.define<CursorPresence[]>();
 /** Remove a single user's cursor by user_id. */
 export const removeCursorEffect = StateEffect.define<string>();
 
+function cursorPresenceKey(presence: CursorPresence): string {
+  return presence.client_id || presence.user_id;
+}
+
 // ── Cursor Caret Widget ─────────────────────────────────────────────────────
 
 class CursorCaretWidget extends WidgetType {
@@ -137,7 +141,7 @@ export const remoteCursorsField = StateField.define<Map<string, CursorPresence>>
       if (effect.is(setCursorsEffect)) {
         next = new Map();
         for (const p of effect.value) {
-          next.set(p.user_id, p);
+          next.set(cursorPresenceKey(p), p);
         }
         changed = true;
       } else if (effect.is(removeCursorEffect)) {
