@@ -1,3 +1,6 @@
+<img width="1600" height="878" alt="WhatsApp Image 2026-06-17 at 12 09 30 PM" src="https://github.com/user-attachments/assets/ae1ca16c-6621-4948-8e30-bb9743abf895" />
+
+
 # OpenObsidian
 
 A local-first knowledge management tool for creating, editing, and linking Markdown notes stored locally as files. OpenObsidian forms a graph-based knowledge system inspired by Obsidian, built with Electron, React, and TypeScript.
