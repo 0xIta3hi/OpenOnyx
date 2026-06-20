@@ -61,6 +61,7 @@ function scopePluginCss(pluginId: string, css: string): string {
     '.workspace-leaf', '.workspace-split', '.workspace-tab', '.workspace-ribbon',
     '.callout', '.empty-state', '.search-input',
     'body', 'html', ':root',
+    '.emoji', 'img.emoji',
   ];
 
   /** Check if a single selector targets known Obsidian structural classes */

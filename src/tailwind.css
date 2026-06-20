@@ -187,4 +187,73 @@ body.is-dragging svg {
   border-radius: 0 !important;
 }
 
+/* Ensure twemoji inline emojis render at text scale and inline flow */
+img.emoji {
+  height: 1em !important;
+  width: 1em !important;
+  margin: 0 0.05em 0 0.1em !important;
+  vertical-align: -0.1em !important;
+  display: inline-block !important;
+}
+
+/* Ensure checkmarks (ticks) are rendered correctly as L-shapes instead of solid blocks */
+.markdown-preview input[type="checkbox"],
+.markdown-rendered input[type="checkbox"],
+.task-checkbox {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 1.15em !important;
+  height: 1.15em !important;
+  border: 1px solid var(--border-medium) !important;
+  border-radius: var(--radius-sm) !important;
+  background-color: var(--bg-tertiary) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  vertical-align: middle !important;
+  cursor: pointer !important;
+  margin-right: 0.4em !important;
+  transition: background-color 120ms ease-in-out, border-color 120ms ease-in-out !important;
+}
+
+.markdown-preview input[type="checkbox"]:checked,
+.markdown-rendered input[type="checkbox"]:checked,
+.task-checkbox:checked {
+  background-color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+}
+
+.markdown-preview input[type="checkbox"]:hover,
+.markdown-rendered input[type="checkbox"]:hover,
+.task-checkbox:hover {
+  border-color: var(--color-accent-1) !important;
+}
+
+.markdown-preview input[type="checkbox"]::after,
+.markdown-rendered input[type="checkbox"]::after,
+.task-checkbox::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 45% !important;
+  left: 50% !important;
+  width: 0.32em !important;
+  height: 0.62em !important;
+  border-style: solid !important;
+  border-color: var(--text-on-accent) !important;
+  border-width: 0 2.2px 2.2px 0 !important;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0) !important;
+  transform-origin: center !important;
+  transition: transform 120ms ease-out !important;
+}
+
+.markdown-preview input[type="checkbox"]:checked::after,
+.markdown-rendered input[type="checkbox"]:checked::after,
+.task-checkbox:checked::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.1) !important;
+}
+
+
+
+
 

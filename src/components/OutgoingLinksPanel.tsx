@@ -1,31 +1,24 @@
-/**
- * Outgoing Links Panel
- *
- * Shows all links from the current note (what this note links to),
- * both resolved and unresolved (phantom) links.
- */
-
-import React, { useMemo } from "react";
-import { ArrowUpRight, FileText, FilePlus } from "lucide-react";
-
-interface OutgoingLink {
-  name: string;
-  exists: boolean;
-}
+import React, { useMemo, useState } from "react";
+import { Link as LinkIcon, ChevronRight, ChevronDown } from "lucide-react";
 
 interface OutgoingLinksPanelProps {
   content: string;
-  existingNotes: string[];
+  allNoteNames: { name: string; path: string }[];
+  activeFileName: string;
   onLinkClick: (linkName: string) => void;
   visible: boolean;
 }
 
 export function OutgoingLinksPanel({
   content,
-  existingNotes,
+  allNoteNames,
+  activeFileName,
   onLinkClick,
   visible,
 }: OutgoingLinksPanelProps) {
+  const [linksExpanded, setLinksExpanded] = useState(true);
+  const [unlinkedExpanded, setUnlinkedExpanded] = useState(false);
+
   // Extract wiki-links from content
   const links = useMemo(() => {
     if (!content) return [];
@@ -38,78 +31,168 @@ export function OutgoingLinksPanel({
       found.add(match[1].trim());
     }
 
-    // Convert to array with existence check
-    const existingSet = new Set(
-      existingNotes.map((n) => n.toLowerCase().replace(".md", "")),
-    );
+    // Convert to array with existence check and parent folder lookup
+    const existingNotesMap = new Map<string, string>();
+    allNoteNames.forEach((n) => {
+      const cleanName = n.name.replace(/\.md$/, "");
+      existingNotesMap.set(cleanName.toLowerCase(), n.path);
+    });
 
     return Array.from(found)
-      .map((name) => ({
-        name,
-        exists: existingSet.has(name.toLowerCase()),
-      }))
+      .map((name) => {
+        const cleanName = name.toLowerCase();
+        const path = existingNotesMap.get(cleanName);
+        const exists = !!path;
+
+        let parentFolder = "";
+        if (path) {
+          const parts = path.split("/");
+          parts.pop(); // Remove note name
+          parentFolder = parts.join("/");
+        }
+
+        return {
+          name,
+          exists,
+          parentFolder,
+        };
+      })
       .sort((a, b) => {
-        // Sort existing first, then alphabetically
         if (a.exists !== b.exists) return a.exists ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-  }, [content, existingNotes]);
+  }, [content, allNoteNames]);
+
+  // Find unlinked outgoing mentions
+  const unlinkedMentions = useMemo(() => {
+    if (!content || !allNoteNames || !activeFileName) return [];
+
+    const found = new Map<string, { name: string; parentFolder: string }>();
+    const currentCleanName = activeFileName.replace(/\.md$/, "").toLowerCase();
+
+    allNoteNames.forEach((note) => {
+      const cleanName = note.name.replace(/\.md$/, "");
+      if (cleanName.toLowerCase() === currentCleanName) return; // Skip current note
+      if (cleanName.length < 2) return; // Skip tiny names
+
+      // Escape regex special chars
+      const escapedName = cleanName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Check if note name appears as a word boundary and is NOT inside [[...]]
+      const pattern = new RegExp(
+        `(?<!\\[\\[)\\b${escapedName}\\b(?!\\]\\])`,
+        "gi"
+      );
+
+      if (pattern.test(content)) {
+        const parts = note.path.split("/");
+        parts.pop();
+        found.set(cleanName.toLowerCase(), {
+          name: cleanName,
+          parentFolder: parts.join("/"),
+        });
+      }
+    });
+
+    return Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [content, allNoteNames, activeFileName]);
 
   if (!visible) return null;
 
-  const existingLinks = links.filter((l) => l.exists);
-  const phantomLinks = links.filter((l) => !l.exists);
-
   return (
-    <div className="flex flex-col border-l border-(--border-subtle) bg-(--bg-secondary)">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-(--border-subtle)">
-        <ArrowUpRight size={14} strokeWidth={2} className="text-(--text-muted)" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-muted)">Outgoing Links</span>
-        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary) ml-auto">{links.length}</span>
+    <div className="flex flex-col h-full bg-(--bg-secondary) select-none overflow-y-auto">
+      {/* Links Section */}
+      <div className="flex flex-col shrink-0">
+        <div
+          className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-(--bg-hover) transition-colors duration-100"
+          onClick={() => setLinksExpanded(!linksExpanded)}
+        >
+          <span className="flex items-center gap-1.5 text-[13px] font-medium text-(--text-primary)">
+            {linksExpanded ? (
+              <ChevronDown size={14} className="text-(--text-muted) shrink-0" />
+            ) : (
+              <ChevronRight size={14} className="text-(--text-muted) shrink-0" />
+            )}
+            Links
+          </span>
+          <span className="text-[12px] text-(--text-muted)">{links.length}</span>
+        </div>
+
+        {linksExpanded && (
+          <div className="flex flex-col pb-2">
+            {links.length === 0 ? (
+              <div className="px-8 py-3 text-xs text-(--text-muted) italic">No outgoing links</div>
+            ) : (
+              links.map((link) => (
+                <button
+                  key={link.name}
+                  className="w-full flex items-start gap-2.5 px-6 py-2 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
+                  onClick={() => onLinkClick(link.name)}
+                >
+                  <LinkIcon size={14} className="text-(--text-muted) mt-1 shrink-0" />
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span
+                      className={`text-[12.5px] font-medium truncate ${
+                        link.exists ? "text-(--text-primary)" : "text-(--text-muted) italic"
+                      }`}
+                    >
+                      {link.name}
+                    </span>
+                    {link.parentFolder && (
+                      <span className="text-[11px] text-(--text-muted) truncate">
+                        {link.parentFolder}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="overflow-y-auto">
-        {links.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-(--text-muted)">No outgoing links</div>
-        ) : (
-          <>
-            {existingLinks.length > 0 && (
-              <div className="py-1">
-                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
-                  <FileText size={12} /> Linked Notes ({existingLinks.length})
-                </div>
-                {existingLinks.map((link) => (
-                  <button
-                    key={link.name}
-                    className="w-full flex items-center gap-2 px-4 py-1.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
-                    onClick={() => onLinkClick(link.name)}
-                  >
-                    <FileText size={14} className="text-(--text-muted) shrink-0" />
-                    <span className="text-[12.5px] text-(--text-primary) truncate">{link.name}</span>
-                  </button>
-                ))}
-              </div>
+      {/* Unlinked Outgoing Mentions Section */}
+      <div className="flex flex-col border-t border-(--border-subtle) shrink-0">
+        <div
+          className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-(--bg-hover) transition-colors duration-100"
+          onClick={() => setUnlinkedExpanded(!unlinkedExpanded)}
+        >
+          <span className="flex items-center gap-1.5 text-[13px] font-medium text-(--text-primary)">
+            {unlinkedExpanded ? (
+              <ChevronDown size={14} className="text-(--text-muted) shrink-0" />
+            ) : (
+              <ChevronRight size={14} className="text-(--text-muted) shrink-0" />
             )}
+            Unlinked mentions
+          </span>
+          <span className="text-[12px] text-(--text-muted)">{unlinkedMentions.length}</span>
+        </div>
 
-            {phantomLinks.length > 0 && (
-              <div className="py-1 border-t border-(--border-subtle)">
-                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-500/70">
-                  <FilePlus size={12} /> Unresolved ({phantomLinks.length})
-                </div>
-                {phantomLinks.map((link) => (
-                  <button
-                    key={link.name}
-                    className="w-full flex items-center gap-2 px-4 py-1.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
-                    onClick={() => onLinkClick(link.name)}
-                    title="Click to create this note"
-                  >
-                    <FilePlus size={14} className="text-amber-500/50 shrink-0" />
-                    <span className="text-[12.5px] text-(--text-muted) italic truncate">{link.name}</span>
-                  </button>
-                ))}
-              </div>
+        {unlinkedExpanded && (
+          <div className="flex flex-col pb-2">
+            {unlinkedMentions.length === 0 ? (
+              <div className="px-8 py-3 text-xs text-(--text-muted) italic">No unlinked mentions</div>
+            ) : (
+              unlinkedMentions.map((mention) => (
+                <button
+                  key={mention.name}
+                  className="w-full flex items-start gap-2.5 px-6 py-2 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
+                  onClick={() => onLinkClick(mention.name)}
+                >
+                  <LinkIcon size={14} className="text-(--text-muted) mt-1 shrink-0" />
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[12.5px] font-medium text-(--text-primary) truncate">
+                      {mention.name}
+                    </span>
+                    {mention.parentFolder && (
+                      <span className="text-[11px] text-(--text-muted) truncate">
+                        {mention.parentFolder}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

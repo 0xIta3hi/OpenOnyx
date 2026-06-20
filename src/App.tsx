@@ -26,6 +26,7 @@ import { CanvasView } from "./components/canvas/CanvasView";
 import { SearchModal } from "./components/SearchModal";
 import { CommandPalette } from "./components/CommandPalette";
 import { BacklinksPanel } from "./components/BacklinksPanel";
+import { RightSidebar, RightSidebarTabType } from "./components/RightSidebar";
 import { StatusBar } from "./components/StatusBar";
 import {
   WelcomeScreen,
@@ -959,10 +960,9 @@ export default function App() {
   const [searchInitialQuery, setSearchInitialQuery] = useState("");
   const [searchInitialMode, setSearchInitialMode] = useState<"search" | "switcher">("switcher");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [showBacklinks, setShowBacklinks] = useState(false);
-  const [showOutline, setShowOutline] = useState(false);
+  const [rightSidebarTab, setRightSidebarTab] = useState<RightSidebarTabType>("outline");
+  const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [showTags, setShowTags] = useState(false);
-  const [showOutgoingLinks, setShowOutgoingLinks] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string>("general");
@@ -987,6 +987,44 @@ export default function App() {
   const [showCanvas, setShowCanvas] = useState(false);
   const [canvasFilePath, setCanvasFilePath] = useState<string | null>(null);
   const [canvasFullScreen, setCanvasFullScreen] = useState(false);
+
+  const handleToggleBacklinks = useCallback(() => {
+    if (!showRightSidebar) {
+      setShowRightSidebar(true);
+      setRightSidebarTab("backlinks");
+    } else if (rightSidebarTab === "backlinks") {
+      setShowRightSidebar(false);
+    } else {
+      setRightSidebarTab("backlinks");
+    }
+  }, [showRightSidebar, rightSidebarTab]);
+
+  const handleToggleOutgoingLinks = useCallback(() => {
+    if (!showRightSidebar) {
+      setShowRightSidebar(true);
+      setRightSidebarTab("outgoing");
+    } else if (rightSidebarTab === "outgoing") {
+      setShowRightSidebar(false);
+    } else {
+      setRightSidebarTab("outgoing");
+    }
+  }, [showRightSidebar, rightSidebarTab]);
+
+  const handleToggleOutline = useCallback(() => {
+    if (!showRightSidebar) {
+      setShowRightSidebar(true);
+      setRightSidebarTab("outline");
+    } else if (rightSidebarTab === "outline") {
+      setShowRightSidebar(false);
+    } else {
+      setRightSidebarTab("outline");
+    }
+  }, [showRightSidebar, rightSidebarTab]);
+
+  const handleSelectRightTab = useCallback((tab: RightSidebarTabType) => {
+    setShowRightSidebar(true);
+    setRightSidebarTab(tab);
+  }, []);
   const [settings, setSettings] = useState<AppSettings>(() => {
     // Load settings from localStorage on initial render
     try {
@@ -1021,6 +1059,9 @@ export default function App() {
     spaceId: string | null;
   }>({ vaultPath: null, userId: null, spaceId: null });
   const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; side: 'left' | 'right' | 'main' }>>([]);
+  const leftPluginViews = pluginViews.filter(v => v.side === 'left');
+  const rightPluginViews = pluginViews.filter(v => v.side === 'right');
+  const mainPluginViews = pluginViews.filter(v => v.side === 'main');
   // Permission modal state
   const [permissionModalData, setPermissionModalData] = useState<{
     manifest: PluginManifest;
@@ -1162,8 +1203,41 @@ export default function App() {
   // ── Right Sidebar drag resizer ──
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
   const rightSidebarWidthRef = useRef(300);
+  const rightPluginViewsRef = useRef(rightPluginViews);
+  const activeUsersRef = useRef(activeUsers);
 
   useEffect(() => { rightSidebarWidthRef.current = rightSidebarWidth; }, [rightSidebarWidth]);
+  useEffect(() => { rightPluginViewsRef.current = rightPluginViews; }, [rightPluginViews]);
+  useEffect(() => { activeUsersRef.current = activeUsers; }, [activeUsers]);
+
+  // Helper to compute dynamic minimum sidebar width
+  const getMinRightSidebarWidth = useCallback((pluginViewsList: any[], activeUsersList: any[]) => {
+    const numIcons = 3 + pluginViewsList.length;
+    const iconsWidth = numIcons * 32 + (numIcons - 1) * 2 + 8; // button: 32px, gap: 2px, padding-left: 8px
+    const isMac = navigator.platform.includes("Mac");
+    const controlsWidth = isMac ? 0 : 138; // 3 buttons of 46px
+    
+    let avatarsWidth = 0;
+    if (activeUsersList && activeUsersList.length > 0) {
+      const visibleCount = Math.min(activeUsersList.length, 3);
+      avatarsWidth += 24 + (visibleCount - 1) * 16;
+      if (activeUsersList.length > 3) {
+        avatarsWidth += 16;
+      }
+      avatarsWidth += 16; // margin-right
+    }
+    
+    const computedMinWidth = iconsWidth + avatarsWidth + controlsWidth + 16; // 16px safety margin
+    return Math.max(200, computedMinWidth);
+  }, []);
+
+  // Enforce dynamic minimum sidebar width to prevent icon wrapping/shrinking
+  useEffect(() => {
+    const minRightWidth = getMinRightSidebarWidth(rightPluginViews, activeUsers);
+    if (rightSidebarWidth < minRightWidth) {
+      setRightSidebarWidth(minRightWidth);
+    }
+  }, [rightPluginViews, activeUsers, rightSidebarWidth, getMinRightSidebarWidth]);
 
   const startRightSidebarDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -1194,8 +1268,9 @@ export default function App() {
       const minCenterWidth = 40;
       const maxRightWidth = window.innerWidth - ribbonWidth - leftUsed - minCenterWidth;
 
+      const minRightWidth = getMinRightSidebarWidth(rightPluginViewsRef.current, activeUsersRef.current);
       let newWidth = window.innerWidth - ev.clientX;
-      if (newWidth < 200) newWidth = 200;
+      if (newWidth < minRightWidth) newWidth = minRightWidth;
       if (newWidth > maxRightWidth) newWidth = maxRightWidth;
 
       pendingWidth = newWidth;
@@ -4773,7 +4848,7 @@ export default function App() {
     };
 
     const onToggleBacklinks = () => {
-      setShowBacklinks((prev) => !prev);
+      handleToggleBacklinks();
     };
 
     const onGlobalSearch = (event?: Event) => {
@@ -5451,13 +5526,13 @@ export default function App() {
     {
       id: "backlinks",
       label: "Toggle Backlinks Panel",
-      action: () => setShowBacklinks((b) => !b),
+      action: handleToggleBacklinks,
       category: "View",
     },
     {
       id: "outline",
       label: "Toggle Outline",
-      action: () => setShowOutline((o) => !o),
+      action: handleToggleOutline,
       category: "View",
     },
     {
@@ -5469,7 +5544,7 @@ export default function App() {
     {
       id: "outgoing-links",
       label: "Toggle Outgoing Links",
-      action: () => setShowOutgoingLinks((o) => !o),
+      action: handleToggleOutgoingLinks,
       category: "View",
     },
     {
@@ -5575,7 +5650,6 @@ export default function App() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
   // ── Collaboration State ────────────────────────────────
-  const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [invitesSent, setInvitesSent] = useState<any[]>([]);
   const [invitesReceived, setInvitesReceived] = useState<any[]>([]);
@@ -5966,9 +6040,36 @@ export default function App() {
     </div>
   );
 
-  const leftPluginViews = pluginViews.filter(v => v.side === 'left');
-  const rightPluginViews = pluginViews.filter(v => v.side === 'right');
-  const mainPluginViews = pluginViews.filter(v => v.side === 'main');
+
+
+  // Auto-switch away from detached plugin views in the right sidebar
+  useEffect(() => {
+    if (
+      rightSidebarTab !== "outline" &&
+      rightSidebarTab !== "backlinks" &&
+      rightSidebarTab !== "outgoing"
+    ) {
+      const stillExists = rightPluginViews.some((v) => v.viewType === rightSidebarTab);
+      if (!stillExists) {
+        setRightSidebarTab("outline");
+      }
+    }
+  }, [rightPluginViews, rightSidebarTab]);
+
+  // Auto-open and focus when a new right plugin view is registered
+  const prevRightViewsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const currentTypes = rightPluginViews.map(v => v.viewType);
+    const prevTypes = prevRightViewsRef.current;
+    
+    // Find if there's any new viewType that was not in prevTypes
+    const added = currentTypes.find(t => !prevTypes.includes(t));
+    if (added) {
+      setRightSidebarTab(added);
+      setShowRightSidebar(true);
+    }
+    prevRightViewsRef.current = currentTypes;
+  }, [rightPluginViews]);
 
   // Helper to render regular active tabs (canvas, database, plugin, editor)
   const renderActiveTabContent = useCallback((leafActiveTab: Tab, leaf: PaneLeaf): React.ReactNode => {
@@ -6282,6 +6383,10 @@ export default function App() {
           onMoveTabToGroup={handleAddTabToGroup}
           collapsedGroupIds={collapsedGroupIds}
           onToggleGroupCollapse={handleToggleGroupCollapse}
+          activeRightTab={rightSidebarTab}
+          setActiveRightTab={handleSelectRightTab}
+          rightPluginViews={rightPluginViews}
+          rightSidebarWidth={rightSidebarWidth}
         />
 
       <div
@@ -6301,7 +6406,7 @@ export default function App() {
             onSettings={() => setShowSettings(true)}
             onDailyNote={handleCreateDailyNote}
             onToggleTags={() => setShowTags((t) => !t)}
-            onToggleOutline={() => setShowOutline((o) => !o)}
+            onToggleOutline={handleToggleOutline}
             onThoughtModel={() => {
               setShowGraph(false);
               setShowCanvas(false);
@@ -6577,91 +6682,37 @@ export default function App() {
           </>
         )}
 
-        {/* Right Panels */}
-        {activeTab && !showGraph && !activeTabIsCanvas && !activeTabIsGraph && !isFTUXZeroState && (
-          <>
-            {showOutline && (
-              <OutlinePane
-                content={currentContent}
-                onHeadingClick={(line) => {
-                  // Scroll to line in editor
-                  document.dispatchEvent(
-                    new CustomEvent("editor:goto-line", { detail: line }),
-                  );
-                }}
-                visible={showOutline}
-              />
-            )}
-
-            {showOutgoingLinks && (
-              <OutgoingLinksPanel
-                content={currentContent}
-                existingNotes={allNoteNames.map((n) => n.path)}
-                onLinkClick={handleLinkClick}
-                visible={showOutgoingLinks}
-              />
-            )}
-
-            {showBacklinks && (
-              <BacklinksPanel
-                backlinks={backlinks}
-                onBacklinkClick={openFile}
-                onClose={() => setShowBacklinks(false)}
-              />
-            )}
-
-            {showUnlinkedMentions && (
-              <UnlinkedMentionsPanel
-                currentNotePath={activeTab?.path || null}
-                currentNoteName={activeTab?.name || ""}
-                visible={showUnlinkedMentions}
-                onNavigate={async (path, line) => {
-                  await openFile(path);
-                  if (line) {
-                    setTimeout(() => {
-                      document.dispatchEvent(
-                        new CustomEvent("editor:goto-line", { detail: line }),
-                      );
-                    }, 150);
-                  }
-                }}
-              />
-            )}
-          </>
-        )}
-
-        {showTags && !isFTUXZeroState && (
-          <TagPane
-            visible={showTags}
-            onTagClick={(filePath) => openFile(filePath)}
-          />
-        )}
-
-        {/* Plugin Views (right sidebar) */}
-        {rightPluginViews.length > 0 && !isFTUXZeroState && (
+        {/* Right Sidebar Container */}
+        {showRightSidebar && !isFTUXZeroState && (
           <div
             ref={rightSidebarShellRef}
-            className="relative h-full shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width]"
+            className="relative h-full shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width] flex flex-row"
             style={{ width: showRightSidebar ? "var(--right-sidebar-width)" : 0 }}
           >
-            {showRightSidebar && (
-              <div
-                className={rightResizerClass}
-                onMouseDown={startRightSidebarDrag}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  height: "100%",
-                  zIndex: 100,
-                }}
-              />
-            )}
-            <div className="h-full w-full">
-              <PluginViewPanel
-                views={rightPluginViews}
+            <div
+              className={rightResizerClass}
+              onMouseDown={startRightSidebarDrag}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                height: "100%",
+                zIndex: 100,
+              }}
+            />
+            <div className="h-full w-full flex flex-row overflow-hidden">
+              <RightSidebar
+                activeTab={rightSidebarTab}
+                currentContent={currentContent}
+                allNoteNames={allNoteNames}
+                handleLinkClick={handleLinkClick}
+                backlinks={backlinks}
+                openFile={openFile}
+                activeFilePath={activeTab?.path || null}
+                activeFileName={activeTab?.name || ""}
                 width={rightSidebarWidth}
-                onClose={(viewType) => {
+                rightPluginViews={rightPluginViews}
+                onClosePluginView={(viewType) => {
                   const app = ooAppRef.current;
                   if (app) {
                     app.workspace.detachLeavesOfType(viewType);

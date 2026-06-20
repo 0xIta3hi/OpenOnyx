@@ -2852,6 +2852,17 @@ export function Editor({
             onViewStateChangeRef.current?.(activePathRef.current, {
               cursor: update.state.selection.main.head,
             });
+            try {
+              const pos = update.state.selection.main.head;
+              const line = update.state.doc.lineAt(pos).number;
+              document.dispatchEvent(
+                new CustomEvent("editor:cursor-line", {
+                  detail: { line, path: activePathRef.current },
+                })
+              );
+            } catch (err) {
+              console.error("Error dispatching cursor-line event:", err);
+            }
           }
           if (update.docChanged) {
             // A change is a "user edit" if it changed the doc AND is not

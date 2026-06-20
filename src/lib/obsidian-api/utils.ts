@@ -67,11 +67,41 @@ function getLucideIconHtml(iconId: string): string | null {
     trello: 'columns-3',
     twitter: 'message-circle',
     youtube: 'play',
+    'calendar-with-checkmark': 'calendar-check',
   };
   iconId = aliases[iconId] || iconId;
 
-  const pascalName = toPascalCase(iconId);
-  const iconNodes = (icons as any)[pascalName];
+  let pascalName = toPascalCase(iconId);
+  let iconNodes = (icons as any)[pascalName];
+  
+  if (!iconNodes) {
+    // Try fuzzy matching on common keywords
+    const lowerId = iconId.toLowerCase();
+    let fallbackId = '';
+    if (lowerId.includes('calendar')) fallbackId = 'calendar';
+    else if (lowerId.includes('kanban') || lowerId.includes('board')) fallbackId = 'kanban';
+    else if (lowerId.includes('chart')) fallbackId = 'bar-chart-3';
+    else if (lowerId.includes('folder')) fallbackId = 'folder';
+    else if (lowerId.includes('tag')) fallbackId = 'tag';
+    else if (lowerId.includes('search')) fallbackId = 'search';
+    else if (lowerId.includes('settings') || lowerId.includes('gear')) fallbackId = 'settings';
+    else if (lowerId.includes('check') || lowerId.includes('todo')) fallbackId = 'check-square';
+    else if (lowerId.includes('link')) fallbackId = 'link';
+    else if (lowerId.includes('document') || lowerId.includes('file') || lowerId.includes('note')) fallbackId = 'file-text';
+    else if (lowerId.includes('list') || lowerId.includes('outline')) fallbackId = 'list';
+    else if (lowerId.includes('info')) fallbackId = 'info';
+    else if (lowerId.includes('help') || lowerId.includes('question')) fallbackId = 'help-circle';
+    else if (lowerId.includes('star')) fallbackId = 'star';
+    else if (lowerId.includes('clock') || lowerId.includes('time')) fallbackId = 'clock';
+    else if (lowerId.includes('trash') || lowerId.includes('delete')) fallbackId = 'trash-2';
+    else if (lowerId.includes('graph')) fallbackId = 'git-fork';
+
+    if (fallbackId) {
+      pascalName = toPascalCase(fallbackId);
+      iconNodes = (icons as any)[pascalName];
+    }
+  }
+
   if (!iconNodes) return null;
 
   let innerHtml = '';

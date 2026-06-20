@@ -1,12 +1,5 @@
-/**
- * Unlinked Mentions Panel
- *
- * Finds text in other notes that matches the current note's name
- * but isn't linked with [[brackets]]. Allows quick conversion to links.
- */
-
 import React, { useState, useEffect, useMemo } from "react";
-import { Link, LinkIcon, Eye, EyeOff, FileText } from "lucide-react";
+import { ChevronRight, ChevronDown } from "lucide-react";
 import { getAPI } from "../utils/api";
 import { getNoteName } from "../utils/helpers";
 
@@ -36,7 +29,8 @@ export function UnlinkedMentionsPanel({
 }: UnlinkedMentionsPanelProps) {
   const [mentions, setMentions] = useState<UnlinkedMention[]>([]);
   const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [panelExpanded, setPanelExpanded] = useState(false); // Collapsed by default to match screenshots
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Search for unlinked mentions when note changes
   useEffect(() => {
@@ -45,47 +39,45 @@ export function UnlinkedMentionsPanel({
       return;
     }
 
+    let active = true;
     const searchMentions = async () => {
       setLoading(true);
       try {
-        // Search for the note name in all files
         const results = await api.search(currentNoteName);
+        if (!active) return;
 
         const foundMentions: UnlinkedMention[] = [];
 
         for (const result of results) {
-          // Skip the current note itself
           if (result.path === currentNotePath) continue;
 
-          // Read the file content to find unlinked mentions
           const content = await api.readFile(result.path);
-          const lines = content.split("\n");
+          if (!active) return;
 
+          const lines = content.split("\n");
+          const escapedName = currentNoteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const namePattern = new RegExp(
-            `(?<!\\[\\[)\\b${escapeRegex(currentNoteName)}\\b(?!\\]\\])`,
-            "gi",
+            `(?<!\\[\\[)\\b${escapedName}\\b(?!\\]\\])`,
+            "gi"
           );
 
           lines.forEach((line, lineIndex) => {
             let match;
             while ((match = namePattern.exec(line)) !== null) {
-              // Make sure it's not inside a link
               const beforeMatch = line.substring(0, match.index);
               const afterMatch = line.substring(match.index + match[0].length);
 
-              // Skip if it's already in a wiki-link
               if (beforeMatch.includes("[[") && !beforeMatch.includes("]]"))
                 continue;
               if (afterMatch.includes("]]") && !afterMatch.includes("[["))
                 continue;
 
-              // Get context (surrounding text)
               const contextStart = Math.max(0, match.index - 30);
               const contextEnd = Math.min(
                 line.length,
-                match.index + match[0].length + 30,
+                match.index + match[0].length + 30
               );
-              const context = line.substring(contextStart, contextEnd);
+              const contextText = line.substring(contextStart, contextEnd);
 
               foundMentions.push({
                 path: result.path,
@@ -93,7 +85,7 @@ export function UnlinkedMentionsPanel({
                 line: lineIndex + 1,
                 context:
                   (contextStart > 0 ? "..." : "") +
-                  context +
+                  contextText +
                   (contextEnd < line.length ? "..." : ""),
                 matchStart:
                   match.index - contextStart + (contextStart > 0 ? 3 : 0),
@@ -107,18 +99,25 @@ export function UnlinkedMentionsPanel({
           });
         }
 
-        setMentions(foundMentions);
+        if (active) {
+          setMentions(foundMentions);
+          setExpandedGroups(new Set(foundMentions.map((m) => m.path)));
+        }
       } catch (err) {
         console.error("Error searching for unlinked mentions:", err);
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
-    searchMentions();
-  }, [currentNotePath, currentNoteName, visible]);
+    void searchMentions();
 
-  if (!visible) return null;
+    return () => {
+      active = false;
+    };
+  }, [currentNotePath, currentNoteName, visible]);
 
   // Group by file
   const groupedMentions = useMemo(() => {
@@ -130,73 +129,98 @@ export function UnlinkedMentionsPanel({
     return groups;
   }, [mentions]);
 
+  if (!visible) return null;
+
+  const toggleGroup = (path: string) => {
+    const next = new Set(expandedGroups);
+    if (next.has(path)) {
+      next.delete(path);
+    } else {
+      next.add(path);
+    }
+    setExpandedGroups(next);
+  };
+
   return (
-    <div className="border-t border-(--border-subtle)">
-      <div className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-(--bg-hover) transition-colors duration-100" onClick={() => setExpanded(!expanded)}>
-        <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-(--text-muted)">
-          <LinkIcon size={14} />
-          Unlinked Mentions
-          {mentions.length > 0 && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-active) text-(--text-secondary) normal-case tracking-normal">{mentions.length}</span>
+    <div className="flex flex-col bg-(--bg-secondary) select-none">
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-(--bg-hover) transition-colors duration-100"
+        onClick={() => setPanelExpanded(!panelExpanded)}
+      >
+        <span className="flex items-center gap-1.5 text-[13px] font-medium text-(--text-primary)">
+          {panelExpanded ? (
+            <ChevronDown size={14} className="text-(--text-muted) shrink-0" />
+          ) : (
+            <ChevronRight size={14} className="text-(--text-muted) shrink-0" />
           )}
+          Unlinked mentions
         </span>
-        <button className="bg-transparent border-none text-(--text-muted) p-0 cursor-pointer">
-          {expanded ? <EyeOff size={14} /> : <Eye size={14} />}
-        </button>
+        <span className="text-[12px] text-(--text-muted)">
+          {mentions.length > 0 ? mentions.length : 0}
+        </span>
       </div>
 
-      {expanded && (
-        <div className="px-2 pb-2">
+      {/* Collapsible Content */}
+      {panelExpanded && (
+        <div className="flex flex-col pb-2">
           {loading ? (
-            <div className="px-2 py-4 text-center text-xs text-(--text-muted)">Searching...</div>
+            <div className="px-8 py-3 text-xs text-(--text-muted) italic">Searching...</div>
           ) : mentions.length === 0 ? (
-            <div className="px-2 py-4 text-center text-xs text-(--text-muted)">
-              No unlinked mentions found for "{currentNoteName}"
+            <div className="px-8 py-3 text-xs text-(--text-muted) italic">
+              No unlinked mentions found
             </div>
           ) : (
-            <div className="flex flex-col gap-1">
-              {Array.from(groupedMentions.entries()).map(
-                ([path, fileMentions]) => (
-                  <div key={path} className="rounded-md overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-(--text-secondary) bg-(--bg-active)">
-                      <FileText size={14} className="shrink-0 text-(--text-muted)" />
-                      <span className="truncate">{getNoteName(path)}</span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-(--bg-hover) text-(--text-muted) ml-auto">
-                        {fileMentions.length}
-                      </span>
-                    </div>
-                    {fileMentions.map((mention, i) => (
-                      <button
-                        key={i}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 bg-transparent border-none text-left cursor-pointer transition-colors duration-100 hover:bg-(--bg-hover)"
-                        onClick={() => onNavigate(mention.path, mention.line)}
-                        title={`Line ${mention.line}`}
-                      >
-                        <span className="text-[11px] text-(--text-muted) leading-relaxed flex-1 truncate">
+            Array.from(groupedMentions.entries()).map(([path, fileMentions]) => {
+              const isExpanded = expandedGroups.has(path);
+              return (
+                <div key={path} className="flex flex-col">
+                  {/* File group row */}
+                  <div
+                    className="flex items-center justify-between px-6 py-1.5 cursor-pointer hover:bg-(--bg-hover) transition-colors duration-100"
+                    onClick={() => toggleGroup(path)}
+                  >
+                    <span className="flex items-center gap-1 text-[12.5px] font-medium text-(--text-primary) truncate">
+                      {isExpanded ? (
+                        <ChevronDown size={12} className="text-(--text-muted) shrink-0" />
+                      ) : (
+                        <ChevronRight size={12} className="text-(--text-muted) shrink-0" />
+                      )}
+                      {getNoteName(path)}
+                    </span>
+                    <span className="text-[11px] text-(--text-muted)">
+                      {fileMentions.length}
+                    </span>
+                  </div>
+
+                  {/* Snippets list */}
+                  {isExpanded && (
+                    <div className="flex flex-col pl-10 pr-4 pb-1">
+                      {fileMentions.map((mention, i) => (
+                        <button
+                          key={i}
+                          className="w-full text-[11px] text-(--text-muted) hover:text-(--text-primary) leading-normal py-0.5 border-none bg-transparent text-left cursor-pointer select-text truncate hover:bg-(--bg-hover) rounded px-1.5 transition-colors duration-100"
+                          onClick={() => onNavigate(mention.path, mention.line)}
+                          title={`Line ${mention.line}: ${mention.context}`}
+                        >
                           {mention.context.substring(0, mention.matchStart)}
                           <mark className="bg-amber-500/20 text-amber-300 rounded-sm px-0.5">
                             {mention.context.substring(
                               mention.matchStart,
-                              mention.matchEnd,
+                              mention.matchEnd
                             )}
                           </mark>
                           {mention.context.substring(mention.matchEnd)}
-                        </span>
-                        <span className="text-[10px] text-(--text-muted) shrink-0">:{mention.line}</span>
-                      </button>
-                    ))}
-                  </div>
-                ),
-              )}
-            </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       )}
     </div>
   );
-}
-
-// Escape special regex characters
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

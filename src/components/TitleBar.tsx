@@ -7,7 +7,7 @@
  *   Right: window controls (minimize, maximize, close)
  */
 
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import { Tab, Theme } from "../types";
 import { getAPI } from "../utils/api";
 import { DragCtx } from "../context/DragContext";
@@ -24,7 +24,54 @@ import {
   Copy,
   Save,
   Link2Off,
+  List,
 } from "lucide-react";
+
+// Custom Backlinks (incoming arrow) SVG
+function BacklinksIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+      <path d="M15 7h2a5 5 0 0 1 0 10h-2" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <path d="M2 17v5h5" />
+      <line x1="2" y1="22" x2="7" y2="17" />
+    </svg>
+  );
+}
+
+// Custom Outgoing links (outgoing arrow) SVG
+function OutgoingIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+      <path d="M15 7h2a5 5 0 0 1 0 10h-2" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <path d="M22 17v5h-5" />
+      <line x1="22" y1="22" x2="17" y2="17" />
+    </svg>
+  );
+}
 
 export const GROUP_COLORS = [
   { name: "Blue", value: "#1a73e8" },
@@ -208,6 +255,41 @@ interface TitleBarProps {
   onMoveTabToGroup?: (tabId: string, groupId: string) => void;
   collapsedGroupIds?: Set<string>;
   onToggleGroupCollapse?: (groupId: string) => void;
+  activeRightTab?: string;
+  setActiveRightTab?: (tab: string) => void;
+  rightPluginViews?: Array<{
+    viewType: string;
+    displayText: string;
+    icon: string;
+    containerEl: HTMLElement;
+    side: 'left' | 'right' | 'main';
+    pluginId?: string;
+  }>;
+  rightSidebarWidth?: number;
+}
+
+import { setIcon } from "../lib/obsidian-api/utils";
+
+function PluginIcon({ iconId, className }: { iconId: string; className?: string }) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.innerHTML = "";
+      setIcon(containerRef.current, iconId);
+      const svg = containerRef.current.querySelector("svg");
+      if (svg) {
+        svg.setAttribute("width", "20");
+        svg.setAttribute("height", "20");
+        svg.setAttribute("stroke-width", "1.5");
+        if (className) {
+          svg.setAttribute("class", className);
+        }
+      }
+    }
+  }, [iconId, className]);
+
+  return <span ref={containerRef} className="flex items-center justify-center" />;
 }
 
 export function TitleBar({
@@ -226,6 +308,8 @@ export function TitleBar({
   onTabClose,
   onNewTab,
   onTabReorder,
+  activeRightTab,
+  setActiveRightTab,
   tabScrollRef,
   children,
   activeUsers = [],
@@ -247,6 +331,8 @@ export function TitleBar({
   onMoveTabToGroup,
   collapsedGroupIds = new Set<string>(),
   onToggleGroupCollapse,
+  rightPluginViews = [],
+  rightSidebarWidth = 300,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
@@ -423,8 +509,10 @@ export function TitleBar({
       <div
         className={titlebarLeftClass}
         style={{
-          width: leftWidth ? `${leftWidth}px` : undefined,
-          minWidth: leftWidth ? `${leftWidth}px` : undefined,
+          width: leftWidth ? `${isMac ? Math.max(leftWidth, 120) : leftWidth}px` : undefined,
+          minWidth: leftWidth ? `${isMac ? Math.max(leftWidth, 120) : leftWidth}px` : undefined,
+          paddingLeft: isMac ? "75px" : undefined,
+          boxSizing: "border-box",
         }}
       >
         {onToggleSidebar && (
@@ -585,88 +673,171 @@ export function TitleBar({
         </div>
       </div>
 
-      {/* Right: window controls */}
-      <div className={titlebarRightControlsClass}>
-        <div style={{ display: 'flex', alignItems: 'center', marginRight: '16px', gap: '4px' }}>
-          {activeUsers.slice(0, 3).map((u, i) => (
-            <div 
-              key={u.id}
-              title={`${u.name || u.email} - ${u.isEditing ? 'Editing' : 'Viewing'}`}
-              style={{
-                width: '24px', height: '24px', borderRadius: '50%',
-                backgroundColor: u.color || 'var(--interactive-accent)',
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '12px', fontWeight: 'bold', zIndex: 3 - i,
-                marginLeft: i > 0 ? '-8px' : 0, border: '2px solid var(--background-primary)',
-                position: 'relative'
-              }}
-            >
-              {(u.name || u.email || '?')[0].toUpperCase()}
-              {u.isEditing && (
-                <div style={{
-                  position: 'absolute', bottom: '-2px', right: '-2px',
-                  width: '8px', height: '8px', borderRadius: '50%',
-                  background: '#10b981', border: '1px solid var(--background-primary)'
-                }} title="Editing" />
-              )}
-            </div>
-          ))}
-          {activeUsers.length > 3 && (
-            <div style={{
-              width: '24px', height: '24px', borderRadius: '50%',
-              backgroundColor: 'var(--background-modifier-border)',
-              color: 'var(--text-normal)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '10px', fontWeight: 'bold', marginLeft: '-8px', border: '2px solid var(--background-primary)'
-            }}>
-              +{activeUsers.length - 3}
-            </div>
-          )}
-          {onInvite && (
-            <button
-              className={titlebarActionBtnClass}
-              style={{ marginLeft: '4px', width: '24px', height: '24px', padding: 0 }}
-              onClick={onInvite}
-              title="Invite collaborators"
-            >
-              <Plus size={16} strokeWidth={2} />
-            </button>
-          )}
-        </div>
-        
+      {/* Right: sidebar toggle and right sidebar container */}
+      <div className="relative z-[2] flex h-full shrink-0 items-center pointer-events-auto [-webkit-app-region:no-drag]">
         {onToggleRightSidebar && (
           <button
             className={titlebarActionBtnClass}
             onClick={onToggleRightSidebar}
             title={showRightSidebar ? "Close right sidebar" : "Open right sidebar"}
+            style={{ marginRight: showRightSidebar ? '8px' : '0' }}
           >
             <PanelRight size={20} strokeWidth={1.5} />
           </button>
         )}
-        {!isMac && (
-          <div className={titlebarControlsClass}>
-          <button
-            className={titlebarBtnClass}
-            onClick={() => api.minimizeWindow()}
-            aria-label="Minimize"
-          >
-            &#x2500;
-          </button>
-          <button
-            className={titlebarBtnClass}
-            onClick={() => api.maximizeWindow()}
-            aria-label="Maximize"
-          >
-            &#x25A1;
-          </button>
-          <button
-            className={`${titlebarBtnClass} ${titlebarCloseBtnClass}`}
-            onClick={() => api.closeWindow()}
-            aria-label="Close"
-          >
-            &#x2715;
-          </button>
+
+        <div
+          className="flex h-full items-center justify-between flex-nowrap overflow-hidden"
+          style={
+            showRightSidebar && rightSidebarWidth
+              ? {
+                  width: `${rightSidebarWidth}px`,
+                  minWidth: `${rightSidebarWidth}px`,
+                  borderLeft: "1px solid var(--border-subtle)",
+                  paddingLeft: "8px",
+                  boxSizing: "border-box",
+                }
+              : {
+                  paddingLeft: "8px",
+                }
+          }
+        >
+          {/* Active Tab Icons (only shown when sidebar is open) */}
+          {showRightSidebar && activeRightTab && setActiveRightTab && (
+            <div className="flex items-center gap-0.5 flex-nowrap flex-shrink min-w-0 overflow-hidden">
+              <button
+                className={`${titlebarActionBtnClass} ${
+                  activeRightTab === "backlinks"
+                    ? "bg-(--bg-active) !text-(--text-primary)"
+                    : "text-(--text-muted) hover:text-(--text-secondary)"
+                }`}
+                onClick={() => setActiveRightTab("backlinks")}
+                title="Backlinks"
+              >
+                <BacklinksIcon />
+              </button>
+
+              <button
+                className={`${titlebarActionBtnClass} ${
+                  activeRightTab === "outgoing"
+                    ? "bg-(--bg-active) !text-(--text-primary)"
+                    : "text-(--text-muted) hover:text-(--text-secondary)"
+                }`}
+                onClick={() => setActiveRightTab("outgoing")}
+                title="Outgoing links"
+              >
+                <OutgoingIcon />
+              </button>
+
+              <button
+                className={`${titlebarActionBtnClass} ${
+                  activeRightTab === "outline"
+                    ? "bg-(--bg-active) !text-(--text-primary)"
+                    : "text-(--text-muted) hover:text-(--text-secondary)"
+                }`}
+                onClick={() => setActiveRightTab("outline")}
+                title="Outline"
+              >
+                <List size={20} strokeWidth={1.5} />
+              </button>
+
+              {rightPluginViews.map((view) => (
+                <button
+                  key={view.viewType}
+                  className={`${titlebarActionBtnClass} ${
+                    activeRightTab === view.viewType
+                      ? "bg-(--bg-active) !text-(--text-primary)"
+                      : "text-(--text-muted) hover:text-(--text-secondary)"
+                  }`}
+                  onClick={() => setActiveRightTab(view.viewType)}
+                  title={view.displayText}
+                >
+                  <PluginIcon iconId={view.icon} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Spacer if sidebar is open, to push avatars/controls to the right */}
+          <div className="flex-1" />
+
+          {/* Collaborator Avatars & Window Controls */}
+          <div className="flex items-center flex-shrink-0">
+            {/* Active Users */}
+            <div style={{ display: 'flex', alignItems: 'center', marginRight: '16px', gap: '4px' }}>
+              {activeUsers.slice(0, 3).map((u, i) => (
+                <div 
+                  key={u.id}
+                  title={`${u.name || u.email} - ${u.isEditing ? 'Editing' : 'Viewing'}`}
+                  style={{
+                    width: '24px', height: '24px', borderRadius: '50%',
+                    backgroundColor: u.color || 'var(--interactive-accent)',
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '12px', fontWeight: 'bold', zIndex: 3 - i,
+                    marginLeft: i > 0 ? '-8px' : 0, border: '2px solid var(--background-primary)',
+                    position: 'relative'
+                  }}
+                >
+                  {(u.name || u.email || '?')[0].toUpperCase()}
+                  {u.isEditing && (
+                    <div style={{
+                      position: 'absolute', bottom: '-2px', right: '-2px',
+                      width: '8px', height: '8px', borderRadius: '50%',
+                      background: '#10b981', border: '1px solid var(--background-primary)'
+                    }} title="Editing" />
+                  )}
+                </div>
+              ))}
+              {activeUsers.length > 3 && (
+                <div style={{
+                  width: '24px', height: '24px', borderRadius: '50%',
+                  backgroundColor: 'var(--background-modifier-border)',
+                  color: 'var(--text-normal)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '10px', fontWeight: 'bold', marginLeft: '-8px', border: '2px solid var(--background-primary)'
+                }}>
+                  +{activeUsers.length - 3}
+                </div>
+              )}
+              {onInvite && (
+                <button
+                  className={titlebarActionBtnClass}
+                  style={{ marginLeft: '4px', width: '24px', height: '24px', padding: 0 }}
+                  onClick={onInvite}
+                  title="Invite collaborators"
+                >
+                  <Plus size={16} strokeWidth={2} />
+                </button>
+              )}
+            </div>
+
+            {/* Minimize / Maximize / Close */}
+            {!isMac && (
+              <div className={titlebarControlsClass}>
+                <button
+                  className={titlebarBtnClass}
+                  onClick={() => api.minimizeWindow()}
+                  aria-label="Minimize"
+                >
+                  &#x2500;
+                </button>
+                <button
+                  className={titlebarBtnClass}
+                  onClick={() => api.maximizeWindow()}
+                  aria-label="Maximize"
+                >
+                  &#x25A1;
+                </button>
+                <button
+                  className={`${titlebarBtnClass} ${titlebarCloseBtnClass}`}
+                  onClick={() => api.closeWindow()}
+                  aria-label="Close"
+                >
+                  &#x2715;
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      )}
       </div>
 
       {hoveredTab && (
