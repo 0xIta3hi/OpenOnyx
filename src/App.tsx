@@ -2040,6 +2040,8 @@ export default function App() {
       }
     }
 
+    (window as any).__oo_sync_theme_variables_to_body?.();
+
     // Save settings to localStorage
     localStorage.setItem("openobsidian-settings", JSON.stringify(settings));
   }, [settings, theme]);
@@ -6777,6 +6779,11 @@ export default function App() {
             await pluginManagerRef.current?.discoverPlugins();
           }}
           onReloadPlugin={async (id) => { await pluginManagerRef.current?.reloadPlugin(id); }}
+          onUninstallPlugin={async (id) => {
+            const pluginManager = pluginManagerRef.current;
+            if (!pluginManager) return false;
+            return pluginManager.uninstallPlugin(id);
+          }}
           onInstallPlugin={async (repo, id, version) => {
             const pm = pluginManagerRef.current;
             if (!pm) {

@@ -251,6 +251,7 @@ interface SettingsPageProps {
   onDisablePlugin?: (pluginId: string) => Promise<void>;
   onRefreshPlugins?: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
+  onUninstallPlugin?: (pluginId: string) => Promise<boolean>;
   onInstallPlugin?: (repo: string, pluginId: string, version?: string) => Promise<boolean>;
 
   // Collaboration props
@@ -293,6 +294,7 @@ export function SettingsPage({
   onDisablePlugin,
   onRefreshPlugins,
   onReloadPlugin,
+  onUninstallPlugin,
   onInstallPlugin,
   collaborators = [],
   invitesSent = [],
@@ -1599,6 +1601,7 @@ export function SettingsPage({
                   onDisablePlugin={onDisablePlugin || (async () => {})}
                   onRefresh={onRefreshPlugins || (async () => {})}
                   onReloadPlugin={onReloadPlugin}
+                  onUninstallPlugin={onUninstallPlugin}
                   onInstallPlugin={onInstallPlugin}
                   onBrowse={() => setIsBrowsingPlugins(true)}
                 />

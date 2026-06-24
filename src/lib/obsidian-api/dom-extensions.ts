@@ -135,6 +135,13 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     return this;
   };
 
+  // Obsidian notifies views when their DOM moves to another application
+  // window. Single-window hosts do not migrate elements, but plugins such as
+  // Kanban still register this lifecycle hook and expect a cleanup callback.
+  (HTMLElement.prototype as any).onWindowMigrated = function (_callback: (window: Window) => any) {
+    return () => {};
+  };
+
   // ── detach() — Remove from DOM ──────────────────────
   (HTMLElement.prototype as any).detach = function () {
     this.remove();
@@ -647,6 +654,34 @@ else document.body.classList.add('mod-linux');
 // Theme mode class (plugins check body.theme-dark / body.theme-light)
 if (!document.body.classList.contains('theme-dark') && !document.body.classList.contains('theme-light')) {
   document.body.classList.add('theme-dark');
+}
+
+// Obsidian's class helpers also work on SVG nodes. Plugins commonly query an
+// icon's <svg> and call addClass/removeClass directly on that Element.
+const elementPrototype = Element.prototype as any;
+if (!elementPrototype.addClass) {
+  elementPrototype.addClass = function (...classes: string[]) {
+    for (const cls of classes) {
+      if (cls) this.classList.add(...cls.split(' ').filter(Boolean));
+    }
+  };
+}
+if (!elementPrototype.removeClass) {
+  elementPrototype.removeClass = function (...classes: string[]) {
+    for (const cls of classes) {
+      if (cls) this.classList.remove(...cls.split(' ').filter(Boolean));
+    }
+  };
+}
+if (!elementPrototype.toggleClass) {
+  elementPrototype.toggleClass = function (cls: string, value?: boolean) {
+    this.classList.toggle(cls, value);
+  };
+}
+if (!elementPrototype.hasClass) {
+  elementPrototype.hasClass = function (cls: string) {
+    return this.classList.contains(cls);
+  };
 }
 
 // is-focused — toggle on window focus/blur

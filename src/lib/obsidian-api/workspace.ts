@@ -8,18 +8,23 @@ import { setIcon } from './utils';
 
 // ── WorkspaceLeaf ───────────────────────────────────
 export class WorkspaceLeaf extends Events {
+  app: any;
   parent: any = null;
   view: View;
   id: string;
   pinned: boolean = false;
   hoverPopover: any = null;
   containerEl: HTMLElement;
+  tabHeaderEl: HTMLElement;
+  tabHeaderInnerIconEl: HTMLElement;
+  tabHeaderInnerTitleEl: HTMLElement;
   activeTime: number = 0;
   side: 'left' | 'right' | 'main' = 'main';
   group: string | null = null;
 
   constructor(id: string) {
     super();
+    this.app = (window as any).__oo_app;
     this.id = id;
     this.view = null as any;
     this.activeTime = Date.now();
@@ -27,6 +32,13 @@ export class WorkspaceLeaf extends Events {
     this.containerEl.className = 'workspace-leaf-content oo-plugin-leaf';
     // Obsidian sets .win on containerEl so plugins can distinguish windows
     (this.containerEl as any).win = window;
+    this.tabHeaderEl = document.createElement('div');
+    this.tabHeaderEl.className = 'workspace-tab-header';
+    this.tabHeaderInnerIconEl = document.createElement('div');
+    this.tabHeaderInnerIconEl.className = 'workspace-tab-header-inner-icon';
+    this.tabHeaderInnerTitleEl = document.createElement('div');
+    this.tabHeaderInnerTitleEl.className = 'workspace-tab-header-inner-title';
+    this.tabHeaderEl.append(this.tabHeaderInnerIconEl, this.tabHeaderInnerTitleEl);
   }
 
   getRoot(): any {
@@ -46,7 +58,12 @@ export class WorkspaceLeaf extends Events {
       active: openState?.active,
     }, openState?.eState);
     if (openState?.active !== false) workspace?.setActiveLeaf(this);
-    (window as any).__oo_open_file?.(file.path);
+    // For plugin view types (non-markdown), open as a plugin tab in the React UI
+    if (viewType !== 'markdown' && viewType !== 'empty' && this.side === 'main') {
+      (window as any).__oo_open_file?.(`__plugin__.${viewType}`);
+    } else {
+      (window as any).__oo_open_file?.(file.path);
+    }
   }
 
   async open(view: View): Promise<void> {
@@ -198,20 +215,37 @@ ItemView.prototype.addAction = function(icon: string, title: string, callback: (
 };
 
 // ── FileView ────────────────────────────────────────
-export interface FileView extends View {
+export interface FileView extends ItemView {
   file: TFile | null;
   allowNoFile: boolean;
   canAcceptExtension(extension: string): boolean;
+  onLoadFile(file: TFile): Promise<void>;
+  onUnloadFile(file: TFile): Promise<void>;
 }
 export function FileView(this: any, leaf: WorkspaceLeaf) {
-  View.call(this, leaf);
+  ItemView.call(this, leaf);
   this.file = null;
   this.allowNoFile = false;
 }
-FileView.prototype = Object.create(View.prototype);
+FileView.prototype = Object.create(ItemView.prototype);
 FileView.prototype.constructor = FileView;
 FileView.prototype.getDisplayText = function() { return this.file?.basename || ''; };
 FileView.prototype.canAcceptExtension = function(extension: string) { return false; };
+FileView.prototype.getState = function() {
+  return this.file ? { file: this.file.path } : {};
+};
+FileView.prototype.onLoadFile = async function(_file: TFile) {};
+FileView.prototype.onUnloadFile = async function(_file: TFile) {};
+FileView.prototype.setState = async function(state: any, _result: any) {
+  const path = state?.file;
+  if (!path) return;
+  const file = this.app?.vault?.getFileByPath?.(path);
+  if (!file || file === this.file) return;
+  const previous = this.file;
+  if (previous) await this.onUnloadFile(previous);
+  this.file = file;
+  await this.onLoadFile(file);
+};
 
 // ── EditableFileView ────────────────────────────────
 export interface EditableFileView extends FileView {}
@@ -232,13 +266,34 @@ export interface TextFileView extends EditableFileView {
 export function TextFileView(this: any, leaf: WorkspaceLeaf) {
   EditableFileView.call(this, leaf);
   this.data = '';
-  this.requestSave = () => {};
+  // Debounced save — Excalidraw & Kanban call requestSave() on every edit
+  let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const self = this;
+  this.requestSave = function() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+      _saveTimer = null;
+      self.save?.();
+    }, 2000);
+  };
 }
 TextFileView.prototype = Object.create(EditableFileView.prototype);
 TextFileView.prototype.constructor = TextFileView;
 TextFileView.prototype.getViewData = function() { return ''; };
-TextFileView.prototype.setViewData = function(data: string, clear: boolean) {};
-TextFileView.prototype.clear = function() {};
+TextFileView.prototype.setViewData = function(data: string, clear: boolean) { this.data = data; };
+TextFileView.prototype.clear = function() { this.data = ''; };
+TextFileView.prototype.onLoadFile = async function(file: TFile) {
+  const data = await this.app?.vault?.read?.(file) || '';
+  this.data = data;
+  await this.setViewData(data, true);
+};
+TextFileView.prototype.onUnloadFile = async function(_file: TFile) {};
+TextFileView.prototype.save = async function(_clear?: boolean) {
+  if (!this.file) return;
+  const data = this.getViewData();
+  this.data = data;
+  await this.app?.vault?.modify?.(this.file, data);
+};
 
 // ── MarkdownView (stub) ─────────────────────────────
 function _MarkdownView(this: any, leaf: WorkspaceLeaf) {
@@ -425,10 +480,21 @@ export class OOWorkspace extends Events {
   }
 
   getActiveViewOfType<T>(type: any): T | null {
-    // Check if the active view is an instance of the given type
-    if (this.activeLeaf?.view && this.activeLeaf.view instanceof type) {
-      return this.activeLeaf.view as T;
-    }
+    const view = this.activeLeaf?.view;
+    if (!view) return null;
+    // Standard instanceof check (works for ES6 class hierarchies)
+    if (view instanceof type) return view as T;
+    // Fallback for ES5 function constructors — compare viewType strings.
+    // Plugins like Excalidraw create views with function constructors where
+    // instanceof fails across the Blob URL execution boundary.
+    try {
+      const expectedType = type.prototype?.getViewType?.call?.({ icon: '', navigation: true });
+      if (expectedType && view.getViewType?.() === expectedType) return view as T;
+    } catch { /* getViewType may need proper `this` — ignore */ }
+    // Last resort: check prototype chain constructor name match
+    try {
+      if (type.name && view.constructor?.name === type.name) return view as T;
+    } catch { /* ignore */ }
     return null;
   }
 
@@ -461,7 +527,9 @@ export class OOWorkspace extends Events {
   }
 
   iterateAllLeaves(callback: (leaf: WorkspaceLeaf) => any): void {
-    for (const leaf of this._leaves.values()) callback(leaf);
+    for (const leaf of this._leaves.values()) {
+      if (leaf.view) callback(leaf);
+    }
   }
 
   iterateRootLeaves(callback: (leaf: WorkspaceLeaf) => any): void {
@@ -520,8 +588,11 @@ export class OOWorkspace extends Events {
     const existing = this.getLeavesOfType(type);
     if (existing.length > 0) return existing[0];
     
-    // Create leaf + view
+    // Create leaf + view, setting the correct side
     const leaf = this._createSideLeaf();
+    if (side === 'left' || side === 'right') {
+      leaf.side = side;
+    }
     await this._createViewOnLeaf(leaf, type);
     return leaf;
   }
@@ -577,13 +648,18 @@ export class OOWorkspace extends Events {
       const view = creator(leaf);
       view.pluginId = (creator as any).__pluginId;
       leaf.view = view;
-      const filePath = state?.file;
-      if (filePath) {
-        (view as any).file = (window as any).__oo_app?.vault?.getFileByPath(filePath) || null;
-      }
       await (view as any).load?.();
+      // For file-backed views (FileView/TextFileView subclasses), setState
+      // triggers onLoadFile which reads the file from disk. We must call
+      // setState even when onLoadFile exists — the base FileView.setState
+      // handles the file lookup and loading chain.
       await view.setState?.(state || {}, eState);
       await view.onOpen?.();
+      // Track the file on the global active-file if this is a file-backed view
+      const viewFile = (view as any).file;
+      if (viewFile?.path && leaf.side === 'main') {
+        (window as any).__oo_active_file = viewFile.path;
+      }
       if (pluginCreator) this._activePluginViews.set(viewType, leaf);
       this.trigger('plugin-views-changed');
       console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()} (plugin: ${view.pluginId})`);

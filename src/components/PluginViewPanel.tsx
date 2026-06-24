@@ -63,7 +63,31 @@ export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: Plu
     // Mount the plugin's DOM element
     container.appendChild(activeView.containerEl);
 
+    // Notify the view that it has been resized — Excalidraw uses this to
+    // initialize its canvas dimensions. Without it, the canvas is 0x0.
+    const notifyResize = () => {
+      // Access the leaf's view via the workspace to call onResize
+      const workspace = (window as any).__oo_app?.workspace;
+      if (workspace) {
+        const leaves = workspace.getLeavesOfType(activeView.viewType);
+        for (const leaf of leaves) {
+          leaf.view?.onResize?.();
+        }
+      }
+    };
+    // Delay slightly to ensure DOM layout has settled
+    const resizeTimer = setTimeout(notifyResize, 50);
+
+    // Also watch for container size changes
+    let resizeObserver: ResizeObserver | null = null;
+    try {
+      resizeObserver = new ResizeObserver(() => notifyResize());
+      resizeObserver.observe(container);
+    } catch { /* ResizeObserver may not be available in all environments */ }
+
     return () => {
+      clearTimeout(resizeTimer);
+      resizeObserver?.disconnect();
       // Don't destroy the element on unmount — just detach it
       if (activeView.containerEl.parentNode === container) {
         container.removeChild(activeView.containerEl);

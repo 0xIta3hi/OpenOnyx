@@ -7,8 +7,10 @@ import {
   Editor,
   ItemView,
   MarkdownRenderer,
+  Notice,
   Plugin,
   SettingGroup,
+  TextFileView,
   WorkspaceLeaf,
 } from '../src/lib/obsidian-api';
 import { EditorState } from '@codemirror/state';
@@ -52,7 +54,30 @@ beforeEach(() => {
 });
 
 describe('plugin runtime compatibility', () => {
-  it('exposes the native plugin-manager contract to cross-plugin integrations', () => {
+  it('deduplicates plugin notices and dismisses them on schedule', () => {
+    vi.useFakeTimers();
+    try {
+      new (Notice as any)('Repeated plugin failure', 1000);
+      new (Notice as any)('Repeated plugin failure', 1000);
+      new (Notice as any)('Another plugin failure', 1000);
+
+      expect(document.querySelectorAll('.oo-notice')).toHaveLength(2);
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelectorAll('.oo-notice')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('extends SVG elements with Obsidian class helpers', () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as any;
+    svg.addClass('is-dirty');
+    expect(svg.hasClass('is-dirty')).toBe(true);
+    svg.removeClass('is-dirty');
+    expect(svg.hasClass('is-dirty')).toBe(false);
+  });
+
+  it('exposes the native plugin-manager and core-plugin contracts to integrations', async () => {
     const app = new OOApp();
     new PluginManager(app, {
       onCommandsChanged: vi.fn(),
@@ -69,6 +94,41 @@ describe('plugin runtime compatibility', () => {
     expect(app.customCss.snippets).toEqual([]);
     expect(app.customCss.enabledSnippets).toBeInstanceOf(Set);
     expect(app.customCss.requestLoadSnippets).toBeTypeOf('function');
+    const rootScope = app.keymap.getRootScope();
+    const binding = rootScope.register(['Mod'], 'k', vi.fn());
+    expect(rootScope.keys).toContain(binding);
+    rootScope.unregister(binding);
+    expect(rootScope.keys).not.toContain(binding);
+
+    const canvas = app.internalPlugins.plugins.canvas;
+    await canvas.load();
+    const node = canvas.views.canvas(app.workspace.getLeaf(true)).canvas.createFileNode({
+      file: await app.vault.create('Embedded.md', 'content'),
+    });
+    expect(canvas._loaded).toBe(true);
+    expect(node.child.editor.containerEl).toBeInstanceOf(HTMLElement);
+    expect(node.isEditable()).toBe(true);
+  });
+
+  it('removes a plugin bundle, persisted enablement, and registry entry', async () => {
+    const app = new OOApp();
+    const manager = new PluginManager(app, {
+      onCommandsChanged: vi.fn(),
+      onRibbonChanged: vi.fn(),
+      onStatusBarChanged: vi.fn(),
+      onSettingTabsChanged: vi.fn(),
+      onPluginsChanged: vi.fn(),
+    });
+    (manager as any)._plugins.set('remove-fixture', {
+      manifest: { ...manifest, id: 'remove-fixture' },
+      state: 'disabled',
+    });
+    app.plugins.manifests['remove-fixture'] = { ...manifest, id: 'remove-fixture' };
+
+    await expect(manager.uninstallPlugin('remove-fixture')).resolves.toBe(true);
+    expect((window as any).electronAPI.deleteDirectory).toHaveBeenCalledWith('.openobsidian/plugins/remove-fixture');
+    expect(manager.getPlugin('remove-fixture')).toBeUndefined();
+    expect(app.plugins.manifests['remove-fixture']).toBeUndefined();
   });
 
   it('provides collision-safe vault paths and file-manager creation methods', async () => {
@@ -217,6 +277,39 @@ describe('plugin runtime compatibility', () => {
     expect(leaf.view.containerEl.textContent).toContain('ready');
     leaf.detach();
     expect(app.workspace.getLeavesOfType('fixture-view')).toHaveLength(0);
+  });
+
+  it('opens registered file extensions in their plugin view with file state', async () => {
+    const app = new OOApp();
+    class DrawingView extends (TextFileView as any) {
+      state: any = null;
+      loadedData = '';
+      getViewType() { return 'drawing-view'; }
+      async setState(state: any) {
+        this.state = state;
+        await super.setState(state);
+      }
+      async onLoadFile(file: TFile) {
+        await super.onLoadFile(file);
+        this.loadedData = this.data;
+      }
+    }
+
+    app.workspace.registerViewCreator('drawing-view', (leaf: WorkspaceLeaf) => new DrawingView(leaf));
+    app.workspace.registerExtensions(['drawing'], 'drawing-view');
+    const file = await app.vault.create('Canvas.drawing', 'scene');
+    (window as any).electronAPI.readFile.mockResolvedValue('scene');
+    const leaf = app.workspace.getLeaf(true);
+
+    await leaf.openFile(file);
+
+    expect(leaf.view.getViewType()).toBe('drawing-view');
+    expect((leaf.view as any).file).toBe(file);
+    expect((leaf.view as any).state).toEqual({ file: 'Canvas.drawing' });
+    expect((leaf.view as any).loadedData).toBe('scene');
+    expect((leaf.view as any).contentEl).toBeInstanceOf(HTMLElement);
+    expect((leaf.view as any).addAction).toBeTypeOf('function');
+    expect(app.workspace.activeLeaf).toBe(leaf);
   });
 
   it('preserves binary vault data without base64 text conversion', async () => {

@@ -56,6 +56,17 @@ export class OOApp {
       window.matchMedia?.('(prefers-color-scheme: dark)')?.matches || false;
   }
 
+  getAccentColor(): string {
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue('--color-accent')
+      .trim() || '#c6c6c6';
+  }
+
+  setAccentColor(color: string): void {
+    document.documentElement.style.setProperty('--color-accent', color);
+    document.documentElement.style.setProperty('--interactive-accent', color);
+  }
+
   async openWithDefaultApp(path: string): Promise<void> {
     try {
       const electron = (window as any).require?.('electron');
@@ -71,6 +82,13 @@ export class OOApp {
     this.workspace = new OOWorkspace();
     this.metadataCache = new OOMetadataCache();
     this.scope = new Scope();
+    const rootKeyScope = new Scope();
+    this.keymap = {
+      getRootScope: () => rootKeyScope,
+      getRoot: () => rootKeyScope,
+      pushScope: (_scope: Scope) => {},
+      popScope: (_scope: Scope) => {},
+    };
     const thisApp = this;
     const enabledSnippets = new Set<string>(
       this.loadLocalStorage('enabled-css-snippets') || [],
@@ -199,11 +217,55 @@ export class OOApp {
     };
 
     // Stub for core/internal plugins (daily-notes, etc.)
+    const canvasNodes = new Set<any>();
+    const canvasCorePlugin = {
+      _loaded: false,
+      enabled: true,
+      async load() { this._loaded = true; },
+      async unload() { this._loaded = false; },
+      views: {
+        canvas: (_leaf: any) => ({
+          canvas: {
+            createFileNode: ({ file, subpath }: any) => {
+              const containerEl = document.createElement('div');
+              containerEl.className = 'canvas-node';
+              const editorEl = document.createElement('div');
+              containerEl.appendChild(editorEl);
+              const node = {
+                file,
+                subpath,
+                containerEl,
+                child: {
+                  editor: { containerEl: editorEl },
+                  showPreview() {},
+                },
+                isEditing: false,
+                isEditable: () => true,
+                setFilePath(path: string, nextSubpath?: string) {
+                  this.file = thisApp.vault.getFileByPath(path) || this.file;
+                  this.subpath = nextSubpath || '';
+                },
+                render() {},
+                startEditing() {},
+                detach() { containerEl.remove(); },
+              };
+              canvasNodes.add(node);
+              return node;
+            },
+            removeNode: (node: any) => {
+              canvasNodes.delete(node);
+              node?.containerEl?.remove?.();
+            },
+          },
+        }),
+      },
+    };
     this.internalPlugins = {
       plugins: {
         'daily-notes': { instance: { options: {} }, enabled: true },
         'templates': { instance: { options: {} }, enabled: true },
         'command-palette': { instance: { options: {} }, enabled: true },
+        canvas: canvasCorePlugin,
       } as Record<string, any>,
       getPluginById: (id: string) => {
         const p = this.internalPlugins.plugins[id];
@@ -263,19 +325,43 @@ export class OOApp {
     };
 
     // Embed registry stub (used by Kanban plugin to extract MarkdownEditor constructor)
-    class MockGrandparent {}
-    class MockParent extends MockGrandparent {}
-    class MockEditMode extends MockParent {}
+    // Kanban walks the prototype chain of editMode via Object.getPrototypeOf()
+    // to find the MarkdownEditor constructor. It expects a 3-level chain:
+    //   editMode -> MarkdownEditor.prototype -> Component.prototype -> Object
+    // The MarkdownEditor constructor must accept (app, file, editable) params.
+    class MockComponent {
+      app: any = thisApp;
+      load() {}
+      unload() {}
+      register(_cb: any) {}
+    }
+    class MockMarkdownEditor extends MockComponent {
+      owner: any = null;
+      file: any = null;
+      editable = false;
+      set(data: string, _clear: boolean) {}
+      get() { return ''; }
+      getScroll() { return 0; }
+      applyScroll(_scroll: number) {}
+      showSearch() {}
+    }
+    class MockEditMode extends MockMarkdownEditor {
+      constructor() {
+        super();
+      }
+    }
 
     (this as any).embedRegistry = {
       embedByExtension: {
         md: (ctx: any, file: any, subpath: string) => {
+          const mode = new MockEditMode();
+          mode.file = file;
           return {
             load: () => {},
             unload: () => {},
             showEditor: () => {},
             editable: false,
-            editMode: new MockEditMode()
+            editMode: mode,
           };
         }
       }

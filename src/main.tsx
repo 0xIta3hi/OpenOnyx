@@ -22,6 +22,20 @@ import "./tailwind.css";
 
 document.documentElement.className = `${document.documentElement.className} ${documentTailwindClasses}`.trim();
 
+// Excalidraw copies body styles into an iframe when it reads Obsidian tokens.
+// Mirror the computed Tailwind values, rather than another class set, so this
+// does not alter the selected theme's CSS cascade.
+const syncThemeVariablesToBody = () => {
+  const computed = getComputedStyle(document.documentElement);
+  for (const property of computed) {
+    if (property.startsWith('--')) {
+      document.body.style.setProperty(property, computed.getPropertyValue(property));
+    }
+  }
+};
+(window as any).__oo_sync_theme_variables_to_body = syncThemeVariablesToBody;
+syncThemeVariablesToBody();
+
 // ── Global shims for plugin compatibility ──
 if (!(String.prototype as any).contains) {
   (String.prototype as any).contains = String.prototype.includes;

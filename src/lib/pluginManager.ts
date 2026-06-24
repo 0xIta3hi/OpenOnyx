@@ -118,6 +118,7 @@ export class PluginManager {
     appPlugins.disablePluginAndSave = (id: string) => this.disablePlugin(id);
     appPlugins.loadPlugin = (id: string) => this.loadPlugin(id);
     appPlugins.unloadPlugin = (id: string) => this.unloadPlugin(id);
+    appPlugins.uninstallPlugin = (id: string) => this.uninstallPlugin(id);
     appPlugins.getPluginFolder = (manifest: PluginManifest) =>
       manifest?.dir || `.openobsidian/plugins/${manifest?.id || ''}`;
     this._setupGlobalHooks();
@@ -631,6 +632,22 @@ window["${globalKey}"].__done = true;
     await this._removeFromEnabledList(pluginId);
   }
 
+  async uninstallPlugin(pluginId: string): Promise<boolean> {
+    if (!this._plugins.has(pluginId)) return false;
+
+    await this.disablePlugin(pluginId);
+    await api().deleteDirectory(`.openobsidian/plugins/${pluginId}`);
+    await api().dataDelete(`plugins/${pluginId}/data.json`).catch(() => {});
+
+    this._plugins.delete(pluginId);
+    this._manifestCache.delete(pluginId);
+    delete (this._app as any).plugins.manifests[pluginId];
+    delete (this._app as any).plugins.plugins[pluginId];
+    (this._app as any).plugins.enabledPlugins.delete(pluginId);
+    this._callbacks.onPluginsChanged(this.getPluginList());
+    return true;
+  }
+
   // ── Load All Enabled (Parallel) ───────────────────
 
   async loadEnabledPlugins(): Promise<void> {
@@ -801,6 +818,10 @@ window["${globalKey}"].__done = true;
       throw new Error(`Plugin ID mismatch: registry requested ${expectedPluginId}, bundle contains ${manifest.id}`);
     }
 
+    const existing = this._plugins.get(manifest.id);
+    const wasEnabled = !!existing?.instance || (await this._getEnabledList()).includes(manifest.id);
+    if (existing?.instance) await this.unloadPlugin(manifest.id);
+
     console.log(`[PluginManager] Step 2: Saving ${manifest.name} v${manifest.version}...`);
     const pluginDir = `plugins/${manifest.id}`;
     try {
@@ -814,8 +835,10 @@ window["${globalKey}"].__done = true;
 
     await this.discoverPlugins();
 
-    console.log(`[PluginManager] Step 3: Enabling ${manifest.id}...`);
-    const loadSuccess = await this.enablePlugin(manifest.id);
+    console.log(`[PluginManager] Step 3: ${existing ? 'Updating' : 'Enabling'} ${manifest.id}...`);
+    const loadSuccess = existing && !wasEnabled
+      ? true
+      : await this.enablePlugin(manifest.id);
     if (!loadSuccess) {
       const registration = this._plugins.get(manifest.id);
       throw new Error(registration?.error || `${manifest.name} installed but failed to load`);

@@ -266,7 +266,7 @@ export function stripHeadingForLink(heading: string): string {
 // Scope -- hotkey scoping
 export class Scope {
   parent: Scope | null;
-  keys: Set<any> = new Set();
+  keys: any[] = [];
 
   constructor(parent?: Scope) {
     this.parent = parent || null;
@@ -274,12 +274,13 @@ export class Scope {
 
   register(modifiers: string[] | null, key: string | null, func: (evt: KeyboardEvent) => any): any {
     const handler = { modifiers: modifiers || [], key, func };
-    this.keys.add(handler);
+    this.keys.push(handler);
     return handler;
   }
 
   unregister(handler: any): void {
-    this.keys.delete(handler);
+    const index = this.keys.indexOf(handler);
+    if (index >= 0) this.keys.splice(index, 1);
   }
 
   /** Dispatch a keyboard event through registered handlers. Returns true if handled. */

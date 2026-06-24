@@ -414,21 +414,21 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                 <div style={{ flexShrink: 0 }}>
                   <button
                     onClick={() => {
-                      if (!isSelectedInstalled && !isSelectedInstalling && selectedPlugin.repo) {
+                      if (!isSelectedInstalling && selectedPlugin.repo) {
                         setConfirmInstall({ repo: selectedPlugin.repo, id: selectedPlugin.id, name: selectedPlugin.name });
                       }
                     }}
-                    disabled={isSelectedInstalled || isSelectedInstalling || !selectedPlugin.repo}
+                    disabled={isSelectedInstalling || !selectedPlugin.repo}
                     style={{
                       padding: '8px 20px',
                       borderRadius: '6px',
                       fontSize: '12px',
                       fontWeight: 600,
                       border: 'none',
-                      cursor: (isSelectedInstalled || isSelectedInstalling || !selectedPlugin.repo) ? 'default' : 'pointer',
-                      background: isSelectedInstalled ? 'var(--bg-hover)' : 'var(--interactive-accent, var(--color-accent, #3b82f6))',
-                      color: isSelectedInstalled ? 'var(--text-muted)' : 'var(--text-on-accent, white)',
-                      opacity: isSelectedInstalled ? 0.7 : isSelectedInstalling ? 0.8 : 1,
+                      cursor: isSelectedInstalling || !selectedPlugin.repo ? 'default' : 'pointer',
+                      background: 'var(--interactive-accent, var(--color-accent, #3b82f6))',
+                      color: 'var(--text-on-accent, white)',
+                      opacity: isSelectedInstalling ? 0.8 : 1,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -439,9 +439,9 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                     className="plugin-install-btn"
                   >
                     {isSelectedInstalling ? (
-                      <><Loader2 className="spin" size={12} /> Installing</>
+                      <><Loader2 className="spin" size={12} /> {isSelectedInstalled ? 'Updating' : 'Installing'}</>
                     ) : isSelectedInstalled ? (
-                      'Installed'
+                      'Update'
                     ) : (
                       'Install'
                     )}
@@ -582,7 +582,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                 }}
                 className="confirm-btn-ok"
               >
-                Install anyway
+                {installedPluginIds.includes(confirmInstall.id) ? 'Update plugin' : 'Install anyway'}
               </button>
             </div>
           </div>

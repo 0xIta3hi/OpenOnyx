@@ -160,21 +160,39 @@ export interface Notice {
 }
 export function Notice(this: any, message: string | DocumentFragment, duration?: number) {
   const ms = duration ?? 5000;
-  this.noticeEl = document.createElement('div');
-  this.noticeEl.className = 'oo-notice';
-  if (typeof message === 'string') {
-    this.noticeEl.textContent = message;
-  } else {
-    this.noticeEl.appendChild(message);
-  }
+  const messageText = typeof message === 'string' ? message : message.textContent || '';
 
-  let container = document.querySelector('.oo-notice-container');
+  let container = document.querySelector('.oo-notice-container') as HTMLElement | null;
   if (!container) {
     container = document.createElement('div');
     container.className = 'oo-notice-container';
     document.body.appendChild(container);
   }
+
+  // Plugins can report the same exception repeatedly while recovering. Keep
+  // the original timer for an identical notice instead of covering the UI
+  // with a new card on every error.
+  const duplicate = Array.from(container.children).find(
+    (child) => (child as HTMLElement).dataset.ooNoticeMessage === messageText,
+  ) as HTMLElement | undefined;
+  if (duplicate) {
+    this.noticeEl = duplicate;
+    return;
+  }
+
+  this.noticeEl = document.createElement('div');
+  this.noticeEl.className = 'oo-notice';
+  this.noticeEl.dataset.ooNoticeMessage = messageText;
+  if (typeof message === 'string') {
+    this.noticeEl.textContent = message;
+  } else {
+    this.noticeEl.appendChild(message);
+  }
   container.appendChild(this.noticeEl);
+
+  while (container.children.length > 3) {
+    container.firstElementChild?.remove();
+  }
 
   if (ms > 0) {
     this._timeout = window.setTimeout(() => this.hide(), ms);

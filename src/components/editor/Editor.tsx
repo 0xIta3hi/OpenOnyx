@@ -3601,10 +3601,21 @@ export function Editor({
  
      // Sync real editor state to the API mock before triggering event
      const activeLeaf = app.workspace.activeLeaf;
-     if (activeLeaf && viewRef.current) {
+     if (activeLeaf?.view?.getViewType?.() === 'markdown' && viewRef.current) {
        // Ensure this leaf is considered the active one during the event trigger
        if (activeLeaf.view) {
          const view = activeLeaf.view;
+         let editorDescriptor: PropertyDescriptor | undefined;
+         for (let target: any = view; target && !editorDescriptor; target = Object.getPrototypeOf(target)) {
+           editorDescriptor = Object.getOwnPropertyDescriptor(target, 'editor');
+         }
+         // Excalidraw subclasses the Markdown-compatible view surface but
+         // exposes a getter-only editor property. Its own editor bridge must
+         // remain untouched by the host Markdown context-menu bridge.
+         if (editorDescriptor && !editorDescriptor.writable && !editorDescriptor.set) {
+           menu.showAtMouseEvent(e.nativeEvent);
+           return;
+         }
          const cmView = viewRef.current;
          const state = cmView.state;
          

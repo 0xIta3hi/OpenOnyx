@@ -62,6 +62,12 @@ function scopePluginCss(pluginId: string, css: string): string {
     '.callout', '.empty-state', '.search-input',
     'body', 'html', ':root',
     '.emoji', 'img.emoji',
+    // Excalidraw plugin — manages its own React root inside contentEl
+    '.excalidraw', '#excalidraw-container', '.excalidraw-wrapper',
+    '.layer-ui__wrapper', '.App-menu', '.Island',
+    // Kanban plugin — manages its own Svelte/React root inside contentEl
+    '.kanban-plugin', '.kanban-plugin__board', '.kanban-plugin__lane',
+    '.kanban-plugin__item', '.kanban-plugin__lane-form',
   ];
 
   /** Check if a single selector targets known Obsidian structural classes */

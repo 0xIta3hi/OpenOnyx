@@ -305,6 +305,7 @@ export class OOVault extends Events {
     const file = new TFile(np);
     file.vault = this;
     this._files.set(np, file);
+    await (window as any).__oo_app?.metadataCache?.updateFileCache?.(file);
     this.trigger('create', file);
     return file;
   }
@@ -346,6 +347,7 @@ export class OOVault extends Events {
   async modify(file: TFile, data: string): Promise<void> {
     await api().writeFile(file.path, data);
     file.stat.mtime = Date.now();
+    await (window as any).__oo_app?.metadataCache?.updateFileCache?.(file);
     this.trigger('modify', file);
   }
 
@@ -383,6 +385,7 @@ export class OOVault extends Events {
       await api().deleteDirectory(file.path);
     }
     this._files.delete(file.path);
+    (window as any).__oo_app?.metadataCache?.deletePath?.(file.path);
     this.trigger('delete', file);
   }
 
@@ -403,6 +406,9 @@ export class OOVault extends Events {
       file.extension = dotIdx > 0 ? file.name.substring(dotIdx + 1) : '';
     }
     this._files.set(np, file);
+    const metadataCache = (window as any).__oo_app?.metadataCache;
+    metadataCache?.deletePath?.(oldPath);
+    if (file instanceof TFile) await metadataCache?.updateFileCache?.(file);
     this.trigger('rename', file, oldPath);
   }
 

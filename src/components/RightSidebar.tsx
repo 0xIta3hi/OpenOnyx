@@ -33,7 +33,14 @@ function PluginViewHost({ view }: PluginViewHostProps) {
     // Mount the plugin's DOM element
     container.appendChild(view.containerEl);
 
+    // Notify the view of resize so canvas-based plugins initialize properly
+    const notifyResize = () => {
+      (view as any).onResize?.();
+    };
+    const resizeTimer = setTimeout(notifyResize, 50);
+
     return () => {
+      clearTimeout(resizeTimer);
       // Don't destroy the element on unmount — just detach it
       if (view.containerEl.parentNode === container) {
         container.removeChild(view.containerEl);

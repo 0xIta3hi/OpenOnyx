@@ -22,6 +22,7 @@ import {
   AlertCircle,
   Terminal,
   Download,
+  Trash2,
 } from 'lucide-react';
 import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
 import { pluginLogStore, pluginErrorTracker, isVersionCompatible } from '../lib/pluginDevTools';
@@ -37,6 +38,7 @@ interface PluginSettingsPanelProps {
   onDisablePlugin: (pluginId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onReloadPlugin?: (pluginId: string) => Promise<void>;
+  onUninstallPlugin?: (pluginId: string) => Promise<boolean>;
   onInstallPlugin?: (repo: string, pluginId: string, version?: string) => Promise<boolean>;
   onBrowse?: () => void;
 }
@@ -48,6 +50,7 @@ export function PluginSettingsPanel({
   onDisablePlugin,
   onRefresh,
   onReloadPlugin,
+  onUninstallPlugin,
   onInstallPlugin,
   onBrowse,
 }: PluginSettingsPanelProps) {
@@ -97,6 +100,20 @@ export function PluginSettingsPanel({
     }
     setLoading(null);
   }, [onReloadPlugin]);
+
+  const handleUninstall = useCallback(async (pluginId: string, pluginName: string) => {
+    if (!onUninstallPlugin || !window.confirm(`Remove ${pluginName}? Its plugin files and settings will be deleted.`)) return;
+    setLoading(pluginId);
+    try {
+      await onUninstallPlugin(pluginId);
+      setExpandedPlugin((current) => current === pluginId ? null : current);
+      setDebugPlugin((current) => current === pluginId ? null : current);
+    } catch (error) {
+      console.error('Failed to remove plugin:', error);
+    } finally {
+      setLoading(null);
+    }
+  }, [onUninstallPlugin]);
 
   // Mount plugin setting tabs when expanded
   useEffect(() => {
@@ -361,6 +378,25 @@ export function PluginSettingsPanel({
                         }}
                       >
                         <RotateCw size={14} />
+                      </button>
+                    )}
+
+                    {onUninstallPlugin && (
+                      <button
+                        onClick={() => void handleUninstall(plugin.manifest.id, plugin.manifest.name)}
+                        title="Remove plugin"
+                        disabled={isLoading}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '4px',
+                          color: '#ef4444',
+                          cursor: isLoading ? 'not-allowed' : 'pointer',
+                          opacity: isLoading ? 0.4 : 0.8,
+                        }}
+                      >
+                        <Trash2 size={14} />
                       </button>
                     )}
 
