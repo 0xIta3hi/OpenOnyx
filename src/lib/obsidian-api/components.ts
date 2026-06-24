@@ -140,6 +140,10 @@ _Component.prototype.registerEvent = function (eventRef: EventRef) {
 _Component.prototype.registerDomEvent = function (
   el: EventTarget, type: string, callback: (evt: any) => any, options?: boolean | AddEventListenerOptions
 ) {
+  // Plugins frequently probe optional desktop-only controls (such as native
+  // ribbon/title-bar buttons). There is no element to register against when a
+  // host does not expose that control.
+  if (!el?.addEventListener) return;
   el.addEventListener(type, callback, options);
   this._domEvents.push({ el, type, handler: callback });
 };
@@ -159,7 +163,9 @@ export interface Notice {
   hide(): void;
 }
 export function Notice(this: any, message: string | DocumentFragment, duration?: number) {
-  const ms = duration ?? 5000;
+  // Keep plugin notifications informative without allowing a repeated failure
+  // to leave an opaque card over the application indefinitely.
+  const ms = duration && duration > 0 ? Math.min(duration, 10_000) : 5000;
   const messageText = typeof message === 'string' ? message : message.textContent || '';
 
   let container = document.querySelector('.oo-notice-container') as HTMLElement | null;
@@ -232,7 +238,7 @@ export function Modal(this: any, app: any) {
   this.scope = new Scope();
   this.dimBackground = true;
   this.containerEl = document.createElement('div');
-  this.containerEl.className = 'modal-container oo-plugin-modal-container';
+  this.containerEl.className = 'modal-container oo-plugin-modal-container oo-plugin-view';
   this.modalEl = document.createElement('div');
   this.modalEl.className = 'modal oo-plugin-modal';
   this.titleEl = document.createElement('div');
@@ -250,6 +256,15 @@ export function Modal(this: any, app: any) {
 
   // Prevent clicks inside modal from closing it
   this.modalEl.addEventListener('click', (e: MouseEvent) => e.stopPropagation());
+
+  // Popper-based plugin suggesters close themselves on input blur. Keep the
+  // input focused while a suggestion is clicked so the item handler can run.
+  this.containerEl.addEventListener('mousedown', (event: MouseEvent) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest('.suggestion-container')) {
+      event.preventDefault();
+    }
+  }, true);
 
   this._onGlobalKeyDown = (e: KeyboardEvent) => {
     // Dispatch through the modal's scope first (plugins register hotkeys here)
@@ -783,6 +798,11 @@ export class ButtonComponent {
   setCta(): this { this.buttonEl.classList.add('mod-cta'); return this; }
   setWarning(): this { this.buttonEl.classList.add('mod-warning'); return this; }
   setDisabled(disabled: boolean): this { this.buttonEl.disabled = disabled; return this; }
+  setLoading(loading: boolean): this {
+    this.buttonEl.classList.toggle('is-loading', loading);
+    this.buttonEl.setAttribute('aria-busy', String(loading));
+    return this;
+  }
   setIcon(icon: string): this {
     setIcon(this.buttonEl, icon);
     this.buttonEl.classList.add('has-icon');
@@ -824,6 +844,7 @@ export class TextComponent {
   setPlaceholder(placeholder: string): this { this.inputEl.placeholder = placeholder; return this; }
   setDisabled(disabled: boolean): this { this.inputEl.disabled = disabled; return this; }
   onChange(callback: (value: string) => any): this { this._onChange = callback; return this; }
+  onChanged(): this { this._onChange?.(this.inputEl.value); return this; }
   then(cb: (component: this) => any): this { cb(this); return this; }
   setClass(cls: string): this { this.inputEl.classList.add(cls); return this; }
 }
@@ -989,6 +1010,9 @@ export interface SuggestModal<T> extends Modal {
 }
 export function SuggestModal(this: any, app: any) {
   Modal.call(this, app);
+  // SuggestModal uses a compact "prompt" layout (no title bar, just input + results)
+  this.modalEl.classList.add('prompt');
+  this.titleEl.style.display = 'none';
   this.limit = 100;
   this.emptyStateText = 'No results found.';
   this._suggestions = [];
@@ -1132,18 +1156,29 @@ export function FuzzySuggestModal(this: any, app: any) {
 FuzzySuggestModal.prototype = Object.create(SuggestModal.prototype);
 FuzzySuggestModal.prototype.constructor = FuzzySuggestModal;
 
-FuzzySuggestModal.prototype.getItems = function() { return []; };
+FuzzySuggestModal.prototype.getItems = function() { return this.items || []; };
 FuzzySuggestModal.prototype.getItemText = function(item: any) { return ''; };
 FuzzySuggestModal.prototype.onChooseItem = function(item: any, evt: MouseEvent | KeyboardEvent) {};
 
 FuzzySuggestModal.prototype.getSuggestions = function(query: string) {
-  return this.getItems().filter((i: any) => this.getItemText(i).toLowerCase().includes(query.toLowerCase()));
+  const normalizedQuery = query.toLowerCase();
+  return this.getItems()
+    .map((item: any) => {
+      const text = this.getItemText(item);
+      const index = text.toLowerCase().indexOf(normalizedQuery);
+      if (index < 0) return null;
+      return {
+        item,
+        match: { matches: normalizedQuery ? [[index, index + query.length]] : [] },
+      };
+    })
+    .filter(Boolean);
 };
 FuzzySuggestModal.prototype.renderSuggestion = function(value: any, el: HTMLElement) {
-  el.textContent = this.getItemText(value);
+  el.textContent = this.getItemText(value?.item ?? value);
 };
 FuzzySuggestModal.prototype.onChooseSuggestion = function(item: any, evt: MouseEvent | KeyboardEvent) {
-  this.onChooseItem(item, evt);
+  this.onChooseItem(item?.item ?? item, evt);
 };
 
 // ── AbstractInputSuggest (ES5 — extended by plugins) ──
@@ -1194,13 +1229,7 @@ function _AbstractInputSuggest(this: any, app: any, inputEl: HTMLInputElement) {
     const query = self.inputEl.value;
     try {
       const suggestions = await Promise.resolve(self.getSuggestions(query));
-      self._suggestions = suggestions || [];
-      self._renderSuggestions();
-      if (self._suggestions.length > 0) {
-        self.open();
-      } else {
-        self.close();
-      }
+      self.showSuggestions(suggestions || []);
     } catch (e) {
       console.error('[AbstractInputSuggest] getSuggestions error:', e);
     }
@@ -1263,6 +1292,13 @@ _AbstractInputSuggest.prototype._renderSuggestions = function() {
     this.suggestEl.appendChild(el);
   }
   this._selectedIndex = -1;
+};
+
+_AbstractInputSuggest.prototype.showSuggestions = function(suggestions: any[] = []) {
+  this._suggestions = Array.isArray(suggestions) ? suggestions : [];
+  this._renderSuggestions();
+  if (this._suggestions.length > 0) this.open();
+  else this.close();
 };
 
 _AbstractInputSuggest.prototype._highlightSelected = function() {

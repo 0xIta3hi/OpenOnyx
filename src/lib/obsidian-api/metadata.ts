@@ -56,6 +56,20 @@ export class OOMetadataCache extends Events {
     return result;
   }
 
+  getAllProperties(): Record<string, { name: string; widget: string }> {
+    const properties: Record<string, { name: string; widget: string }> = {};
+    for (const cache of this._cache.values()) {
+      for (const [name, value] of Object.entries(cache.frontmatter || {})) {
+        if (properties[name]) continue;
+        properties[name] = {
+          name,
+          widget: typeof value === 'boolean' ? 'checkbox' : typeof value === 'number' ? 'number' : 'text',
+        };
+      }
+    }
+    return properties;
+  }
+
   getLinkSuggestions(): Array<{ path: string; file: TFile | null }> {
     const app = (window as any).__oo_app;
     return this.getCachedFiles().map((path) => ({ path, file: app?.vault?.getFileByPath(path) || null }));

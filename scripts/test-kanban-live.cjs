@@ -108,21 +108,92 @@ async function main() {
       const describeError = (error) => error?.stack || String(error);
       const onError = (event) => errors.push(describeError(event.error || event.message));
       const onRejection = (event) => errors.push(describeError(event.reason));
+      const originalConsoleError = console.error;
+      console.error = (...args) => {
+        errors.push(args.map(describeError).join(' '));
+        originalConsoleError(...args);
+      };
       const boardPath = 'Kanban live smoke test.md';
+      const editorPath = 'Plugin editor compatibility smoke test.md';
       const source = ['---', 'kanban-plugin: board', '---', '', '## Todo', '- [ ] Render a Kanban card', '', '## Done', '- Completed card', ''].join('\\n');
       window.addEventListener('error', onError);
       window.addEventListener('unhandledrejection', onRejection);
       try {
         const existing = app.vault.getFileByPath(boardPath);
         if (existing) await app.vault.delete(existing);
+        const existingEditorFile = app.vault.getFileByPath(editorPath);
+        if (existingEditorFile) await app.vault.delete(existingEditorFile);
+        await app.vault.create(editorPath, '# Plugin editor compatibility\\n\\n[[Kanban live smoke test]]');
+        await window.__oo_open_file?.(editorPath, 'editor');
+        for (let attempt = 0; attempt < 20 && !document.querySelector('.cm-editor'); attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        const hostEditorReady = Boolean(document.querySelector('.cm-editor'));
+        const hostEditorDiagnostics = {
+          leafHosts: document.querySelectorAll('.leaf-editor-host').length,
+          editorContainers: document.querySelectorAll('.editor-container').length,
+          activeFile: window.__oo_active_file,
+          activeViewType: app.workspace.activeLeaf?.view?.getViewType?.(),
+        };
         const file = await app.vault.create(boardPath, source);
-        const leaf = app.workspace.getLeaf('tab');
-        await leaf.setViewState({ type: 'kanban', state: { file: file.path } });
-        app.workspace.setActiveLeaf(leaf);
-        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        await app.metadataCache.updateFileCache(file);
+        await window.__oo_open_file?.(boardPath);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const routedViewType = app.workspace.activeLeaf?.view?.getViewType?.();
+        const leaf = app.workspace.activeLeaf;
+        for (let attempt = 0; attempt < 30 && !leaf.view?.contentEl?.querySelector?.('.kanban-plugin'); attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
         const view = leaf.view;
         const plugin = app.plugins.getPlugin('obsidian-kanban');
         const board = view?.getBoard?.();
+        const pointerTarget = (element) => {
+          if (!element) return { receivesPointer: false, reason: 'missing element' };
+          const rect = element.getBoundingClientRect();
+          if (!rect.width || !rect.height) return { receivesPointer: false, rect: rect.toJSON(), reason: 'zero-size element' };
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return {
+            receivesPointer: Boolean(hit && (hit === element || element.contains(hit))),
+            rect: rect.toJSON(),
+            hitTag: hit?.tagName,
+          hitClass: typeof hit?.className === 'string' ? hit.className : '',
+        };
+        };
+        const addCardButton = view?.contentEl?.querySelector?.('.kanban-plugin__new-item-button');
+        const addCardHitTarget = pointerTarget(addCardButton);
+        addCardButton?.click();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const cardEditorEl = view?.contentEl?.querySelector?.('.cm-content');
+        const editorRoot = cardEditorEl?.closest?.('.cm-editor');
+        const inlineEditorReady = typeof editorRoot?.__oo_editor_view?.dispatch === 'function';
+        const inlineEditorHitTarget = pointerTarget(cardEditorEl);
+        // The initial board form is the interaction that users see when
+        // creating a new Kanban board. Exercise its physical hit targets,
+        // toggle, and Add list action rather than only invoking callbacks.
+        view?.emitter?.emit?.('showLaneForm');
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const laneForm = view?.contentEl?.querySelector?.('.kanban-plugin__lane-form-wrapper');
+        const laneInput = laneForm?.querySelector?.('.cm-content');
+        const laneToggle = laneForm?.querySelector?.('.checkbox-container');
+        const addListButton = laneForm?.querySelector?.('.kanban-plugin__lane-action-add');
+        const lanesBeforeAdd = view?.contentEl?.querySelectorAll?.('.kanban-plugin__lane').length || 0;
+        const laneFormHitTargets = {
+          input: pointerTarget(laneInput),
+          toggle: pointerTarget(laneToggle),
+          addList: pointerTarget(addListButton),
+        };
+        laneToggle?.click();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const toggleWorked = laneToggle?.classList.contains('is-enabled') || false;
+        addListButton?.click();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const lanesAfterAdd = view?.contentEl?.querySelectorAll?.('.kanban-plugin__lane').length || 0;
+        const interactiveHitTargets = {
+          addCard: addCardHitTarget,
+          editor: inlineEditorHitTarget,
+          laneForm: laneFormHitTargets,
+        };
+        const renderedCards = view?.contentEl?.querySelectorAll?.('.kanban-plugin__item').length || 0;
         const persistedSource = source + '\\n## Later\\n- Persisted card\\n';
         view?.requestSaveToDisk?.(persistedSource);
         await new Promise((resolve) => setTimeout(resolve, 2_500));
@@ -130,12 +201,20 @@ async function main() {
         const result = {
           errors,
           viewType: view?.getViewType?.(),
+          routedViewType,
           viewFile: view?.file?.path,
           pluginLoaded: plugin?._loaded,
           hasBoardState: Array.isArray(board?.children) && board.children.length === 2,
           hasRenderedBoard: !!view?.contentEl?.querySelector?.('.kanban-plugin'),
           hasRenderedLanes: view?.contentEl?.querySelectorAll?.('.kanban-plugin__lane').length || 0,
-          hasRenderedCards: view?.contentEl?.querySelectorAll?.('.kanban-plugin__item').length || 0,
+          hasRenderedCards: renderedCards,
+          inlineEditorReady,
+          interactiveHitTargets,
+          toggleWorked,
+          addedList: lanesAfterAdd === lanesBeforeAdd + 1,
+          hostEditorReady,
+          hostEditorDiagnostics,
+          pluginBlobUrls: Array.from(window.__oo_plugin_blob_urls || []),
           persisted: persisted.includes('Persisted card'),
         };
         await leaf.setViewState({ type: 'empty', state: {} });
@@ -144,20 +223,31 @@ async function main() {
       } finally {
         const file = app.vault.getFileByPath(boardPath);
         if (file) await app.vault.delete(file);
+        const editorFile = app.vault.getFileByPath(editorPath);
+        if (editorFile) await app.vault.delete(editorFile);
         window.removeEventListener('error', onError);
         window.removeEventListener('unhandledrejection', onRejection);
+        console.error = originalConsoleError;
       }
     })()
   `);
 
   const failures = [
     result.viewType !== 'kanban' && `unexpected view type: ${result.viewType}`,
+    result.routedViewType !== 'kanban' && `file-tree route opened ${result.routedViewType} instead of Kanban`,
     result.viewFile !== 'Kanban live smoke test.md' && 'view did not receive the board file',
     !result.pluginLoaded && 'Kanban plugin did not load',
     !result.hasBoardState && 'Kanban board state did not parse its lanes',
     !result.hasRenderedBoard && 'Kanban board did not render',
     result.hasRenderedLanes < 2 && 'Kanban lanes did not render',
     result.hasRenderedCards < 2 && 'Kanban cards did not render',
+    !result.inlineEditorReady && 'Kanban inline card editor did not initialize',
+    !result.interactiveHitTargets?.laneForm?.input?.receivesPointer && 'Kanban list-title editor is not the pointer hit target',
+    !result.interactiveHitTargets?.laneForm?.toggle?.receivesPointer && 'Kanban list-complete toggle is not the pointer hit target',
+    !result.interactiveHitTargets?.laneForm?.addList?.receivesPointer && 'Kanban Add list control is not the pointer hit target',
+    !result.toggleWorked && 'Kanban list-complete toggle did not respond',
+    !result.addedList && 'Kanban Add list control did not add a lane',
+    !result.hostEditorReady && 'host Markdown editor did not initialize with installed plugin extensions',
     !result.persisted && 'Kanban board data was not saved to the vault',
     result.errors.length > 0 && `renderer errors: ${result.errors.join('; ')}`,
   ].filter(Boolean);

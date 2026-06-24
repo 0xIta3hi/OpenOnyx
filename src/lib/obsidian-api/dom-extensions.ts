@@ -86,7 +86,10 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     o?: string | { text?: string; cls?: string | string[]; attr?: Record<string, string>; },
     callback?: (el: HTMLDivElement) => void
   ): HTMLDivElement {
-    return (this as any).createEl('div', o, callback) as HTMLDivElement;
+    // Obsidian's createDiv('class-name') overload uses the string as a class,
+    // unlike createEl('div', 'text'). Community plugins rely on this heavily.
+    const options = typeof o === 'string' ? { cls: o } : o;
+    return (this as any).createEl('div', options, callback) as HTMLDivElement;
   };
 
   // ── createSpan() — Shorthand for createEl('span') ───
@@ -94,7 +97,8 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     o?: string | { text?: string; cls?: string | string[]; attr?: Record<string, string>; },
     callback?: (el: HTMLSpanElement) => void
   ): HTMLSpanElement {
-    return (this as any).createEl('span', o, callback) as HTMLSpanElement;
+    const options = typeof o === 'string' ? { cls: o } : o;
+    return (this as any).createEl('span', options, callback) as HTMLSpanElement;
   };
 
   // ── addClass() — Add CSS class(es) ─────────────────
@@ -233,14 +237,16 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
     o?: string | { text?: string; cls?: string | string[]; },
     callback?: (el: HTMLDivElement) => void
   ): HTMLDivElement {
-    return (this as any).createEl('div', o, callback);
+    const options = typeof o === 'string' ? { cls: o } : o;
+    return (this as any).createEl('div', options, callback);
   };
 
   (DocumentFragment.prototype as any).createSpan = function (
     o?: string | { text?: string; cls?: string | string[]; },
     callback?: (el: HTMLSpanElement) => void
   ): HTMLSpanElement {
-    return (this as any).createEl('span', o, callback);
+    const options = typeof o === 'string' ? { cls: o } : o;
+    return (this as any).createEl('span', options, callback);
   };
 
   // Also add createEl/createDiv to document.body as a global helper
@@ -443,6 +449,29 @@ try {
   }
 } catch { /* skip if already defined */ }
 
+// Obsidian also exposes the event's owning document and window. Editors and
+// plugins use `event.win` for deferred focus work instead of global window.
+try {
+  if (!Object.getOwnPropertyDescriptor(Event.prototype, 'doc')) {
+    Object.defineProperty(Event.prototype, 'doc', {
+      get() {
+        return (this.currentTarget as Node | null)?.ownerDocument
+          || (this.target as Node | null)?.ownerDocument
+          || document;
+      },
+      configurable: true,
+    });
+  }
+  if (!Object.getOwnPropertyDescriptor(Event.prototype, 'win')) {
+    Object.defineProperty(Event.prototype, 'win', {
+      get() {
+        return (this as any).doc.defaultView || window;
+      },
+      configurable: true,
+    });
+  }
+} catch { /* skip if Event is unavailable */ }
+
 // ── Node.createEl/createDiv/createSpan (official API puts these on Node, not just HTMLElement) ──
 if (!(Node.prototype as any).createEl) {
   (Node.prototype as any).createEl = (HTMLElement.prototype as any).createEl;
@@ -511,14 +540,20 @@ try {
 
 // ── JS Primitive Extensions ─────────────────────────
 
-// String
+// String — use defineProperty to avoid polluting for...in loops
 if (!(String.prototype as any).contains) {
-  (String.prototype as any).contains = String.prototype.includes;
+  Object.defineProperty(String.prototype, 'contains', {
+    value: String.prototype.includes,
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(String.prototype as any).format) {
-  (String.prototype as any).format = function(...args: string[]) {
-    return this.replace(/{(\d+)}/g, (m: string, i: string) => args[parseInt(i)] ?? m);
-  };
+  Object.defineProperty(String.prototype, 'format', {
+    value: function(...args: string[]) {
+      return this.replace(/{(\d+)}/g, (m: string, i: string) => args[parseInt(i)] ?? m);
+    },
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(String as any).isString) {
   (String as any).isString = (obj: any): obj is string => typeof obj === 'string';
@@ -529,32 +564,51 @@ if (!(Number as any).isNumber) {
   (Number as any).isNumber = (obj: any): obj is number => typeof obj === 'number' && !isNaN(obj);
 }
 
-// Array
+// Array — use defineProperty so that for...in on arrays does NOT iterate over these methods.
+// Many plugins (e.g. obsidian-icons-plugin) use `for (var i in iconSet)` on arrays.
 if (!(Array.prototype as any).contains) {
-  (Array.prototype as any).contains = Array.prototype.includes;
+  Object.defineProperty(Array.prototype, 'contains', {
+    value: Array.prototype.includes,
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(Array.prototype as any).remove) {
-  (Array.prototype as any).remove = function<T>(this: T[], item: T): void {
-    const idx = this.indexOf(item); if (idx >= 0) this.splice(idx, 1);
-  };
+  Object.defineProperty(Array.prototype, 'remove', {
+    value: function<T>(this: T[], item: T): void {
+      const idx = this.indexOf(item); if (idx >= 0) this.splice(idx, 1);
+    },
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(Array.prototype as any).first) {
-  (Array.prototype as any).first = function() { return this[0]; };
+  Object.defineProperty(Array.prototype, 'first', {
+    value: function() { return this[0]; },
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(Array.prototype as any).last) {
-  (Array.prototype as any).last = function() { return this[this.length - 1]; };
+  Object.defineProperty(Array.prototype, 'last', {
+    value: function() { return this[this.length - 1]; },
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(Array.prototype as any).shuffle) {
-  (Array.prototype as any).shuffle = function() {
-    for (let i = this.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [this[i], this[j]] = [this[j], this[i]];
-    }
-    return this;
-  };
+  Object.defineProperty(Array.prototype, 'shuffle', {
+    value: function() {
+      for (let i = this.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [this[i], this[j]] = [this[j], this[i]];
+      }
+      return this;
+    },
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(Array.prototype as any).unique) {
-  (Array.prototype as any).unique = function() { return [...new Set(this)]; };
+  Object.defineProperty(Array.prototype, 'unique', {
+    value: function() { return [...new Set(this)]; },
+    writable: true, configurable: true, enumerable: false,
+  });
 }
 if (!(Array as any).combine) {
   (Array as any).combine = <T>(arrays: T[][]): T[] => ([] as T[]).concat(...arrays);

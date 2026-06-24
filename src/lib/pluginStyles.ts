@@ -152,6 +152,128 @@ export function injectPluginBaseCss(): void {
   const style = document.createElement('style');
   style.setAttribute('data-plugin-base', 'true');
   style.textContent = `
+/* ── Native WorkspaceLeaf / ItemView host ─────────────────────────── */
+/* Layout and interaction only. Plugin and application colour variables are
+ * intentionally left untouched. */
+.oo-plugin-leaf.workspace-leaf-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.oo-plugin-leaf.workspace-leaf-content > .view-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--header-height, 36px);
+  padding: 0 var(--size-4-2, 8px);
+  border-bottom: 1px solid var(--divider-color);
+  pointer-events: auto;
+}
+
+.oo-plugin-leaf .view-header-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-m, 18px);
+  height: var(--icon-m, 18px);
+  margin-inline-end: var(--size-4-2, 8px);
+}
+
+.oo-plugin-leaf .view-header-title-container {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+}
+
+.oo-plugin-leaf .view-header-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-plugin-leaf .view-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--size-2-1, 2px);
+  margin-inline-start: auto;
+  pointer-events: auto;
+}
+
+.oo-plugin-leaf.workspace-leaf-content > .view-content {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  pointer-events: auto;
+}
+
+/* ── Obsidian CSS Variable Defaults (fallback layer for plugins) ── */
+:root {
+  --background-primary: var(--bg-primary, #181825);
+  --background-primary-alt: var(--bg-secondary, #1e1e2e);
+  --background-secondary: var(--bg-secondary, #1e1e2e);
+  --background-secondary-alt: var(--bg-tertiary, #252536);
+  --background-modifier-border: var(--border-medium, rgba(255,255,255,0.16));
+  --background-modifier-form-field: var(--bg-input, rgba(255,255,255,0.04));
+  --background-modifier-error: #e05050;
+  --background-modifier-success: #22c55e;
+  --background-modifier-box-shadow: rgba(0,0,0,0.4);
+  --text-normal: var(--text-primary, #dcddde);
+  --text-accent: var(--color-accent, #7c5cfc);
+  --text-accent-hover: var(--color-accent-1, #6b55e0);
+  --interactive-normal: var(--bg-elevated, rgba(255,255,255,0.06));
+  --interactive-hover: var(--bg-hover, rgba(255,255,255,0.1));
+  --interactive-accent: var(--color-accent, #7c5cfc);
+  --interactive-accent-hover: var(--color-accent-1, #6b55e0);
+  --link-color: var(--text-link, var(--color-accent, #7c5cfc));
+  --link-color-hover: var(--color-accent-1, #6b55e0);
+  --font-monospace: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  --cursor: pointer;
+  /* Obsidian plugins place temporary editors and menus above board content. */
+  --layer-cover: 20;
+  --layer-popover: 30;
+  --layer-menu: 40;
+  --layer-modal: 50;
+  --layer-notice: 60;
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+}
+
+/* Kanban's embedded CodeMirror editor does not inherit the host editor
+ * extension. Use the theme foreground for a reliably visible dark-theme caret.
+ */
+.theme-dark .kanban-plugin .cm-content,
+.theme-dark .kanban-plugin .cm-line,
+.theme-dark .kanban-plugin .cm-editor {
+  caret-color: var(--text-normal, var(--text-primary)) !important;
+}
+
+.theme-dark .kanban-plugin .cm-cursor,
+.theme-dark .kanban-plugin .cm-dropCursor {
+  border-left-color: var(--text-normal, var(--text-primary)) !important;
+}
+
+/* Only plugin ribbon buttons use the same 20px size as app ribbon icons. */
+.oo-plugin-ribbon-btn .svg-icon {
+  width: 20px !important;
+  height: 20px !important;
+}
+
 /* ── Plugin Notice Container ─────────────────────── */
 .oo-notice-container {
   position: fixed;
@@ -388,6 +510,281 @@ export function injectPluginBaseCss(): void {
 .oo-plugin-status-item {
   font-size: 12px;
   color: var(--text-muted, #888);
+}
+
+/* ── SuggestModal / FuzzySuggestModal ────────────── */
+
+/* The modal used for Suggest/FuzzySuggest should look like Obsidian's
+   quick-switcher: a compact panel centered near the top of the viewport
+   with an input and a scrollable list of results. */
+
+/* Position the prompt modal near the top of the viewport */
+.oo-plugin-modal-container:has(.prompt) {
+  align-items: flex-start;
+  padding-top: 15vh;
+}
+
+.modal-container.oo-plugin-modal-container .modal.oo-plugin-modal.prompt {
+  padding: 0;
+  overflow: hidden;
+  min-width: 500px;
+  max-width: 600px;
+  max-height: 60vh;
+  border-radius: 10px;
+}
+
+.prompt .modal-content {
+  padding: 0;
+}
+
+/* ── Prompt Input ────────────────────────────────── */
+.prompt-input-container {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+}
+
+.prompt-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.12));
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary, #e0e0e0);
+  font-size: 15px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.prompt-input:focus {
+  border-color: var(--accent-primary, var(--color-accent, #7c5cfc));
+  box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.15);
+}
+
+.prompt-input::placeholder {
+  color: var(--text-muted, #666);
+}
+
+/* ── Suggestion Container ────────────────────────── */
+.suggestion-container {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 4px 0;
+  overscroll-behavior: contain;
+}
+
+.suggestion-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.suggestion-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.suggestion-container::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 3px;
+}
+
+.suggestion-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* ── Suggestion Item ─────────────────────────────── */
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary, #dcddde);
+  transition: background-color 0.06s ease;
+  line-height: 1.4;
+  min-height: 32px;
+  gap: 8px;
+}
+
+.suggestion-item:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.04));
+}
+
+.suggestion-item.is-selected {
+  background: var(--bg-active, rgba(124, 92, 252, 0.12));
+  color: var(--text-primary, #ffffff);
+}
+
+.suggestion-item.is-selected:hover {
+  background: var(--bg-active, rgba(124, 92, 252, 0.16));
+}
+
+/* Suggestion text highlight (for fuzzy matching) */
+.suggestion-highlight {
+  color: var(--accent-primary, var(--color-accent, #7c5cfc));
+  font-weight: 600;
+}
+
+/* ── Suggestion Empty State ──────────────────────── */
+.suggestion-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted, #666);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ── Prompt Instructions (e.g. hotkey hints) ─────── */
+.prompt-instructions {
+  display: flex;
+  gap: 16px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  font-size: 11px;
+  color: var(--text-muted, #666);
+}
+
+.prompt-instruction {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.prompt-instruction-command {
+  font-family: monospace;
+  background: rgba(255,255,255,0.06);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* ── Icons Plugin Specific ───────────────────────── */
+.suggestion-item .obsidian-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.suggestion-item .obsidian-icon.react-icon > svg {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+
+.suggestion-item .obsidian-icon + span,
+.suggestion-item .obsidian-icon ~ span {
+  margin-left: 4px;
+}
+
+/* Icons plugin rendered icons in document body */
+.obsidian-icon {
+  font-size: inherit;
+  display: inline-block;
+  width: 1.5em;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.obsidian-icon.react-icon > svg {
+  vertical-align: middle;
+  fill: currentColor;
+}
+
+/* ── Modal Close Button ──────────────────────────── */
+.modal-close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+  z-index: 2;
+}
+
+.modal-close-button:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* ── Extra Settings Button (used by many plugins) ── */
+.extra-setting-button,
+.clickable-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.extra-setting-button:hover,
+.clickable-icon:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+  color: var(--text-primary, #e0e0e0);
+}
+
+.extra-setting-button .svg-icon,
+.clickable-icon .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Color Picker ────────────────────────────────── */
+input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border-subtle, rgba(255,255,255,0.1));
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+/* ── Slider ──────────────────────────────────────── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--bg-hover, rgba(255,255,255,0.1));
+  border-radius: 2px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary, var(--color-accent, #7c5cfc));
+  cursor: pointer;
+  border: 2px solid var(--bg-primary, #181825);
 }
 `;
   document.head.appendChild(style);

@@ -21,6 +21,7 @@ interface PluginViewPanelProps {
   views: PluginViewInfo[];
   onClose: (viewType: string) => void;
   isMainView?: boolean;
+  fill?: boolean;
   width?: number;
 }
 
@@ -30,7 +31,7 @@ const pluginTabActiveClass = "bg-(--bg-secondary) text-(--text-primary) after:ab
 const pluginTabTextClass = "overflow-hidden text-ellipsis whitespace-nowrap";
 const pluginTabCloseClass = "ml-0.5 text-sm leading-none opacity-30 transition-opacity duration-150 group-hover:opacity-80 hover:text-(--danger) hover:opacity-100";
 
-export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: PluginViewPanelProps) {
+export function PluginViewPanel({ views, onClose, isMainView, fill, width = 300 }: PluginViewPanelProps) {
   const [activeViewType, setActiveViewType] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { setDragCtx } = useContext(DragCtx);
@@ -100,7 +101,7 @@ export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: Plu
   return (
     <div
       className={`plugin-view-panel ${isMainView ? 'is-main-view' : ''}`}
-      style={isMainView ? {
+      style={isMainView || fill ? {
         width: '100%',
         height: '100%',
         display: 'flex',
@@ -160,7 +161,11 @@ export function PluginViewPanel({ views, onClose, isMainView, width = 300 }: Plu
         ref={containerRef}
         style={{
           flex: 1,
-          overflow: 'auto',
+          minHeight: 0,
+          minWidth: 0,
+          overflow: 'hidden',
+          position: 'relative',
+          pointerEvents: 'auto',
         }}
       />
     </div>

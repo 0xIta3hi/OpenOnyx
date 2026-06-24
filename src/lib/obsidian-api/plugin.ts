@@ -157,8 +157,25 @@ _Plugin.prototype.addRibbonIcon = function (icon: string, title: string, callbac
 
   const action = { icon, title, callback: guardedCallback, el };
   this._ribbonActions.push(action);
+  const ribbonItem = {
+    id: `${this.manifest.id}:${title}`,
+    icon,
+    title,
+    buttonEl: el,
+    hidden: false,
+  };
+  const ribbonItems = this.app?.workspace?.leftRibbon?.items;
+  if (Array.isArray(ribbonItems)) ribbonItems.push(ribbonItem);
+  this.register(() => {
+    const items = this.app?.workspace?.leftRibbon?.items;
+    if (Array.isArray(items)) {
+      const index = items.indexOf(ribbonItem);
+      if (index >= 0) items.splice(index, 1);
+    }
+  });
   (window as any).__oo_register_ribbon?.({
     pluginId: this.manifest.id,
+    id: ribbonItem.id,
     icon, title, callback: guardedCallback, el,
   });
   return el;

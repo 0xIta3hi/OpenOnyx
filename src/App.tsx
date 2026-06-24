@@ -103,6 +103,16 @@ import {
 } from "./utils/ftux";
 import { readData, writeData } from "./utils/disk-store";
 import { DragCtx, DragContextData } from "./context/DragContext";
+
+function setWritableViewProperty(view: any, key: string, value: unknown): void {
+  for (let target = view; target; target = Object.getPrototypeOf(target)) {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (!descriptor) continue;
+    if (!descriptor.writable && !descriptor.set) return;
+    break;
+  }
+  view[key] = value;
+}
 import {
   initGlobalKeybindings,
   setGlobalKeybindingsEnabled,
@@ -266,9 +276,36 @@ const CUSTOM_THEME_VARIABLES = [
   "--editor-search-active-border",
   "--graph-edge-color",
   "--graph-node-color",
+  // Obsidian-standard aliases for plugin compatibility
+  "--background-primary",
+  "--background-primary-alt",
+  "--background-secondary",
+  "--background-secondary-alt",
+  "--background-modifier-border",
+  "--background-modifier-form-field",
+  "--background-modifier-error",
+  "--background-modifier-success",
+  "--background-modifier-box-shadow",
+  "--text-normal",
+  "--text-accent",
+  "--text-accent-hover",
+  "--interactive-normal",
+  "--interactive-hover",
+  "--interactive-accent",
+  "--interactive-accent-hover",
+  "--interactive-accent-hsl",
+  "--link-color",
+  "--link-color-hover",
 ] as const;
 
 const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
+const isExcalidrawFile = (path: string) => {
+  const normalized = path.toLowerCase();
+  return normalized.endsWith(".excalidraw") || normalized.endsWith(".excalidraw.md");
+};
+const isKanbanBoard = (frontmatter: Record<string, unknown> | undefined) =>
+  typeof frontmatter?.['kanban-plugin'] === 'string'
+  && frontmatter['kanban-plugin'].replace(/["']/g, '').toLowerCase() === 'board';
 const GRAPH_TAB_PATH = "__graph__.view";
 const SPACES_TAB_PATH = "__spaces__.view";
 
@@ -1053,6 +1090,8 @@ export default function App() {
   const [pluginSettingTabs, setPluginSettingTabs] = useState<PluginSettingTabRegistration[]>([]);
   const pluginManagerRef = useRef<PluginManager | null>(null);
   const ooAppRef = useRef<OOApp | null>(null);
+  const openFileRef = useRef<(path: string, mode?: ViewMode) => Promise<void>>(async () => {});
+  const pluginFileOpenQueueRef = useRef<Promise<void>>(Promise.resolve());
   const collabSubRef = useRef<{
     vaultPath: string | null;
     userId: string | null;
@@ -1138,6 +1177,16 @@ export default function App() {
   // Keep ref in sync with state (for non-drag updates)
   useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
   useEffect(() => { showSidebarRef.current = showSidebar; }, [showSidebar]);
+
+  useEffect(() => {
+    const workspace = ooAppRef.current?.workspace;
+    if (workspace) workspace.leftSplit.collapsed = !showSidebar;
+  }, [showSidebar]);
+
+  useEffect(() => {
+    const workspace = ooAppRef.current?.workspace;
+    if (workspace) workspace.rightSplit.collapsed = !showRightSidebar;
+  }, [showRightSidebar]);
 
   const startSidebarDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -2034,6 +2083,28 @@ export default function App() {
 
       root.style.setProperty("--graph-edge-color", rgbToRgba(text, 0.35));
       root.style.setProperty("--graph-node-color", settings.accentColor);
+
+      // ── Obsidian-standard CSS variable aliases for plugin compatibility ──
+      // Plugins use Obsidian's own variable names. Map them to our theme.
+      root.style.setProperty("--background-primary", baseBg);
+      root.style.setProperty("--background-primary-alt", tone(0.04));
+      root.style.setProperty("--background-secondary", tone(0.04));
+      root.style.setProperty("--background-secondary-alt", tone(0.08));
+      root.style.setProperty("--background-modifier-border", rgbToRgba(text, 0.16));
+      root.style.setProperty("--background-modifier-form-field", rgbToRgba(text, 0.04));
+      root.style.setProperty("--background-modifier-error", "#e05050");
+      root.style.setProperty("--background-modifier-success", "#22c55e");
+      root.style.setProperty("--background-modifier-box-shadow", rgbToRgba(bg, 0.4));
+      root.style.setProperty("--text-normal", tone(1));
+      root.style.setProperty("--text-accent", settings.accentColor);
+      root.style.setProperty("--text-accent-hover", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--interactive-normal", tone(0.04));
+      root.style.setProperty("--interactive-hover", tone(0.08));
+      root.style.setProperty("--interactive-accent", settings.accentColor);
+      root.style.setProperty("--interactive-accent-hover", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--interactive-accent-hsl", (() => { const r = accent.r / 255, g = accent.g / 255, b = accent.b / 255; const max = Math.max(r, g, b), min = Math.min(r, g, b); let h = 0, s = 0; const l = (max + min) / 2; if (max !== min) { const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6 : max === g ? ((b - r) / d + 2) / 6 : ((r - g) / d + 4) / 6; } return `${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%`; })());
+      root.style.setProperty("--link-color", settings.accentColor);
+      root.style.setProperty("--link-color-hover", rgbToHex(mixRgb(accent, text, 0.22)));
     } else {
       for (const variableName of CUSTOM_THEME_VARIABLES) {
         root.style.removeProperty(variableName);
@@ -2537,8 +2608,15 @@ export default function App() {
           pluginManagerRef.current = pm;
 
           // Wire up file navigation from plugins
-          (window as any).__oo_open_file = (path: string) => {
-            openFile(path);
+          (window as any).__oo_open_file = (path: string, mode?: ViewMode) => {
+            const queuedOpen = pluginFileOpenQueueRef.current.then(async () => {
+              await openFileRef.current(path, mode);
+              // Plugins can queue several leaf.openFile calls in one turn.
+              // Let React commit each tab before the next call reads tab state.
+              await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+            });
+            pluginFileOpenQueueRef.current = queuedOpen.catch(() => {});
+            return queuedOpen;
           };
 
           // Listen for plugin view changes from workspace
@@ -2577,6 +2655,11 @@ export default function App() {
               if (updated.length !== prev.length) changed = true;
               return changed ? updated : prev;
             });
+          });
+
+          ooApp.workspace.on('sidebar-change', (state: { side: 'left' | 'right'; collapsed: boolean }) => {
+            if (state.side === 'left') setShowSidebar(!state.collapsed);
+            else setShowRightSidebar(!state.collapsed);
           });
 
           console.log('[PluginSystem] Plugin manager initialized');
@@ -3681,6 +3764,47 @@ export default function App() {
 
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
+    // Excalidraw drawings are Markdown-backed but must be opened in the
+    // registered Excalidraw view, not the host Markdown editor.
+    const app = ooAppRef.current;
+    const file = app?.vault.getFileByPath(filePath);
+    // Files created or edited by plugins can reach the UI before the regular
+    // vault event has populated MetadataCache. Refresh it before routing a
+    // Markdown-backed custom view such as Kanban or Excalidraw.
+    if (file?.extension === 'md') {
+      await app?.metadataCache.updateFileCache(file);
+    }
+    const isExcalidrawDrawing = isExcalidrawFile(filePath)
+      || Boolean(file && app?.metadataCache.getFileCache(file)?.frontmatter?.['excalidraw-plugin']);
+    if (isExcalidrawDrawing) {
+      const workspace = app?.workspace as any;
+      if (file && workspace?._viewCreators?.has('excalidraw')) {
+        const leaf = workspace.getLeaf('tab');
+        await leaf.setViewState({ type: 'excalidraw', state: { file: file.path }, active: true });
+        if (leaf.view?.getViewType?.() === 'excalidraw') {
+          workspace.setActiveLeaf(leaf);
+          return;
+        }
+      }
+    }
+
+    // Kanban boards are Markdown files, distinguished by their frontmatter.
+    // Route them through the plugin view before the normal Markdown reader.
+    const isKanbanDrawing = Boolean(file && isKanbanBoard(
+      app?.metadataCache.getFileCache(file)?.frontmatter,
+    ));
+    if (isKanbanDrawing) {
+      const workspace = app?.workspace as any;
+      if (file && workspace?._viewCreators?.has('kanban')) {
+        const leaf = workspace.getLeaf('tab');
+        await leaf.setViewState({ type: 'kanban', state: { file: file.path }, active: true });
+        if (leaf.view?.getViewType?.() === 'kanban') {
+          workspace.setActiveLeaf(leaf);
+          return;
+        }
+      }
+    }
+
     const readOrCreateMissingMarkdown = async (path: string): Promise<string> => {
       try {
         return await api.readFile(path);
@@ -3833,6 +3957,38 @@ export default function App() {
     }
     loadBacklinks(filePath);
   };
+
+  // Keep plugin-originated opens bound to the current render's tab state.
+  openFileRef.current = openFile;
+
+  // Restored tabs are rehydrated from the local workspace layout rather than
+  // opened through openFile(). Promote an already-open Kanban Markdown tab as
+  // soon as the plugin has registered its view creator.
+  useEffect(() => {
+    const tabPath = tabs.find((tab) => tab.id === activeTabId)?.path;
+    if (!tabPath?.toLowerCase().endsWith('.md')) return;
+
+    let cancelled = false;
+    const routeRestoredKanbanTab = async () => {
+      const app = ooAppRef.current;
+      const file = app?.vault.getFileByPath(tabPath);
+      const workspace = app?.workspace as any;
+      if (!app || !file || !workspace?._viewCreators?.has('kanban')) return;
+
+      await app.metadataCache.updateFileCache(file);
+      if (cancelled || !isKanbanBoard(app.metadataCache.getFileCache(file)?.frontmatter)) return;
+      if (workspace.activeLeaf?.view?.getViewType?.() === 'kanban') return;
+
+      const leaf = workspace.getLeaf('tab');
+      await leaf.setViewState({ type: 'kanban', state: { file: file.path }, active: true });
+      if (!cancelled && leaf.view?.getViewType?.() === 'kanban') workspace.setActiveLeaf(leaf);
+    };
+
+    void routeRestoredKanbanTab().catch((error) => {
+      console.error('[Kanban] Failed to route restored board:', error);
+    });
+    return () => { cancelled = true; };
+  }, [activeTabId, pluginList, tabs]);
 
 
   const openGraphAsTab = (mode: GraphMode = "manual") => {
@@ -5858,12 +6014,12 @@ export default function App() {
     const view = app.workspace.activeLeaf?.view;
 
     if (view?.getViewType?.() === 'markdown') {
-      (view as any).file = file;
+      setWritableViewProperty(view, 'file', file);
       (view as any).data = file ? currentContentRef.current : '';
     }
     if (app.workspace.activeEditor) {
-      app.workspace.activeEditor.file = file;
-      app.workspace.activeEditor.view = view;
+      setWritableViewProperty(app.workspace.activeEditor, 'file', file);
+      setWritableViewProperty(app.workspace.activeEditor, 'view', view);
     }
     (app.workspace as any).lastActiveFile = file;
     app.workspace.trigger('file-open', file);
@@ -6128,7 +6284,7 @@ export default function App() {
 
     if (tabIsPlugin) {
       return (
-        <div className="main-plugin-view-container" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+        <div className="main-plugin-view-container" style={{ width: '100%', height: '100%', minHeight: 0, overflow: 'hidden', pointerEvents: 'auto' }}>
           <PluginViewPanel
             views={pluginViews.filter(v => `__plugin__.${v.viewType}` === leafActiveTab.path)}
             onClose={(viewType) => {

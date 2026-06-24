@@ -131,6 +131,43 @@ export class PluginManager {
 
   private _setupGlobalHooks(): void {
     const win = window as any;
+    const bridge = api() as any;
+    const electron = (() => {
+      try { return win.require?.('electron') || {}; } catch { return {}; }
+    })();
+    // Some established plugins access Electron through window.electron rather
+    // than require('electron'). Modern Electron no longer exposes `remote` in
+    // the renderer, so provide the subset used by Obsidian plugins.
+    const remote = electron.remote || {
+      app: {
+        getPath: (name: string) => name === 'home' ? '' : this._app.vault.adapter.getBasePath(),
+      },
+      getCurrentWindow: () => ({
+        isMaximized: () => false,
+        maximize: () => {},
+        unmaximize: () => {},
+        minimize: () => {},
+        close: () => window.close(),
+        isFullScreen: () => false,
+        setFullScreen: () => {},
+      }),
+      getCurrentWebContents: () => ({
+        getZoomFactor: () => 1,
+        setZoomFactor: () => {},
+      }),
+      clipboard: {
+        readText: () => '',
+        writeText: (text: string) => void bridge.writeClipboardText?.(text),
+        availableFormats: () => [],
+        has: () => false,
+        read: () => '',
+      },
+      dialog: {
+        showOpenDialog: (options: any) => bridge.showOpenDialog(options),
+        showSaveDialog: (options: any) => bridge.showSaveDialog(options),
+      },
+    };
+    win.electron = { ...electron, remote };
 
     win.__oo_register_command = (cmd: PluginCommand) => {
       // Deduplicate by command ID
@@ -524,12 +561,18 @@ export class PluginManager {
   // Ensure critical globals are available inside the blob
   window.app = window.app || __ctx.app;
   window.moment = window.moment || __ctx.moment;
+  // Blob scripts do not consistently resolve window properties as bare
+  // identifiers. Obsidian exposes these names to plugins as globals.
+  var activeWindow = window.activeWindow || window;
+  var activeDocument = window.activeDocument || document;
   ${mainJs}
 })();
 window["${globalKey}"].__done = true;
 `;
       const blob = new Blob([wrappedCode], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
+      const pluginBlobUrls = ((window as any).__oo_plugin_blob_urls ||= new Map<string, string>());
+      pluginBlobUrls.set(blobUrl, manifest.id);
 
       const script = document.createElement('script');
       script.src = blobUrl;
@@ -606,6 +649,15 @@ window["${globalKey}"].__done = true;
     if (script) {
       script.remove();
       this._scriptElements.delete(pluginId);
+    }
+    const pluginBlobUrls = (window as any).__oo_plugin_blob_urls as Map<string, string> | undefined;
+    if (pluginBlobUrls) {
+      for (const [url, id] of pluginBlobUrls) {
+        if (id === pluginId) {
+          URL.revokeObjectURL(url);
+          pluginBlobUrls.delete(url);
+        }
+      }
     }
 
     this._loggers.delete(pluginId);

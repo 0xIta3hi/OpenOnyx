@@ -30,6 +30,7 @@ export class WorkspaceLeaf extends Events {
     this.activeTime = Date.now();
     this.containerEl = document.createElement('div');
     this.containerEl.className = 'workspace-leaf-content oo-plugin-leaf';
+    this.containerEl.setAttribute('data-type', 'empty');
     // Obsidian sets .win on containerEl so plugins can distinguish windows
     (this.containerEl as any).win = window;
     this.tabHeaderEl = document.createElement('div');
@@ -135,8 +136,12 @@ export function View(this: any, leaf: WorkspaceLeaf) {
   this.icon = 'file-text';
   this.navigation = true;
   this.leaf = leaf;
-  this._containerEl = document.createElement('div');
-  this._containerEl.className = 'view-content oo-plugin-view';
+  // ItemView CSS in community plugins targets the real workspace leaf. A
+  // nested generic `.view-content` breaks selectors such as
+  // `.workspace-leaf-content[data-type=kanban] > .view-header`, which puts
+  // Kanban actions in the wrong place and invalidates its layout assumptions.
+  this._containerEl = leaf.containerEl;
+  this._containerEl.classList.add('oo-plugin-view');
   (this._containerEl as any).win = window;
   this.scope = null;
 
@@ -330,6 +335,19 @@ function _MarkdownView(this: any, leaf: WorkspaceLeaf) {
   this.previewMode = {};
 
   this._containerEl = document.createElement('div');
+  this._containerEl.className = 'markdown-view';
+
+  // Plugins such as Iconic observe Obsidian's Properties editor even when the
+  // current note has no frontmatter. Keep a stable native element for that
+  // contract; React owns the visible editor surface.
+  const propertyListEl = document.createElement('div');
+  propertyListEl.className = 'metadata-container';
+  this.metadataEditor = {
+    containerEl: propertyListEl,
+    propertyListEl,
+    render: () => {},
+  };
+  this._containerEl.appendChild(propertyListEl);
 
   Object.defineProperty(this, 'containerEl', {
     get: function() { 
@@ -375,11 +393,18 @@ export class OOWorkspace extends Events {
   activeEditor: any = null;
   containerEl: HTMLElement;
   layoutReady = false;
-  leftSplit: any = { expand: () => {}, collapse: () => {}, collapsed: false };
-  rightSplit: any = { expand: () => {}, collapse: () => {}, collapsed: false };
-  leftRibbon: any = {};
-  rightRibbon: any = {};
-  rootSplit: any = { _isRootSplit: true };
+  leftSplit: any;
+  rightSplit: any;
+  leftRibbon: any = this._createRibbon();
+  rightRibbon: any = this._createRibbon();
+  rootSplit: any = {
+    _isRootSplit: true,
+    children: [],
+    win: window,
+    doc: document,
+    getRoot() { return this; },
+    getContainer() { return this; },
+  };
   floatingSplit: any = { children: [], win: window, doc: document };
   editorExtensions: any[] = [];
   editorSuggest: { suggests: any[]; add: (suggest: any) => void; remove: (suggest: any) => void };
@@ -393,10 +418,17 @@ export class OOWorkspace extends Events {
   private _hoverLinkSources = new Map<string, any>();
   /** Active plugin views (viewType → leaf) — exposed for the React UI to render */
   private _activePluginViews: Map<string, WorkspaceLeaf> = new Map();
+  /** The plugin leaf currently revealed in each workspace sidebar. */
+  private _visibleSideLeaves: Record<'left' | 'right', WorkspaceLeaf | null> = {
+    left: null,
+    right: null,
+  };
 
   constructor() {
     super();
     this.containerEl = document.body;
+    this.leftSplit = this._createSideDock('left');
+    this.rightSplit = this._createSideDock('right');
     this.editorSuggest = {
       suggests: [],
       add: (suggest: any) => {
@@ -415,6 +447,51 @@ export class OOWorkspace extends Events {
       this._layoutReadyCallbacks = [];
       this.trigger('layout-ready');
     }, 100);
+  }
+
+  private _createRibbon(): any {
+    const ribbonItemsEl = document.createElement('div');
+    return {
+      items: [],
+      containerEl: ribbonItemsEl,
+      ribbonItemsEl,
+    };
+  }
+
+  /**
+   * Small but stateful equivalent of Obsidian's workspace sidedocks. Plugins
+   * commonly use `workspace.leftSplit.collapsed`, `collapse()`, and `expand()`
+   * to manage their own views. The renderer listens for this event and changes
+   * the actual application sidebar visibility.
+   */
+  private _createSideDock(side: 'left' | 'right'): any {
+    const dock: any = {
+      children: [],
+      parent: this.rootSplit,
+      win: window,
+      doc: document,
+      getRoot: () => this.rootSplit,
+      getContainer: () => this.rootSplit,
+      collapsed: false,
+      collapse: () => this._setSideDockCollapsed(side, true),
+      expand: () => this._setSideDockCollapsed(side, false),
+      toggle: () => this._setSideDockCollapsed(side, !dock.collapsed),
+    };
+    return dock;
+  }
+
+  private _setSideDockCollapsed(side: 'left' | 'right', collapsed: boolean): void {
+    const dock = side === 'left' ? this.leftSplit : this.rightSplit;
+    if (dock.collapsed === collapsed) return;
+    dock.collapsed = collapsed;
+    this.trigger('sidebar-change', { side, collapsed });
+    this.trigger('layout-change');
+  }
+
+  private _revealSideLeaf(leaf: WorkspaceLeaf): void {
+    if (leaf.side !== 'left' && leaf.side !== 'right') return;
+    this._visibleSideLeaves[leaf.side] = leaf;
+    this._setSideDockCollapsed(leaf.side, false);
   }
 
   registerViewCreator(type: string, creator: (leaf: WorkspaceLeaf) => View): void {
@@ -474,6 +551,7 @@ export class OOWorkspace extends Events {
     if (!newLeaf && this.activeLeaf && this.activeLeaf.side === 'main') return this.activeLeaf;
     const leaf = new WorkspaceLeaf(`leaf-${++this._leafCounter}`);
     leaf.side = 'main';
+    leaf.parent = this.rootSplit;
     this._leaves.set(leaf.id, leaf);
     this.trigger('layout-change');
     return leaf;
@@ -545,6 +623,7 @@ export class OOWorkspace extends Events {
     // If the leaf already has a view, just make it active
     if (leaf.view) {
       this._activePluginViews.set(leaf.view.getViewType(), leaf);
+      this._revealSideLeaf(leaf);
       this.trigger('plugin-views-changed');
       return;
     }
@@ -555,6 +634,7 @@ export class OOWorkspace extends Events {
       leaf.activeTime = Date.now();
     }
     this.activeLeaf = leaf;
+    this._revealSideLeaf(leaf);
   }
 
   getLeafById(id: string): WorkspaceLeaf | null {
@@ -572,15 +652,11 @@ export class OOWorkspace extends Events {
   }
   
   getLeftLeaf(split: boolean): WorkspaceLeaf | null {
-    const leaf = this._createSideLeaf();
-    leaf.side = 'left';
-    return leaf;
+    return this._getSideLeaf('left', split);
   }
   
   getRightLeaf(split: boolean): WorkspaceLeaf | null {
-    const leaf = this._createSideLeaf();
-    leaf.side = 'right';
-    return leaf;
+    return this._getSideLeaf('right', split);
   }
 
   async ensureSideLeaf(type: string, side: string, options?: any): Promise<WorkspaceLeaf> {
@@ -589,10 +665,9 @@ export class OOWorkspace extends Events {
     if (existing.length > 0) return existing[0];
     
     // Create leaf + view, setting the correct side
-    const leaf = this._createSideLeaf();
-    if (side === 'left' || side === 'right') {
-      leaf.side = side;
-    }
+    const leaf = side === 'left' || side === 'right'
+      ? this._getSideLeaf(side, false)
+      : this._createSideLeaf();
     await this._createViewOnLeaf(leaf, type);
     return leaf;
   }
@@ -604,12 +679,38 @@ export class OOWorkspace extends Events {
     return leaf;
   }
 
+  private _getSideLeaf(side: 'left' | 'right', split: boolean): WorkspaceLeaf {
+    if (!split) {
+      const emptyLeaf = Array.from(this._leaves.values()).find(
+        (leaf) => leaf.side === side && !leaf.view,
+      );
+      if (emptyLeaf) return emptyLeaf;
+    }
+    const leaf = this._createSideLeaf();
+    leaf.side = side;
+    const dock = side === 'left' ? this.leftSplit : this.rightSplit;
+    leaf.parent = dock;
+    dock.children.push(leaf);
+    return leaf;
+  }
+
   _detachLeaf(leaf: WorkspaceLeaf): void {
     if (leaf.view) {
       try { void leaf.view.onClose?.(); } catch { /* plugin cleanup is isolated elsewhere */ }
       this._activePluginViews.delete(leaf.view.getViewType?.());
     }
     this._leaves.delete(leaf.id);
+    if (leaf.side === 'left' || leaf.side === 'right') {
+      const dock = leaf.side === 'left' ? this.leftSplit : this.rightSplit;
+      dock.children = dock.children.filter((child: WorkspaceLeaf) => child !== leaf);
+    }
+    if (leaf.side === 'left' || leaf.side === 'right') {
+      if (this._visibleSideLeaves[leaf.side] === leaf) {
+        this._visibleSideLeaves[leaf.side] = Array.from(this._leaves.values()).find(
+          (candidate) => candidate.side === leaf.side && Boolean(candidate.view),
+        ) || null;
+      }
+    }
     if (this._activeLeaf === leaf) this._activeLeaf = null;
     leaf.containerEl.remove();
     this.trigger('plugin-views-changed');
@@ -645,6 +746,10 @@ export class OOWorkspace extends Events {
           this._activePluginViews.delete(previousViewType);
         }
       }
+      // A leaf hosts one view. Rebuild its native ItemView structure for the
+      // new type before the plugin constructs header and content elements.
+      leaf.containerEl.replaceChildren();
+      leaf.containerEl.setAttribute('data-type', viewType);
       const view = creator(leaf);
       view.pluginId = (creator as any).__pluginId;
       leaf.view = view;
@@ -661,6 +766,7 @@ export class OOWorkspace extends Events {
         (window as any).__oo_active_file = viewFile.path;
       }
       if (pluginCreator) this._activePluginViews.set(viewType, leaf);
+      this._revealSideLeaf(leaf);
       this.trigger('plugin-views-changed');
       console.log(`[Workspace] Created view: ${viewType} → ${view.getDisplayText()} (plugin: ${view.pluginId})`);
       return true;
@@ -686,7 +792,13 @@ export class OOWorkspace extends Events {
         });
       }
     }
-    return views;
+    // A revealed sidebar leaf should be rendered first, which lets the React
+    // host select the same view that a plugin selected through revealLeaf().
+    return views.sort((a, b) => {
+      const aVisible = a.side !== 'main' && this._visibleSideLeaves[a.side] === a.leaf;
+      const bVisible = b.side !== 'main' && this._visibleSideLeaves[b.side] === b.leaf;
+      return Number(bVisible) - Number(aVisible);
+    });
   }
 
   /** Initialize all registered views that should auto-open */

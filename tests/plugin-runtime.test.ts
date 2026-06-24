@@ -3,13 +3,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
+  AbstractInputSuggest,
+  ButtonComponent,
   ConfirmationModal,
   Editor,
   ItemView,
   MarkdownRenderer,
+  Modal,
   Notice,
   Plugin,
   SettingGroup,
+  TextComponent,
   TextFileView,
   WorkspaceLeaf,
 } from '../src/lib/obsidian-api';
@@ -21,6 +25,7 @@ import { getMarkdownProcessorCounts, runMarkdownPostProcessors } from '../src/li
 import { TFile } from '../src/lib/obsidian-api/files';
 import { extractPluginBundleFromZip } from '../src/lib/pluginManager';
 import { PluginManager } from '../src/lib/pluginManager';
+import { addIcon, setIcon } from '../src/lib/obsidian-api/utils';
 
 const manifest = {
   id: 'compat-fixture',
@@ -54,6 +59,66 @@ beforeEach(() => {
 });
 
 describe('plugin runtime compatibility', () => {
+  it('exposes the Obsidian ButtonComponent loading state used by settings plugins', () => {
+    const button = new ButtonComponent(document.body);
+
+    button.setLoading(true);
+    expect(button.buttonEl.classList.contains('is-loading')).toBe(true);
+    expect(button.buttonEl.getAttribute('aria-busy')).toBe('true');
+
+    button.setLoading(false);
+    expect(button.buttonEl.classList.contains('is-loading')).toBe(false);
+    expect(button.buttonEl.getAttribute('aria-busy')).toBe('false');
+  });
+
+  it('renders plugin-registered SVG ribbon icons from their icon ID', () => {
+    addIcon('compat-fixture-ribbon-icon', '<svg data-plugin-icon="fixture"><path d="M1 1h22v22H1z" /></svg>');
+    const target = document.createElement('span');
+
+    setIcon(target, 'compat-fixture-ribbon-icon');
+
+    expect(target.querySelector('[data-plugin-icon="fixture"]')).not.toBeNull();
+  });
+
+  it('renders the built-in open-vault icon used by navigation plugins', () => {
+    const target = document.createElement('span');
+    setIcon(target, 'open-vault');
+    expect(target.querySelector('svg')).not.toBeNull();
+  });
+
+  it('provides the legacy global Electron remote contract to plugins', () => {
+    const app = new OOApp();
+    new PluginManager(app, {
+      onCommandsChanged: vi.fn(),
+      onRibbonChanged: vi.fn(),
+      onStatusBarChanged: vi.fn(),
+      onSettingTabsChanged: vi.fn(),
+      onPluginsChanged: vi.fn(),
+    });
+
+    expect((window as any).electron.remote.getCurrentWindow().isMaximized()).toBe(false);
+    expect((window as any).electron.remote.getCurrentWebContents().getZoomFactor()).toBe(1);
+    expect((window as any).activeWindow).toBe(window);
+    expect((window as any).activeDocument).toBe(document);
+  });
+
+  it('implements the suggestion methods proxied by Iconic', () => {
+    const input = document.createElement('input');
+    const suggest = new (AbstractInputSuggest as any)(new OOApp(), input);
+    suggest.showSuggestions(['first']);
+
+    expect(suggest._suggestions).toEqual(['first']);
+    expect(suggest.suggestEl.querySelectorAll('.suggestion-item')).toHaveLength(1);
+    suggest._cleanup();
+  });
+
+  it('notifies plugin text components when their value is committed programmatically', () => {
+    const input = new TextComponent(document.body);
+    const changed = vi.fn();
+    input.onChange(changed).setValue('vault-file.png').onChanged();
+    expect(changed).toHaveBeenCalledWith('vault-file.png');
+  });
+
   it('deduplicates plugin notices and dismisses them on schedule', () => {
     vi.useFakeTimers();
     try {
@@ -69,12 +134,76 @@ describe('plugin runtime compatibility', () => {
     }
   });
 
+  it('automatically dismisses persistent and long plugin notices', () => {
+    vi.useFakeTimers();
+    try {
+      new (Notice as any)('Persistent plugin failure', 0);
+      new (Notice as any)('Long plugin failure', 60_000);
+
+      vi.advanceTimersByTime(10_000);
+      expect(document.querySelectorAll('.oo-notice')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a modal input focused while its suggestion list is clicked', () => {
+    const modal = new (Modal as any)();
+    const suggestion = document.createElement('div');
+    suggestion.className = 'suggestion-container';
+    const item = document.createElement('div');
+    item.className = 'suggestion-item';
+    suggestion.appendChild(item);
+    modal.containerEl.appendChild(suggestion);
+
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    item.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it('extends SVG elements with Obsidian class helpers', () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as any;
     svg.addClass('is-dirty');
     expect(svg.hasClass('is-dirty')).toBe(true);
     svg.removeClass('is-dirty');
     expect(svg.hasClass('is-dirty')).toBe(false);
+  });
+
+  it('provides event document and window helpers used by plugin editors', () => {
+    const target = document.createElement('input');
+    document.body.appendChild(target);
+    let received: Event | null = null;
+    target.addEventListener('focus', (event) => { received = event; });
+    target.dispatchEvent(new Event('focus'));
+
+    expect((received as any).doc).toBe(document);
+    expect((received as any).win).toBe(window);
+  });
+
+  it('uses string createDiv and createSpan arguments as Obsidian CSS classes', () => {
+    const div = document.body.createDiv('suggestion-item');
+    const span = document.body.createSpan('suggestion-title');
+    const fragment = document.createDocumentFragment();
+    const fragmentDiv = (fragment as any).createDiv('suggestion-content');
+
+    expect(div.classList.contains('suggestion-item')).toBe(true);
+    expect(div.textContent).toBe('');
+    expect(span.classList.contains('suggestion-title')).toBe(true);
+    expect(fragmentDiv.classList.contains('suggestion-content')).toBe(true);
+  });
+
+  it('provides Kanban with a CodeMirror-backed MarkdownEditor', () => {
+    const app = new OOApp();
+    const host = document.createElement('div');
+    const embed = app.embedRegistry.embedByExtension.md({}, null, '');
+    const MarkdownEditor = Object.getPrototypeOf(Object.getPrototypeOf(embed.editMode)).constructor;
+    const editor = new MarkdownEditor(app, host, {});
+
+    expect(editor.cm.dispatch).toBeTypeOf('function');
+    editor.set('Kanban card');
+    expect(editor.get()).toBe('Kanban card');
+    editor.unload();
   });
 
   it('exposes the native plugin-manager and core-plugin contracts to integrations', async () => {
@@ -274,9 +403,99 @@ describe('plugin runtime compatibility', () => {
     const leaf = app.workspace.getRightLeaf(false)!;
     await leaf.setViewState({ type: 'fixture-view', active: true });
     expect(app.workspace.getLeavesOfType('fixture-view')).toHaveLength(1);
+    expect(leaf.view.containerEl).toBe(leaf.containerEl);
+    expect(leaf.containerEl.dataset.type).toBe('fixture-view');
+    expect(leaf.containerEl.firstElementChild?.classList.contains('view-header')).toBe(true);
+    expect(leaf.containerEl.lastElementChild?.classList.contains('view-content')).toBe(true);
     expect(leaf.view.containerEl.textContent).toContain('ready');
     leaf.detach();
     expect(app.workspace.getLeavesOfType('fixture-view')).toHaveLength(0);
+  });
+
+  it('gives sidebar plugins a stateful dock and revealed workspace leaf', async () => {
+    const app = new OOApp();
+    class NavigatorView extends (ItemView as any) {
+      getViewType() { return 'notebook-navigator'; }
+      getDisplayText() { return 'Notebook Navigator'; }
+      async onOpen() { this.contentEl.setText('navigator ready'); }
+    }
+
+    app.workspace.registerViewCreator('notebook-navigator', (leaf: WorkspaceLeaf) => new NavigatorView(leaf));
+    const leaf = app.workspace.getLeftLeaf(false)!;
+    await leaf.setViewState({ type: 'notebook-navigator' });
+    await app.workspace.revealLeaf(leaf);
+
+    expect(app.workspace.getActivePluginViews()[0]).toMatchObject({
+      viewType: 'notebook-navigator',
+      side: 'left',
+    });
+    expect(leaf.view.containerEl.textContent).toContain('navigator ready');
+    expect(leaf.parent.getRoot()).toBe(app.workspace.rootSplit);
+    expect(leaf.getContainer().win).toBe(window);
+
+    app.workspace.leftSplit.collapse();
+    expect(app.workspace.leftSplit.collapsed).toBe(true);
+    app.workspace.leftSplit.expand();
+    expect(app.workspace.leftSplit.collapsed).toBe(false);
+  });
+
+  it('creates distinct workspace leaves for tab, split, and window contexts', () => {
+    const app = new OOApp();
+    const tab = app.workspace.getLeaf('tab');
+    const split = app.workspace.getLeaf('split');
+    const windowLeaf = app.workspace.getLeaf('window');
+
+    expect(new Set([tab.id, split.id, windowLeaf.id]).size).toBe(3);
+  });
+
+  it('recursively copies folders for Notebook Navigator folder duplication', async () => {
+    const files = new Map<string, Uint8Array>([
+      ['Projects/notes.md', new TextEncoder().encode('# Notes')],
+      ['Projects/assets/image.bin', new Uint8Array([1, 2, 3])],
+    ]);
+    const directories = new Set(['Projects', 'Projects/assets']);
+    const fileTree = () => [
+      {
+        isDirectory: true,
+        path: 'Projects',
+        children: [
+          { isDirectory: false, path: 'Projects/notes.md', modifiedAt: 0, size: 7 },
+          {
+            isDirectory: true,
+            path: 'Projects/assets',
+            children: [{ isDirectory: false, path: 'Projects/assets/image.bin', modifiedAt: 0, size: 3 }],
+          },
+        ],
+      },
+      ...(directories.has('Projects copy') ? [{
+        isDirectory: true,
+        path: 'Projects copy',
+        children: [
+          { isDirectory: false, path: 'Projects copy/notes.md', modifiedAt: 0, size: 7 },
+          {
+            isDirectory: true,
+            path: 'Projects copy/assets',
+            children: [{ isDirectory: false, path: 'Projects copy/assets/image.bin', modifiedAt: 0, size: 3 }],
+          },
+        ],
+      }] : []),
+    ];
+    (window as any).electronAPI = {
+      ...(window as any).electronAPI,
+      getFileTree: vi.fn(async () => fileTree()),
+      createDirectory: vi.fn(async (path: string) => { directories.add(path); }),
+      readBinary: vi.fn(async (path: string) => files.get(path) || new Uint8Array()),
+      writeBinary: vi.fn(async (path: string, data: Uint8Array) => { files.set(path, new Uint8Array(data)); }),
+    };
+
+    const app = new OOApp();
+    await app.vault.refreshFiles();
+    const source = app.vault.getFolderByPath('Projects')!;
+    const copied = await app.vault.copy(source, 'Projects copy');
+
+    expect(copied.path).toBe('Projects copy');
+    expect(Array.from(files.get('Projects copy/notes.md') || [])).toEqual(Array.from(files.get('Projects/notes.md') || []));
+    expect(Array.from(files.get('Projects copy/assets/image.bin') || [])).toEqual([1, 2, 3]);
   });
 
   it('opens registered file extensions in their plugin view with file state', async () => {

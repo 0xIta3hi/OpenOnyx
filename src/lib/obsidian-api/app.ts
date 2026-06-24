@@ -7,8 +7,13 @@ import { OOVault } from './vault';
 import { OOWorkspace } from './workspace';
 import { OOMetadataCache } from './metadata';
 import { normalizePath, parseYaml, Scope, stringifyYaml } from './utils';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 
 export class OOApp {
+  // Community plugins use this as a stable key for their IndexedDB-backed
+  // caches. An empty value prevents those stores from being initialized.
+  appId = 'openobsidian';
   vault: OOVault;
   workspace: OOWorkspace;
   metadataCache: OOMetadataCache;
@@ -19,11 +24,7 @@ export class OOApp {
   fileManager: any;
   lastEvent: Event | null = null;
   renderContext: any = {};
-  metadataTypeManager: any = {
-    getAllProperties: () => ({}),
-    getAssignedType: (_property: string) => null,
-    setType: async (_property: string, _type: string) => {},
-  };
+  metadataTypeManager: any;
   secretStorage: any = {
     getSecret: async (key: string) => null,
     setSecret: async (key: string, value: string) => {},
@@ -81,6 +82,13 @@ export class OOApp {
     this.vault = new OOVault();
     this.workspace = new OOWorkspace();
     this.metadataCache = new OOMetadataCache();
+    this.metadataTypeManager = {
+      get properties() { return thisApp.metadataCache.getAllProperties(); },
+      getAllProperties: () => this.metadataCache.getAllProperties(),
+      getAssignedType: (_property: string) => null,
+      getWidget: (type: string) => ({ icon: type === 'checkbox' ? 'lucide-check-square' : type === 'number' ? 'lucide-hash' : 'lucide-type' }),
+      setType: async (_property: string, _type: string) => {},
+    };
     this.scope = new Scope();
     const rootKeyScope = new Scope();
     this.keymap = {
@@ -339,15 +347,52 @@ export class OOApp {
       owner: any = null;
       file: any = null;
       editable = false;
-      set(data: string, _clear: boolean) {}
-      get() { return ''; }
+      cm: EditorView;
+      editor: any;
+
+      constructor(app: any = thisApp, parentEl?: HTMLElement, owner?: any) {
+        super();
+        this.app = app;
+        this.owner = owner || null;
+        const extensions = [
+          EditorView.updateListener.of((update) => {
+            (this as any).onUpdate?.(update, this.editor);
+          }),
+          ...((this as any).buildLocalExtensions?.() || []),
+        ];
+        this.cm = new EditorView({
+          state: EditorState.create({ extensions }),
+          parent: parentEl instanceof HTMLElement ? parentEl : undefined,
+        });
+        (this.cm.dom as any).__oo_editor_view = this.cm;
+        this.editor = {
+          cm: this.cm,
+          getValue: () => this.get(),
+          setValue: (value: string) => this.set(value),
+          focus: () => this.cm.focus(),
+          newlineAndIndentContinueMarkdownList: () => this.cm.dispatch({
+            changes: { from: this.cm.state.selection.main.head, insert: '\n' },
+          }),
+        };
+      }
+
+      buildLocalExtensions() { return []; }
+      onUpdate(_update: any, _editor: any) {}
+      set(data: string, _clear?: boolean) {
+        this.cm.dispatch({ changes: { from: 0, to: this.cm.state.doc.length, insert: data } });
+      }
+      get() { return this.cm.state.doc.toString(); }
       getScroll() { return 0; }
       applyScroll(_scroll: number) {}
       showSearch() {}
+      unload() {
+        delete (this.cm.dom as any).__oo_editor_view;
+        this.cm.destroy();
+      }
     }
     class MockEditMode extends MockMarkdownEditor {
       constructor() {
-        super();
+        super(thisApp);
       }
     }
 

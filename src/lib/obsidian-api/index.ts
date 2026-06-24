@@ -308,7 +308,11 @@ export interface EditorRange { from: EditorPosition; to: EditorPosition; }
 // CM6 StateField stubs — plugins like obsidian-git import these
 import { EditorSelection as CMEditorSelection, StateField } from '@codemirror/state';
 export const editorInfoField: any = StateField.define({
-  create: () => ({ file: null, editor: null }),
+  create: () => {
+    const app = (window as any).__oo_app;
+    const file = app?.vault?.getFileByPath?.((window as any).__oo_active_file || '') || null;
+    return { file, editor: null, node: null };
+  },
   update: (value: any) => value,
 });
 export const editorEditorField: any = StateField.define({
@@ -340,6 +344,10 @@ _EditorSuggest.prototype.onTrigger = function(cursor: any, editor: any, file: an
 _EditorSuggest.prototype.getSuggestions = function(context: any) { return []; };
 _EditorSuggest.prototype.renderSuggestion = function(value: any, el: HTMLElement) {};
 _EditorSuggest.prototype.selectSuggestion = function(value: any, evt: any) {};
+_EditorSuggest.prototype.showSuggestions = function(suggestions: any[] = []) {
+  this.suggestions = Array.isArray(suggestions) ? suggestions : [];
+  return this.suggestions;
+};
 _EditorSuggest.prototype.setInstructions = function(instructions: any[]) { this.instructions = instructions; };
 _EditorSuggest.prototype.open = function() { this.suggestEl.style.display = 'block'; };
 _EditorSuggest.prototype.close = function() { this.suggestEl.style.display = 'none'; };

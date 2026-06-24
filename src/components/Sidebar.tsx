@@ -596,10 +596,19 @@ export function Sidebar({
   const sortLabel =
     sortOptions.find((option) => option.mode === sortMode)?.label ||
     "File name (A to Z)";
+  const hasPrimaryPluginView = Boolean(pluginViews?.length);
 
   return (
     <>
       <div className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}>
+        {hasPrimaryPluginView ? (
+          <PluginViewPanel
+            views={pluginViews || []}
+            onClose={onClosePluginView || (() => {})}
+            fill
+          />
+        ) : (
+          <>
         <div className={`${sidebarHeaderClass} relative`}>
           <h3 className={sidebarTitleClass}>Explorer</h3>
           <div className={sidebarActionsClass}>
@@ -807,16 +816,6 @@ export function Sidebar({
           )}
         </div>
         
-        {/* Left Plugin Views */}
-        {pluginViews && pluginViews.length > 0 && (
-          <div className="sidebar-plugin-views" style={{ flex: 1, minHeight: 200, display: 'flex', flexDirection: 'column' }}>
-            <PluginViewPanel 
-              views={pluginViews} 
-              onClose={onClosePluginView || (() => {})} 
-            />
-          </div>
-        )}
-
         {/* Sidebar Footer - Vault Selector & Settings */}
         {vaultPath && (
           <div className={sidebarFooterClass}>
@@ -880,6 +879,8 @@ export function Sidebar({
               </div>
             )}
           </div>
+        )}
+          </>
         )}
       </div>
 

@@ -36,7 +36,15 @@ import { tags as t } from "@lezer/highlight";
 import { Tab, ViewMode } from "../../types";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SearchReplace } from "./SearchReplace";
-import { Editor as ObsidianEditor, MarkdownView, Menu, TFile } from "../../lib/obsidian-api";
+import {
+  Editor as ObsidianEditor,
+  MarkdownView,
+  Menu,
+  TFile,
+  editorEditorField,
+  editorInfoField,
+  editorLivePreviewField,
+} from "../../lib/obsidian-api";
 import { getAPI } from "../../utils/api";
 import {
   linkAutocomplete,
@@ -53,6 +61,16 @@ import { extractOperations } from "../../utils/collabOperations";
 import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { authManager } from "../../lib/auth";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
+
+function setWritableViewProperty(view: any, key: string, value: unknown): void {
+  for (let target = view; target; target = Object.getPrototypeOf(target)) {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (!descriptor) continue;
+    if (!descriptor.writable && !descriptor.set) return;
+    break;
+  }
+  view[key] = value;
+}
 
 const resizerClass =
   "resizer relative z-10 w-1 shrink-0 cursor-ew-resize bg-transparent transition-colors duration-100 after:absolute after:inset-y-0 after:left-px after:w-0.5 after:bg-[var(--divider-color)] after:opacity-100 hover:after:left-0.5 hover:after:w-[3px] hover:after:bg-[var(--interactive-accent)] active:after:left-0.5 active:after:w-[3px] active:after:bg-[var(--interactive-accent)]";
@@ -2824,6 +2842,12 @@ export function Editor({
         tagPlugin(),
         imageWidgetPlugin(handleOpenImageLightbox),
         headingLivePreviewPlugin(),
+        // These fields are part of Obsidian's CM6 contract. Community editor
+        // extensions (Advanced Canvas, Icon Folder, and others) read them
+        // directly through state.field(...).
+        editorInfoField,
+        editorEditorField,
+        editorLivePreviewField,
         vimCompartment.of([]),
         spellcheckCompartmentRef.current.of(
           EditorView.contentAttributes.of({ spellcheck: readSpellcheckSetting() ? "true" : "false" })
@@ -3029,10 +3053,17 @@ export function Editor({
     const obsidianEditor = new ObsidianEditor(view);
     const obsidianApp = (window as any).__oo_app;
     const activeLeaf = obsidianApp?.workspace?.activeLeaf;
-    if (activeLeaf?.view instanceof (MarkdownView as any)) {
+    // Some custom file views inherit MarkdownView for its file lifecycle but
+    // own their editor and expose file as a getter (for example Kanban).
+    // Only bind the host CodeMirror editor to the actual Markdown view.
+    if (activeLeaf?.view instanceof (MarkdownView as any) && activeLeaf.view.getViewType?.() === 'markdown') {
       activeLeaf.view.editor = obsidianEditor;
       activeLeaf.view.sourceMode = { cmEditor: obsidianEditor };
-      activeLeaf.view.file = obsidianApp.vault.getFileByPath((window as any).__oo_active_file || '');
+      setWritableViewProperty(
+        activeLeaf.view,
+        'file',
+        obsidianApp.vault.getFileByPath((window as any).__oo_active_file || ''),
+      );
     }
     if (obsidianApp?.workspace) {
       obsidianApp.workspace.activeEditor = {
@@ -3622,7 +3653,7 @@ export function Editor({
          // Sync the file info
          const activeTab = tabs.find(t => t.id === activeTabId);
          if (activeTab) {
-           activeLeaf.view.file = new TFile(activeTab.path);
+           setWritableViewProperty(activeLeaf.view, 'file', new TFile(activeTab.path));
          }
  
          // Initialize editor mocks if needed

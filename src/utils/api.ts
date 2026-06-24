@@ -13,12 +13,15 @@ type API = typeof window.electronAPI;
 let _api: API | null = null;
 
 export function getAPI(): API {
-  if (_api) return _api;
-
   if (window.electronAPI) {
-    // Running inside Electron — use real API
-    _api = window.electronAPI;
-  } else {
+    // Electron replaces this bridge when a renderer reloads. Refresh the
+    // cached reference so plugin and vault operations never target a stale
+    // preload object.
+    if (_api !== window.electronAPI) _api = window.electronAPI;
+    return _api;
+  }
+
+  if (!_api) {
     // Running in browser — use mock API
     console.log(
       "%c[OpenObsidian] Running in browser mode with mock API",

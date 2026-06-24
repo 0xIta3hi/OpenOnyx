@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FilePlus,
   Network,
@@ -8,6 +8,7 @@ import {
   Layout,
 } from "lucide-react";
 import type { PluginRibbonAction } from '../types/plugin';
+import { setIcon } from '../lib/obsidian-api/utils';
 import { SpacesIcon } from "./SpacesIcon";
 
 const ribbonRootClass = "flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
@@ -43,6 +44,19 @@ export function Ribbon({
 }: RibbonProps) {
   const [hoveringRibbon, setHoveringRibbon] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const ribbonRootRef = useRef<HTMLDivElement | null>(null);
+  const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const ribbon = (window as any).__oo_app?.workspace?.leftRibbon;
+    if (!ribbon) return;
+    ribbon.containerEl = ribbonRootRef.current;
+    ribbon.ribbonItemsEl = ribbonItemsRef.current;
+    return () => {
+      if (ribbon.containerEl === ribbonRootRef.current) ribbon.containerEl = document.createElement('div');
+      if (ribbon.ribbonItemsEl === ribbonItemsRef.current) ribbon.ribbonItemsEl = ribbon.containerEl;
+    };
+  }, []);
 
   const handleMouseEnter = () => {
     hoverTimeoutRef.current = setTimeout(() => {
@@ -58,10 +72,11 @@ export function Ribbon({
   return (
     <div 
       className={`${ribbonRootClass} ${hoveringRibbon ? "tooltips-ready" : ""}`}
+      ref={ribbonRootRef}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className={ribbonGroupClass}>
+      <div className={ribbonGroupClass} ref={ribbonItemsRef}>
         <button
           className={ribbonBtnClass}
           onClick={onNewNote}
@@ -125,15 +140,18 @@ export function Ribbon({
         {pluginRibbonActions.map((action, i) => (
           <button
             key={`plugin-ribbon-${action.pluginId}-${i}`}
-            className={ribbonBtnClass}
+            className={`${ribbonBtnClass} oo-plugin-ribbon-btn`}
             onClick={(e) => action.callback(e.nativeEvent)}
             data-tooltip={action.title}
           >
             <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               ref={(el) => {
-                if (el && action.el) {
-                  el.innerHTML = '';
-                  el.appendChild(action.el.cloneNode(true));
+                if (el) {
+                  setIcon(el, action.icon);
+                  const item = (window as any).__oo_app?.workspace?.leftRibbon?.items?.find(
+                    (entry: any) => entry.id === (action as any).id,
+                  );
+                  if (item) item.buttonEl = el;
                 }
               }}
             />

@@ -60,7 +60,10 @@ async function evaluate(expression) {
       clearTimeout(timeout);
       socket.close();
       if (message.result.exceptionDetails) {
-        reject(new Error(message.result.exceptionDetails.text));
+        reject(new Error(
+          message.result.exceptionDetails.exception?.description
+          || message.result.exceptionDetails.text,
+        ));
         return;
       }
       resolve(message.result.result.value);
@@ -113,13 +116,23 @@ async function main() {
     const plugins = await evaluate(`Object.keys(app?.plugins?.plugins || {})`);
     return plugins.includes('obsidian-excalidraw-plugin');
   }, 'Excalidraw plugin');
+  await waitFor(
+    async () => await evaluate(`Boolean(app?.commands?.commands?.['obsidian-excalidraw-plugin:excalidraw-autocreate-newtab'])`),
+    'Excalidraw create command',
+  );
 
   const result = await evaluate(`
     (async () => {
       const errors = [];
       const describeError = (error) => error?.stack || String(error);
-      const onError = (event) => errors.push(describeError(event.error || event.message));
-      const onRejection = (event) => errors.push(describeError(event.reason));
+      const onError = (event) => {
+        errors.push(describeError(event.error || event.message));
+        event.preventDefault();
+      };
+      const onRejection = (event) => {
+        errors.push(describeError(event.reason));
+        event.preventDefault();
+      };
       const themeProbe = document.createElement('div');
       themeProbe.className = 'theme-light';
       document.body.appendChild(themeProbe);
@@ -140,18 +153,40 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, 9_000));
         const created = app.vault.getFiles().find((file) => !before.has(file.path) && file.path.endsWith('.excalidraw.md'));
         createdPath = created?.path || null;
+        await window.__oo_open_file?.(createdPath);
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const view = app.workspace.activeLeaf?.view;
         const plugin = app.plugins.getPlugin('obsidian-excalidraw-plugin');
+        const insertFileCommandExecuted = app.commands.executeCommandById('obsidian-excalidraw-plugin:universal-add-file');
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const insertFileInput = document.querySelector('.excalidraw-modal input');
+        if (insertFileInput) {
+          insertFileInput.focus();
+          insertFileInput.dispatchEvent(new Event('focus'));
+          insertFileInput.value = 'Natural';
+          insertFileInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const insertFileSuggestions = document.querySelectorAll('.suggestion-item').length;
+        const insertFileSuggestionText = Array.from(document.querySelectorAll('.suggestion-container'))
+          .map((element) => element.textContent || '')
+          .join('\\n');
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
         const result = {
           createdPath,
           errors,
           viewType: view?.getViewType?.(),
+          routedViewType: app.workspace.activeLeaf?.view?.getViewType?.(),
           viewFile: view?.file?.path,
           hasContentEl: view?.contentEl instanceof HTMLElement,
           hasCanvasApi: typeof view?.excalidrawAPI?.getSceneElements === 'function',
           activeViewMatches: plugin?.activeExcalidrawView === view,
           pluginReady: plugin?.isReady,
           pluginLoaded: plugin?._loaded,
+          insertFileCommandExecuted,
+          insertFileSuggestions,
+          insertFileSuggestionText,
+          hasInsertFileInput: !!insertFileInput,
           themeVariables,
           registeredExtensions: app.workspace?._extensionViews
             ? Array.from(app.workspace._extensionViews.entries())
@@ -177,12 +212,15 @@ async function main() {
   const failures = [
     !result.createdPath && 'drawing file was not created',
     result.viewType !== 'excalidraw' && `unexpected view type: ${result.viewType}`,
+    result.routedViewType !== 'excalidraw' && `file-tree route opened ${result.routedViewType} instead of Excalidraw`,
     result.viewFile !== result.createdPath && 'view did not receive the drawing file',
     !result.hasContentEl && 'view has no content element',
     !result.hasCanvasApi && 'Excalidraw canvas API did not initialize',
     !result.themeVariables.backgroundPrimary && 'Tailwind theme did not expose --background-primary',
     !result.themeVariables.textNormal && 'Tailwind theme did not expose --text-normal',
     !result.activeViewMatches && 'plugin did not mark the drawing as active',
+    !result.insertFileCommandExecuted && 'Excalidraw add-file command did not execute',
+    !result.hasInsertFileInput && 'Excalidraw add-file dialog did not open',
     result.errors.length > 0 && `renderer errors: ${result.errors.join('; ')}`,
   ].filter(Boolean);
   if (failures.length > 0) {

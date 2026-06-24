@@ -412,12 +412,40 @@ export class OOVault extends Events {
     this.trigger('rename', file, oldPath);
   }
 
-  async copy(file: TAbstractFile, newPath: string): Promise<TFile> {
+  async copy(file: TAbstractFile, newPath: string): Promise<TAbstractFile> {
     if (file instanceof TFile) {
       const data = await this.read(file);
       return this.create(newPath, data);
     }
-    throw new Error('Cannot copy folders');
+
+    if (file instanceof TFolder) {
+      const sourcePath = normalizePath(file.path);
+      const destinationPath = normalizePath(newPath);
+      const prefix = sourcePath ? `${sourcePath}/` : '';
+      const descendants = Array.from(this._files.values())
+        .filter((entry) => entry.path.startsWith(prefix))
+        .sort((a, b) => a.path.length - b.path.length);
+
+      await api().createDirectory(destinationPath);
+      for (const entry of descendants) {
+        const relativePath = entry.path.slice(prefix.length);
+        const targetPath = `${destinationPath}/${relativePath}`;
+        if (entry instanceof TFolder) {
+          await api().createDirectory(targetPath);
+        } else if (entry instanceof TFile) {
+          const bytes = await this.readBinary(entry);
+          await api().writeBinary(targetPath, new Uint8Array(bytes));
+        }
+      }
+
+      await this.refreshFiles();
+      const copiedFolder = this.getFolderByPath(destinationPath);
+      if (!copiedFolder) throw new Error(`Copied folder was not found: ${destinationPath}`);
+      this.trigger('create', copiedFolder);
+      return copiedFolder;
+    }
+
+    throw new Error('Cannot copy an unknown file type');
   }
 
   getLastOpenFiles(): string[] { return []; }
