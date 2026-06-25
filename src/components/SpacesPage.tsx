@@ -195,7 +195,7 @@ const spaceChatMessageClass =
 const spaceChatUserMessageClass = "items-end";
 const spaceChatAssistantMessageClass = "items-start";
 const spaceChatUserBubbleClass =
-  "max-w-[70%] break-words rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-2.5 text-[13px] leading-normal text-[var(--text-primary)] shadow-[0_4px_12px_rgba(0,0,0,0.12)]";
+  "max-w-[70%] break-words rounded-[20px] bg-[var(--bg-active)] px-5 py-3 text-[14px] leading-normal text-[var(--text-primary)] font-medium";
 const spaceChatAssistantContentClass =
   "w-full border-0 bg-transparent p-0 text-sm leading-[1.6] text-[var(--text-primary)] [&_.markdown-preview]:min-h-0 [&_.markdown-preview]:max-w-none [&_.markdown-preview]:p-0 [&_.markdown-preview_p]:mb-3 [&_.markdown-preview_p]:mt-0 [&_.markdown-preview_p:last-child]:mb-0 [&_.markdown-preview_ul]:mb-3 [&_.markdown-preview_ul]:mt-0 [&_.markdown-preview_ul]:pl-5 [&_.markdown-preview_ol]:mb-3 [&_.markdown-preview_ol]:mt-0 [&_.markdown-preview_ol]:pl-5 [&_.markdown-preview_li]:mb-1 [&_.markdown-preview_h1]:mb-2 [&_.markdown-preview_h1]:mt-[18px] [&_.markdown-preview_h1]:text-base [&_.markdown-preview_h1]:font-semibold [&_.markdown-preview_h1]:leading-[1.3] [&_.markdown-preview_h2]:mb-2 [&_.markdown-preview_h2]:mt-[18px] [&_.markdown-preview_h2]:text-sm [&_.markdown-preview_h2]:font-semibold [&_.markdown-preview_h2]:leading-[1.3] [&_.markdown-preview_h3]:mb-2 [&_.markdown-preview_h3]:mt-[18px] [&_.markdown-preview_h3]:text-xs [&_.markdown-preview_h3]:font-semibold [&_.markdown-preview_h3]:leading-[1.3] [&_.markdown-preview_pre]:my-3 [&_.markdown-preview_pre]:overflow-x-auto [&_.markdown-preview_pre]:rounded-[var(--radius-md)] [&_.markdown-preview_pre]:border [&_.markdown-preview_pre]:border-[var(--border-subtle)] [&_.markdown-preview_pre]:bg-[var(--bg-secondary)] [&_.markdown-preview_pre]:p-3 [&_.markdown-preview_pre]:font-[var(--font-mono)] [&_.markdown-preview_pre]:text-xs [&_.markdown-preview_code]:rounded-[var(--radius-sm)] [&_.markdown-preview_code]:bg-[var(--bg-secondary)] [&_.markdown-preview_code]:px-1.5 [&_.markdown-preview_code]:py-0.5 [&_.markdown-preview_code]:font-[var(--font-mono)] [&_.markdown-preview_code]:text-xs [&_.markdown-preview_code]:text-[var(--text-primary)] [&_.markdown-preview_pre_code]:bg-transparent [&_.markdown-preview_pre_code]:p-0";
 const spaceChatSourcesClass =
@@ -210,7 +210,7 @@ const spaceChatLoadingClass =
 const spaceChatLoadingSpinnerClass =
   "h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border-subtle)] border-t-[var(--text-muted)]";
 const spaceChatInputPanelClass = "shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] px-6 py-4";
-const spaceChatInputWrapperClass = "relative mx-auto flex w-full max-w-[760px] flex-col rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] shadow-[0_8px_24px_rgba(0,0,0,0.12)] focus-within:border-[var(--border-medium)]";
+const spaceChatInputWrapperClass = "relative mx-auto flex w-full max-w-[760px] flex-col rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] focus-within:border-[var(--border-medium)]";
 const spaceChatInputClass = "min-h-[52px] w-full resize-none border-0 bg-transparent px-4 py-3 text-[13px] leading-normal text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
 const spaceChatInputActionsClass = "flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-3 py-2";
 const spaceChatTokenCounterClass = "text-[10px] text-[var(--text-muted)] opacity-80";
@@ -225,7 +225,7 @@ const spaceChatFooterClass =
 const spaceChatMemoryClass =
   "absolute -top-[18px] right-4 text-[9px] font-medium tracking-[0.02em] text-[var(--text-muted)] opacity-80";
 const spaceToastBaseClass =
-  "fixed bottom-6 left-1/2 z-[9999] max-w-[400px] -translate-x-1/2 cursor-pointer rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] px-4 py-2 text-center text-xs font-semibold shadow-[var(--shadow-sm)]";
+  "fixed bottom-6 left-1/2 z-[9999] max-w-[400px] -translate-x-1/2 cursor-pointer rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] px-4 py-2 text-center text-xs font-semibold";
 const spaceToastSuccessClass =
   "border border-[var(--border-medium)] text-[var(--text-primary)]";
 const spaceToastErrorClass =
@@ -233,7 +233,7 @@ const spaceToastErrorClass =
 const spaceOperationsGridClass = "flex flex-col gap-1";
 const spaceOperationsBtnClass = "flex w-full cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-2 text-left text-[11px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:text-[var(--accent-primary)]";
 const spaceActionCardClass =
-  "mt-3 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] shadow-[0_2px_6px_rgba(0,0,0,0.02)]";
+  "mt-3 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)]";
 const spaceActionCardAppliedClass =
   "border-[rgba(72,199,142,0.3)] bg-[rgba(72,199,142,0.03)]";
 const spaceActionCardRejectedClass =
@@ -273,7 +273,7 @@ const insightTypeClass = "text-[11px] text-[var(--text-primary)]";
 const insightDescriptionClass = "leading-[1.4] text-[var(--text-secondary)]";
 const insightNotesClass = "italic text-[var(--text-muted)]";
 const mentionDropdownClass =
-  "absolute bottom-[calc(100%+8px)] left-0 z-[10000] max-h-[220px] w-full max-w-[360px] overflow-y-auto rounded-md border border-[var(--border-strong)] bg-[var(--color-base-25)] p-1 shadow-[var(--shadow-lg)]";
+  "absolute bottom-[calc(100%+8px)] left-0 z-[10000] max-h-[220px] w-full max-w-[360px] overflow-y-auto rounded-md border border-[var(--border-strong)] bg-[var(--color-base-25)] p-1";
 const mentionItemClass =
   "flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const mentionItemActiveClass =
@@ -288,7 +288,7 @@ const activeActionProcessingClass =
 const activeActionCompletedClass =
   "border-[rgba(72,199,142,0.15)] bg-[rgba(72,199,142,0.08)] text-[#48c78e]";
 const spaceRightSidebarClass =
-  "flex h-full w-[440px] shrink-0 flex-col gap-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]";
+  "flex h-full w-[440px] shrink-0 flex-col gap-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-5";
 const spaceRightSidebarHeaderClass =
   "flex shrink-0 flex-col items-stretch gap-2.5 border-b border-[var(--border-subtle)] pb-2.5";
 const spaceRightSidebarHeaderRowClass =
@@ -525,6 +525,8 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [chatMessages, setChatMessages] = useState<SpaceChatMessage[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [saveNoteMessage, setSaveNoteMessage] = useState<SpaceChatMessage | null>(null);
+  const [saveNoteTitle, setSaveNoteTitle] = useState("");
 
   // Conversation session states
   const [conversations, setConversations] = useState<SpaceConversation[]>([]);
@@ -1286,6 +1288,73 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     if (!activeSpace) return;
     await handleChat("Examine the titles, folders, and contents of the notes in this space. Suggest note mergers for duplicate topics, title improvements, and folder restructuring changes to improve coherence and indexing. Return this as a suggest_structure action block.");
   }, [handleChat, activeSpace]);
+
+  const executeSaveAsNote = async () => {
+    if (!saveNoteMessage) return;
+    try {
+      const content = stripJSONBlock(saveNoteMessage.content);
+      if (!content) {
+        showToast("No content to save", "error");
+        return;
+      }
+
+      const trimmedTitle = saveNoteTitle.trim();
+      if (!trimmedTitle) {
+        showToast("Note title cannot be empty", "error");
+        return;
+      }
+
+      let notePath = trimmedTitle;
+      if (!notePath.toLowerCase().endsWith(".md")) {
+        notePath += ".md";
+      }
+
+      const exists = await (window as any).electronAPI.fileExists(notePath);
+      if (exists) {
+        const overwrite = window.confirm(`Note "${notePath}" already exists. Overwrite?`);
+        if (!overwrite) return;
+      }
+
+      await (window as any).electronAPI.writeFile(notePath, content);
+      showToast(`Saved to note "${notePath}"!`, "success");
+      setSaveNoteMessage(null);
+      handleBuildIndex();
+    } catch (err) {
+      showToast("Failed to save note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
+    }
+  };
+
+  const handleSaveAsNote = (msg: SpaceChatMessage) => {
+    const content = stripJSONBlock(msg.content);
+    if (!content) {
+      showToast("No content to save", "error");
+      return;
+    }
+
+    // Generate a default title from preceding user query
+    let defaultTitle = "";
+    const msgIndex = chatMessages.findIndex(m => m.id === msg.id);
+    if (msgIndex !== -1) {
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        if (chatMessages[i].role === "user") {
+          defaultTitle = chatMessages[i].content
+            .replace(/[#*`[\]]/g, "") // strip markdown
+            .replace(/[\/\\]/g, " ")  // strip path separators
+            .trim()
+            .substring(0, 40)
+            .trim();
+          break;
+        }
+      }
+    }
+
+    if (!defaultTitle) {
+      defaultTitle = "AI Response";
+    }
+
+    setSaveNoteTitle(defaultTitle);
+    setSaveNoteMessage(msg);
+  };
 
   // ── Filesystem Action Executors ───────────────────────
   const handleCreateNoteAction = async (title: string, path: string, content: string, msgId: string) => {
@@ -2300,13 +2369,25 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 ) : (
                   <>
                     {stripJSONBlock(msg.content) && (
-                      <div className={spaceChatAssistantContentClass}>
-                        <MarkdownPreview
-                          content={stripJSONBlock(msg.content)}
-                          onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
-                          constrainWidth={false}
-                        />
-                      </div>
+                      <>
+                        <div className={spaceChatAssistantContentClass}>
+                          <MarkdownPreview
+                            content={stripJSONBlock(msg.content)}
+                            onLinkClick={(link) => onOpenNote?.(`${link}.md`)}
+                            constrainWidth={false}
+                          />
+                        </div>
+                        <div className="mt-2 flex items-center">
+                          <button
+                            onClick={() => handleSaveAsNote(msg)}
+                            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-medium)] bg-[var(--bg-secondary)] px-3.5 py-1.5 text-xs font-semibold text-[var(--text-primary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] cursor-pointer"
+                            title="Save this response as a new note in your vault"
+                          >
+                            <FileText size={13} className="text-[var(--accent-primary)]" />
+                            <span>Save as a note</span>
+                          </button>
+                        </div>
+                      </>
                     )}
 
                     {/* Render Interactive Action Cards if JSON action exists — only for local/owned spaces */}
@@ -3100,6 +3181,54 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         )}
 
       </div>
+
+      {saveNoteMessage && (
+        <div className={modalOverlayClass} onClick={() => setSaveNoteMessage(null)}>
+          <div className={modalContentClass} onClick={(e) => e.stopPropagation()}>
+            <div className={modalHeaderClass}>
+              <h3 className={modalTitleClass}>Save Response as Note</h3>
+              <button className={modalCloseClass} onClick={() => setSaveNoteMessage(null)}>
+                <X size={14} />
+              </button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                await executeSaveAsNote();
+              }}
+              className={spaceCreateFormClass}
+            >
+              <div className={spaceFormFieldClass}>
+                <label className={spaceFormLabelClass}>Note Title</label>
+                <input
+                  type="text"
+                  value={saveNoteTitle}
+                  onChange={(e) => setSaveNoteTitle(e.target.value)}
+                  className={spaceFormInputClass}
+                  placeholder="Enter note title..."
+                  autoFocus
+                />
+              </div>
+              <div className={spaceFormActionsClass}>
+                <button
+                  type="button"
+                  className={cx(spaceSidebarBtnClass)}
+                  onClick={() => setSaveNoteMessage(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={cx(spaceSidebarBtnClass, spaceSidebarBtnPrimaryClass)}
+                  disabled={!saveNoteTitle.trim()}
+                >
+                  Save Note
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAuthModal && (
         <AuthModal
