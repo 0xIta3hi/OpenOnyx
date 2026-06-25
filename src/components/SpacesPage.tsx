@@ -209,15 +209,15 @@ const spaceChatLoadingClass =
   "mx-auto flex w-full max-w-[820px] items-center gap-2 self-start rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-muted)]";
 const spaceChatLoadingSpinnerClass =
   "h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--border-subtle)] border-t-[var(--text-muted)]";
-const spaceChatInputPanelClass = "shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] px-6 py-4";
-const spaceChatInputWrapperClass = "relative mx-auto flex w-full max-w-[760px] flex-col rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] focus-within:border-[var(--border-medium)]";
-const spaceChatInputClass = "min-h-[52px] w-full resize-none border-0 bg-transparent px-4 py-3 text-[13px] leading-normal text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
-const spaceChatInputActionsClass = "flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-3 py-2";
-const spaceChatTokenCounterClass = "text-[10px] text-[var(--text-muted)] opacity-80";
+const spaceChatInputPanelClass = "shrink-0 bg-[var(--bg-primary)] px-6 pt-4 pb-3";
+const spaceChatInputWrapperClass = "relative mx-auto flex w-full max-w-[760px] items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] pl-3 pr-2 py-1.5 focus-within:border-[var(--border-medium)]";
+const spaceChatInputClass = "flex-1 min-h-[36px] max-h-[120px] resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] leading-normal text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+const spaceChatInputActionsClass = "flex items-center gap-1 shrink-0";
+const spaceChatTokenCounterClass = "text-[10px] text-[var(--text-muted)] opacity-80 mr-1";
 const spaceChatSendClass =
-  "flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--accent-primary)] text-[var(--text-on-accent)] transition-all duration-150 hover:bg-[var(--accent-secondary)] disabled:cursor-not-allowed disabled:bg-[var(--bg-active)] disabled:text-[var(--text-muted)] disabled:opacity-30";
+  "flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--text-primary)] text-[var(--bg-primary)] transition-all duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--bg-active)] disabled:text-[var(--text-muted)] disabled:opacity-40";
 const spaceChatAbortClass =
-  "bg-[var(--accent-red,#ff5252)] text-white hover:bg-[#ff7b7b]";
+  "bg-red-500 text-white hover:bg-red-600 disabled:opacity-50";
 const spaceChatNoAiClass =
   "mt-1.5 text-center text-[9px] text-[var(--text-muted)]";
 const spaceChatFooterClass =
@@ -440,6 +440,78 @@ function detectActionType(text: string, query?: string): string | null {
   return null;
 }
 
+function getPayloadActions(payload: any): any[] {
+  if (!payload) return [];
+  if (Array.isArray(payload.actions)) return payload.actions;
+  if (payload.intent === "create_note" || payload.action === "create_note") {
+    return [{ ...payload, type: "create_note" }];
+  }
+  if (payload.intent === "update_note" || payload.action === "update_note") {
+    return [{ ...payload, type: "update_note" }];
+  }
+  return [];
+}
+
+function payloadRequiresSourceMutation(payload: any): boolean {
+  if (!payload) return false;
+  const intent = payload.intent || payload.action;
+  if (intent === "update_note" || intent === "suggest_structure" || intent === "suggest_links") return true;
+  return getPayloadActions(payload).some((action) => action?.type === "update_note");
+}
+
+function payloadCreatesOnlyLocalNotes(payload: any): boolean {
+  if (!payload) return false;
+  const intent = payload.intent || payload.action;
+  if (intent === "insight_report") return true;
+  const actions = getPayloadActions(payload);
+  return actions.length > 0 && actions.every((action) => action?.type === "create_note");
+}
+
+function isLocalExportRequest(query: string): boolean {
+  return /\b(save|export|create|make|new)\b[\s\S]{0,40}\b(note|file|document|markdown|md)\b/i.test(query) ||
+    /\b(save as|save it as|save this as|summarize.*save|summary.*note|local note)\b/i.test(query);
+}
+
+function isDirectSourceEditRequest(query: string): boolean {
+  if (isLocalExportRequest(query)) return false;
+  return /\b(edit|update|rewrite|modify|change|fix|improve|add|remove|rename|move|delete|organize|restructure|merge|insert|link)\b[\s\S]{0,80}\b(file|note|source|space|folder|document|md)\b/i.test(query) ||
+    /\b(edit|update|rewrite|modify|change|fix|improve)\b/i.test(query);
+}
+
+function inferEditTarget(query: string): string | null {
+  const match = query.match(/\b(?:edit|update|rewrite|modify|change|fix|improve)\s+(?:the\s+)?(.+?)(?:\s+(?:file|note|document|md))?(?:[?.!]|$)/i);
+  if (!match?.[1]) return null;
+  const target = match[1]
+    .replace(/^this\s+/i, "")
+    .replace(/^that\s+/i, "")
+    .replace(/^public\s+/i, "")
+    .trim();
+  return target.length > 0 && target.length < 80 ? target : null;
+}
+
+function buildReadOnlyEditResponse(query: string, sourceTitles: string[] = []): string {
+  const target = inferEditTarget(query);
+  const targetText = target ? `the **${target}** file` : "that source file";
+  const uniqueSources = [...new Set(sourceTitles.filter(Boolean))].slice(0, 4);
+  const sourceLine = uniqueSources.length > 0
+    ? `\n\nI found relevant context from: ${uniqueSources.map((s) => `\`${s}\``).join(", ")}.`
+    : "";
+
+  return `I can't directly edit ${targetText} in a public/read-only space. Public space notes are protected here, even when you own the space.${sourceLine}
+
+What I can do instead:
+- Draft the exact changes you should make to ${targetText}.
+- Explain what should be updated and why.
+- Create a new local note in your current vault based on this public-space context.
+- Remix this space so the notes become editable.
+
+You can ask me to:
+- "Draft the changes for ${target || "that file"}."
+- "Summarize ${target || "that file"} and save it as a note."
+- "Create a local note from ${target || "this source"}."
+- "Remix this space so I can edit it directly."`;
+}
+
 /**
  * Strips JSON action blocks (complete or incomplete) from assistant messages.
  */
@@ -505,7 +577,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // Space view state
   const [activeSpace, setActiveSpace] = useState<Space | null>(null);
   const currentUserId = authManager.getUserId();
-  const isRemote = activeSpace?.visibility !== "local" && activeSpace?.ownerId !== currentUserId;
+  const isReadOnlySourceSpace = !!activeSpace && (
+    activeSpace.visibility === "public" ||
+    (activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId)
+  );
+  const canMutateSpaceSource = !!activeSpace && !isReadOnlySourceSpace;
+  const canCreateLocalNotesFromSpace = !!activeSpace;
 
   // Create form states
   const [createTitle, setCreateTitle] = useState("");
@@ -726,7 +803,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setStreamingText("");
       setChatInput("");
       const currentUserId = authManager.getUserId();
-      const isRemoteSpace = space.visibility !== "local" && space.ownerId !== currentUserId;
+      const isRemoteSpace = space.visibility === "public" || (space.visibility !== "local" && space.ownerId !== currentUserId);
       
       // If it's a cloud space owned by someone else, we don't auto-index on open
       setIsIndexed(isRemoteSpace);
@@ -969,13 +1046,21 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // ── Build index (auto-indexes entire vault) ──────────
   const handleBuildIndex = useCallback(async () => {
     if (!activeSpaceId) return;
+    if (isReadOnlySourceSpace) {
+      setIsIndexed(true);
+      showToast("Public/read-only spaces use their published index. Remix to build an editable local index.", "error");
+      return;
+    }
     setIsIndexing(true);
     
     try {
       let customNotes: VaultNote[] | undefined = undefined;
       
       const currentUserId = authManager.getUserId();
-      const isRemoteSpace = activeSpace && activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId;
+      const isRemoteSpace = !!activeSpace && (
+        activeSpace.visibility === "public" ||
+        (activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId)
+      );
       if (activeSpace?.visibility === "private" && !privateCrypto.isUnlocked(activeSpaceId)) {
         showToast("Unlock this private space to use AI features.", "error");
         setIsIndexing(false);
@@ -1022,13 +1107,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       showToast("Indexing failed. Check logs for details.", "error");
     }
     setIsIndexing(false);
-  }, [activeSpaceId, activeSpace, refreshSpaces, showToast]);
+  }, [activeSpaceId, activeSpace, isReadOnlySourceSpace, refreshSpaces, showToast]);
 
   useEffect(() => {
-    if (activeSpaceId && fileTree.length > 0 && view === "space" && !isIndexed && !isIndexing && !isRemote) {
+    if (activeSpaceId && fileTree.length > 0 && view === "space" && !isIndexed && !isIndexing && canMutateSpaceSource) {
       handleBuildIndex();
     }
-  }, [activeSpaceId, activeSpace, isRemote, isIndexed, isIndexing, view, fileTree.length, handleBuildIndex]);
+  }, [activeSpaceId, activeSpace, canMutateSpaceSource, isIndexed, isIndexing, view, fileTree.length, handleBuildIndex]);
 
   // Fetch remote notes for preview when entering a cloud space
   useEffect(() => {
@@ -1137,10 +1222,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       }
 
       // ── Detect Complex/Vault-Wide Tasks ───────────────────
-      // Only run for local/owned spaces — remote/public spaces are query-only
+      // Only run for writable source spaces. Public spaces are read-only even for their owner.
       let finalQuery = q;
 
-      if (!isRemote) {
+      if (canMutateSpaceSource) {
       const historyText = (chatMessages || []).slice(-3).map(m => m.content).join(" ");
       const combinedText = (q + " " + historyText).toLowerCase();
 
@@ -1206,24 +1291,39 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         finalQuery += `2. You should update ALL orphan notes in a single go by using Option B (search-and-replace patches) under 'changes'. Simply search for a specific line (e.g. the main heading or the end of the note) and replace it with that line plus the new [[Wiki Link]]. This allows you to process all files in a single response quickly. Only use Option A (full file updates) if you are editing 1-2 notes maximum.\n`;
         finalQuery += `3. Do not use emojis in the responses, titles, paths, or contents.`;
       }
-      } // end !isRemote guard
+      } // end canMutateSpaceSource guard
+
+      if (isReadOnlySourceSpace && isDirectSourceEditRequest(q)) {
+        finalQuery += `\n\nREAD-ONLY EDIT REQUEST HANDLING:\nThe user is asking to edit an existing source note in a public/read-only space. Do not output an action block. Reply in visible markdown. Say that direct edits are blocked, then offer useful follow-ups: draft changes, summarize/save as a new local note, or Remix to edit directly.`;
+      }
 
       const spaceMeta: SpaceMetadata = {
         title: activeSpace.title,
         description: activeSpace.description,
         helpsWith: activeSpace.helpsWith || [],
         explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
-        readOnly: isRemote,
+        allowLocalNoteCreation: canCreateLocalNotesFromSpace,
+        readOnly: isReadOnlySourceSpace,
       };
       const result = await querySpaceStreaming(activeSpaceId, finalQuery, spaceMeta, chatMessages, (chunk) => {
         accumulatedAnswer += chunk;
         setStreamingText(accumulatedAnswer);
       }, controller.signal);
+      const resultPayload = parseActionPayload(result.answer);
+      const visibleAnswer = stripJSONBlock(result.answer).trim();
+      const answerWasBlockedSourceMutation = isReadOnlySourceSpace && !!resultPayload && payloadRequiresSourceMutation(resultPayload);
+      const shouldUseReadOnlyFallback = isReadOnlySourceSpace && (
+        answerWasBlockedSourceMutation ||
+        (!visibleAnswer && isDirectSourceEditRequest(q))
+      );
+      const finalAnswer = shouldUseReadOnlyFallback
+        ? buildReadOnlyEditResponse(q, result.sources.map((s) => s.noteTitle))
+        : result.answer;
 
       const assistantMsg: SpaceChatMessage = {
         id: `msg-${Date.now()}-resp`,
         role: "assistant",
-        content: result.answer,
+        content: finalAnswer,
         sources: result.sources.map((s) => s.noteTitle),
         timestamp: Date.now(),
       };
@@ -1276,18 +1376,28 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // ── Dashboard Operations Click Handlers ────────────────
   const handleGenerateSummary = useCallback(async () => {
     if (!activeSpace) return;
-    await handleChat("Generate a comprehensive, highly structured space_summary.md file for the entire active space, synthesizing all key concepts, notes, and topics in the structured multi-note synthesis format: # Topic, ## Key Ideas, ## Insights, ## Gaps, ## Suggested Actions. Return this only as a create_note action block.");
-  }, [handleChat, activeSpace]);
+    const instruction = isReadOnlySourceSpace
+      ? "Create a new local vault note that summarizes this public/read-only space. Do not edit the source space. Return this only as a create_note action block with a clear title and complete markdown content."
+      : "Generate a comprehensive, highly structured space_summary.md file for the entire active space, synthesizing all key concepts, notes, and topics in the structured multi-note synthesis format: # Topic, ## Key Ideas, ## Insights, ## Gaps, ## Suggested Actions. Return this only as a create_note action block.";
+    await handleChat(instruction);
+  }, [handleChat, activeSpace, isReadOnlySourceSpace]);
 
   const handleFindInsights = useCallback(async () => {
     if (!activeSpace) return;
-    await handleChat("Analyze all notes in this space. Find repeated ideas, direct contradictions, and missing definitions or knowledge gaps. Generate an insight report detailing these findings. Return this as an insight_report action block.");
-  }, [handleChat, activeSpace]);
+    const instruction = isReadOnlySourceSpace
+      ? "Analyze all notes in this public/read-only space. Find repeated ideas, direct contradictions, missing definitions, and knowledge gaps. Create a new local vault note containing the insight report. Do not edit the source space. Return this only as a create_note action block."
+      : "Analyze all notes in this space. Find repeated ideas, direct contradictions, and missing definitions or knowledge gaps. Generate an insight report detailing these findings. Return this as an insight_report action block.";
+    await handleChat(instruction);
+  }, [handleChat, activeSpace, isReadOnlySourceSpace]);
 
   const handleOrganizeSpace = useCallback(async () => {
     if (!activeSpace) return;
+    if (!canMutateSpaceSource) {
+      showToast("Public/read-only spaces cannot be organized directly. Remix the space to edit it.", "error");
+      return;
+    }
     await handleChat("Examine the titles, folders, and contents of the notes in this space. Suggest note mergers for duplicate topics, title improvements, and folder restructuring changes to improve coherence and indexing. Return this as a suggest_structure action block.");
-  }, [handleChat, activeSpace]);
+  }, [handleChat, activeSpace, canMutateSpaceSource, showToast]);
 
   const executeSaveAsNote = async () => {
     if (!saveNoteMessage) return;
@@ -1318,7 +1428,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       await (window as any).electronAPI.writeFile(notePath, content);
       showToast(`Saved to note "${notePath}"!`, "success");
       setSaveNoteMessage(null);
-      handleBuildIndex();
+      if (canMutateSpaceSource) handleBuildIndex();
     } catch (err) {
       showToast("Failed to save note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     }
@@ -1371,13 +1481,17 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       await (window as any).electronAPI.writeFile(notePath, content);
       setAppliedActions(prev => ({ ...prev, [msgId]: true }));
       showToast(`Note "${notePath}" created successfully!`);
-      handleBuildIndex();
+      if (canMutateSpaceSource) handleBuildIndex();
     } catch (err) {
       showToast("Failed to create note: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     }
   };
 
   const handleUpdateNoteAction = async (path: string, content: string, msgId: string) => {
+    if (!canMutateSpaceSource) {
+      showToast("This space is read-only. Direct source-note edits are blocked; save a new local note or Remix to edit.", "error");
+      return;
+    }
     try {
       const exists = await (window as any).electronAPI.fileExists(path);
       if (!exists) {
@@ -1393,6 +1507,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   };
 
   const handleInsertLinksAction = async (links: Array<{ from: string, to: string, reason: string }>, msgId: string) => {
+    if (!canMutateSpaceSource) {
+      showToast("This space is read-only. Link insertion would edit source notes, so it was blocked.", "error");
+      return;
+    }
     try {
       for (const link of links) {
         let fromPath = link.from;
@@ -1415,6 +1533,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   };
 
   const handleApplyStructureAction = async (changes: any[], msgId: string) => {
+    if (!canMutateSpaceSource) {
+      showToast("This space is read-only. Restructuring source notes is blocked; Remix to edit.", "error");
+      return;
+    }
     try {
       for (const change of changes) {
         if (change.type === "rename" || change.type === "move") {
@@ -1470,7 +1592,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       await (window as any).electronAPI.writeFile(path, content);
       setAppliedActions(prev => ({ ...prev, [msgId]: true }));
       showToast(`Insight report created as "${path}"!`);
-      handleBuildIndex();
+      if (canMutateSpaceSource) handleBuildIndex();
     } catch (err) {
       showToast("Failed to save report: " + (err instanceof Error ? err.message : "Unknown error"), "error");
     }
@@ -1554,7 +1676,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
 
         await getAPI().writeFile(notePath, action.content);
         
-        if (collaborationEngine.activeSpaceId) {
+        if (canMutateSpaceSource && collaborationEngine.activeSpaceId) {
           await collaborationEngine.persistNoteEdit(notePath, action.content);
           syncEngine.triggerPush();
         }
@@ -1562,6 +1684,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         setAppliedActions(prev => ({ ...prev, [key]: true }));
         showToast(`Note "${notePath}" created successfully!`);
       } else if (action.type === "update_note") {
+        if (!canMutateSpaceSource) {
+          showToast("This space is read-only. Direct source-note edits are blocked; save a new local note or Remix to edit.", "error");
+          return false;
+        }
         let notePath = action.file_path || action.path;
         if (notePath.startsWith("/")) {
           notePath = notePath.substring(1);
@@ -1570,7 +1696,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         const { after: afterContent } = await resolveActionContent(action);
         await getAPI().writeFile(notePath, afterContent);
         
-        if (collaborationEngine.activeSpaceId) {
+        if (canMutateSpaceSource && collaborationEngine.activeSpaceId) {
           await collaborationEngine.persistNoteEdit(notePath, afterContent);
           syncEngine.triggerPush();
         }
@@ -1579,7 +1705,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         showToast(`Note "${notePath}" updated successfully!`);
       }
       
-      handleBuildIndex();
+      if (canMutateSpaceSource) handleBuildIndex();
       return true;
     } catch (err) {
       showToast("Failed to execute action: " + (err instanceof Error ? err.message : "Unknown error"), "error");
@@ -2133,7 +2259,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               </div>
 
               <div className={spaceProjectActionsClass}>
-                {!isRemote && (
+                {canMutateSpaceSource && (
                   <button
                     className={spaceProjectBtnClass}
                     onClick={handleBuildIndex}
@@ -2152,41 +2278,58 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
           </div>
 
-          {/* Space Operations Dashboard — hidden for public/remote spaces */}
-          {!isRemote && (
+          {/* Space Operations Dashboard */}
           <div className={spaceSidebarSectionClass}>
-            <div className={spaceSidebarSectionHeaderClass}>Space Operations</div>
+            <div className={spaceSidebarSectionHeaderClass}>
+              {isReadOnlySourceSpace ? "Read-only Space" : "Space Operations"}
+            </div>
+            {isReadOnlySourceSpace && (
+              <div className="mb-3 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-3 py-2 text-[11px] leading-normal text-[var(--text-secondary)]">
+                Public spaces are source read-only. You can ask questions and create new notes in your current vault, but direct edits require Remix.
+              </div>
+            )}
             <div className={spaceOperationsGridClass}>
               <button
                 className={spaceOperationsBtnClass}
                 onClick={handleGenerateSummary}
                 disabled={isQuerying || isIndexing}
-                title="Synthesize topics across the space into a structured summary note"
+                title={isReadOnlySourceSpace ? "Create a new local summary note from this read-only space" : "Synthesize topics across the space into a structured summary note"}
               >
                 <Brain size={13} />
-                <span>Generate Summary</span>
+                <span>{isReadOnlySourceSpace ? "Save Summary Note" : "Generate Summary"}</span>
               </button>
               <button
                 className={spaceOperationsBtnClass}
                 onClick={handleFindInsights}
                 disabled={isQuerying || isIndexing}
-                title="Look for repeated ideas, gaps, and contradictions in space"
+                title={isReadOnlySourceSpace ? "Create a local insight report from this read-only space" : "Look for repeated ideas, gaps, and contradictions in space"}
               >
                 <Sparkles size={13} />
-                <span>Find Insights</span>
+                <span>{isReadOnlySourceSpace ? "Save Insight Report" : "Find Insights"}</span>
               </button>
-              <button
-                className={spaceOperationsBtnClass}
-                onClick={handleOrganizeSpace}
-                disabled={isQuerying || isIndexing}
-                title="Suggest renames, mergers, and folder restructuring changes"
-              >
-                <Layers size={13} />
-                <span>Organize Space</span>
-              </button>
+              {canMutateSpaceSource ? (
+                <button
+                  className={spaceOperationsBtnClass}
+                  onClick={handleOrganizeSpace}
+                  disabled={isQuerying || isIndexing}
+                  title="Suggest renames, mergers, and folder restructuring changes"
+                >
+                  <Layers size={13} />
+                  <span>Organize Space</span>
+                </button>
+              ) : (
+                <button
+                  className={spaceOperationsBtnClass}
+                  onClick={() => handleFork(activeSpace.id)}
+                  disabled={isQuerying || isIndexing}
+                  title="Create an editable local copy of this space"
+                >
+                  <Copy size={13} />
+                  <span>Remix to Edit</span>
+                </button>
+              )}
             </div>
           </div>
-          )}
 
           {/* Conversations Explorer Session List */}
           <div className={spaceSidebarFillSectionClass}>
@@ -2295,6 +2438,20 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           ))}
                         </div>
                       )}
+                      <button
+                        type="button"
+                        className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)] border-0 bg-transparent"
+                        onClick={() => {
+                          if (centralInputRef.current) {
+                            centralInputRef.current.focus();
+                            setChatInput(prev => prev + "[[");
+                            checkForMention(chatInput + "[[", chatInput.length + 2);
+                          }
+                        }}
+                        title="Mention note (Type [[)"
+                      >
+                        <Plus size={16} />
+                      </button>
                       <textarea
                         ref={centralInputRef}
                         className={spaceChatInputClass}
@@ -2329,7 +2486,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           disabled={!isQuerying && !chatInput.trim()}
                           title={isQuerying ? "Stop generating" : "Send message"}
                         >
-                          {isQuerying ? <Square size={12} fill="currentColor" /> : <ArrowUp size={14} />}
+                          {isQuerying ? <Square size={10} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
                         </button>
                       </div>
                     </div>
@@ -2390,10 +2547,44 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       </>
                     )}
 
-                    {/* Render Interactive Action Cards if JSON action exists — only for local/owned spaces */}
-                    {!isRemote && (() => {
+                    {/* Render Interactive Action Cards. Read-only spaces allow local-note creation only. */}
+                    {(() => {
                       const payload = parseActionPayload(msg.content);
                       if (!payload) return null;
+                      const mutatesSource = payloadRequiresSourceMutation(payload);
+                      const createsLocalNote = payloadCreatesOnlyLocalNotes(payload);
+
+                      if (isReadOnlySourceSpace && mutatesSource) {
+                        return (
+                          <div className={spaceActionCardClass}>
+                            <div className={spaceActionCardHeaderClass}>
+                              <Globe size={14} />
+                              <span>Public space is read-only</span>
+                            </div>
+                            <div className={spaceActionCardBodyClass}>
+                              <div className={spaceActionDetailsClass}>
+                                This action would edit source notes in a public/read-only space, so it was blocked. You can still save a new note in your current vault, ask for a patch suggestion, or Remix this space to make an editable copy.
+                              </div>
+                              <div className={spaceActionButtonsClass}>
+                                <button
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
+                                  onClick={() => handleFork(activeSpace.id)}
+                                >
+                                  Remix to Edit
+                                </button>
+                                <button
+                                  className={cx(spaceBtnSecondaryClass, spaceBtnSmClass)}
+                                  onClick={() => handleSaveAsNote(msg)}
+                                >
+                                  Save Response as Note
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (isReadOnlySourceSpace && !createsLocalNote) return null;
                       
                       const isApplied = appliedActions[msg.id];
                       const isRejected = rejectedActions[msg.id];
@@ -2833,7 +3024,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       />
                     </div>
                   )}
-                  {!isRemote && actionType && (
+                  {actionType && (!isReadOnlySourceSpace || actionType === "create_note" || actionType === "insight_report") && (
                     <ActiveActionStatus
                       actionType={actionType}
                       isApplied={false}
@@ -2858,11 +3049,6 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           {chatMessages.length > 0 && (
             <div className={spaceChatInputPanelClass}>
               <div className={spaceChatInputWrapperClass}>
-                {estimatedHistoryTokens > 0 && (
-                  <div className={spaceChatMemoryClass}>
-                    Memory: ~{estimatedHistoryTokens} tokens
-                  </div>
-                )}
                 {showMentionDropdown && filteredNotes.length > 0 && (
                   <div className={mentionDropdownClass}>
                     {filteredNotes.map((note: any, index: number) => (
@@ -2877,6 +3063,20 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     ))}
                   </div>
                 )}
+                <button
+                  type="button"
+                  className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)] border-0 bg-transparent"
+                  onClick={() => {
+                    if (bottomInputRef.current) {
+                      bottomInputRef.current.focus();
+                      setChatInput(prev => prev + "[[");
+                      checkForMention(chatInput + "[[", chatInput.length + 2);
+                    }
+                  }}
+                  title="Mention note (Type [[)"
+                >
+                  <Plus size={16} />
+                </button>
                 <textarea
                   ref={bottomInputRef}
                   className={spaceChatInputClass}
@@ -2911,13 +3111,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     disabled={!isQuerying && !chatInput.trim()}
                     title={isQuerying ? "Stop generating" : "Send message"}
                   >
-                    {isQuerying ? <Square size={12} fill="currentColor" /> : <ArrowUp size={14} />}
+                    {isQuerying ? <Square size={10} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
                   </button>
                 </div>
-              </div>
-              
-              <div className={spaceChatFooterClass}>
-                Spaces chat can make mistakes. Verify key details.
               </div>
 
               {!isAIConfigured() && (

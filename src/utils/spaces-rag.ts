@@ -30,6 +30,7 @@ export interface SpaceMetadata {
   description: string;
   helpsWith: string[];
   explicitNotes?: { path: string; title: string; content: string }[];
+  allowLocalNoteCreation?: boolean;
   readOnly?: boolean;
 }
 
@@ -46,12 +47,14 @@ function buildSystemPrompt(meta: SpaceMetadata): string {
   let actionsBlock: string;
   if (isReadOnly) {
     actionsBlock = `8. READ-ONLY MODE (STRICTLY ENFORCED)
-This space is a PUBLIC, READ-ONLY space. You are in QUERY-ONLY mode.
-- You MUST NOT output any JSON action blocks.
-- You MUST NOT propose creating, updating, editing, or modifying any notes.
-- You MUST NOT output any \`\`\`json ... \`\`\` code blocks containing action payloads.
-- If the user asks to create or edit notes, politely explain that this is a public space and edits are not supported. Suggest they fork/remix the space to make changes.
-- Respond ONLY with conversational markdown answers.`;
+The source space is READ-ONLY. This includes public spaces even when the current user is the owner.
+- You MUST NOT update, rename, move, merge, delete, link, restructure, or otherwise modify source-space notes.
+- You MUST NOT output update_note, suggest_structure, suggest_links, or any action that changes existing source notes.
+- If the user asks to directly edit a source note, you MUST still produce a visible markdown reply. Say clearly that public/read-only spaces cannot be edited directly. Then stay useful: explain what can be done, offer to draft the change, offer to create a new local note from the public-space context, and suggest Remix/Fork if they want editable ownership.
+- If the user asks to summarize/export/save/create a NEW note in the current local vault based on this public/read-only space, you MAY output a create_note JSON action block only. The new note must be derived from the provided context and must not claim to edit the source space.
+- For normal questions, respond with conversational markdown only and no JSON action block.
+- Never return an empty response. If refusing a source edit, include 2-4 query-specific next actions under wording like "You can ask me to:", not a literal "follow-ups" label.
+- DEFAULT: if intent is ambiguous, answer only.`;
   } else {
     actionsBlock = `8. QUERY CLASSIFICATION (CRITICAL — Apply BEFORE responding)
 Before generating your response, classify the user's intent:

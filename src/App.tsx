@@ -6948,7 +6948,7 @@ export default function App() {
         )}
       </div>
 
-      {!isFTUXZeroState && (
+      {!isFTUXZeroState && !activeTabIsSpaces && (
         <StatusBar
           activeTab={activeTab || null}
           content={currentContent}
@@ -6958,6 +6958,7 @@ export default function App() {
           queueStatus={queueStatus}
           pluginStatusBarItems={pluginStatusBarItems}
           vimEnabled={settings.vimMode}
+          backlinkCount={backlinks.length}
         />
       )}
 
