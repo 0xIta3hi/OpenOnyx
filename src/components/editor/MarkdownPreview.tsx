@@ -116,6 +116,108 @@ const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading
 const markdownPreviewClass =
   "markdown-preview [&_.embed-container]:my-[var(--space-4)] [&_.embed-container]:overflow-hidden [&_.embed-container]:rounded-[var(--radius-md)] [&_.embed-container]:border [&_.embed-container]:border-[var(--border-medium)] [&_.embed-container]:bg-[var(--bg-secondary)] [&_.embed-content]:p-[var(--space-3)] [&_.embed-content]:text-[length:var(--text-sm)] [&_.embed-content]:text-[var(--text-secondary)] [&_.embed-icon]:opacity-60 [&_.embed-missing]:bg-[var(--bg-secondary)] [&_.embed-missing]:p-[var(--space-3)] [&_.embed-missing]:italic [&_.embed-missing]:text-[var(--text-muted)] [&_.embed-title]:flex [&_.embed-title]:items-center [&_.embed-title]:gap-[var(--space-2)] [&_.embed-title]:border-b [&_.embed-title]:border-[var(--border-subtle)] [&_.embed-title]:bg-[var(--bg-tertiary)] [&_.embed-title]:px-[var(--space-3)] [&_.embed-title]:py-[var(--space-2)] [&_.embed-title]:text-[length:var(--text-sm)] [&_.embed-title]:font-medium [&_.embed-title]:text-[var(--text-link)]";
 
+function headingLevel(el: Element): number {
+  const match = el.tagName.match(/^H([1-6])$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function getFoldableHeadingContent(heading: HTMLElement): HTMLElement[] {
+  const level = headingLevel(heading);
+  if (!level) return [];
+  const content: HTMLElement[] = [];
+  let node = heading.nextElementSibling as HTMLElement | null;
+  while (node) {
+    const nextLevel = headingLevel(node);
+    if (nextLevel > 0 && nextLevel <= level) break;
+    content.push(node);
+    node = node.nextElementSibling as HTMLElement | null;
+  }
+  return content;
+}
+
+function setHeadingFoldButtonIcon(button: HTMLButtonElement, collapsed: boolean): void {
+  button.innerHTML = [
+    `<svg viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px;flex:0 0 auto;transform:rotate(${collapsed ? "0deg" : "90deg"});transition:transform 120ms ease">`,
+    '<path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>',
+    "</svg>",
+  ].join("");
+}
+
+function installHeadingFoldControls(container: HTMLElement): void {
+  container.querySelectorAll(".heading-fold-toggle").forEach((el) => el.remove());
+  const headings = Array.from(
+    container.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"),
+  );
+
+  for (const heading of headings) {
+    const foldableContent = getFoldableHeadingContent(heading);
+    if (foldableContent.length === 0) continue;
+
+    heading.style.position = "relative";
+    heading.style.paddingLeft = heading.style.paddingLeft || "0";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "heading-fold-toggle";
+    button.setAttribute("aria-label", "Fold heading");
+    setHeadingFoldButtonIcon(button, false);
+    button.style.cssText = [
+      "position:absolute",
+      "left:-24px",
+      "top:50%",
+      "transform:translateY(-50%)",
+      "display:inline-flex",
+      "align-items:center",
+      "justify-content:center",
+      "width:20px",
+      "height:20px",
+      "border:0",
+      "border-radius:var(--radius-sm)",
+      "background:transparent",
+      "color:var(--text-muted)",
+      "opacity:0",
+      "cursor:pointer",
+      "font-size:12px",
+      "line-height:1",
+      "transition:opacity 120ms ease,color 120ms ease,background-color 120ms ease,transform 120ms ease",
+    ].join(";");
+
+    const show = () => {
+      button.style.opacity = "1";
+    };
+    const hide = () => {
+      if (button.dataset.collapsed !== "true") button.style.opacity = "0";
+    };
+    heading.addEventListener("mouseenter", show);
+    heading.addEventListener("mouseleave", hide);
+    button.addEventListener("mouseenter", show);
+    button.addEventListener("mouseleave", hide);
+    button.addEventListener("mouseover", () => {
+      button.style.backgroundColor = "var(--bg-hover)";
+      button.style.color = "var(--text-primary)";
+    });
+    button.addEventListener("mouseout", () => {
+      button.style.backgroundColor = "transparent";
+      button.style.color = "var(--text-muted)";
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const isCollapsed = button.dataset.collapsed === "true";
+      const nextCollapsed = !isCollapsed;
+      button.dataset.collapsed = String(nextCollapsed);
+      setHeadingFoldButtonIcon(button, nextCollapsed);
+      button.setAttribute("aria-label", nextCollapsed ? "Unfold heading" : "Fold heading");
+      button.style.opacity = nextCollapsed ? "1" : "0";
+      for (const el of foldableContent) {
+        el.style.display = nextCollapsed ? "none" : "";
+      }
+    });
+
+    heading.prepend(button);
+  }
+}
+
 function parseImageRenderMeta(title?: string): {
   width?: number;
   crop: "contain" | "cover";
@@ -649,6 +751,7 @@ export function MarkdownPreview({
     if (lastHtmlRef.current !== renderedHtml || processorVersion > 0) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
+      installHeadingFoldControls(previewRef.current);
 
       // Handle Twitter embeds: if twit-blockquote exists, ensure widgets script is loaded and triggered
       if (renderedHtml.includes("twitter-tweet")) {

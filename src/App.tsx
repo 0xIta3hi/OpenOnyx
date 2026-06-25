@@ -5802,7 +5802,7 @@ export default function App() {
     },
     {
       id: "editor-mode",
-      label: "Editor View",
+      label: "Live Preview",
       action: () => setViewMode("editor"),
       category: "View",
     },

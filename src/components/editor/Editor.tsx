@@ -894,12 +894,314 @@ const markdownHighlightStyle = HighlightStyle.define([
   },
 ]);
 
+class EmptyInlineWidget extends WidgetType {
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-live-hidden-mark";
+    return span;
+  }
+}
+
+class InlineTextWidget extends WidgetType {
+  constructor(
+    private readonly text: string,
+    private readonly className: string,
+  ) {
+    super();
+  }
+
+  eq(other: InlineTextWidget): boolean {
+    return this.text === other.text && this.className === other.className;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = this.className;
+    span.textContent = this.text;
+    return span;
+  }
+}
+
+class CheckboxWidget extends WidgetType {
+  constructor(private readonly checked: boolean) {
+    super();
+  }
+
+  eq(other: CheckboxWidget): boolean {
+    return this.checked === other.checked;
+  }
+
+  toDOM(): HTMLElement {
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = this.checked;
+    input.tabIndex = -1;
+    input.className = "cm-live-task-checkbox";
+    input.setAttribute("aria-hidden", "true");
+    return input;
+  }
+}
+
+class MarkdownTableWidget extends WidgetType {
+  constructor(private readonly rows: string[]) {
+    super();
+  }
+
+  eq(other: MarkdownTableWidget): boolean {
+    return this.rows.join("\n") === other.rows.join("\n");
+  }
+
+  toDOM(): HTMLElement {
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-live-table-wrapper";
+    const table = document.createElement("table");
+    table.className = "cm-live-table";
+    wrapper.appendChild(table);
+
+    const parsedRows = this.rows.map(parseTableCells);
+    const separatorIndex = parsedRows.findIndex((cells) =>
+      cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim())),
+    );
+    const headerRows = separatorIndex > 0 ? parsedRows.slice(0, separatorIndex) : [];
+    const bodyRows = separatorIndex >= 0 ? parsedRows.slice(separatorIndex + 1) : parsedRows;
+
+    if (headerRows.length > 0) {
+      const thead = document.createElement("thead");
+      table.appendChild(thead);
+      for (const row of headerRows) {
+        const tr = document.createElement("tr");
+        thead.appendChild(tr);
+        for (const cell of row) {
+          const th = document.createElement("th");
+          th.textContent = cell;
+          tr.appendChild(th);
+        }
+      }
+    }
+
+    const tbody = document.createElement("tbody");
+    table.appendChild(tbody);
+    for (const row of bodyRows) {
+      const tr = document.createElement("tr");
+      tbody.appendChild(tr);
+      for (const cell of row) {
+        const td = document.createElement("td");
+        td.textContent = cell;
+        tr.appendChild(td);
+      }
+    }
+
+    return wrapper;
+  }
+}
+
+function parseTableCells(row: string): string[] {
+  const trimmed = row.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function isTableRow(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.includes("|")) return false;
+  if (trimmed.startsWith("|") && trimmed.endsWith("|")) return true;
+  return /^[^|]+\|[^|]+/.test(trimmed);
+}
+
+function isTableSeparator(text: string): boolean {
+  if (!isTableRow(text)) return false;
+  return parseTableCells(text).every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+
+function hideMarkdownSyntax(decorations: any[], from: number, to: number) {
+  if (to <= from) return;
+  decorations.push(
+    Decoration.replace({
+      widget: new EmptyInlineWidget(),
+      inclusive: false,
+    }).range(from, to),
+  );
+}
+
+function replaceMarkdownSyntax(
+  decorations: any[],
+  from: number,
+  to: number,
+  widget: WidgetType,
+) {
+  if (to <= from) return;
+  decorations.push(
+    Decoration.replace({
+      widget,
+      inclusive: false,
+    }).range(from, to),
+  );
+}
+
+function addInlineRange(
+  decorations: any[],
+  lineFrom: number,
+  match: RegExpExecArray,
+  groups: { open: number; content: number; close: number },
+  className: string,
+) {
+  const open = match[groups.open];
+  const content = match[groups.content];
+  const close = match[groups.close];
+  if (!open || !content || !close) return;
+
+  const openFrom = lineFrom + match.index;
+  const contentFrom = openFrom + open.length;
+  const contentTo = contentFrom + content.length;
+  const closeTo = contentTo + close.length;
+
+  hideMarkdownSyntax(decorations, openFrom, contentFrom);
+  decorations.push(Decoration.mark({ class: className }).range(contentFrom, contentTo));
+  hideMarkdownSyntax(decorations, contentTo, closeTo);
+}
+
+function addInactiveInlinePreviewDecorations(
+  decorations: any[],
+  lineFrom: number,
+  lineText: string,
+) {
+  const inlineCodeRegex = /(`)([^`\n]+)(`)/g;
+  let match: RegExpExecArray | null;
+  while ((match = inlineCodeRegex.exec(lineText)) !== null) {
+    addInlineRange(decorations, lineFrom, match, { open: 1, content: 2, close: 3 }, "cm-live-code");
+  }
+
+  const strongRegex = /(\*\*|__)(?=\S)(.+?\S)(\1)/g;
+  while ((match = strongRegex.exec(lineText)) !== null) {
+    addInlineRange(decorations, lineFrom, match, { open: 1, content: 2, close: 3 }, "cm-live-strong");
+  }
+
+  const strikeRegex = /(~~)(?=\S)(.+?\S)(~~)/g;
+  while ((match = strikeRegex.exec(lineText)) !== null) {
+    addInlineRange(decorations, lineFrom, match, { open: 1, content: 2, close: 3 }, "cm-live-strike");
+  }
+
+  const emphasisRegex = /(^|[^\w*])(\*|_)(?=\S)([^*_]+?\S)(\2)(?!\w)/g;
+  while ((match = emphasisRegex.exec(lineText)) !== null) {
+    const prefix = match[1] || "";
+    const marker = match[2];
+    const content = match[3];
+    const openFrom = lineFrom + match.index + prefix.length;
+    const contentFrom = openFrom + marker.length;
+    const contentTo = contentFrom + content.length;
+    const closeTo = contentTo + marker.length;
+    hideMarkdownSyntax(decorations, openFrom, contentFrom);
+    decorations.push(Decoration.mark({ class: "cm-live-emphasis" }).range(contentFrom, contentTo));
+    hideMarkdownSyntax(decorations, contentTo, closeTo);
+  }
+
+  const markdownLinkRegex = /(!?)\[([^\]\n]+)\]\(([^)\n]+)\)/g;
+  while ((match = markdownLinkRegex.exec(lineText)) !== null) {
+    if (match[1] === "!") continue;
+    const fullFrom = lineFrom + match.index;
+    const labelFrom = fullFrom + 1;
+    const labelTo = labelFrom + match[2].length;
+    const fullTo = fullFrom + match[0].length;
+    hideMarkdownSyntax(decorations, fullFrom, labelFrom);
+    decorations.push(
+      Decoration.mark({
+        class: "cm-live-link",
+        attributes: { title: match[3] },
+      }).range(labelFrom, labelTo),
+    );
+    hideMarkdownSyntax(decorations, labelTo, fullTo);
+  }
+
+  const wikiLinkRegex = /\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+  while ((match = wikiLinkRegex.exec(lineText)) !== null) {
+    const fullFrom = lineFrom + match.index;
+    const target = match[1];
+    const alias = match[2];
+    if (alias) {
+      const aliasFrom = fullFrom + 2 + target.length + 1;
+      const aliasTo = aliasFrom + alias.length;
+      hideMarkdownSyntax(decorations, fullFrom, aliasFrom);
+      decorations.push(
+        Decoration.mark({
+          class: "cm-live-wikilink",
+          attributes: { "data-link": target, title: `Open: ${target}` },
+        }).range(aliasFrom, aliasTo),
+      );
+      hideMarkdownSyntax(decorations, aliasTo, fullFrom + match[0].length);
+    } else {
+      const contentFrom = fullFrom + 2;
+      const contentTo = contentFrom + target.length;
+      hideMarkdownSyntax(decorations, fullFrom, contentFrom);
+      decorations.push(
+        Decoration.mark({
+          class: "cm-live-wikilink",
+          attributes: { "data-link": target, title: `Open: ${target}` },
+        }).range(contentFrom, contentTo),
+      );
+      hideMarkdownSyntax(decorations, contentTo, fullFrom + match[0].length);
+    }
+  }
+}
+
+function addInactiveBlockPreviewDecorations(
+  decorations: any[],
+  lineFrom: number,
+  lineText: string,
+) {
+  const indent = lineText.match(/^\s*/)?.[0].length || 0;
+  const listMatch = lineText.match(/^(\s*)((?:[-*+])|\d+[.)])\s+(\[[ xX]\]\s+)?/);
+  if (listMatch) {
+    const markerFrom = lineFrom + listMatch[1].length;
+    const markerTo = markerFrom + listMatch[2].length;
+    const checkbox = listMatch[3];
+    if (checkbox) {
+      const checkboxFrom = markerTo + 1;
+      const checkboxTo = checkboxFrom + checkbox.length;
+      hideMarkdownSyntax(decorations, markerFrom, checkboxFrom);
+      replaceMarkdownSyntax(
+        decorations,
+        checkboxFrom,
+        checkboxTo,
+        new CheckboxWidget(/\[[xX]\]/.test(checkbox)),
+      );
+    } else {
+      const markerText = /^\d/.test(listMatch[2]) ? listMatch[2] : "•";
+      replaceMarkdownSyntax(
+        decorations,
+        markerFrom,
+        markerTo,
+        new InlineTextWidget(markerText, "cm-live-list-marker"),
+      );
+    }
+
+    const depth = Math.min(6, Math.floor(indent / 2));
+    decorations.push(
+      Decoration.line({
+        attributes: {
+          class: `${checkbox ? "cm-live-task-line" : "cm-live-list-line"} cm-live-indent-${depth}`,
+        },
+      }).range(lineFrom),
+    );
+    return;
+  }
+
+  const quoteMatch = lineText.match(/^(\s*>+\s*)/);
+  if (quoteMatch) {
+    hideMarkdownSyntax(decorations, lineFrom, lineFrom + quoteMatch[1].length);
+    decorations.push(
+      Decoration.line({
+        attributes: { class: "cm-live-blockquote-line" },
+      }).range(lineFrom),
+    );
+  }
+}
+
 /**
- * Live Preview plugin — hides heading `#` markers on non-active lines
- * and applies heading font sizes for a rich editing experience.
+ * Live Preview plugin — hides common Markdown syntax on non-active lines
+ * and applies rendered styling while keeping the active line source-visible.
  */
-function headingLivePreviewPlugin() {
+function markdownLivePreviewPlugin() {
   const headingRegex = /^(#{1,6})\s/;
+  const codeFenceRegex = /^\s*```/;
 
   return ViewPlugin.fromClass(
     class {
@@ -934,41 +1236,99 @@ function headingLivePreviewPlugin() {
           }
         }
 
+        let inCodeBlock = false;
+
         for (let i = 1; i <= doc.lines; i++) {
           const line = doc.line(i);
+          const isFence = codeFenceRegex.test(line.text);
           const match = headingRegex.exec(line.text);
-          if (!match) continue;
-
-          const level = match[1].length;
           const isActive = activeLinesSet.has(i);
 
-          if (!isActive) {
-            // Hide the `# ` prefix on non-active heading lines
-            const markerEnd = line.from + match[0].length;
+          if (isFence) {
+            if (!isActive) {
+              decorations.push(
+                Decoration.line({
+                  attributes: { class: "cm-live-codeblock-line" },
+                }).range(line.from),
+              );
+            }
+            inCodeBlock = !inCodeBlock;
+            continue;
+          }
+
+          if (inCodeBlock) {
+            if (!isActive) {
+              decorations.push(
+                Decoration.line({
+                  attributes: { class: "cm-live-codeblock-line" },
+                }).range(line.from),
+              );
+            }
+            continue;
+          }
+
+          if (isTableRow(line.text) && i < doc.lines && isTableSeparator(doc.line(i + 1).text)) {
+            const tableStart = i;
+            const tableRows: string[] = [line.text, doc.line(i + 1).text];
+            let tableEnd = i + 1;
+            while (tableEnd + 1 <= doc.lines && isTableRow(doc.line(tableEnd + 1).text)) {
+              tableEnd++;
+              tableRows.push(doc.line(tableEnd).text);
+            }
+            const tableHasActiveLine = Array.from({ length: tableEnd - tableStart + 1 }, (_, index) => tableStart + index)
+              .some((lineNumber) => activeLinesSet.has(lineNumber));
+
+            if (!tableHasActiveLine) {
+              decorations.push(
+                Decoration.replace({
+                  widget: new MarkdownTableWidget(tableRows),
+                  block: true,
+                }).range(line.from, doc.line(tableEnd).to),
+              );
+              i = tableEnd;
+              continue;
+            }
+
+            for (let tableLine = tableStart; tableLine <= tableEnd; tableLine++) {
+              const targetLine = doc.line(tableLine);
+              decorations.push(
+                Decoration.line({
+                  attributes: {
+                    class: isTableSeparator(targetLine.text)
+                      ? "cm-live-table-source-separator"
+                      : "cm-live-table-source-row",
+                  },
+                }).range(targetLine.from),
+              );
+            }
+          }
+
+          if (match) {
+            const level = match[1].length;
+
+            if (!isActive) {
+              // Hide the `# ` prefix on non-active heading lines
+              const markerEnd = line.from + match[0].length;
+              hideMarkdownSyntax(decorations, line.from, markerEnd);
+            }
+
+            // Apply heading font size as a line decoration
+            const sizes = ["1.6em", "1.4em", "1.2em", "1.1em", "1.05em", "1em"];
+            const fontSize = sizes[level - 1] || "1em";
             decorations.push(
-              Decoration.replace({
-                widget: new (class extends WidgetType {
-                  toDOM() {
-                    const span = document.createElement("span");
-                    span.className = "cm-heading-hidden-mark";
-                    return span;
-                  }
-                })(),
-              }).range(line.from, markerEnd),
+              Decoration.line({
+                attributes: {
+                  style: `font-size: ${fontSize}; line-height: 1.4`,
+                  class: `cm-heading-${level}`,
+                },
+              }).range(line.from),
             );
           }
 
-          // Apply heading font size as a line decoration
-          const sizes = ["1.6em", "1.4em", "1.2em", "1.1em", "1.05em", "1em"];
-          const fontSize = sizes[level - 1] || "1em";
-          decorations.push(
-            Decoration.line({
-              attributes: {
-                style: `font-size: ${fontSize}; line-height: 1.4`,
-                class: `cm-heading-${level}`,
-              },
-            }).range(line.from),
-          );
+          if (!isActive) {
+            addInactiveBlockPreviewDecorations(decorations, line.from, line.text);
+            addInactiveInlinePreviewDecorations(decorations, line.from, line.text);
+          }
         }
 
         return Decoration.set(decorations, true);
@@ -2889,7 +3249,7 @@ export function Editor({
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
         imageWidgetPlugin(handleOpenImageLightbox),
-        headingLivePreviewPlugin(),
+        markdownLivePreviewPlugin(),
         // These fields are part of Obsidian's CM6 contract. Community editor
         // extensions (Advanced Canvas, Icon Folder, and others) read them
         // directly through state.field(...).
@@ -3078,6 +3438,144 @@ export function Editor({
             fontWeight: "600",
             borderRadius: "999px",
             padding: "0 5px",
+          },
+          ".cm-live-hidden-mark": {
+            display: "inline-block",
+            width: "0",
+            overflow: "hidden",
+            opacity: "0",
+            pointerEvents: "none",
+          },
+          ".cm-live-strong": {
+            fontWeight: "700",
+            color: "var(--editor-emphasis)",
+          },
+          ".cm-live-emphasis": {
+            fontStyle: "italic",
+            color: "var(--editor-emphasis)",
+          },
+          ".cm-live-strike": {
+            textDecoration: "line-through",
+            color: "var(--editor-muted-token)",
+          },
+          ".cm-live-code": {
+            borderRadius: "var(--radius-sm)",
+            backgroundColor: "var(--bg-secondary)",
+            color: "var(--editor-code)",
+            fontFamily: "var(--font-mono)",
+            padding: "0 4px",
+          },
+          ".cm-live-link, .cm-live-wikilink": {
+            color: "var(--editor-link)",
+            textDecoration: "none",
+            borderBottom: "1px dotted transparent",
+            cursor: "pointer",
+          },
+          ".cm-live-link:hover, .cm-live-wikilink:hover": {
+            color: "var(--editor-link-hover)",
+            borderBottomColor: "var(--editor-link-hover)",
+          },
+          ".cm-live-codeblock-line": {
+            backgroundColor: "var(--bg-secondary)",
+            color: "var(--editor-code)",
+            fontFamily: "var(--font-mono)",
+          },
+          ".cm-live-codeblock-line.cm-line": {
+            borderRadius: "0",
+          },
+          ".cm-live-table-wrapper": {
+            width: "100%",
+            padding: "6px 0",
+          },
+          ".cm-live-table": {
+            width: "100%",
+            borderCollapse: "collapse",
+            fontFamily: "var(--font-family)",
+            fontSize: "var(--editor-pane-font-size)",
+            color: "var(--text-primary)",
+          },
+          ".cm-live-table th, .cm-live-table td": {
+            border: "1px solid var(--border-subtle)",
+            padding: "6px 10px",
+            verticalAlign: "top",
+          },
+          ".cm-live-table th": {
+            backgroundColor: "var(--bg-secondary)",
+            fontWeight: "700",
+          },
+          ".cm-live-table tr:nth-child(even) td": {
+            backgroundColor: "color-mix(in_srgb,var(--bg-secondary)_45%,transparent)",
+          },
+          ".cm-live-table-source-row": {
+            backgroundColor: "color-mix(in_srgb,var(--bg-secondary)_30%,transparent)",
+          },
+          ".cm-live-table-source-separator": {
+            color: "var(--editor-muted-token)",
+            backgroundColor: "color-mix(in_srgb,var(--bg-secondary)_45%,transparent)",
+          },
+          ".cm-live-list-marker": {
+            display: "inline-block",
+            minWidth: "1.15em",
+            color: "var(--text-secondary)",
+            fontWeight: "600",
+          },
+          ".cm-live-task-checkbox": {
+            WebkitAppearance: "none",
+            appearance: "none",
+            width: "1.15em",
+            height: "1.15em",
+            border: "1px solid var(--border-medium)",
+            borderRadius: "var(--radius-sm)",
+            backgroundColor: "var(--bg-tertiary)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            position: "relative",
+            margin: "0 0.4em 0 0",
+            verticalAlign: "middle",
+            cursor: "default",
+            opacity: "1",
+            pointerEvents: "none",
+            transition: "background-color 120ms ease-in-out, border-color 120ms ease-in-out",
+          },
+          ".cm-live-task-checkbox:checked": {
+            backgroundColor: "var(--color-accent)",
+            borderColor: "var(--color-accent)",
+          },
+          ".cm-live-task-checkbox::after": {
+            content: "\"\"",
+            position: "absolute",
+            top: "45%",
+            left: "50%",
+            width: "0.32em",
+            height: "0.62em",
+            borderStyle: "solid",
+            borderColor: "var(--text-on-accent)",
+            borderWidth: "0 2.2px 2.2px 0",
+            transform: "translate(-50%, -50%) rotate(45deg) scale(0)",
+            transformOrigin: "center",
+            transition: "transform 120ms ease-out",
+          },
+          ".cm-live-task-checkbox:checked::after": {
+            transform: "translate(-50%, -50%) rotate(45deg) scale(1.1)",
+          },
+          ".cm-live-list-line": {
+            position: "relative",
+          },
+          ".cm-live-task-line": {
+            position: "relative",
+          },
+          ".cm-live-indent-1": { paddingLeft: "1.4em" },
+          ".cm-live-indent-2": { paddingLeft: "2.8em" },
+          ".cm-live-indent-3": { paddingLeft: "4.2em" },
+          ".cm-live-indent-4": { paddingLeft: "5.6em" },
+          ".cm-live-indent-5": { paddingLeft: "7em" },
+          ".cm-live-indent-6": { paddingLeft: "8.4em" },
+          ".cm-live-blockquote-line": {
+            borderLeft: "3px solid var(--border-medium)",
+            color: "var(--text-secondary)",
+            paddingLeft: "0.8em",
+            fontStyle: "italic",
           },
           ".cm-searchMatch": {
             backgroundColor: "var(--editor-search-match)",

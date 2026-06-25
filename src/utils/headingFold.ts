@@ -20,9 +20,7 @@ import {
   StateEffect,
   RangeSetBuilder,
   EditorState,
-  Facet,
 } from "@codemirror/state";
-import { syntaxTree } from "@codemirror/language";
 
 // Effect to toggle fold at a position
 const toggleFold = StateEffect.define<{ from: number; to: number }>();
@@ -52,12 +50,14 @@ const foldedRanges = StateField.define<Set<string>>({
 // Find heading ranges in the document
 function findHeadingRanges(
   state: EditorState,
-): { level: number; from: number; to: number; lineFrom: number }[] {
+): { level: number; from: number; to: number; foldFrom: number; lineFrom: number; lineTo: number }[] {
   const headings: {
     level: number;
     from: number;
     to: number;
+    foldFrom: number;
     lineFrom: number;
+    lineTo: number;
   }[] = [];
   const doc = state.doc;
 
@@ -83,7 +83,10 @@ function findHeadingRanges(
 
       // Only add if there's content to fold
       if (to > line.to) {
-        headings.push({ level, from, to, lineFrom: line.to });
+        const foldFrom = Math.min(line.to + 1, doc.length);
+        if (to >= foldFrom) {
+          headings.push({ level, from, to, foldFrom, lineFrom: line.to, lineTo: line.to });
+        }
       }
     }
   }
@@ -100,8 +103,13 @@ class FoldMarker extends GutterMarker {
   toDOM() {
     const span = document.createElement("span");
     span.className = `fold-marker ${this.folded ? "folded" : "open"}`;
-    span.textContent = this.folded ? "▸" : "▾";
     span.title = this.folded ? "Unfold" : "Fold";
+    span.setAttribute("aria-label", this.folded ? "Unfold heading" : "Fold heading");
+    span.innerHTML = [
+      '<svg class="fold-marker-icon" viewBox="0 0 24 24" aria-hidden="true">',
+      '<path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>',
+      "</svg>",
+    ].join("");
     return span;
   }
 }
@@ -115,7 +123,7 @@ const foldGutter = gutter({
     const headings = findHeadingRanges(view.state);
 
     for (const heading of headings) {
-      const key = `${heading.lineFrom}-${heading.to}`;
+      const key = `${heading.foldFrom}-${heading.to}`;
       const isFolded = folded.has(key);
       builder.add(heading.from, heading.from, new FoldMarker(isFolded));
     }
@@ -123,7 +131,11 @@ const foldGutter = gutter({
     return builder.finish();
   },
   domEventHandlers: {
-    click: (view, line) => {
+    mousedown: (view, line, event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(".fold-marker")) return false;
+      event.preventDefault();
+      event.stopPropagation();
       const headings = findHeadingRanges(view.state);
       const heading = headings.find((h) => {
         const headingLine = view.state.doc.lineAt(h.from);
@@ -132,8 +144,9 @@ const foldGutter = gutter({
 
       if (heading) {
         view.dispatch({
-          effects: toggleFold.of({ from: heading.lineFrom, to: heading.to }),
+          effects: toggleFold.of({ from: heading.foldFrom, to: heading.to }),
         });
+        view.focus();
         return true;
       }
       return false;
@@ -153,7 +166,7 @@ class FoldWidget extends WidgetType {
 }
 
 const foldDecoration = Decoration.replace({
-  Widget: new FoldWidget(),
+  widget: new FoldWidget(),
 });
 
 // Plugin to apply fold decorations
@@ -203,20 +216,44 @@ const foldDecorations = ViewPlugin.fromClass(
 // Theme for fold gutter and markers
 export const foldTheme = EditorView.theme({
   ".cm-foldGutter": {
-    width: "16px",
+    width: "18px",
     cursor: "pointer",
+    backgroundColor: "transparent",
+    border: "none",
   },
   ".fold-marker": {
     color: "var(--text-muted)",
-    fontSize: "12px",
-    lineHeight: "1.4",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "16px",
+    height: "1.4em",
+    borderRadius: "var(--radius-sm)",
+    lineHeight: "1",
+    opacity: "0",
     userSelect: "none",
+    transition: "opacity 120ms ease, color 120ms ease, background-color 120ms ease",
+  },
+  ".fold-marker-icon": {
+    width: "14px",
+    height: "14px",
+    flex: "0 0 auto",
+    transform: "rotate(0deg)",
+    transition: "transform 120ms ease",
+  },
+  ".fold-marker.open .fold-marker-icon": {
+    transform: "rotate(90deg)",
   },
   ".fold-marker:hover": {
     color: "var(--text-primary)",
+    backgroundColor: "var(--bg-hover)",
   },
   ".fold-marker.folded": {
     color: "var(--accent-primary)",
+    opacity: "1",
+  },
+  ".cm-editor:hover .fold-marker, .cm-editor.cm-focused .fold-marker": {
+    opacity: "1",
   },
   ".fold-placeholder": {
     background: "var(--bg-tertiary)",
@@ -239,15 +276,13 @@ export function foldAtCursor(view: EditorView): boolean {
 
   // Find heading that contains cursor
   const heading = headings.find((h) => {
-    return (
-      line.from >= view.state.doc.lineAt(h.from).from &&
-      line.from <= view.state.doc.lineAt(h.to).from
-    );
+    const headingLine = view.state.doc.lineAt(h.from);
+    return line.from >= headingLine.from && line.from <= h.to;
   });
 
   if (heading) {
     view.dispatch({
-      effects: toggleFold.of({ from: heading.lineFrom, to: heading.to }),
+      effects: toggleFold.of({ from: heading.foldFrom, to: heading.to }),
     });
     return true;
   }
