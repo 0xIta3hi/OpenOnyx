@@ -215,6 +215,24 @@ const contextSubmenuClass =
   "context-menu-submenu absolute left-[98%] top-[-4px] z-[3302] hidden min-w-40 rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl group-hover:block";
 const contextGroupDotClass = "group-color-dot inline-block h-2 w-2 shrink-0 rounded-full";
 
+interface PluginViewActionInfo {
+  id: string;
+  icon: string;
+  title: string;
+  el: HTMLElement;
+}
+
+interface TitlebarPluginViewInfo {
+  viewType: string;
+  displayText: string;
+  icon: string;
+  containerEl: HTMLElement;
+  side: 'left' | 'right' | 'main';
+  pluginId?: string;
+  visible?: boolean;
+  actions?: PluginViewActionInfo[];
+}
+
 interface TitleBarProps {
   theme: Theme;
   onToggleSidebar?: () => void;
@@ -257,14 +275,10 @@ interface TitleBarProps {
   onToggleGroupCollapse?: (groupId: string) => void;
   activeRightTab?: string;
   setActiveRightTab?: (tab: string) => void;
-  rightPluginViews?: Array<{
-    viewType: string;
-    displayText: string;
-    icon: string;
-    containerEl: HTMLElement;
-    side: 'left' | 'right' | 'main';
-    pluginId?: string;
-  }>;
+  leftPluginViews?: TitlebarPluginViewInfo[];
+  activeLeftViewType?: string | null;
+  onSelectLeftPluginView?: (viewType: string) => void;
+  rightPluginViews?: TitlebarPluginViewInfo[];
   rightSidebarWidth?: number;
 }
 
@@ -290,6 +304,10 @@ function PluginIcon({ iconId, className }: { iconId: string; className?: string 
   }, [iconId, className]);
 
   return <span ref={containerRef} className="flex items-center justify-center" />;
+}
+
+function triggerPluginAction(action: PluginViewActionInfo) {
+  action.el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
 }
 
 export function TitleBar({
@@ -331,6 +349,9 @@ export function TitleBar({
   onMoveTabToGroup,
   collapsedGroupIds = new Set<string>(),
   onToggleGroupCollapse,
+  leftPluginViews = [],
+  activeLeftViewType = null,
+  onSelectLeftPluginView,
   rightPluginViews = [],
   rightSidebarWidth = 300,
 }: TitleBarProps) {
@@ -404,6 +425,9 @@ export function TitleBar({
     
     return items;
   }, [sortedTabs, groups, collapsedGroupIds]);
+
+  const activeLeftPluginView = leftPluginViews.find((view) => view.viewType === activeLeftViewType);
+  const activeRightPluginView = rightPluginViews.find((view) => view.viewType === activeRightTab);
 
   React.useEffect(() => {
     return () => {
@@ -556,6 +580,30 @@ export function TitleBar({
                 <FilePlus size={20} strokeWidth={1.5} />
               </button>
             )}
+            {leftPluginViews.map((view) => (
+              <button
+                key={view.viewType}
+                className={`${titlebarActionBtnClass} ${
+                  activeLeftViewType === view.viewType
+                    ? "bg-(--bg-active) !text-(--text-primary)"
+                    : "text-(--text-muted) hover:text-(--text-secondary)"
+                }`}
+                onClick={() => onSelectLeftPluginView?.(view.viewType)}
+                title={view.displayText}
+              >
+                <PluginIcon iconId={view.icon} />
+              </button>
+            ))}
+            {activeLeftPluginView?.actions?.map((action) => (
+              <button
+                key={action.id}
+                className={titlebarActionBtnClass}
+                onClick={() => triggerPluginAction(action)}
+                title={action.title}
+              >
+                <PluginIcon iconId={action.icon} />
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -753,6 +801,17 @@ export function TitleBar({
                   title={view.displayText}
                 >
                   <PluginIcon iconId={view.icon} />
+                </button>
+              ))}
+
+              {activeRightPluginView?.actions?.map((action) => (
+                <button
+                  key={action.id}
+                  className={titlebarActionBtnClass}
+                  onClick={() => triggerPluginAction(action)}
+                  title={action.title}
+                >
+                  <PluginIcon iconId={action.icon} />
                 </button>
               ))}
             </div>

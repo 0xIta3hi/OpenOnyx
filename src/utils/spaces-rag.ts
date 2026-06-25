@@ -30,6 +30,7 @@ export interface SpaceMetadata {
   description: string;
   helpsWith: string[];
   explicitNotes?: { path: string; title: string; content: string }[];
+  readOnly?: boolean;
 }
 
 // ── System Prompt ────────────────────────────────────────────────────────────
@@ -39,6 +40,80 @@ function buildSystemPrompt(meta: SpaceMetadata): string {
   const helpsLine = helpsWith.length > 0
     ? `\n  helps_with: ${helpsWith.join(", ")}`
     : "";
+  const isReadOnly = meta.readOnly === true;
+
+  // Build the read-only enforcement block or the full actions protocol
+  let actionsBlock: string;
+  if (isReadOnly) {
+    actionsBlock = `8. READ-ONLY MODE (STRICTLY ENFORCED)
+This space is a PUBLIC, READ-ONLY space. You are in QUERY-ONLY mode.
+- You MUST NOT output any JSON action blocks.
+- You MUST NOT propose creating, updating, editing, or modifying any notes.
+- You MUST NOT output any \`\`\`json ... \`\`\` code blocks containing action payloads.
+- If the user asks to create or edit notes, politely explain that this is a public space and edits are not supported. Suggest they fork/remix the space to make changes.
+- Respond ONLY with conversational markdown answers.`;
+  } else {
+    actionsBlock = `8. QUERY CLASSIFICATION (CRITICAL — Apply BEFORE responding)
+Before generating your response, classify the user's intent:
+
+A) KNOWLEDGE QUERY — The user is asking a question to learn, understand, compare, explain, or explore a concept.
+   Examples: "what are deadlocks?", "explain event loops", "how does X relate to Y?", "what is the difference between A and B?"
+   Response: Pure conversational markdown. NO JSON action block. Just answer the question clearly.
+   You may include code examples, tables, callouts, and rich formatting in your markdown response.
+
+B) ACTION QUERY — The user EXPLICITLY asks to create, write, update, edit, rewrite, expand, simplify, link, organize, restructure, or summarize notes INTO their vault.
+   Examples: "create a note about X", "rewrite [[MyNote]]", "link orphan notes", "organize my vault", "add this to my notes"
+   Response: Output a structured JSON action block (see schema below).
+
+DEFAULT RULE: If the intent is ambiguous or unclear, ALWAYS treat it as a KNOWLEDGE QUERY.
+Never propose file edits unless the user explicitly requests vault modification.
+Asking about a topic is NOT the same as asking to create a note about that topic.
+
+For ACTION QUERIES ONLY, output a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Never use emojis in titles, paths, or contents.
+
+Always follow this exact schema for action payloads:
+{
+  "intent": "create_note" | "update_note" | "multi_action",
+  "summary": "Short explanation of what you plan to do",
+  "actions": [
+    // Array of actions. For create_note:
+    {
+      "type": "create_note",
+      "title": "Title of Note",
+      "path": "folder/path/", // folder path or file path (e.g. "/Systems/")
+      "content": "Full markdown content of the new note"
+    },
+    // For update_note (you can either propose a full content change, or a search-and-replace patch for lightweight token-efficient updates):
+    {
+      "type": "update_note",
+      "file_path": "folder/path/Note.md", // exact file path
+      "changes": {
+        // Option A: Full content update (use for major edits):
+        "before": "Original full content of the file, exactly as provided in contextual prompt",
+        "after": "New proposed full content of the file"
+        // OR Option B: Search-and-replace patch (RECOMMENDED for minor edits/linking notes, as it allows updating many files in a single turn without hitting token limits):
+        "search": "Exact text block in the original file to replace",
+        "replace": "Replacement text block (e.g. adding a [[Wiki Link]])"
+      }
+    }
+  ],
+  "sources": [
+    { "note": "Note Name Reference", "chunk": "precise text excerpt from the notes context that you used" }
+  ]
+}
+
+If you are only responding conversationally (KNOWLEDGE QUERY), do NOT output any JSON block.`;
+  }
+
+  // The explicit file edits protocol is only relevant for non-read-only spaces
+  const explicitFileBlock = isReadOnly ? "" : `
+10. EXPLICIT FILE MENTIONS & EDITS PROTOCOL (CRITICAL)
+- The user can explicitly mention files in their input using [[Note Title]].
+- If a note is explicitly mentioned, its full path and content will be provided in the user prompt under "EXPLICITLY MENTIONED FILE CONTEXTS".
+- If the user asks to modify, rewrite, expand, simplify, add to, or rewrite/synthesize the mentioned note, you MUST choose the "update_note" action.
+- You MUST use the EXACT file path of that note as provided in the "EXPLICITLY MENTIONED FILE CONTEXTS" (e.g. "Folder/Subfolder/Note.md" or "MyNotes/Note.md").
+- Do NOT create a new note at the root (like "Note.md" or "Summary.md") if the user is asking to update or edit a note that is already in their vault. Always preserve the original file path.
+- In "update_note", you must output the COMPLETE, beautifully structured markdown content of the updated note.`;
 
   return `You are not an assistant.
 You are the thinking layer of this knowledge system.
@@ -93,7 +168,7 @@ Occasionally surface structure:
 - recurring ideas
 - repeated strategies
 - gaps in coverage
-Example: "A recurring pattern in this space is…"
+Example: "A recurring pattern in this space is..."
 
 ---
 
@@ -104,41 +179,7 @@ RESPONSE FORMAT:
 - Avoid long paragraphs
 - No emojis, no filler
 
-8. KNOWLEDGE OPERATOR ACTIONS PROTOCOL (CRITICAL)
-If the user's intent is to create a new note, update/improve an existing note, or perform multiple vault actions, you MUST output a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Never use emojis in titles, paths, or contents.
-
-Always follow this exact schema for action payloads:
-{
-  "intent": "create_note" | "update_note" | "multi_action",
-  "summary": "Short explanation of what you plan to do",
-  "actions": [
-    // Array of actions. For create_note:
-    {
-      "type": "create_note",
-      "title": "Title of Note",
-      "path": "folder/path/", // folder path or file path (e.g. "/Systems/")
-      "content": "Full markdown content of the new note"
-    },
-    // For update_note (you can either propose a full content change, or a search-and-replace patch for lightweight token-efficient updates):
-    {
-      "type": "update_note",
-      "file_path": "folder/path/Note.md", // exact file path
-      "changes": {
-        // Option A: Full content update (use for major edits):
-        "before": "Original full content of the file, exactly as provided in contextual prompt",
-        "after": "New proposed full content of the file"
-        // OR Option B: Search-and-replace patch (RECOMMENDED for minor edits/linking notes, as it allows updating many files in a single turn without hitting token limits):
-        "search": "Exact text block in the original file to replace",
-        "replace": "Replacement text block (e.g. adding a [[Wiki Link]])"
-      }
-    }
-  ],
-  "sources": [
-    { "note": "Note Name Reference", "chunk": "precise text excerpt from the notes context that you used" }
-  ]
-}
-
-If you are only responding conversationally without proposing any note creation, edits, or multi-actions, do not output any JSON block. Prioritize returning a structured action payload over a passive text reply if the user's prompt suggests any note creation, editing, restructuring, or link suggestion.
+${actionsBlock}
 
 9. PREMIUM MARKDOWN LAYOUT AND STRUCTURING RULES (CRITICAL)
 Your generated note contents must look stunning, highly professional, and extremely well-organized. Follow these formatting rules strictly:
@@ -161,14 +202,7 @@ Your generated note contents must look stunning, highly professional, and extrem
   > Potential risks or caveats.
 - Use beautifully formatted Markdown Tables for comparisons, structural data, and side-by-side analyses. Ensure clean spacing and proper header separation (e.g., | Topic | Pros | Cons |).
 - Make sure notes feel like premium wiki entries, rich with deep structure, summaries, and logical layout. Avoid long walls of unstructured text.
-
-10. EXPLICIT FILE MENTIONS & EDITS PROTOCOL (CRITICAL)
-- The user can explicitly mention files in their input using [[Note Title]].
-- If a note is explicitly mentioned, its full path and content will be provided in the user prompt under "EXPLICITLY MENTIONED FILE CONTEXTS".
-- If the user asks to modify, rewrite, expand, simplify, add to, or rewrite/synthesize the mentioned note, you MUST choose the "update_note" action.
-- You MUST use the EXACT file path of that note as provided in the "EXPLICITLY MENTIONED FILE CONTEXTS" (e.g. "Folder/Subfolder/Note.md" or "MyNotes/Note.md").
-- Do NOT create a new note at the root (like "Note.md" or "Summary.md") if the user is asking to update or edit a note that is already in their vault. Always preserve the original file path.
-- In "update_note", you must output the COMPLETE, beautifully structured markdown content of the updated note.
+${explicitFileBlock}
 
 ---
 
@@ -229,19 +263,33 @@ export function stripJSONBlock(text: string): string {
   
   let cleaned = text;
 
-  // 1. Handle complete or incomplete code block starting with ```json or ```
-  const codeBlockIndex = cleaned.indexOf("```");
-  if (codeBlockIndex !== -1) {
-    const nextCodeBlockIndex = cleaned.indexOf("```", codeBlockIndex + 3);
-    if (nextCodeBlockIndex !== -1) {
-      cleaned = cleaned.substring(0, codeBlockIndex) + cleaned.substring(nextCodeBlockIndex + 3);
-      return stripJSONBlock(cleaned);
-    } else {
-      cleaned = cleaned.substring(0, codeBlockIndex);
+  // 1. Strip only fenced code blocks that contain JSON action payloads (intent/action keys).
+  //    Preserve legitimate code blocks (python, javascript, etc.)
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
+  cleaned = cleaned.replace(codeBlockRegex, (fullMatch, blockContent) => {
+    const hasActionKey = blockContent.includes('"intent"') || blockContent.includes('"action"') ||
+                         blockContent.includes("'intent'") || blockContent.includes("'action'");
+    // Only strip if this is a JSON action payload block
+    if (hasActionKey) return "";
+    // Preserve non-action code blocks (python examples, etc.)
+    return fullMatch;
+  });
+
+  // 2. Handle incomplete/streaming JSON action blocks (no closing ```)
+  //    Only strip if the open fence is followed by json-like action content
+  const incompleteBlockIndex = cleaned.indexOf("```");
+  if (incompleteBlockIndex !== -1) {
+    const afterFence = cleaned.substring(incompleteBlockIndex + 3);
+    // Check if this looks like a json action block being streamed
+    const looksLikeActionBlock = /^\s*(?:json)?\s*\{/.test(afterFence) &&
+      (afterFence.includes('"intent"') || afterFence.includes('"action"') ||
+       afterFence.includes("'intent'") || afterFence.includes("'action'"));
+    if (looksLikeActionBlock) {
+      cleaned = cleaned.substring(0, incompleteBlockIndex);
     }
   }
 
-  // 2. Also handle any raw JSON block { "action": ... } or { "intent": ... } complete or incomplete
+  // 3. Also handle any raw JSON block { "action": ... } or { "intent": ... } not inside a code fence
   const firstBrace = cleaned.indexOf("{");
   if (firstBrace !== -1) {
     const candidate = cleaned.substring(firstBrace);
@@ -400,6 +448,7 @@ export async function querySpace(
   const systemPrompt = buildSystemPrompt(meta);
   const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
 
+
   // Map conversation history to LLM message format, stripping action blocks
   const historyMessages = (history || [])
     .slice(-10) // Limit to last 10 messages for token efficiency
@@ -474,6 +523,7 @@ export async function querySpaceStreaming(
 
   const systemPrompt = buildSystemPrompt(meta);
   const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
+
 
   // Map conversation history to LLM message format, stripping action blocks
   const historyMessages = (history || [])

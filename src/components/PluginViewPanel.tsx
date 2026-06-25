@@ -97,6 +97,7 @@ export function PluginViewPanel({ views, onClose, isMainView, fill, width = 300 
   }, [activeView]);
 
   if (views.length === 0) return null;
+  const showTabBar = !isMainView && !(fill && views.length === 1) && views.length > 0;
 
   return (
     <div
@@ -121,7 +122,7 @@ export function PluginViewPanel({ views, onClose, isMainView, fill, width = 300 
       }}
     >
       {/* Tab bar for multiple views (hidden in main view) */}
-      {!isMainView && views.length > 0 && (
+      {showTabBar && (
         <div className={pluginTabsClass}>
           {views.map((view) => (
             <button

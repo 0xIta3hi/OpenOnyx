@@ -27,7 +27,12 @@ const api = () => getAPI();
  */
 function guardCallback(pluginId: string, fn: (...args: any[]) => any, context: string): (...args: any[]) => any {
   return (...args: any[]) => {
+    const win = window as any;
+    const previousPluginId = win.__oo_active_plugin_id;
+    win.__oo_active_plugin_id = pluginId;
     const { result, shouldDisable } = safePluginCall(pluginId, () => fn(...args), context);
+    if (previousPluginId === undefined) delete win.__oo_active_plugin_id;
+    else win.__oo_active_plugin_id = previousPluginId;
     if (shouldDisable) {
       new (Notice as any)(`Plugin "${pluginId}" disabled — too many errors.`);
       (window as any).__oo_auto_disable_plugin?.(pluginId);

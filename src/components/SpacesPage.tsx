@@ -1135,6 +1135,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       }
 
       // ── Detect Complex/Vault-Wide Tasks ───────────────────
+      // Only run for local/owned spaces — remote/public spaces are query-only
+      let finalQuery = q;
+
+      if (!isRemote) {
       const historyText = (chatMessages || []).slice(-3).map(m => m.content).join(" ");
       const combinedText = (q + " " + historyText).toLowerCase();
 
@@ -1143,8 +1147,6 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                                  (/continue|next|proceed|go on/i.test(q) && (/orphan|link|connect/i.test(combinedText)));
       const isStructureQuery = /structure|organize|restructure|hierarchy|folders/i.test(combinedText);
       const isDuplicateQuery = /duplicate|merge|redundant/i.test(combinedText);
-
-      let finalQuery = q;
 
       if (isOrphanQuery || isVaultWideLinking || isStructureQuery || isDuplicateQuery) {
         // 1. Load graph data to find relationships and orphans
@@ -1202,12 +1204,14 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         finalQuery += `2. You should update ALL orphan notes in a single go by using Option B (search-and-replace patches) under 'changes'. Simply search for a specific line (e.g. the main heading or the end of the note) and replace it with that line plus the new [[Wiki Link]]. This allows you to process all files in a single response quickly. Only use Option A (full file updates) if you are editing 1-2 notes maximum.\n`;
         finalQuery += `3. Do not use emojis in the responses, titles, paths, or contents.`;
       }
+      } // end !isRemote guard
 
       const spaceMeta: SpaceMetadata = {
         title: activeSpace.title,
         description: activeSpace.description,
         helpsWith: activeSpace.helpsWith || [],
         explicitNotes: explicitNotes.length > 0 ? explicitNotes : undefined,
+        readOnly: isRemote,
       };
       const result = await querySpaceStreaming(activeSpaceId, finalQuery, spaceMeta, chatMessages, (chunk) => {
         accumulatedAnswer += chunk;
@@ -2079,7 +2083,8 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             </div>
           </div>
 
-          {/* Space Operations Dashboard */}
+          {/* Space Operations Dashboard — hidden for public/remote spaces */}
+          {!isRemote && (
           <div className={spaceSidebarSectionClass}>
             <div className={spaceSidebarSectionHeaderClass}>Space Operations</div>
             <div className={spaceOperationsGridClass}>
@@ -2112,6 +2117,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               </button>
             </div>
           </div>
+          )}
 
           {/* Conversations Explorer Session List */}
           <div className={spaceSidebarFillSectionClass}>
@@ -2303,8 +2309,8 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       </div>
                     )}
 
-                    {/* Render Interactive Action Cards if JSON action exists */}
-                    {(() => {
+                    {/* Render Interactive Action Cards if JSON action exists — only for local/owned spaces */}
+                    {!isRemote && (() => {
                       const payload = parseActionPayload(msg.content);
                       if (!payload) return null;
                       
@@ -2746,7 +2752,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       />
                     </div>
                   )}
-                  {actionType && (
+                  {!isRemote && actionType && (
                     <ActiveActionStatus
                       actionType={actionType}
                       isApplied={false}

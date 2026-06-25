@@ -51,6 +51,10 @@ beforeEach(() => {
     deleteFile: vi.fn(async () => {}),
     deleteDirectory: vi.fn(async () => {}),
     renameFile: vi.fn(async () => {}),
+    openPath: vi.fn(async () => ''),
+    showItemInFolder: vi.fn(async () => {}),
+    writeClipboardText: vi.fn(async () => {}),
+    readClipboardText: vi.fn(async () => ''),
     dataRead: vi.fn(async () => null),
     dataWrite: vi.fn(async () => {}),
     dataDelete: vi.fn(async () => {}),
@@ -98,8 +102,32 @@ describe('plugin runtime compatibility', () => {
 
     expect((window as any).electron.remote.getCurrentWindow().isMaximized()).toBe(false);
     expect((window as any).electron.remote.getCurrentWebContents().getZoomFactor()).toBe(1);
+    expect((window as any).require('electron').shell.openPath).toBeTypeOf('function');
+    expect((window as any).require('electron').shell.showItemInFolder).toBeTypeOf('function');
     expect((window as any).activeWindow).toBe(window);
     expect((window as any).activeDocument).toBe(document);
+  });
+
+  it('supports Notebook Navigator desktop file menu dependencies', async () => {
+    const app = new OOApp();
+    new PluginManager(app, {
+      onCommandsChanged: vi.fn(),
+      onRibbonChanged: vi.fn(),
+      onStatusBarChanged: vi.fn(),
+      onSettingTabsChanged: vi.fn(),
+      onPluginsChanged: vi.fn(),
+    });
+    await app.initialize('/vault');
+
+    const obsidian = (window as any).require('obsidian');
+    expect(app.vault.adapter instanceof obsidian.FileSystemAdapter).toBe(true);
+
+    await app.showInFolder('Folder/Note.md');
+    expect((window as any).electronAPI.showItemInFolder).toHaveBeenCalledWith('/vault/Folder/Note.md');
+
+    const shell = (window as any).require('electron').shell;
+    await shell.openPath('/vault/Folder/Note.md');
+    expect((window as any).electronAPI.openPath).toHaveBeenCalledWith('/vault/Folder/Note.md');
   });
 
   it('implements the suggestion methods proxied by Iconic', () => {
@@ -160,6 +188,39 @@ describe('plugin runtime compatibility', () => {
     item.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('stamps plugin modals with the active plugin scope and close button', () => {
+    (window as any).__oo_active_plugin_id = 'notebook-navigator';
+    const modal = new (Modal as any)();
+    delete (window as any).__oo_active_plugin_id;
+
+    expect(modal.containerEl.classList.contains('oo-plugin-scope-notebook-navigator')).toBe(true);
+    expect(modal.modalEl.querySelector('.modal-close-button')).toBe(modal.closeButtonEl);
+
+    modal.open();
+    modal.closeButtonEl.click();
+    expect(document.body.contains(modal.containerEl)).toBe(false);
+  });
+
+  it('infers plugin modal scope from plugin blob stacks', () => {
+    const pluginBlobUrls = new Map<string, string>([
+      ['blob:http://localhost:5173/notebook-navigator-test', 'notebook-navigator'],
+    ]);
+    (window as any).__oo_plugin_blob_urls = pluginBlobUrls;
+    const OriginalError = globalThis.Error;
+    class StackError extends OriginalError {
+      stack = 'Error\n    at open (blob:http://localhost:5173/notebook-navigator-test:1:1)';
+    }
+    (globalThis as any).Error = StackError;
+
+    try {
+      const modal = new (Modal as any)();
+      expect(modal.containerEl.classList.contains('oo-plugin-scope-notebook-navigator')).toBe(true);
+    } finally {
+      delete (window as any).__oo_plugin_blob_urls;
+      (globalThis as any).Error = OriginalError;
+    }
   });
 
   it('extends SVG elements with Obsidian class helpers', () => {
@@ -428,6 +489,7 @@ describe('plugin runtime compatibility', () => {
     expect(app.workspace.getActivePluginViews()[0]).toMatchObject({
       viewType: 'notebook-navigator',
       side: 'left',
+      visible: true,
     });
     expect(leaf.view.containerEl.textContent).toContain('navigator ready');
     expect(leaf.parent.getRoot()).toBe(app.workspace.rootSplit);
@@ -437,6 +499,35 @@ describe('plugin runtime compatibility', () => {
     expect(app.workspace.leftSplit.collapsed).toBe(true);
     app.workspace.leftSplit.expand();
     expect(app.workspace.leftSplit.collapsed).toBe(false);
+
+    app.workspace.revealDefaultView('left');
+    expect(app.workspace.getActivePluginViews()[0]).toMatchObject({
+      viewType: 'notebook-navigator',
+      visible: false,
+    });
+  });
+
+  it('exposes item view actions for titlebar hosts', async () => {
+    const app = new OOApp();
+    const clicked = vi.fn();
+    class ActionView extends (ItemView as any) {
+      getViewType() { return 'action-view'; }
+      getDisplayText() { return 'Action View'; }
+      async onOpen() {
+        this.addAction('folder', 'Open folder', clicked);
+      }
+    }
+
+    app.workspace.registerViewCreator('action-view', (leaf: WorkspaceLeaf) => new ActionView(leaf));
+    const leaf = app.workspace.getLeftLeaf(false)!;
+    await leaf.setViewState({ type: 'action-view' });
+    await app.workspace.revealLeaf(leaf);
+
+    const view = app.workspace.getActivePluginViews()[0];
+    expect(view.actions).toHaveLength(1);
+    expect(view.actions?.[0]).toMatchObject({ icon: 'folder', title: 'Open folder' });
+    view.actions?.[0].el.click();
+    expect(clicked).toHaveBeenCalledTimes(1);
   });
 
   it('creates distinct workspace leaves for tab, split, and window contexts', () => {
@@ -496,6 +587,31 @@ describe('plugin runtime compatibility', () => {
     expect(copied.path).toBe('Projects copy');
     expect(Array.from(files.get('Projects copy/notes.md') || [])).toEqual(Array.from(files.get('Projects/notes.md') || []));
     expect(Array.from(files.get('Projects copy/assets/image.bin') || [])).toEqual([1, 2, 3]);
+  });
+
+  it('renames folders through the vault without leaving stale child paths', async () => {
+    const app = new OOApp();
+    await app.vault.createFolder('Old');
+    await app.vault.create('Old/Note.md', '# Note');
+    const folder = app.vault.getFolderByPath('Old');
+    const renamed = vi.fn();
+    window.addEventListener('openobsidian:file-renamed', renamed);
+
+    await app.vault.rename(folder!, 'New');
+
+    expect((window as any).electronAPI.renameFile).toHaveBeenCalledWith('Old', 'New');
+    expect(app.vault.getFolderByPath('Old')).toBeNull();
+    expect(app.vault.getFileByPath('Old/Note.md')).toBeNull();
+    expect(app.vault.getFolderByPath('New')).not.toBeNull();
+    expect(app.vault.getFileByPath('New/Note.md')).not.toBeNull();
+    expect(renamed).toHaveBeenCalledTimes(1);
+    expect((renamed.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+      oldPath: 'Old',
+      newPath: 'New',
+      isDirectory: true,
+    });
+
+    window.removeEventListener('openobsidian:file-renamed', renamed);
   });
 
   it('opens registered file extensions in their plugin view with file state', async () => {

@@ -39,6 +39,7 @@ export class SearchEngine {
     for (const filePath of allFiles) {
       try {
         const content = await fsManager.readFile(filePath);
+        if (content === null) continue;
         const name = filePath.replace(/\.md$/, '');
         const tags = fsManager.extractTags(content);
 

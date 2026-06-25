@@ -113,19 +113,52 @@ async function main() {
         }
         const leaf = app.workspace.getLeavesOfType('notebook-navigator')[0];
         const view = leaf?.view;
+        if (leaf) {
+          await app.workspace.revealLeaf(leaf);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          document.querySelector('[title="Notebook Navigator"]')?.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          }));
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
         const activeView = app.workspace.getActivePluginViews().find((entry) => entry.viewType === 'notebook-navigator');
+        const navigatorRoot = activeView?.containerEl || view?.contentEl || view?.containerEl || document.body;
         const firstPath = 'Notebook Navigator first tab smoke test.md';
         const secondPath = 'Notebook Navigator second tab smoke test.md';
+        const renameOldPath = 'Notebook Navigator rename smoke old.md';
+        const renameNewPath = 'Notebook Navigator rename smoke new.md';
         for (const path of [firstPath, secondPath]) {
           const existing = app.vault.getFileByPath(path);
           if (existing) await app.vault.delete(existing);
           await app.vault.create(path, '# Navigator tab smoke test');
         }
+        for (const path of [renameOldPath, renameNewPath]) {
+          const existing = app.vault.getFileByPath(path);
+          if (existing) await app.vault.delete(existing);
+        }
+        const renameFile = await app.vault.create(renameOldPath, '# Rename smoke test');
+        await app.vault.rename(renameFile, renameNewPath);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const renameMoved = !app.vault.getFileByPath(renameOldPath)
+          && Boolean(app.vault.getFileByPath(renameNewPath))
+          && await electronAPI.readFile(renameOldPath) === null
+          && await electronAPI.readFile(renameNewPath) === '# Rename smoke test';
         const firstOpenResult = await app.workspace.getLeaf('tab').openFile(app.vault.getFileByPath(firstPath), { active: true });
         const secondOpenResult = await app.workspace.getLeaf('tab').openFile(app.vault.getFileByPath(secondPath), { active: true });
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         const tabText = Array.from(document.querySelectorAll('.titlebar-tab')).map((element) => element.textContent || '');
-        for (const path of [firstPath, secondPath]) {
+        const mountedBeforeExplorer = Boolean(navigatorRoot?.isConnected);
+        const extraHostChromeAbsent = !Array.from(document.querySelectorAll('.plugin-view-panel > div')).some(
+          (element) => (element.textContent || '').trim() === 'Notebook Navigator×',
+        );
+        document.querySelector('[title="File Explorer"]')?.click();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const explorerRestored = Boolean(document.querySelector('.file-explorer'));
+        const navigatorVisibleAfterExplorer = app.workspace.getActivePluginViews()
+          .find((entry) => entry.viewType === 'notebook-navigator')?.visible;
+        for (const path of [firstPath, secondPath, renameOldPath, renameNewPath]) {
           const file = app.vault.getFileByPath(path);
           if (file) await app.vault.delete(file);
         }
@@ -135,12 +168,17 @@ async function main() {
           leafExists: Boolean(leaf),
           side: leaf?.side,
           viewType: view?.getViewType?.(),
-          rendered: Boolean(view?.contentEl?.childElementCount),
-          mounted: Boolean(view?.containerEl?.isConnected),
+          rendered: Boolean(navigatorRoot?.childElementCount || view?.contentEl?.childElementCount),
+          mounted: mountedBeforeExplorer,
           activeSidebarView: activeView?.side,
+          activeSidebarVisible: activeView?.visible,
           sidebarExpanded: app.workspace.leftSplit?.collapsed === false,
           hasDistinctTabs: tabText.some((text) => text.includes('first tab smoke test'))
             && tabText.some((text) => text.includes('second tab smoke test')),
+          renameMoved,
+          extraHostChromeAbsent,
+          explorerRestored,
+          navigatorVisibleAfterExplorer,
           firstOpenResult,
           secondOpenResult,
           tabText,
@@ -162,6 +200,10 @@ async function main() {
     result.activeSidebarView !== 'left' && 'Workspace did not expose Notebook Navigator as the active left view',
     !result.sidebarExpanded && 'Notebook Navigator did not expand the left sidebar',
     !result.hasDistinctTabs && 'workspace tab contexts did not create distinct app tabs',
+    !result.renameMoved && 'vault rename left the old path, missed the new path, or changed file content',
+    !result.extraHostChromeAbsent && 'Notebook Navigator still shows the extra host tab chrome',
+    !result.explorerRestored && 'titlebar File Explorer button did not restore the default explorer',
+    result.navigatorVisibleAfterExplorer !== false && 'Workspace did not mark Navigator hidden after restoring Explorer',
     result.errors.length > 0 && `renderer errors: ${result.errors.join('; ')}`,
   ].filter(Boolean);
   if (failures.length) {

@@ -328,7 +328,7 @@ export class OOVault extends Events {
   }
 
   async read(file: TFile): Promise<string> {
-    return api().readFile(file.path);
+    return (await api().readFile(file.path)) || '';
   }
 
   async cachedRead(file: TFile): Promise<string> {
@@ -397,18 +397,40 @@ export class OOVault extends Events {
     const oldPath = file.path;
     const np = normalizePath(newPath);
     await api().renameFile(oldPath, np);
-    this._files.delete(oldPath);
-    file.path = np;
-    file.name = np.split('/').pop() || np;
-    if (file instanceof TFile) {
-      const dotIdx = file.name.lastIndexOf('.');
-      file.basename = dotIdx > 0 ? file.name.substring(0, dotIdx) : file.name;
-      file.extension = dotIdx > 0 ? file.name.substring(dotIdx + 1) : '';
-    }
-    this._files.set(np, file);
     const metadataCache = (window as any).__oo_app?.metadataCache;
-    metadataCache?.deletePath?.(oldPath);
-    if (file instanceof TFile) await metadataCache?.updateFileCache?.(file);
+
+    const updateEntryPath = async (entry: TAbstractFile, nextPath: string) => {
+      const previousPath = entry.path;
+      this._files.delete(previousPath);
+      entry.path = nextPath;
+      entry.name = nextPath.split('/').pop() || nextPath;
+      if (entry instanceof TFile) {
+        const dotIdx = entry.name.lastIndexOf('.');
+        entry.basename = dotIdx > 0 ? entry.name.substring(0, dotIdx) : entry.name;
+        entry.extension = dotIdx > 0 ? entry.name.substring(dotIdx + 1) : '';
+      }
+      this._files.set(nextPath, entry);
+      metadataCache?.deletePath?.(previousPath);
+      if (entry instanceof TFile) await metadataCache?.updateFileCache?.(entry);
+    };
+
+    if (file instanceof TFolder) {
+      const oldPrefix = oldPath.endsWith('/') ? oldPath : `${oldPath}/`;
+      const newPrefix = np.endsWith('/') ? np : `${np}/`;
+      const descendants = Array.from(this._files.values())
+        .filter((entry) => entry.path.startsWith(oldPrefix))
+        .sort((a, b) => a.path.length - b.path.length);
+      await updateEntryPath(file, np);
+      for (const entry of descendants) {
+        await updateEntryPath(entry, `${newPrefix}${entry.path.slice(oldPrefix.length)}`);
+      }
+    } else {
+      await updateEntryPath(file, np);
+    }
+
+    window.dispatchEvent(new CustomEvent('openobsidian:file-renamed', {
+      detail: { oldPath, newPath: np, isDirectory: file instanceof TFolder },
+    }));
     this.trigger('rename', file, oldPath);
   }
 

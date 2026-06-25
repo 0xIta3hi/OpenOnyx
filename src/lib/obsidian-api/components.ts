@@ -4,6 +4,22 @@
  */
 import { Scope, setIcon } from './utils';
 
+function getCurrentPluginScopeClass(): string | null {
+  const win = window as any;
+  const pluginId = typeof win.__oo_active_plugin_id === 'string'
+    ? win.__oo_active_plugin_id
+    : null;
+  if (pluginId) return `oo-plugin-scope-${pluginId}`;
+
+  const stack = new Error().stack || '';
+  const pluginBlobUrls = win.__oo_plugin_blob_urls as Map<string, string> | undefined;
+  if (!pluginBlobUrls) return null;
+  for (const [blobUrl, id] of pluginBlobUrls) {
+    if (stack.includes(blobUrl)) return `oo-plugin-scope-${id}`;
+  }
+  return null;
+}
+
 // ── EventRef ────────────────────────────────────────
 export interface EventRef {
   _eventName: string;
@@ -225,6 +241,7 @@ export interface Modal {
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   contentEl: HTMLElement;
+  closeButtonEl: HTMLButtonElement;
   open(): void;
   close(): void;
   onOpen(): void;
@@ -239,12 +256,21 @@ export function Modal(this: any, app: any) {
   this.dimBackground = true;
   this.containerEl = document.createElement('div');
   this.containerEl.className = 'modal-container oo-plugin-modal-container oo-plugin-view';
+  const scopeClass = getCurrentPluginScopeClass();
+  if (scopeClass) this.containerEl.classList.add(scopeClass);
   this.modalEl = document.createElement('div');
   this.modalEl.className = 'modal oo-plugin-modal';
   this.titleEl = document.createElement('div');
   this.titleEl.className = 'modal-title';
   this.contentEl = document.createElement('div');
   this.contentEl.className = 'modal-content';
+  this.closeButtonEl = document.createElement('button');
+  this.closeButtonEl.className = 'modal-close-button';
+  this.closeButtonEl.type = 'button';
+  this.closeButtonEl.setAttribute('aria-label', 'Close');
+  this.closeButtonEl.textContent = '×';
+  this.closeButtonEl.addEventListener('click', () => this.close());
+  this.modalEl.appendChild(this.closeButtonEl);
   this.modalEl.appendChild(this.titleEl);
   this.modalEl.appendChild(this.contentEl);
 
@@ -279,6 +305,8 @@ export function Modal(this: any, app: any) {
 }
 
 Modal.prototype.open = function() {
+  const scopeClass = getCurrentPluginScopeClass();
+  if (scopeClass) this.containerEl.classList.add(scopeClass);
   document.body.appendChild(this.containerEl);
   window.addEventListener('keydown', this._onGlobalKeyDown);
   this.onOpen();

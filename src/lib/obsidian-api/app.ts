@@ -72,9 +72,19 @@ export class OOApp {
     try {
       const electron = (window as any).require?.('electron');
       const basePath = this.vault.adapter.getBasePath();
-      await electron?.shell?.openPath?.(`${basePath}/${normalizePath(path)}`);
+      await electron?.shell?.openPath?.(this.vault.adapter.getFullPath?.(path) || `${basePath}/${normalizePath(path)}`);
     } catch (error) {
       console.warn('[App] Failed to open path with default application:', error);
+    }
+  }
+
+  async showInFolder(path: string): Promise<void> {
+    try {
+      const electron = (window as any).require?.('electron');
+      const fullPath = this.vault.adapter.getFullPath?.(path) || `${this.vault.adapter.getBasePath()}/${normalizePath(path)}`;
+      await electron?.shell?.showItemInFolder?.(fullPath);
+    } catch (error) {
+      console.warn('[App] Failed to reveal path in system explorer:', error);
     }
   }
 

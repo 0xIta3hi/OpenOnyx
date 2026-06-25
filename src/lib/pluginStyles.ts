@@ -340,10 +340,18 @@ export function injectPluginBaseCss(): void {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 12px;
+  padding-right: 32px;
   color: var(--text-primary, #e0e0e0);
 }
 
+.oo-plugin-modal .modal-title:empty {
+  display: none;
+  margin: 0;
+  padding: 0;
+}
+
 .oo-plugin-modal .modal-content {
+  min-width: 0;
   color: var(--text-secondary, #b0b0b0);
   font-size: 14px;
   line-height: 1.6;

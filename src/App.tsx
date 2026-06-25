@@ -93,6 +93,7 @@ import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers"
 import { getAPI } from "./utils/api";
 import { PluginManager } from "./lib/pluginManager";
 import { OOApp } from "./lib/obsidian-api/app";
+import { TFile } from "./lib/obsidian-api";
 import { PluginPermissionModal } from "./components/PluginPermissionModal";
 import { PluginViewPanel } from "./components/PluginViewPanel";
 import type { PluginPermission, PluginManifest } from "./types/plugin";
@@ -103,6 +104,25 @@ import {
 } from "./utils/ftux";
 import { readData, writeData } from "./utils/disk-store";
 import { DragCtx, DragContextData } from "./context/DragContext";
+
+type AppPluginViewAction = {
+  id: string;
+  icon: string;
+  title: string;
+  el: HTMLElement;
+};
+
+type AppPluginViewInfo = {
+  viewType: string;
+  displayText: string;
+  icon: string;
+  containerEl: HTMLElement;
+  side: 'left' | 'right' | 'main';
+  pluginId?: string;
+  leaf?: any;
+  visible?: boolean;
+  actions?: AppPluginViewAction[];
+};
 
 function setWritableViewProperty(view: any, key: string, value: unknown): void {
   for (let target = view; target; target = Object.getPrototypeOf(target)) {
@@ -1092,13 +1112,16 @@ export default function App() {
   const ooAppRef = useRef<OOApp | null>(null);
   const openFileRef = useRef<(path: string, mode?: ViewMode) => Promise<void>>(async () => {});
   const pluginFileOpenQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const renameRedirectsRef = useRef<Map<string, string>>(new Map());
   const collabSubRef = useRef<{
     vaultPath: string | null;
     userId: string | null;
     spaceId: string | null;
   }>({ vaultPath: null, userId: null, spaceId: null });
-  const [pluginViews, setPluginViews] = useState<Array<{ viewType: string; displayText: string; icon: string; containerEl: HTMLElement; side: 'left' | 'right' | 'main' }>>([]);
+  const [pluginViews, setPluginViews] = useState<AppPluginViewInfo[]>([]);
   const leftPluginViews = pluginViews.filter(v => v.side === 'left');
+  const activeLeftPluginViews = leftPluginViews.filter(v => v.visible);
+  const activeLeftPluginView = activeLeftPluginViews[0] || null;
   const rightPluginViews = pluginViews.filter(v => v.side === 'right');
   const mainPluginViews = pluginViews.filter(v => v.side === 'main');
   // Permission modal state
@@ -1796,7 +1819,7 @@ export default function App() {
         return;
       }
       try {
-        const content = await api.readFile(tab.path);
+        const content = (await api.readFile(tab.path)) || "";
         setCurrentContent(content);
         loadBacklinks(tab.path);
       } catch {
@@ -2629,6 +2652,9 @@ export default function App() {
               containerEl: v.containerEl,
               side: v.side,
               pluginId: v.pluginId,
+              leaf: v.leaf,
+              visible: v.visible,
+              actions: v.actions || [],
             })));
 
             // Sync main plugin views to tabs
@@ -3287,7 +3313,7 @@ export default function App() {
             setBacklinks([]);
           } else {
             try {
-              const content = await api.readFile(tabObj.path);
+              const content = (await api.readFile(tabObj.path)) || "";
               setCurrentContent(content);
               loadBacklinks(tabObj.path);
             } catch (err) {
@@ -3568,7 +3594,7 @@ export default function App() {
             if (tabObj) {
               if (tabObj.path !== "__new_tab__" && tabObj.path !== GRAPH_TAB_PATH && tabObj.path !== SPACES_TAB_PATH && !tabObj.path.startsWith('__plugin__.')) {
                 try {
-                  const content = await api.readFile(tabObj.path);
+                  const content = (await api.readFile(tabObj.path)) || "";
                   setCurrentContent(content);
                   loadBacklinks(tabObj.path);
                 } catch (err) {
@@ -3762,8 +3788,87 @@ export default function App() {
     }
   };
 
+  // ── Backlinks ───────────────────────────────────────
+  const loadBacklinks = async (filePath: string) => {
+    try {
+      const links = await api.getBacklinks(filePath);
+      setBacklinks(links);
+    } catch {
+      setBacklinks([]);
+    }
+  };
+
+  const rememberRenameRedirect = useCallback((oldPath: string, newPath: string) => {
+    const redirects = renameRedirectsRef.current;
+    redirects.set(oldPath, newPath);
+    window.setTimeout(() => {
+      if (redirects.get(oldPath) === newPath) redirects.delete(oldPath);
+    }, 30_000);
+  }, []);
+
+  const resolveRenamedPath = useCallback((path: string): string => {
+    const redirects = renameRedirectsRef.current;
+    const exact = redirects.get(path);
+    if (exact) return exact;
+    for (const [oldPath, newPath] of redirects) {
+      const oldPrefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
+      if (path.startsWith(oldPrefix)) {
+        const newPrefix = newPath.endsWith("/") ? newPath : `${newPath}/`;
+        return `${newPrefix}${path.slice(oldPrefix.length)}`;
+      }
+    }
+    return path;
+  }, []);
+
+  const updateOpenPathsAfterRename = useCallback((oldPath: string, newPath: string, isDirectory: boolean) => {
+    rememberRenameRedirect(oldPath, newPath);
+
+    const remapPath = (path: string) => {
+      if (path === oldPath) return newPath;
+      if (isDirectory) {
+        const oldPrefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
+        if (path.startsWith(oldPrefix)) {
+          const newPrefix = newPath.endsWith("/") ? newPath : `${newPath}/`;
+          return `${newPrefix}${path.slice(oldPrefix.length)}`;
+        }
+      }
+      return path;
+    };
+
+    setTabs((prev) =>
+      prev.map((tab) => {
+        const nextPath = remapPath(tab.path);
+        return nextPath === tab.path ? tab : { ...tab, path: nextPath, name: getNoteName(nextPath) };
+      }),
+    );
+
+    setStarredNotes((prev) => prev.map(remapPath));
+
+    if (activeTabId) {
+      const active = tabs.find((tab) => tab.id === activeTabId);
+      if (active && remapPath(active.path) !== active.path) {
+        loadBacklinks(remapPath(active.path));
+      }
+    }
+  }, [activeTabId, loadBacklinks, rememberRenameRedirect, setStarredNotes, setTabs, tabs]);
+
+  const updateEmbeddingsAfterRename = useCallback((oldPath: string, newPath: string, isDirectory: boolean) => {
+    const store = loadStore();
+    if (isDirectory) {
+      renameEmbeddingsByPrefix(store, oldPath, newPath);
+      return;
+    }
+    if (!oldPath.toLowerCase().endsWith(".md")) return;
+    if (newPath.toLowerCase().endsWith(".md")) {
+      renameEmbeddingPath(store, oldPath, newPath);
+    } else {
+      removeEmbedding(store, oldPath);
+    }
+  }, []);
+
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
+    filePath = resolveRenamedPath(filePath);
     // Excalidraw drawings are Markdown-backed but must be opened in the
     // registered Excalidraw view, not the host Markdown editor.
     const app = ooAppRef.current;
@@ -3806,18 +3911,15 @@ export default function App() {
     }
 
     const readOrCreateMissingMarkdown = async (path: string): Promise<string> => {
-      try {
-        return await api.readFile(path);
-      } catch (err: any) {
-        if (err?.code === "ENOENT" && path.toLowerCase().endsWith(".md")) {
-          const noteTitle = getNoteName(path);
-          const fallback = `# ${noteTitle}\n\n`;
-          await api.createFile(path, fallback);
-          await refreshFileTree();
-          return fallback;
-        }
-        throw err;
+      const existing = app?.vault.getFileByPath(path);
+      if (existing || !path.toLowerCase().endsWith(".md")) {
+        return (await api.readFile(path)) || "";
       }
+      const noteTitle = getNoteName(path);
+      const fallback = `# ${noteTitle}\n\n`;
+      await api.createFile(path, fallback);
+      await refreshFileTree();
+      return fallback;
     };
 
     // Track recent files (keep last 20)
@@ -4503,7 +4605,7 @@ export default function App() {
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab) return;
       try {
-        const content = await api.readFile(tab.path);
+        const content = (await api.readFile(tab.path)) || "";
         const targetName = targetPath.split("/").pop()?.replace(/\.md$/, "") || targetPath;
         const sourceConcept = deriveCurrentConcept(content);
         const acceptedSuggestion = inlineSuggestions.find((item) => item.path === targetPath);
@@ -4534,7 +4636,7 @@ export default function App() {
 
         setInlineSuggestions((prev) => prev.filter((s) => s.path !== targetPath));
         // Reload editor content
-        const updated = await api.readFile(tab.path);
+        const updated = (await api.readFile(tab.path)) || "";
         setCurrentContent(updated);
       } catch (err) {
         console.error("Failed to create link:", err);
@@ -4843,7 +4945,7 @@ export default function App() {
           setBacklinks([]);
         } else if (selectedTab.path !== "__new_tab__" && selectedTab.path !== GRAPH_TAB_PATH && selectedTab.path !== SPACES_TAB_PATH && !selectedTab.path.startsWith('__plugin__.')) {
           try {
-            const content = await api.readFile(selectedTab.path);
+            const content = (await api.readFile(selectedTab.path)) || "";
             setCurrentContent(content);
             loadBacklinks(selectedTab.path);
           } catch (err) {
@@ -4892,7 +4994,7 @@ export default function App() {
         return;
       }
       try {
-        const content = await api.readFile(tab.path);
+        const content = (await api.readFile(tab.path)) || "";
         setCurrentContent(content);
         loadBacklinks(tab.path);
       } catch (e) {
@@ -4933,7 +5035,7 @@ export default function App() {
           setBacklinks([]);
         } else {
           try {
-            const content = await api.readFile(lastTab.path);
+            const content = (await api.readFile(lastTab.path)) || "";
             setCurrentContent(content);
             loadBacklinks(lastTab.path);
           } catch {
@@ -5064,6 +5166,15 @@ export default function App() {
       }
     };
 
+    const onFileRenamed = (event: Event) => {
+      const customEvent = event as CustomEvent<{ oldPath: string; newPath: string; isDirectory?: boolean }>;
+      const { oldPath, newPath, isDirectory } = customEvent.detail || {};
+      if (!oldPath || !newPath || oldPath === newPath) return;
+      updateEmbeddingsAfterRename(oldPath, newPath, Boolean(isDirectory));
+      updateOpenPathsAfterRename(oldPath, newPath, Boolean(isDirectory));
+      void refreshFileTree();
+    };
+
     window.addEventListener("oo:save", onSave as EventListener);
     window.addEventListener("oo:close-tab", onCloseTab as EventListener);
     window.addEventListener("oo:new-note", onNewNote as EventListener);
@@ -5080,6 +5191,7 @@ export default function App() {
     window.addEventListener("oo:next-tab", onNextTab as EventListener);
     window.addEventListener("oo:prev-tab", onPrevTab as EventListener);
     window.addEventListener("openobsidian:note-saved", onNoteSaved as EventListener);
+    window.addEventListener("openobsidian:file-renamed", onFileRenamed as EventListener);
 
     return () => {
       window.removeEventListener("oo:save", onSave as EventListener);
@@ -5098,6 +5210,7 @@ export default function App() {
       window.removeEventListener("oo:next-tab", onNextTab as EventListener);
       window.removeEventListener("oo:prev-tab", onPrevTab as EventListener);
       window.removeEventListener("openobsidian:note-saved", onNoteSaved as EventListener);
+      window.removeEventListener("openobsidian:file-renamed", onFileRenamed as EventListener);
     };
   }, [
     activeTabId,
@@ -5107,6 +5220,8 @@ export default function App() {
     openGraphAsTab,
     selectRelativeTab,
     refreshFileTree,
+    updateEmbeddingsAfterRename,
+    updateOpenPathsAfterRename,
   ]);
 
   // ── Link Navigation ─────────────────────────────────
@@ -5157,16 +5272,6 @@ export default function App() {
       await api.createFile(newPath, content);
       await refreshFileTree();
       await openFile(newPath, "preview");
-    }
-  };
-
-  // ── Backlinks ───────────────────────────────────────
-  const loadBacklinks = async (filePath: string) => {
-    try {
-      const links = await api.getBacklinks(filePath);
-      setBacklinks(links);
-    } catch {
-      setBacklinks([]);
     }
   };
 
@@ -5267,6 +5372,7 @@ export default function App() {
         ? raw
         : `${raw}${inferredExt}`;
     const newPath = dir + normalized;
+    if (!raw || oldPath === newPath) return;
 
     // Propagate rename to collaboration database & sync queue
     const spaceId = collaborationEngine.activeSpaceId;
@@ -5301,42 +5407,17 @@ export default function App() {
       syncEngine.triggerPush();
     }
 
-    await api.renameFile(oldPath, newPath);
-
-    const store = loadStore();
-    if (isDirectory) {
-      renameEmbeddingsByPrefix(store, oldPath, newPath);
-    } else if (oldPath.toLowerCase().endsWith(".md")) {
-      if (newPath.toLowerCase().endsWith(".md")) {
-        renameEmbeddingPath(store, oldPath, newPath);
-      } else {
-        removeEmbedding(store, oldPath);
-      }
+    const app = ooAppRef.current;
+    const vaultEntry = app?.vault.getAbstractFileByPath(oldPath);
+    if (vaultEntry && app) {
+      await app.vault.rename(vaultEntry, newPath);
+    } else {
+      await api.renameFile(oldPath, newPath);
+      await app?.vault.refreshFiles?.();
     }
 
-    // Update tab if open
-    setTabs((prev) => {
-      if (isDirectory) {
-        const oldPrefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
-        const newPrefix = newPath.endsWith("/") ? newPath : `${newPath}/`;
-        return prev.map((t) => {
-          if (t.path === oldPath) {
-            return { ...t, path: newPath, name: getNoteName(newPath) };
-          }
-          if (t.path.startsWith(oldPrefix)) {
-            const nextPath = `${newPrefix}${t.path.slice(oldPrefix.length)}`;
-            return { ...t, path: nextPath, name: getNoteName(nextPath) };
-          }
-          return t;
-        });
-      }
-
-      return prev.map((t) =>
-        t.path === oldPath
-          ? { ...t, path: newPath, name: getNoteName(newPath) }
-          : t,
-      );
-    });
+    updateEmbeddingsAfterRename(oldPath, newPath, isDirectory);
+    updateOpenPathsAfterRename(oldPath, newPath, isDirectory);
 
     await refreshFileTree();
   };
@@ -5382,45 +5463,19 @@ export default function App() {
         syncEngine.triggerPush();
       }
 
-      await api.renameFile(oldPath, newPath);
-
-      // Update embeddings
-      const store = loadStore();
-      if (oldPath.toLowerCase().endsWith(".md")) {
-        if (newPath.toLowerCase().endsWith(".md")) {
-          renameEmbeddingPath(store, oldPath, newPath);
-        } else {
-          removeEmbedding(store, oldPath);
-        }
+      const app = ooAppRef.current;
+      const vaultEntry = app?.vault.getAbstractFileByPath(oldPath);
+      const isDirectory = Boolean(vaultEntry && !(vaultEntry instanceof TFile))
+        || !(oldPath.toLowerCase().endsWith(".md") || oldPath.toLowerCase().endsWith(".canvas"));
+      if (vaultEntry && app) {
+        await app.vault.rename(vaultEntry, newPath);
       } else {
-        // It might be a folder move, handle all nested md files
-        renameEmbeddingsByPrefix(store, oldPath, newPath);
+        await api.renameFile(oldPath, newPath);
+        await app?.vault.refreshFiles?.();
       }
 
-      // Update Starred Notes
-      setStarredNotes((prev) =>
-        prev.map((p) => {
-          if (p === oldPath) return newPath;
-          if (p.startsWith(oldPath + "/")) {
-            return newPath + p.substring(oldPath.length);
-          }
-          return p;
-        }),
-      );
-
-      // Update Tabs
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.path === oldPath) {
-            return { ...t, path: newPath, name: getNoteName(newPath) };
-          }
-          if (t.path.startsWith(oldPath + "/")) {
-            const nestedPath = newPath + t.path.substring(oldPath.length);
-            return { ...t, path: nestedPath, name: getNoteName(nestedPath) };
-          }
-          return t;
-        }),
-      );
+      updateEmbeddingsAfterRename(oldPath, newPath, isDirectory);
+      updateOpenPathsAfterRename(oldPath, newPath, isDirectory);
 
       await refreshFileTree();
     } catch (err) {
@@ -5431,7 +5486,7 @@ export default function App() {
         message: `Could not move ${oldPath} to ${newPath}.`,
       });
     }
-  }, [refreshFileTree, clearAutoSaveTimer, setStarredNotes, setTabs]);
+  }, [refreshFileTree, clearAutoSaveTimer, updateEmbeddingsAfterRename, updateOpenPathsAfterRename]);
 
   const handleCreateFolder = async (parentPath: string) => {
     setModal({
@@ -6515,6 +6570,7 @@ export default function App() {
           onToggleExplorer={() => {
             setShowSidebar(true);
             setShowSearch(false);
+            ooAppRef.current?.workspace?.revealDefaultView?.('left');
           }}
           tabs={tabs}
           activeTabId={activeTabId}
@@ -6543,6 +6599,16 @@ export default function App() {
           onToggleGroupCollapse={handleToggleGroupCollapse}
           activeRightTab={rightSidebarTab}
           setActiveRightTab={handleSelectRightTab}
+          leftPluginViews={leftPluginViews}
+          activeLeftViewType={activeLeftPluginView?.viewType || null}
+          onSelectLeftPluginView={(viewType) => {
+            const view = leftPluginViews.find(v => v.viewType === viewType);
+            if (view?.leaf) {
+              void ooAppRef.current?.workspace?.revealLeaf?.(view.leaf);
+              setShowSidebar(true);
+              setShowSearch(false);
+            }
+          }}
           rightPluginViews={rightPluginViews}
           rightSidebarWidth={rightSidebarWidth}
         />
@@ -6632,7 +6698,7 @@ export default function App() {
                   previouslyOpenedVaults={previouslyOpenedVaults}
                   onSwitchVault={handleSwitchVault}
                   onSettings={() => setShowSettings(true)}
-                  pluginViews={leftPluginViews}
+                  pluginViews={activeLeftPluginViews}
                   onClosePluginView={(viewType) => {
                     const app = ooAppRef.current;
                     if (app) app.workspace.detachLeavesOfType(viewType);

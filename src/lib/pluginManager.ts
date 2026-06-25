@@ -135,6 +135,17 @@ export class PluginManager {
     const electron = (() => {
       try { return win.require?.('electron') || {}; } catch { return {}; }
     })();
+    try {
+      Object.setPrototypeOf(this._app.vault.adapter, obsidianApi.FileSystemAdapter.prototype);
+    } catch {
+      // Adapter remains usable even if another runtime locked its prototype.
+    }
+    const shell = {
+      ...(electron.shell || {}),
+      openPath: (targetPath: string) => bridge.openPath?.(targetPath) ?? Promise.resolve(''),
+      showItemInFolder: (targetPath: string) => bridge.showItemInFolder?.(targetPath),
+      openExternal: (url: string) => bridge.openPath?.(url) ?? Promise.resolve(''),
+    };
     // Some established plugins access Electron through window.electron rather
     // than require('electron'). Modern Electron no longer exposes `remote` in
     // the renderer, so provide the subset used by Obsidian plugins.
@@ -166,8 +177,26 @@ export class PluginManager {
         showOpenDialog: (options: any) => bridge.showOpenDialog(options),
         showSaveDialog: (options: any) => bridge.showSaveDialog(options),
       },
+      shell,
     };
-    win.electron = { ...electron, remote };
+    const electronCompat = { ...electron, remote, shell };
+    win.electron = electronCompat;
+    const previousRequire = typeof win.require === 'function' ? win.require.bind(win) : null;
+    win.require = (id: string) => {
+      if (id === 'electron') return electronCompat;
+      if (id === 'obsidian') return obsidianApi;
+      if (previousRequire) return previousRequire(id);
+      throw new Error(`Cannot require module '${id}' in this renderer`);
+    };
+    if (!navigator.clipboard) {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string) => bridge.writeClipboardText?.(text) ?? Promise.resolve(),
+          readText: () => bridge.readClipboardText?.() ?? Promise.resolve(''),
+        },
+      });
+    }
 
     win.__oo_register_command = (cmd: PluginCommand) => {
       // Deduplicate by command ID
@@ -385,8 +414,15 @@ export class PluginManager {
         const home = (() => {
           try { return (window as any).require?.('os')?.homedir?.() || ''; } catch { return ''; }
         })();
+        const shell = {
+          ...(electron.shell || {}),
+          openPath: (targetPath: string) => bridge.openPath?.(targetPath) ?? Promise.resolve(''),
+          showItemInFolder: (targetPath: string) => bridge.showItemInFolder?.(targetPath),
+          openExternal: (url: string) => bridge.openPath?.(url) ?? Promise.resolve(''),
+        };
         return {
           ...electron,
+          shell,
           remote: electron.remote || {
             app: {
               getPath: (name: string) => {
@@ -399,10 +435,7 @@ export class PluginManager {
               showOpenDialog: (options: any) => bridge.showOpenDialog(options),
               showSaveDialog: (options: any) => bridge.showSaveDialog(options),
             },
-            shell: {
-              openPath: (targetPath: string) => bridge.openPath(targetPath),
-              showItemInFolder: (targetPath: string) => bridge.showItemInFolder(targetPath),
-            },
+            shell,
           },
         };
       }
@@ -424,6 +457,11 @@ export class PluginManager {
   /** Build a permission-guarded obsidian API object */
   private _buildGuardedApi(pluginId: string, permissions: PluginPermission[]): any {
     const fullApi = { ...obsidianApi };
+    try {
+      Object.setPrototypeOf(this._app.vault.adapter, fullApi.FileSystemAdapter.prototype);
+    } catch {
+      // Adapter remains usable even if another runtime locked its prototype.
+    }
 
     // If network permission is missing, block requestUrl
     if (!permissions.includes('network')) {
@@ -499,7 +537,17 @@ export class PluginManager {
       // ── Call onload with crash isolation
       const loadResult = await safePluginCallAsync(
         pluginId,
-        () => Promise.resolve(instance.load() as any),
+        async () => {
+          const win = window as any;
+          const previousPluginId = win.__oo_active_plugin_id;
+          win.__oo_active_plugin_id = pluginId;
+          try {
+            return await Promise.resolve(instance.load() as any);
+          } finally {
+            if (previousPluginId === undefined) delete win.__oo_active_plugin_id;
+            else win.__oo_active_plugin_id = previousPluginId;
+          }
+        },
         'onload',
       );
       if (loadResult.shouldDisable) {
@@ -639,7 +687,17 @@ window["${globalKey}"].__done = true;
     if (!reg?.instance) return;
 
     // Crash-safe unload
-    safePluginCall(pluginId, () => reg.instance.unload(), 'onunload');
+    safePluginCall(pluginId, () => {
+      const win = window as any;
+      const previousPluginId = win.__oo_active_plugin_id;
+      win.__oo_active_plugin_id = pluginId;
+      try {
+        return reg.instance.unload();
+      } finally {
+        if (previousPluginId === undefined) delete win.__oo_active_plugin_id;
+        else win.__oo_active_plugin_id = previousPluginId;
+      }
+    }, 'onunload');
 
     removePluginStyles(pluginId);
     pluginLogStore.clearPlugin(pluginId);

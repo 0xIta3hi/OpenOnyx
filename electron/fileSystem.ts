@@ -108,9 +108,14 @@ export class FileSystemManager {
   }
 
   /** Read file content */
-  async readFile(filePath: string): Promise<string> {
+  async readFile(filePath: string): Promise<string | null> {
     const absolutePath = this.resolvePath(filePath);
-    return fs.promises.readFile(absolutePath, 'utf-8');
+    try {
+      return await fs.promises.readFile(absolutePath, 'utf-8');
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return null;
+      throw error;
+    }
   }
 
   async readBinary(filePath: string): Promise<Uint8Array> {
@@ -243,6 +248,7 @@ export class FileSystemManager {
     // Build edges by scanning links in each file
     for (const file of allFiles) {
       const content = await this.readFile(file);
+      if (content === null) continue;
       const links = this.extractLinks(content);
       const sourceName = path.basename(file, '.md').toLowerCase();
 
@@ -314,6 +320,7 @@ export class FileSystemManager {
     for (const file of allFiles) {
       if (file === filePath) continue;
       const content = await this.readFile(file);
+      if (content === null) continue;
       const links = this.extractLinks(content);
       
       if (links.some(link => link.toLowerCase() === targetName.toLowerCase())) {
@@ -335,6 +342,7 @@ export class FileSystemManager {
 
     for (const file of allFiles) {
       const content = await this.readFile(file);
+      if (content === null) continue;
       const tags = this.extractTags(content);
 
       for (const tag of tags) {

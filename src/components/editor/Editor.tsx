@@ -62,6 +62,53 @@ import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCurs
 import { authManager } from "../../lib/auth";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
 
+const validPluginEditorExtensionCache = new WeakMap<object, boolean>();
+const invalidPluginEditorExtensions = new Set<any>();
+
+const codeMirrorPluginExceptionSink = EditorView.exceptionSink.of((exception) => {
+  console.warn("[CodeMirror Plugin Error]", exception);
+});
+
+function isPluginEditorExtensionUsable(extension: any): boolean {
+  if (!extension) return false;
+  if (typeof extension === "object" || typeof extension === "function") {
+    const cached = validPluginEditorExtensionCache.get(extension);
+    if (cached !== undefined) return cached;
+  } else if (invalidPluginEditorExtensions.has(extension)) {
+    return false;
+  }
+
+  try {
+    EditorState.create({
+      doc: "",
+      extensions: [
+        editorInfoField,
+        editorEditorField,
+        editorLivePreviewField,
+        extension,
+      ],
+    });
+    if (typeof extension === "object" || typeof extension === "function") {
+      validPluginEditorExtensionCache.set(extension, true);
+    }
+    return true;
+  } catch (error) {
+    if (typeof extension === "object" || typeof extension === "function") {
+      validPluginEditorExtensionCache.set(extension, false);
+    } else {
+      invalidPluginEditorExtensions.add(extension);
+    }
+    console.warn("[PluginSystem] Skipping incompatible CodeMirror extension", error);
+    return false;
+  }
+}
+
+function getSafePluginEditorExtensions(): any[] {
+  const extensions = (window as any).__oo_editor_extensions;
+  if (!Array.isArray(extensions)) return [];
+  return extensions.filter(isPluginEditorExtensionUsable);
+}
+
 function setWritableViewProperty(view: any, key: string, value: unknown): void {
   for (let target = view; target; target = Object.getPrototypeOf(target)) {
     const descriptor = Object.getOwnPropertyDescriptor(target, key);
@@ -2827,6 +2874,7 @@ export function Editor({
       doc: content,
       selection: { anchor: Math.min(initialCursor, content.length) },
       extensions: [
+        codeMirrorPluginExceptionSink,
         history(),
         search(),
         highlightSelectionMatches(),
@@ -2853,7 +2901,7 @@ export function Editor({
           EditorView.contentAttributes.of({ spellcheck: readSpellcheckSetting() ? "true" : "false" })
         ),
         pluginExtensionsCompartmentRef.current.of(
-          (window as any).__oo_editor_extensions || [],
+          getSafePluginEditorExtensions(),
         ),
         suggestionContentCompartmentRef.current.of(
           suggestionContentStateField({
@@ -3105,7 +3153,7 @@ export function Editor({
       if (!viewRef.current) return;
       viewRef.current.dispatch({
         effects: pluginExtensionsCompartmentRef.current.reconfigure(
-          (window as any).__oo_editor_extensions || [],
+          getSafePluginEditorExtensions(),
         ),
       });
     };

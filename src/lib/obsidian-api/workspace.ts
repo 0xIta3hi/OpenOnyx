@@ -130,6 +130,14 @@ export interface View {
   onPaneMenu(menu: any, source: string): void;
 }
 
+export interface ViewActionInfo {
+  id: string;
+  icon: string;
+  title: string;
+  el: HTMLElement;
+  callback: (evt: MouseEvent) => any;
+}
+
 export function View(this: any, leaf: WorkspaceLeaf) {
   Component.call(this);
   this.app = (window as any).__oo_app;
@@ -173,6 +181,7 @@ export interface ItemView extends View {
   iconEl: HTMLElement;
   titleEl: HTMLElement;
   actionListEl: HTMLElement;
+  _actions?: ViewActionInfo[];
   addAction(icon: string, title: string, callback: (evt: MouseEvent) => any): HTMLElement;
 }
 export function ItemView(this: any, leaf: WorkspaceLeaf) {
@@ -193,6 +202,7 @@ export function ItemView(this: any, leaf: WorkspaceLeaf) {
   
   this.actionListEl = document.createElement('div');
   this.actionListEl.className = 'view-actions';
+  this._actions = [];
   
   this.headerEl.appendChild(this.iconEl);
   this.headerEl.appendChild(titleContainer);
@@ -213,9 +223,19 @@ ItemView.prototype.addAction = function(icon: string, title: string, callback: (
   btn.title = title;
   setIcon(btn, icon);
   btn.addEventListener('click', callback);
+  const action = {
+    id: `${this.getViewType?.() || 'view'}:${title}:${this._actions?.length || 0}`,
+    icon,
+    title,
+    el: btn,
+    callback,
+  };
+  if (!Array.isArray(this._actions)) this._actions = [];
+  this._actions.push(action);
   if (this.actionListEl) {
     this.actionListEl.appendChild(btn);
   }
+  this.app?.workspace?.trigger?.('plugin-views-changed');
   return btn;
 };
 
@@ -492,6 +512,14 @@ export class OOWorkspace extends Events {
     if (leaf.side !== 'left' && leaf.side !== 'right') return;
     this._visibleSideLeaves[leaf.side] = leaf;
     this._setSideDockCollapsed(leaf.side, false);
+    this.trigger('plugin-views-changed');
+  }
+
+  revealDefaultView(side: 'left' | 'right'): void {
+    this._visibleSideLeaves[side] = null;
+    this._setSideDockCollapsed(side, false);
+    this.trigger('plugin-views-changed');
+    this.trigger('layout-change');
   }
 
   registerViewCreator(type: string, creator: (leaf: WorkspaceLeaf) => View): void {
@@ -777,18 +805,25 @@ export class OOWorkspace extends Events {
   }
 
   /** Get all active plugin views — used by React UI to render the sidebar */
-  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string; side: 'left' | 'right' | 'main' }> {
-    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string; side: 'left' | 'right' | 'main' }> = [];
+  getActivePluginViews(): Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string; side: 'left' | 'right' | 'main'; visible?: boolean; actions?: ViewActionInfo[] }> {
+    const views: Array<{ viewType: string; leaf: WorkspaceLeaf; displayText: string; icon: string; containerEl: HTMLElement; pluginId?: string; side: 'left' | 'right' | 'main'; visible?: boolean; actions?: ViewActionInfo[] }> = [];
     for (const [viewType, leaf] of this._activePluginViews) {
       if (leaf.view) {
+        const visible = leaf.side === 'main' || this._visibleSideLeaves[leaf.side] === leaf;
+        const viewAny = leaf.view as any;
+        const mountEl = leaf.side !== 'main' && viewAny.contentEl instanceof HTMLElement
+          ? viewAny.contentEl
+          : leaf.view.containerEl;
         views.push({
           viewType,
           leaf,
           displayText: leaf.view.getDisplayText?.() || viewType,
           icon: leaf.view.getIcon?.() || 'file-text',
-          containerEl: leaf.view.containerEl,
+          containerEl: mountEl,
           pluginId: leaf.view.pluginId,
           side: leaf.side,
+          visible,
+          actions: Array.isArray(viewAny._actions) ? [...viewAny._actions] : [],
         });
       }
     }
