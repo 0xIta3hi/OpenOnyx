@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import {
   Plus, X, Trash2, ArrowLeft, ArrowUp, Loader2,
   Copy, FileText, Globe, RefreshCw, Sparkles,
-  Zap, Layers, Brain, Check, GitBranch, MessageSquare, Edit2, Square
+  Zap, Layers, Brain, Check, GitBranch, MessageSquare, Edit2, Square,
 } from "lucide-react";
 import {
   listSpaces, getSpace, createSpace, deleteSpace, forkSpace,
@@ -36,6 +36,14 @@ import { collaborationEngine } from "../lib/collaborationEngine";
 import { syncEngine } from "../lib/syncEngine";
 import { generateDiffMarkdown } from "../utils/diff";
 import { privateCrypto } from "../lib/privateCrypto";
+import {
+  AI_PROVIDER_PRESETS,
+  getModelsForProvider,
+  loadSettings,
+  saveSettings,
+  type AIModel,
+  type AISettings,
+} from "../utils/ai-settings";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -47,12 +55,12 @@ interface SpacesPageProps {
 
 // ── Suggested Queries ────────────────────────────────────────────────────────
 
-const SUGGESTED_QUERIES = [
-  "Summarize the key ideas in my vault",
-  "What are the main connections and themes?",
-  "What mistakes or gaps should I watch out for?",
-  "Give me a simple, actionable plan based on my notes",
-  "How can I structure this project better?"
+const SPACE_PROMPT_CHIPS = [
+  { label: "Summarize", prompt: "Summarize the key ideas in this space.", Icon: Brain },
+  { label: "Find gaps", prompt: "Find gaps, contradictions, and missing definitions in this space.", Icon: Sparkles },
+  { label: "Make plan", prompt: "Turn the notes in this space into a clear action plan.", Icon: Layers },
+  { label: "Connect ideas", prompt: "Show the most useful connections between notes in this space.", Icon: GitBranch },
+  { label: "Draft note", prompt: "Draft a new note from the most relevant context in this space.", Icon: FileText },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -182,14 +190,53 @@ const spaceConversationDeleteClass = "hover:text-[var(--danger)]";
 const spaceChatContainerClass = "flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-primary)]";
 const spaceIndexingIndicatorClass = "mx-5 mt-3 flex shrink-0 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-[12px] text-[var(--text-muted)]";
 const spaceMessagesScrollClass = "flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5";
-const spaceChatWelcomeClass = "flex min-h-full items-center justify-center py-8";
-const spaceChatWelcomeContentClass = "flex w-full max-w-[760px] flex-col items-center text-center";
-const spaceChatWelcomeTitleClass = "m-0 text-[22px] font-semibold tracking-normal text-[var(--text-primary)]";
-const spaceChatWelcomeTextClass = "mb-6 mt-2 max-w-[560px] text-[13px] leading-normal text-[var(--text-muted)]";
-const spaceChatCentralInputClass = "w-full max-w-[640px]";
-const spaceChatWelcomeSuggestionsClass = "mt-5 w-full max-w-[640px]";
-const spaceChatSuggestionsGridClass = "grid grid-cols-1 gap-2 sm:grid-cols-2";
-const spaceChatSuggestionClass = "cursor-pointer rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-left text-[12px] leading-normal text-[var(--text-secondary)] transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spaceChatWelcomeClass = "flex min-h-full items-center justify-center px-6 py-12";
+const spaceChatWelcomeContentClass = "flex w-full max-w-[720px] flex-col items-center text-center";
+const spaceChatWelcomeTitleClass =
+  "mb-9 flex items-center justify-center gap-2 text-[38px] font-medium leading-none tracking-[-0.03em] text-[var(--text-primary)] [font-family:Georgia,serif]";
+const spaceChatWelcomeLogoClass = "h-11 w-11 shrink-0 object-contain";
+const spaceChatCentralInputClass = "w-full max-w-[674px]";
+const spaceChatCentralInputWrapperClass =
+  "relative flex min-h-[126px] w-full flex-col justify-between rounded-[22px] border border-[var(--border-medium)] bg-[color-mix(in_srgb,var(--bg-secondary)_82%,transparent)] px-5 py-4 text-left transition-colors duration-150 focus-within:border-[var(--border-strong)]";
+const spaceChatCentralTextareaClass =
+  "min-h-[52px] w-full resize-none border-0 bg-transparent p-0 text-[16px] leading-normal text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+const spaceChatCentralToolbarClass = "mt-5 flex items-center justify-between gap-3";
+const spaceChatCentralLeftActionsClass = "flex items-center gap-2";
+const spaceChatCentralRightActionsClass = "flex items-center gap-3 text-[13px] text-[var(--text-secondary)]";
+const spaceChatCentralIconBtnClass =
+  "flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spaceChatModelSelectorClass =
+  "relative flex min-w-0 items-center gap-1.5";
+const spaceChatModelProviderClass = "text-[11px] font-medium text-[var(--text-muted)]";
+const spaceChatModelTriggerClass =
+  "inline-flex max-w-[250px] cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1 text-[12px] text-[var(--text-secondary)] transition-colors duration-150 hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60";
+const spaceChatModelTriggerLabelClass = "min-w-0 truncate";
+const spaceChatModelMenuClass =
+  "absolute bottom-[calc(100%+8px)] right-0 z-[10020] flex w-[320px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] shadow-none";
+const spaceChatModelMenuSectionClass =
+  "border-b border-[var(--border-subtle)] p-2 last:border-b-0";
+const spaceChatModelMenuLabelClass =
+  "px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
+const spaceChatProviderGridClass = "grid grid-cols-2 gap-1";
+const spaceChatProviderOptionClass =
+  "cursor-pointer rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2 py-1.5 text-left text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const spaceChatProviderOptionActiveClass =
+  "border-[var(--border-subtle)] bg-[var(--bg-active)] text-[var(--text-primary)]";
+const spaceChatModelListClass = "max-h-[260px] overflow-y-auto";
+const spaceChatModelOptionClass =
+  "flex w-full cursor-pointer flex-col rounded-[var(--radius-sm)] border border-transparent bg-transparent px-2.5 py-2 text-left transition-colors duration-150 hover:bg-[var(--bg-hover)]";
+const spaceChatModelOptionActiveClass =
+  "border-[var(--border-subtle)] bg-[var(--bg-active)]";
+const spaceChatModelOptionTitleClass = "text-[12px] font-semibold text-[var(--text-primary)]";
+const spaceChatModelOptionDescClass = "mt-0.5 text-[11px] leading-normal text-[var(--text-muted)]";
+const spaceChatCustomModelRowClass = "flex gap-1.5 px-2 pb-2";
+const spaceChatCustomModelInputClass =
+  "min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--border-medium)]";
+const spaceChatCustomModelButtonClass =
+  "shrink-0 cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50";
+const spaceChatWelcomeSuggestionsClass = "mt-4 flex w-full max-w-[560px] flex-wrap items-center justify-center gap-2";
+const spaceChatSuggestionClass =
+  "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[9px] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-[14px] font-medium text-[var(--text-primary)] transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)] [&_svg]:text-[var(--text-muted)]";
 const spaceChatMessageClass =
   "mx-auto flex w-full max-w-[820px] flex-col";
 const spaceChatUserMessageClass = "items-end";
@@ -597,6 +644,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authEmail, setAuthEmail] = useState<string | null>(authManager.getUser()?.email ?? null);
+  const [aiSettings, setAiSettings] = useState<AISettings>(() => loadSettings());
 
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<SpaceChatMessage[]>([]);
@@ -604,6 +652,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [streamingText, setStreamingText] = useState("");
   const [saveNoteMessage, setSaveNoteMessage] = useState<SpaceChatMessage | null>(null);
   const [saveNoteTitle, setSaveNoteTitle] = useState("");
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [customOpenRouterModel, setCustomOpenRouterModel] = useState("");
+  const modelPickerRef = useRef<HTMLDivElement>(null);
 
   // Conversation session states
   const [conversations, setConversations] = useState<SpaceConversation[]>([]);
@@ -613,6 +664,26 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [renameValue, setRenameValue] = useState("");
 
   const inputTokens = useMemo(() => Math.ceil((chatInput || "").length / 4), [chatInput]);
+  const availableChatModels = useMemo<AIModel[]>(() => {
+    const models = getModelsForProvider(aiSettings.provider);
+    if (!aiSettings.modelId || models.some((model) => model.id === aiSettings.modelId)) {
+      return models;
+    }
+    return [
+      ...models,
+      {
+        id: aiSettings.modelId,
+        label: aiSettings.modelId,
+        shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
+        description: "Custom model from AI settings",
+        supportsGrounding: false,
+      },
+    ];
+  }, [aiSettings.modelId, aiSettings.provider]);
+  const selectedChatModel =
+    availableChatModels.find((model) => model.id === aiSettings.modelId) || availableChatModels[0];
+  const selectedProviderLabel =
+    AI_PROVIDER_PRESETS.find((preset) => preset.id === aiSettings.provider)?.label || aiSettings.provider;
 
   const estimatedHistoryTokens = useMemo(() => {
     let total = 0;
@@ -775,6 +846,169 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setAuthEmail(state.user?.email ?? null);
     });
   }, []);
+
+  useEffect(() => {
+    const handleSettingsChanged = () => {
+      setAiSettings(loadSettings());
+    };
+    window.addEventListener("ai-settings-changed", handleSettingsChanged);
+    return () => window.removeEventListener("ai-settings-changed", handleSettingsChanged);
+  }, []);
+
+  useEffect(() => {
+    if (!modelPickerOpen) return;
+    if (aiSettings.provider === "openrouter") {
+      setCustomOpenRouterModel(aiSettings.customModelId || aiSettings.modelId || "");
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (modelPickerRef.current?.contains(event.target as Node)) return;
+      setModelPickerOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModelPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [aiSettings.customModelId, aiSettings.modelId, aiSettings.provider, modelPickerOpen]);
+
+  const handleChatModelChange = useCallback((modelId: string) => {
+    setAiSettings((current) => {
+      const next = { ...current, modelId, customModelId: modelId };
+      saveSettings(next);
+      return next;
+    });
+    window.dispatchEvent(new Event("ai-settings-changed"));
+    setModelPickerOpen(false);
+  }, []);
+
+  const handleChatProviderChange = useCallback((provider: AISettings["provider"]) => {
+    setAiSettings((current) => {
+      const nextModels = getModelsForProvider(provider);
+      const next = {
+        ...current,
+        provider,
+        apiKey: current.providerKeys?.[provider] || "",
+        modelId: nextModels[0]?.id || current.modelId,
+        providerKeys: { ...current.providerKeys, [current.provider]: current.apiKey },
+      };
+      saveSettings(next);
+      return next;
+    });
+    window.dispatchEvent(new Event("ai-settings-changed"));
+  }, []);
+
+  const handleApplyCustomOpenRouterModel = useCallback(() => {
+    const modelId = customOpenRouterModel.trim();
+    if (!modelId) return;
+    setAiSettings((current) => {
+      const next = {
+        ...current,
+        provider: "openrouter" as const,
+        apiKey: current.provider === "openrouter" ? current.apiKey : current.providerKeys?.openrouter || "",
+        modelId,
+        customModelId: modelId,
+        providerKeys: { ...current.providerKeys, [current.provider]: current.apiKey },
+      };
+      saveSettings(next);
+      return next;
+    });
+    window.dispatchEvent(new Event("ai-settings-changed"));
+    setModelPickerOpen(false);
+  }, [customOpenRouterModel]);
+
+  const renderChatModelPicker = () => (
+    <div className={spaceChatModelSelectorClass} ref={modelPickerRef}>
+      <span className={spaceChatModelProviderClass}>{selectedProviderLabel}</span>
+      <button
+        type="button"
+        className={spaceChatModelTriggerClass}
+        onClick={() => setModelPickerOpen((open) => !open)}
+        disabled={isQuerying}
+        title={selectedChatModel?.description}
+        aria-haspopup="menu"
+        aria-expanded={modelPickerOpen}
+      >
+        <span className={spaceChatModelTriggerLabelClass}>
+          {selectedChatModel?.label || "Select model"}
+        </span>
+        <ArrowUp size={12} className={modelPickerOpen ? "" : "rotate-180"} />
+      </button>
+      {modelPickerOpen && (
+        <div className={spaceChatModelMenuClass} role="menu">
+          <div className={spaceChatModelMenuSectionClass}>
+            <div className={spaceChatModelMenuLabelClass}>Provider</div>
+            <div className={spaceChatProviderGridClass}>
+              {AI_PROVIDER_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={cx(
+                    spaceChatProviderOptionClass,
+                    preset.id === aiSettings.provider && spaceChatProviderOptionActiveClass,
+                  )}
+                  onClick={() => handleChatProviderChange(preset.id)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={spaceChatModelMenuSectionClass}>
+            <div className={spaceChatModelMenuLabelClass}>Model</div>
+            <div className={spaceChatModelListClass}>
+              {availableChatModels.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  className={cx(
+                    spaceChatModelOptionClass,
+                    model.id === selectedChatModel?.id && spaceChatModelOptionActiveClass,
+                  )}
+                  onClick={() => handleChatModelChange(model.id)}
+                  title={model.id}
+                >
+                  <span className={spaceChatModelOptionTitleClass}>{model.label}</span>
+                  <span className={spaceChatModelOptionDescClass}>{model.description}</span>
+                </button>
+              ))}
+            </div>
+            {aiSettings.provider === "openrouter" && (
+              <>
+                <div className={spaceChatModelMenuLabelClass}>Custom OpenRouter model</div>
+                <div className={spaceChatCustomModelRowClass}>
+                  <input
+                    className={spaceChatCustomModelInputClass}
+                    value={customOpenRouterModel}
+                    onChange={(event) => setCustomOpenRouterModel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleApplyCustomOpenRouterModel();
+                      }
+                    }}
+                    placeholder="e.g. openai/gpt-4o-mini"
+                    aria-label="Custom OpenRouter model ID"
+                  />
+                  <button
+                    type="button"
+                    className={spaceChatCustomModelButtonClass}
+                    onClick={handleApplyCustomOpenRouterModel}
+                    disabled={!customOpenRouterModel.trim()}
+                  >
+                    Use
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   // ── Load spaces ──────────────────────────────────────
   const refreshSpaces = useCallback(async () => {
@@ -2190,6 +2424,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   // ═══════════════════════════════════════════════════════════════════════════
 
   if (!activeSpace) return null;
+  const welcomeGreeting = `Explore ${activeSpace.title}`;
 
   return (
     <div className={spacesPageClass}>
@@ -2418,12 +2653,18 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             {chatMessages.length === 0 && (
               <div className={spaceChatWelcomeClass}>
                 <div className={spaceChatWelcomeContentClass}>
-                  <h2 className={spaceChatWelcomeTitleClass}>Command your knowledge network</h2>
-                  <p className={spaceChatWelcomeTextClass}>Query the knowledge layer of {activeSpace?.title || "this space"} using semantic context retrieval.</p>
+                  <h2 className={spaceChatWelcomeTitleClass}>
+                    <img
+                      src="/logos/logo-dark.png"
+                      alt="OpenObsidian"
+                      className={spaceChatWelcomeLogoClass}
+                    />
+                    <span>{welcomeGreeting}</span>
+                  </h2>
                   
                   {/* CENTRAL INPUT */}
                   <div className={spaceChatCentralInputClass}>
-                    <div className={spaceChatInputWrapperClass}>
+                    <div className={spaceChatCentralInputWrapperClass}>
                       {showMentionDropdown && filteredNotes.length > 0 && (
                         <div className={mentionDropdownClass}>
                           {filteredNotes.map((note: any, index: number) => (
@@ -2438,24 +2679,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                           ))}
                         </div>
                       )}
-                      <button
-                        type="button"
-                        className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)] border-0 bg-transparent"
-                        onClick={() => {
-                          if (centralInputRef.current) {
-                            centralInputRef.current.focus();
-                            setChatInput(prev => prev + "[[");
-                            checkForMention(chatInput + "[[", chatInput.length + 2);
-                          }
-                        }}
-                        title="Mention note (Type [[)"
-                      >
-                        <Plus size={16} />
-                      </button>
                       <textarea
                         ref={centralInputRef}
-                        className={spaceChatInputClass}
-                        placeholder="Ask anything..."
+                        className={spaceChatCentralTextareaClass}
+                        placeholder="How can I help you today?"
                         value={chatInput}
                         onChange={(e) => {
                           setChatInput(e.target.value);
@@ -2468,26 +2695,47 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                         rows={1}
                         disabled={isQuerying}
                       />
-                      <div className={spaceChatInputActionsClass}>
-                        {inputTokens > 0 && (
-                          <span className={spaceChatTokenCounterClass}>
-                            {inputTokens} tokens
-                          </span>
-                        )}
-                        <button
-                          className={cx(spaceChatSendClass, isQuerying && spaceChatAbortClass)}
-                          onClick={() => {
-                            if (isQuerying) {
-                              handleAbortChat();
-                            } else {
-                              handleChat();
-                            }
-                          }}
-                          disabled={!isQuerying && !chatInput.trim()}
-                          title={isQuerying ? "Stop generating" : "Send message"}
-                        >
-                          {isQuerying ? <Square size={10} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
-                        </button>
+                      <div className={spaceChatCentralToolbarClass}>
+                        <div className={spaceChatCentralLeftActionsClass}>
+                          <button
+                            type="button"
+                            className={spaceChatCentralIconBtnClass}
+                            onClick={() => {
+                              if (centralInputRef.current) {
+                                centralInputRef.current.focus();
+                                setChatInput(prev => prev + "[[");
+                                checkForMention(chatInput + "[[", chatInput.length + 2);
+                              }
+                            }}
+                            title="Mention note (Type [[)"
+                          >
+                            <Plus size={17} />
+                          </button>
+                        </div>
+                        <div className={spaceChatCentralRightActionsClass}>
+                          {inputTokens > 0 && (
+                            <span className={spaceChatTokenCounterClass}>
+                              {inputTokens} tokens
+                            </span>
+                          )}
+                          {renderChatModelPicker()}
+                          {(chatInput.trim() || isQuerying) && (
+                            <button
+                              className={cx(spaceChatSendClass, isQuerying && spaceChatAbortClass)}
+                              onClick={() => {
+                                if (isQuerying) {
+                                  handleAbortChat();
+                                } else {
+                                  handleChat();
+                                }
+                              }}
+                              disabled={!isQuerying && !chatInput.trim()}
+                              title={isQuerying ? "Stop generating" : "Send message"}
+                            >
+                              {isQuerying ? <Square size={10} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {!isAIConfigured() && (
@@ -2498,13 +2746,20 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </div>
 
                   <div className={spaceChatWelcomeSuggestionsClass}>
-                    <div className={spaceChatSuggestionsGridClass}>
-                      {SUGGESTED_QUERIES.map((q) => (
-                        <button key={q} className={spaceChatSuggestionClass} onClick={() => handleChat(q)}>
-                          {q}
-                        </button>
-                      ))}
-                    </div>
+                    {SPACE_PROMPT_CHIPS.map(({ label, prompt, Icon }) => (
+                      <button
+                        key={label}
+                        className={spaceChatSuggestionClass}
+                        onClick={() => {
+                          void handleChat(prompt);
+                        }}
+                        disabled={isQuerying}
+                        title={prompt}
+                      >
+                        <Icon size={15} />
+                        <span>{label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -3099,6 +3354,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       {inputTokens} tokens
                     </span>
                   )}
+                  {renderChatModelPicker()}
                   <button
                     className={cx(spaceChatSendClass, isQuerying && spaceChatAbortClass)}
                     onClick={() => {

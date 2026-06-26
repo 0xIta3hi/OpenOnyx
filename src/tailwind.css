@@ -13,6 +13,14 @@ body {
   background: var(--bg-primary);
 }
 
+button:focus,
+button:focus-visible,
+[role="button"]:focus,
+[role="button"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .app {
   display: flex;
   width: 100vw;

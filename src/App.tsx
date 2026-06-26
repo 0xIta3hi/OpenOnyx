@@ -2857,6 +2857,7 @@ export default function App() {
       } else if (e.key === "Escape") {
         setShowSearch(false);
         setShowCommandPalette(false);
+        setShowSettings(false);
       }
     };
 
