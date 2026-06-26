@@ -25,6 +25,7 @@ import { getMarkdownProcessorCounts, runMarkdownPostProcessors } from '../src/li
 import { TFile } from '../src/lib/obsidian-api/files';
 import { extractPluginBundleFromZip } from '../src/lib/pluginManager';
 import { PluginManager } from '../src/lib/pluginManager';
+import { injectPluginStyles, removePluginStyles, rewritePluginCssUrls } from '../src/lib/pluginStyles';
 import { addIcon, setIcon } from '../src/lib/obsidian-api/utils';
 
 const manifest = {
@@ -88,6 +89,35 @@ describe('plugin runtime compatibility', () => {
     const target = document.createElement('span');
     setIcon(target, 'open-vault');
     expect(target.querySelector('svg')).not.toBeNull();
+  });
+
+  it('injects plugin CSS with Obsidian document-level selectors intact', () => {
+    injectPluginStyles('plain-plugin', `
+.plain-plugin-button { color: red; }
+.workspace-leaf .plain-plugin-button { background-image: url("./icons/action.svg#mark"); }
+body.theme-dark .plain-plugin-button { border-color: blue; }
+`);
+
+    const style = document.querySelector<HTMLStyleElement>('style[data-plugin-id="plain-plugin"]');
+
+    expect(style?.textContent).toContain('.plain-plugin-button { color: red; }');
+    expect(style?.textContent).toContain('body.theme-dark .plain-plugin-button');
+    expect(style?.textContent).not.toContain('oo-plugin-scope-plain-plugin .plain-plugin-button');
+    expect(style?.textContent).toContain('vault://local/.openobsidian/plugins/plain-plugin/icons/action.svg#mark');
+
+    removePluginStyles('plain-plugin');
+  });
+
+  it('leaves absolute plugin CSS URLs untouched while rewriting relative imports', () => {
+    const css = rewritePluginCssUrls('asset-plugin', `
+@import "./base.css";
+.remote { background: url("https://example.com/remote.svg"); }
+.local { background: url(assets/icon file.svg?version=1); }
+`);
+
+    expect(css).toContain('@import "vault://local/.openobsidian/plugins/asset-plugin/base.css"');
+    expect(css).toContain('url("https://example.com/remote.svg")');
+    expect(css).toContain('vault://local/.openobsidian/plugins/asset-plugin/assets/icon%20file.svg?version=1');
   });
 
   it('provides the legacy global Electron remote contract to plugins', () => {
@@ -298,6 +328,30 @@ describe('plugin runtime compatibility', () => {
     expect(canvas._loaded).toBe(true);
     expect(node.child.editor.containerEl).toBeInstanceOf(HTMLElement);
     expect(node.isEditable()).toBe(true);
+  });
+
+  it('provides the core Templates insertTemplate API used by Kanban', async () => {
+    const app = new OOApp();
+    const template = await app.vault.create('templates/Card.md', '## {{title}}\n{{date:YYYY}}\n{{time:HH}}');
+    const note = await app.vault.create('Board.md', '# Board\n');
+    (window as any).__oo_active_file = note.path;
+    (window as any).electronAPI.readFile = vi.fn(async (path: string) => {
+      if (path === template.path) return '## {{title}}\n{{date:YYYY}}\n{{time:HH}}';
+      if (path === note.path) return '# Board\n';
+      return '';
+    });
+    const replaceSelection = vi.fn();
+    app.workspace.activeEditor = {
+      editor: {
+        replaceSelection,
+        focus: vi.fn(),
+      },
+    };
+
+    await app.internalPlugins.plugins.templates.instance.insertTemplate(template);
+
+    expect(replaceSelection).toHaveBeenCalledWith(expect.stringContaining('## Board'));
+    expect(replaceSelection).toHaveBeenCalledWith(expect.not.stringContaining('{{date'));
   });
 
   it('removes a plugin bundle, persisted enablement, and registry entry', async () => {

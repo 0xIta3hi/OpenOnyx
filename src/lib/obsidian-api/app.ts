@@ -9,6 +9,7 @@ import { OOMetadataCache } from './metadata';
 import { normalizePath, parseYaml, Scope, stringifyYaml } from './utils';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import moment from 'moment';
 
 export class OOApp {
   // Community plugins use this as a stable key for their IndexedDB-backed
@@ -236,6 +237,44 @@ export class OOApp {
 
     // Stub for core/internal plugins (daily-notes, etc.)
     const canvasNodes = new Set<any>();
+    const templatesCorePlugin = {
+      instance: {
+        options: {
+          folder: 'templates',
+          dateFormat: 'YYYY-MM-DD',
+          timeFormat: 'HH:mm',
+        },
+        async insertTemplate(templateFile: any) {
+          if (!templateFile) return;
+          let template = await thisApp.vault.read(templateFile);
+          const activeFile = thisApp.workspace.getActiveFile?.();
+          const title = activeFile?.basename || activeFile?.name?.replace(/\.[^/.]+$/, '') || '';
+          template = template
+            .replace(/\{\{date(?::([^}]+))?\}\}/gi, (_match: string, format?: string) =>
+              moment().format(format?.trim() || this.options.dateFormat || 'YYYY-MM-DD'))
+            .replace(/\{\{time(?::([^}]+))?\}\}/gi, (_match: string, format?: string) =>
+              moment().format(format?.trim() || this.options.timeFormat || 'HH:mm'))
+            .replace(/\{\{title\}\}/gi, title);
+
+          const editor = thisApp.workspace.activeEditor?.editor;
+          if (editor?.replaceSelection) {
+            editor.replaceSelection(template);
+            editor.focus?.();
+            return;
+          }
+          if (editor?.replaceRange && editor?.getCursor) {
+            const cursor = editor.getCursor();
+            editor.replaceRange(template, cursor);
+            editor.focus?.();
+            return;
+          }
+          if (activeFile) {
+            await thisApp.vault.modify(activeFile, `${await thisApp.vault.read(activeFile)}${template}`);
+          }
+        },
+      },
+      enabled: true,
+    };
     const canvasCorePlugin = {
       _loaded: false,
       enabled: true,
@@ -281,7 +320,7 @@ export class OOApp {
     this.internalPlugins = {
       plugins: {
         'daily-notes': { instance: { options: {} }, enabled: true },
-        'templates': { instance: { options: {} }, enabled: true },
+        'templates': templatesCorePlugin,
         'command-palette': { instance: { options: {} }, enabled: true },
         canvas: canvasCorePlugin,
       } as Record<string, any>,

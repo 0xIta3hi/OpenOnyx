@@ -1,128 +1,59 @@
 /**
- * Plugin Style Injection — Scoped
+ * Plugin Style Injection
  *
- * Manages CSS injection/removal for plugin styles with automatic scoping.
- * Plugin CSS selectors are auto-prefixed to prevent global style contamination.
+ * Obsidian loads each enabled plugin's styles.css into the app-level document
+ * without selector rewriting. Do the same here so community plugin CSS keeps
+ * its intended cascade, specificity, and workspace/modal selectors.
  */
 
 const PLUGIN_STYLE_ATTR = 'data-plugin-id';
+const PLUGIN_ASSET_ROOT = 'vault://local/.openobsidian/plugins';
+const ABSOLUTE_CSS_URL_RE = /^(?:[a-z][a-z0-9+.-]*:|#|\/)/i;
 
-/**
- * Scope plugin CSS by prefixing all top-level selectors with a plugin container class.
- * This prevents plugins from modifying global application styles.
- *
- * Strategy: Prefix each rule with `.oo-plugin-scope-{pluginId}` unless the rule
- * already targets a known plugin-scoped class, or is an @-rule.
- */
-function scopePluginCss(pluginId: string, css: string): string {
-  const prefix = `.oo-plugin-scope-${pluginId}`;
+function splitUrlSuffix(rawUrl: string): { path: string; suffix: string } {
+  const queryIdx = rawUrl.indexOf('?');
+  const hashIdx = rawUrl.indexOf('#');
+  const cutPoints = [queryIdx, hashIdx].filter(idx => idx >= 0);
+  const suffixIdx = cutPoints.length ? Math.min(...cutPoints) : -1;
 
-  // Simple CSS rule parser — handles most real-world plugin CSS
-  // We split on `}` boundaries and re-prefix selectors
-  const rules: string[] = [];
-  let depth = 0;
-  let current = '';
+  if (suffixIdx === -1) return { path: rawUrl, suffix: '' };
+  return {
+    path: rawUrl.slice(0, suffixIdx),
+    suffix: rawUrl.slice(suffixIdx),
+  };
+}
 
-  for (let i = 0; i < css.length; i++) {
-    const ch = css[i];
-    current += ch;
+function encodePluginAssetPath(path: string): string {
+  return path
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .split('/')
+    .map(segment => {
+      if (segment === '.' || segment === '..') return segment;
+      return encodeURIComponent(segment);
+    })
+    .join('/');
+}
 
-    if (ch === '{') {
-      depth++;
-    } else if (ch === '}') {
-      depth--;
-      if (depth <= 0) {
-        depth = 0;
-        rules.push(current.trim());
-        current = '';
-      }
-    }
-  }
-  if (current.trim()) rules.push(current.trim());
+function pluginAssetUrl(pluginId: string, rawUrl: string): string {
+  const { path, suffix } = splitUrlSuffix(rawUrl.trim());
+  const encodedPluginId = encodeURIComponent(pluginId);
+  const encodedPath = encodePluginAssetPath(path);
+  return `${PLUGIN_ASSET_ROOT}/${encodedPluginId}/${encodedPath}${suffix}`;
+}
 
-  // Obsidian structural class prefixes that should NOT be scoped.
-  // Plugins need their CSS targeting these standard classes to affect
-  // the real DOM — scoping would confine them to a container that
-  // doesn't exist in the DOM tree for these elements.
-  const UNSCOPED_PREFIXES = [
-    '.workspace', '.mod-root', '.mod-left', '.mod-right', '.mod-vertical', '.mod-horizontal',
-    '.view-header', '.view-content', '.view-actions',
-    '.nav-file', '.nav-folder', '.nav-action', '.nav-header',
-    '.tree-item', '.tree-item-self', '.tree-item-children',
-    '.modal', '.setting-item', '.menu', '.menu-item', '.menu-separator',
-    '.suggestion-', '.prompt-', '.status-bar', '.side-dock',
-    '.clickable-icon', '.checkbox-container', '.extra-setting-button',
-    '.cm-editor', '.cm-', '.markdown-preview', '.markdown-source',
-    '.markdown-reading', '.markdown-rendered', '.markdown-embed',
-    '.is-active', '.is-enabled', '.is-selected', '.is-focused', '.is-collapsed',
-    '.is-loading', '.is-hidden', '.is-flashing',
-    '.mod-cta', '.mod-warning', '.mod-destructive',
-    '.theme-', '.app-container', '.notice',
-    '.workspace-leaf', '.workspace-split', '.workspace-tab', '.workspace-ribbon',
-    '.callout', '.empty-state', '.search-input',
-    'body', 'html', ':root',
-    '.emoji', 'img.emoji',
-    // Excalidraw plugin — manages its own React root inside contentEl
-    '.excalidraw', '#excalidraw-container', '.excalidraw-wrapper',
-    '.layer-ui__wrapper', '.App-menu', '.Island',
-    // Kanban plugin — manages its own Svelte/React root inside contentEl
-    '.kanban-plugin', '.kanban-plugin__board', '.kanban-plugin__lane',
-    '.kanban-plugin__item', '.kanban-plugin__lane-form',
-  ];
-
-  /** Check if a single selector targets known Obsidian structural classes */
-  function isUnscopedSelector(sel: string): boolean {
-    const trimmed = sel.trim();
-    return UNSCOPED_PREFIXES.some(p => trimmed.startsWith(p));
-  }
-
-  return rules.map(rule => {
-    // Skip @-rules (keyframes, media, etc.) — leave as-is
-    if (rule.trimStart().startsWith('@keyframes') || rule.trimStart().startsWith('@font-face')) {
-      return rule;
-    }
-
-    // For @media rules, scope the inner content
-    if (rule.trimStart().startsWith('@media') || rule.trimStart().startsWith('@supports')) {
-      const braceIdx = rule.indexOf('{');
-      if (braceIdx === -1) return rule;
-      const mediaQuery = rule.substring(0, braceIdx + 1);
-      const rest = rule.substring(braceIdx + 1);
-      // Recursively scope inner rules
-      return mediaQuery + scopePluginCss(pluginId, rest);
-    }
-
-    // Normal rule: prefix the selector
-    const braceIdx = rule.indexOf('{');
-    if (braceIdx === -1) return rule;
-
-    const selector = rule.substring(0, braceIdx).trim();
-    const body = rule.substring(braceIdx);
-
-    // Don't double-scope if already scoped
-    if (selector.includes(`oo-plugin-scope-${pluginId}`)) return rule;
-
-    // Skip universal reset selectors that plugins commonly use
-    if (selector === '*' || selector === ':root') return rule;
-
-    // Scope each comma-separated selector individually
-    const scopedSelectors = selector.split(',').map(s => {
-      s = s.trim();
-      if (!s) return s;
-
-      // If selector starts with :root, body, html — replace with our scope
-      if (/^(html|body|:root)\s*/.test(s)) {
-        return s.replace(/^(html|body|:root)/, prefix);
-      }
-
-      // If selector targets known Obsidian structural classes, do NOT scope
-      if (isUnscopedSelector(s)) return s;
-
-      return `${prefix} ${s}`;
-    }).join(', ');
-
-    return `${scopedSelectors} ${body}`;
-  }).join('\n');
+export function rewritePluginCssUrls(pluginId: string, css: string): string {
+  return css
+    .replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (match, _quote: string, rawUrl: string) => {
+      const trimmedUrl = rawUrl.trim();
+      if (!trimmedUrl || ABSOLUTE_CSS_URL_RE.test(trimmedUrl)) return match;
+      return `url("${pluginAssetUrl(pluginId, trimmedUrl)}")`;
+    })
+    .replace(/@import\s+(["'])([^"']+)\1/g, (match, quote: string, rawUrl: string) => {
+      const trimmedUrl = rawUrl.trim();
+      if (!trimmedUrl || ABSOLUTE_CSS_URL_RE.test(trimmedUrl)) return match;
+      return match.replace(`${quote}${rawUrl}${quote}`, `"${pluginAssetUrl(pluginId, trimmedUrl)}"`);
+    });
 }
 
 export function injectPluginStyles(pluginId: string, css: string): void {
@@ -131,7 +62,7 @@ export function injectPluginStyles(pluginId: string, css: string): void {
 
   const style = document.createElement('style');
   style.setAttribute(PLUGIN_STYLE_ATTR, pluginId);
-  style.textContent = scopePluginCss(pluginId, css);
+  style.textContent = rewritePluginCssUrls(pluginId, css);
   document.head.appendChild(style);
 }
 

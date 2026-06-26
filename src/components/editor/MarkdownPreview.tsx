@@ -136,11 +136,125 @@ function getFoldableHeadingContent(heading: HTMLElement): HTMLElement[] {
 }
 
 function setHeadingFoldButtonIcon(button: HTMLButtonElement, collapsed: boolean): void {
-  button.innerHTML = [
-    `<svg viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px;flex:0 0 auto;transform:rotate(${collapsed ? "0deg" : "90deg"});transition:transform 120ms ease">`,
-    '<path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>',
-    "</svg>",
-  ].join("");
+  let svg = button.querySelector<SVGSVGElement>("svg");
+  if (!svg) {
+    button.innerHTML = [
+      '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px;flex:0 0 auto;transition:transform 160ms cubic-bezier(0.2,0,0,1)">',
+      '<path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>',
+      "</svg>",
+    ].join("");
+    svg = button.querySelector<SVGSVGElement>("svg");
+  }
+  if (svg) {
+    svg.style.transform = `rotate(${collapsed ? "0deg" : "90deg"})`;
+  }
+}
+
+const HEADING_FOLD_ANIMATION_MS = 220;
+const headingFoldTimers = new WeakMap<HTMLElement, number>();
+
+function clearHeadingFoldTimer(el: HTMLElement): void {
+  const timer = headingFoldTimers.get(el);
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    headingFoldTimers.delete(el);
+  }
+}
+
+function createHeadingFoldWrapper(heading: HTMLElement, elements: HTMLElement[]): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "heading-fold-content";
+  wrapper.dataset.headingFoldCollapsed = "false";
+  wrapper.style.display = "block";
+  heading.after(wrapper);
+  for (const el of elements) {
+    wrapper.appendChild(el);
+  }
+  return wrapper;
+}
+
+function finishExpandedHeadingFold(wrapper: HTMLElement): void {
+  wrapper.style.height = "auto";
+  wrapper.style.overflow = "";
+  wrapper.style.opacity = "";
+  wrapper.style.pointerEvents = "";
+  wrapper.style.transition = "";
+  wrapper.style.willChange = "";
+}
+
+function finishCollapsedHeadingFold(wrapper: HTMLElement): void {
+  wrapper.style.display = "none";
+  wrapper.style.height = "0px";
+  wrapper.style.overflow = "hidden";
+  wrapper.style.opacity = "0";
+  wrapper.style.pointerEvents = "none";
+  wrapper.style.transition = "";
+  wrapper.style.willChange = "";
+}
+
+function animateHeadingFoldContent(wrapper: HTMLElement, collapsed: boolean): void {
+  clearHeadingFoldTimer(wrapper);
+  wrapper.dataset.headingFoldCollapsed = String(collapsed);
+
+  const transition = [
+    `height ${HEADING_FOLD_ANIMATION_MS}ms cubic-bezier(0.2,0,0,1)`,
+    `opacity ${Math.max(120, HEADING_FOLD_ANIMATION_MS - 40)}ms ease`,
+  ].join(",");
+
+  if (collapsed) {
+    if (wrapper.style.display === "none") return;
+
+    const startHeight = wrapper.getBoundingClientRect().height;
+    wrapper.style.transition = "none";
+    wrapper.style.display = "block";
+    wrapper.style.overflow = "hidden";
+    wrapper.style.height = `${startHeight}px`;
+    wrapper.style.opacity = "1";
+    wrapper.style.pointerEvents = "none";
+    wrapper.style.willChange = "height, opacity";
+    void wrapper.offsetHeight;
+    wrapper.style.transition = transition;
+
+    window.requestAnimationFrame(() => {
+      if (wrapper.dataset.headingFoldCollapsed !== "true") return;
+      wrapper.style.height = "0px";
+      wrapper.style.opacity = "0";
+    });
+
+    const timer = window.setTimeout(() => {
+      if (wrapper.dataset.headingFoldCollapsed === "true") {
+        finishCollapsedHeadingFold(wrapper);
+      }
+      headingFoldTimers.delete(wrapper);
+    }, HEADING_FOLD_ANIMATION_MS);
+    headingFoldTimers.set(wrapper, timer);
+    return;
+  }
+
+  wrapper.style.transition = "none";
+  wrapper.style.display = "block";
+  wrapper.style.overflow = "hidden";
+  wrapper.style.height = "0px";
+  wrapper.style.opacity = "0";
+  wrapper.style.pointerEvents = "none";
+  wrapper.style.willChange = "height, opacity";
+  void wrapper.offsetHeight;
+  const targetHeight = wrapper.scrollHeight;
+  wrapper.style.transition = transition;
+
+  window.requestAnimationFrame(() => {
+    if (wrapper.dataset.headingFoldCollapsed === "true") return;
+    wrapper.style.height = `${targetHeight}px`;
+    wrapper.style.opacity = "1";
+  });
+
+  const timer = window.setTimeout(() => {
+    if (wrapper.dataset.headingFoldCollapsed !== "true") {
+      finishExpandedHeadingFold(wrapper);
+    }
+    headingFoldTimers.delete(wrapper);
+  }, HEADING_FOLD_ANIMATION_MS);
+  headingFoldTimers.set(wrapper, timer);
 }
 
 function installHeadingFoldControls(container: HTMLElement): void {
@@ -152,6 +266,7 @@ function installHeadingFoldControls(container: HTMLElement): void {
   for (const heading of headings) {
     const foldableContent = getFoldableHeadingContent(heading);
     if (foldableContent.length === 0) continue;
+    const foldWrapper = createHeadingFoldWrapper(heading, foldableContent);
 
     heading.style.position = "relative";
     heading.style.paddingLeft = heading.style.paddingLeft || "0";
@@ -160,6 +275,7 @@ function installHeadingFoldControls(container: HTMLElement): void {
     button.type = "button";
     button.className = "heading-fold-toggle";
     button.setAttribute("aria-label", "Fold heading");
+    button.setAttribute("aria-expanded", "true");
     setHeadingFoldButtonIcon(button, false);
     button.style.cssText = [
       "position:absolute",
@@ -208,10 +324,9 @@ function installHeadingFoldControls(container: HTMLElement): void {
       button.dataset.collapsed = String(nextCollapsed);
       setHeadingFoldButtonIcon(button, nextCollapsed);
       button.setAttribute("aria-label", nextCollapsed ? "Unfold heading" : "Fold heading");
+      button.setAttribute("aria-expanded", String(!nextCollapsed));
       button.style.opacity = nextCollapsed ? "1" : "0";
-      for (const el of foldableContent) {
-        el.style.display = nextCollapsed ? "none" : "";
-      }
+      animateHeadingFoldContent(foldWrapper, nextCollapsed);
     });
 
     heading.prepend(button);
