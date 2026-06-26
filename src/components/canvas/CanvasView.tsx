@@ -5132,7 +5132,8 @@ function NodeCard({
     ...(borderColor && !isGroup
       ? ({
           "--node-color": borderColor,
-          boxShadow: `0 0 0 1px ${borderColor}, 0 2px 6px rgba(0,0,0,0.1)`,
+          boxShadow: "none",
+          outline: `1px solid ${borderColor}`,
           border: "none",
           background: "var(--cv-node-bg)",
         } as any)

@@ -18,7 +18,7 @@ import type { PluginStatusBarItem } from '../types/plugin';
 import { VimModeIndicator } from "./VimModeIndicator";
 
 const statusBarClass =
-  "fixed bottom-0 right-0 z-[180] flex h-[30px] w-fit max-w-[calc(100vw-12px)] items-center justify-end overflow-hidden rounded-tl-[var(--radius-md)] border border-b-0 border-r-0 border-(--status-bar-border-color) bg-(--status-bar-background) text-[12px] font-medium text-(--text-primary) shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_-3px_12px_rgba(0,0,0,0.12)]";
+  "fixed bottom-0 right-0 z-[180] flex h-[30px] w-fit max-w-[calc(100vw-12px)] items-center justify-end overflow-hidden rounded-tl-[var(--radius-md)] border border-b-0 border-r-0 border-(--status-bar-border-color) bg-(--status-bar-background) text-[12px] font-medium text-(--text-primary) shadow-none";
 const statusGroupClass = "flex min-w-0 items-center justify-end gap-0.5";
 const statusItemClass =
   "inline-flex h-[29px] shrink-0 items-center gap-1 whitespace-nowrap border-l border-[var(--border-subtle)] px-2 text-[12px] leading-none text-(--text-primary) first:border-l-0";

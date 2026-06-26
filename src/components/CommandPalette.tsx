@@ -52,7 +52,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-start justify-center pt-[15vh] z-[9999]" onClick={onClose}>
-      <div className="w-full max-w-[520px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[520px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-none overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-subtle)">
           <span className="text-(--text-muted) text-lg shrink-0">{'\u2318'}</span>
           <input

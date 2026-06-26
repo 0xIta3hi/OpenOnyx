@@ -101,7 +101,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
 const settingsOverlayClass =
   "settings-overlay fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur";
 const settingsPageClass =
-  "settings-page relative flex h-[840px] max-h-[92vh] w-[1180px] max-w-[95vw] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-primary)] shadow-[var(--shadow-lg)]";
+  "settings-page relative flex h-[840px] max-h-[92vh] w-[1180px] max-w-[95vw] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-primary)] shadow-none";
 const settingsHeaderClass =
   "settings-header absolute right-0 top-0 z-[999] h-0 w-0 overflow-visible !border-b-0 !p-0";
 const settingsTitleClass = "hidden";
@@ -166,7 +166,7 @@ const toggleRowClass =
 const settingBtnTabClass =
   "setting-btn-tab flex-1 cursor-pointer rounded border-0 bg-transparent px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)]";
 const settingBtnTabActiveClass =
-  "active bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.1)]";
+  "active bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-none";
 const settingColorPickerClass =
   "setting-color-picker h-7 w-12 cursor-pointer appearance-none overflow-hidden rounded border border-[var(--border-medium)] bg-transparent p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[3px] [&::-webkit-color-swatch]:border-0";
 const hotkeySearchBoxClass =
@@ -181,7 +181,7 @@ const hotkeyCardClass =
   "hotkey-card flex items-center justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)]";
 const hotkeyDescClass = "hotkey-desc text-[13px] text-[var(--text-primary)]";
 const hotkeyKbdClass =
-  "hotkey-kbd rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-1.5 py-[3px] font-mono text-[11px] text-[var(--text-secondary)] shadow-[0_1px_1px_rgba(0,0,0,0.1)]";
+  "hotkey-kbd rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-1.5 py-[3px] font-mono text-[11px] text-[var(--text-secondary)] shadow-none";
 const hotkeysEmptyClass =
   "hotkeys-empty p-[30px] text-center text-[13px] text-[var(--text-muted)]";
 const aboutInfoClass =

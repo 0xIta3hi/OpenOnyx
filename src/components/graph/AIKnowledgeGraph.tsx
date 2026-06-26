@@ -374,7 +374,7 @@ function ColorPicker({
                 background: "var(--bg-elevated)",
                 border: "1px solid var(--border-medium)",
                 borderRadius: "var(--radius-md)",
-                boxShadow: "var(--shadow-lg)",
+                boxShadow: "none",
                 padding: "8px",
               }}
             >
@@ -1898,7 +1898,7 @@ Summarize the theme and key intersections. No emojis.`;
               display: "flex",
               alignItems: "center",
               gap: "12px",
-              boxShadow: "var(--shadow-md)"
+              boxShadow: "none"
             }}>
               <span style={{ fontSize: "12.5px", color: "var(--text-secondary)" }}>
                 Pathfinding: <strong>{noteNameFromPath(computedPath[0])}</strong> &rarr; <strong>{noteNameFromPath(computedPath[computedPath.length - 1])}</strong> ({computedPath.length} steps)
@@ -2729,7 +2729,7 @@ Summarize the theme and key intersections. No emojis.`;
             height: "80%",
             display: "flex",
             flexDirection: "column",
-            boxShadow: "var(--shadow-xl)",
+            boxShadow: "none",
             padding: "20px",
             gap: "16px"
           }}>

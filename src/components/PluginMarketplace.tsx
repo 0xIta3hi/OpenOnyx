@@ -526,7 +526,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
             padding: '24px',
             maxWidth: '480px',
             width: '90vw',
-            boxShadow: '0 20px 45px rgba(0,0,0,0.65)',
+            boxShadow: 'none',
             display: 'flex',
             flexDirection: 'column',
             gap: '16px'

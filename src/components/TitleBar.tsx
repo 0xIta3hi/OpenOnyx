@@ -178,15 +178,15 @@ const titlebarBtnClass =
   "titlebar-btn flex h-[var(--titlebar-height)] w-[46px] cursor-pointer items-center justify-center rounded-none border-0 bg-transparent text-[length:var(--font-ui-small)] text-[var(--text-secondary)] transition-colors duration-100 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const titlebarCloseBtnClass = "close hover:bg-[#e81123] hover:text-white";
 const titlebarTooltipClass =
-  "titlebar-tooltip pointer-events-none absolute z-[5000] -translate-x-1/2 whitespace-nowrap rounded bg-black px-2.5 py-[5px] text-[12.5px] font-medium text-white opacity-100 shadow-[0_4px_12px_rgba(0,0,0,0.5)] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-x-4 after:border-b-4 after:border-x-transparent after:border-b-black after:content-['']";
+  "titlebar-tooltip pointer-events-none absolute z-[5000] -translate-x-1/2 whitespace-nowrap rounded bg-black px-2.5 py-[5px] text-[12.5px] font-medium text-white opacity-100 shadow-none after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-x-4 after:border-b-4 after:border-x-transparent after:border-b-black after:content-['']";
 const titlebarGroupPillClass =
-  "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97]";
+  "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-none transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97]";
 const titlebarGroupActiveClass =
-  "active-group shadow-[0_0_0_1px_currentColor,0_1.5px_3px_rgba(0,0,0,0.2)]";
+  "active-group outline outline-1 outline-current";
 const titlebarGroupNameClass =
   "titlebar-group-name max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap leading-none";
 const groupEditorPopupClass =
-  "group-editor-popup fixed z-[3301] flex w-60 flex-col gap-2 rounded-lg border border-[var(--border-medium,#2d2f33)] bg-[var(--bg-elevated,#1e1f22)] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.4),0_2px_4px_rgba(0,0,0,0.2)] backdrop-blur-2xl pointer-events-auto";
+  "group-editor-popup fixed z-[3301] flex w-60 max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] flex-col gap-2 overflow-y-auto rounded-lg border border-[var(--border-medium,#2d2f33)] bg-[var(--bg-elevated,#1e1f22)] p-3 shadow-none backdrop-blur-2xl pointer-events-auto";
 const groupEditorInputClass =
   "group-editor-input box-border w-full rounded border-[1.5px] border-[var(--border-medium,#2d2f33)] bg-[var(--bg-secondary,#18191c)] px-2.5 py-1.5 font-sans text-[13px] text-[var(--text-primary,#ffffff)] outline-none transition-colors duration-150 focus:border-current";
 const groupEditorColorsClass =
@@ -206,14 +206,25 @@ const groupEditorCheckClass =
 const contextMenuBackdropClass =
   "context-menu-backdrop fixed inset-0 z-[3300] bg-transparent pointer-events-auto";
 const contextMenuClass =
-  "context-menu fixed z-[3301] flex min-w-[180px] flex-col rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl pointer-events-auto";
+  "context-menu fixed z-[3301] flex min-w-[180px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] flex-col overflow-y-auto rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl pointer-events-auto";
 const contextMenuItemClass =
   "context-menu-item flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-sans text-[13px] text-[var(--text-secondary,#b0b0bc)] transition-colors duration-150 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
 const contextSubmenuContainerClass = "context-menu-submenu-container group relative";
 const contextSubmenuHeaderClass = `${contextMenuItemClass} submenu-header justify-between`;
 const contextSubmenuClass =
-  "context-menu-submenu absolute left-[98%] top-[-4px] z-[3302] hidden min-w-40 rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl group-hover:block";
+  "context-menu-submenu absolute left-[98%] top-[-4px] z-[3302] hidden min-w-40 rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl group-hover:block";
 const contextGroupDotClass = "group-color-dot inline-block h-2 w-2 shrink-0 rounded-full";
+
+const MENU_VIEWPORT_MARGIN = 8;
+
+function clampMenuPosition(x: number, y: number, width: number, height: number) {
+  const maxX = Math.max(MENU_VIEWPORT_MARGIN, window.innerWidth - width - MENU_VIEWPORT_MARGIN);
+  const maxY = Math.max(MENU_VIEWPORT_MARGIN, window.innerHeight - height - MENU_VIEWPORT_MARGIN);
+  return {
+    x: Math.min(Math.max(x, MENU_VIEWPORT_MARGIN), maxX),
+    y: Math.min(Math.max(y, MENU_VIEWPORT_MARGIN), maxY),
+  };
+}
 
 interface PluginViewActionInfo {
   id: string;
@@ -639,9 +650,10 @@ export function TitleBar({
                   onContextMenu={(e) => {
                     e.preventDefault();
                     const rect = e.currentTarget.getBoundingClientRect();
+                    const position = clampMenuPosition(rect.left, rect.bottom + 4, 240, 430);
                     setGroupPopup({
-                      x: rect.left,
-                      y: rect.bottom + 4,
+                      x: position.x,
+                      y: position.y,
                       group,
                     });
                   }}
@@ -681,9 +693,10 @@ export function TitleBar({
                   onDrop={(e) => handleDrop(e, tab.id)}
                   onContextMenu={(e) => {
                     e.preventDefault();
+                    const position = clampMenuPosition(e.clientX, e.clientY, 220, 180);
                     setTabContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
+                      x: position.x,
+                      y: position.y,
                       tab,
                     });
                   }}

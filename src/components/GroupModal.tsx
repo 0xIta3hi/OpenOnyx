@@ -155,7 +155,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "8px",
     padding: "24px",
     width: "320px",
-    boxShadow: "0 10px 40px rgba(0, 0, 0, 0.5)",
+    boxShadow: "none",
     border: "1px solid var(--border, #3e3e50)",
     display: "flex",
     flexDirection: "column",

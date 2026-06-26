@@ -6614,7 +6614,7 @@ export default function App() {
         />
 
       <div
-        className="app-body h-full"
+        className="app-body"
         ref={appBodyRef}
         style={{ 
           "--sidebar-width": `${sidebarWidth}px`,
@@ -6648,7 +6648,7 @@ export default function App() {
         {vaultPath && !isFTUXZeroState && (
           <div
             ref={leftSidebarShellRef}
-            className="relative h-full shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width]"
+            className="relative h-full min-w-0 shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width]"
             style={{ width: showSidebar ? "var(--sidebar-width)" : 0 }}
           >
             <div className="h-full w-full">
@@ -6732,7 +6732,7 @@ export default function App() {
         )}
 
         <div
-          className="main-content flex flex-1 overflow-hidden bg-[var(--bg-primary)]"
+          className="main-content flex min-w-0 flex-1 overflow-hidden bg-[var(--bg-primary)]"
           ref={mainContentRef}
           style={{
             display: "flex",
@@ -6778,6 +6778,7 @@ export default function App() {
                     overflow: "hidden",
                     display: "flex",
                     flexDirection: "column",
+                    minWidth: 0,
                   }}
                 >
 
@@ -6811,6 +6812,7 @@ export default function App() {
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
+                    minWidth: 0,
                   }}
                 >
                   {renderGraphShell({
@@ -6847,6 +6849,7 @@ export default function App() {
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
+                    minWidth: 0,
                   }}
                 >
                   <CanvasView
@@ -6887,7 +6890,7 @@ export default function App() {
               style={{ zIndex: 100 }}
             />
             <div
-              className="thought-model-panel flex shrink-0 flex-col overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
+              className="thought-model-panel flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
               style={{ width: `${thoughtModelWidth}px` }}
             >
               <AIPage
@@ -6910,7 +6913,7 @@ export default function App() {
         {showRightSidebar && !isFTUXZeroState && (
           <div
             ref={rightSidebarShellRef}
-            className="relative h-full shrink-0 overflow-hidden transition-[width] duration-150 ease-out will-change-[width] flex flex-row"
+            className="relative flex h-full min-w-0 shrink-0 flex-row overflow-hidden transition-[width] duration-150 ease-out will-change-[width]"
             style={{ width: showRightSidebar ? "var(--right-sidebar-width)" : 0 }}
           >
             <div
@@ -6924,7 +6927,7 @@ export default function App() {
                 zIndex: 100,
               }}
             />
-            <div className="h-full w-full flex flex-row overflow-hidden">
+            <div className="flex h-full min-w-0 w-full flex-row overflow-hidden">
               <RightSidebar
                 activeTab={rightSidebarTab}
                 currentContent={currentContent}
@@ -7128,7 +7131,7 @@ export default function App() {
             padding: '40px',
             width: '450px',
             maxWidth: '90%',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+            boxShadow: 'none',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -7196,7 +7199,7 @@ export default function App() {
       {toast && (
         <div className="fixed bottom-[var(--space-8)] right-[var(--space-8)] z-[300] flex flex-col gap-[var(--space-2)]">
           <div
-            className={`flex max-w-[360px] items-center gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-[var(--space-4)] py-[var(--space-3)] text-[length:var(--text-sm)] text-[var(--text-secondary)] shadow-[var(--shadow-lg)] ${
+            className={`flex max-w-[360px] items-center gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] px-[var(--space-4)] py-[var(--space-3)] text-[length:var(--text-sm)] text-[var(--text-secondary)] shadow-none ${
               toast.type === "success"
                 ? "border-l-[3px] border-l-[var(--success)]"
                 : toast.type === "error"

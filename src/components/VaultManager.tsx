@@ -105,7 +105,7 @@ export function VaultManager({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="flex h-[656px] max-h-[calc(100vh-48px)] w-[806px] max-w-[calc(100vw-48px)] overflow-hidden rounded-[10px] border border-[var(--border-medium)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_22px_70px_rgba(0,0,0,0.5)]">
+      <div className="flex h-[656px] max-h-[calc(100vh-48px)] w-[806px] max-w-[calc(100vw-48px)] overflow-hidden rounded-[10px] border border-[var(--border-medium)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-none">
         <aside className="flex w-[280px] min-h-0 shrink-0 flex-col border-r border-[var(--border-medium)] bg-[var(--bg-secondary)] px-5 py-10">
           <div className="-mr-3 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden pr-3">
             {vaults.length === 0 ? (
@@ -162,7 +162,7 @@ export function VaultManager({
                       <MoreVertical size={16} />
                     </button>
                     {menuPath === path ? (
-                      <div className="absolute left-2 top-10 z-20 w-[244px] overflow-hidden rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]">
+                      <div className="absolute left-2 top-10 z-20 w-[244px] overflow-hidden rounded-md border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-none">
                         <button
                           type="button"
                           className={menuItemClass}
@@ -258,7 +258,7 @@ export function VaultManager({
               Vault Manager
             </div>
 
-            <div className="w-full max-w-[448px] overflow-hidden rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-5 py-4 shadow-[var(--shadow-sm)]">
+            <div className="w-full max-w-[448px] overflow-hidden rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-5 py-4 shadow-none">
               <div className="flex items-center justify-between gap-5 border-b border-[var(--border-subtle)] pb-4">
                 <div className="min-w-0">
                   <div className="text-[15px] text-[var(--text-primary)]">

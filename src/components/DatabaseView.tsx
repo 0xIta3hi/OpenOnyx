@@ -122,7 +122,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({ folderNode, onOpenFi
           </div>
         </div>
 
-        <div className="border border-(--border-subtle) rounded-lg shadow-sm overflow-hidden bg-(--bg-primary) w-full overflow-x-auto">
+        <div className="border border-(--border-subtle) rounded-lg shadow-none overflow-hidden bg-(--bg-primary) w-full overflow-x-auto">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>

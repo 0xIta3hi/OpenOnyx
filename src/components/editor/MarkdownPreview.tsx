@@ -109,7 +109,7 @@ interface MarkdownPreviewProps {
   constrainWidth?: boolean;
 }
 
-const linkPreviewClass = "bg-(--bg-elevated) border border-(--border-medium) rounded-lg shadow-xl max-w-[400px] max-h-[300px] overflow-hidden flex flex-col animate-fade-in";
+const linkPreviewClass = "bg-(--bg-elevated) border border-(--border-medium) rounded-lg shadow-none max-w-[400px] max-h-[300px] overflow-hidden flex flex-col animate-fade-in";
 const linkPreviewHeaderClass = "px-3 py-2 border-b border-(--border-subtle) bg-(--bg-secondary)";
 const linkPreviewTitleClass = "font-semibold text-[var(--text-sm)] text-(--text-link)";
 const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em] markdown-rendered";
@@ -803,7 +803,7 @@ export function MarkdownPreview({
 
       wrapper.innerHTML = `
         <img class="yt-poster-img" src="${hdThumb}" onerror="this.src='${hqThumb}'" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s;">
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 68px; height: 48px; background: rgba(255, 0, 0, 0.9); border-radius: 12px; display: flex; align-items: center; justify-content: center; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 68px; height: 48px; background: rgba(255, 0, 0, 0.9); border-radius: 12px; display: flex; align-items: center; justify-content: center; pointer-events: none; box-shadow: none;">
           <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; fill: white;"><path d="M8 5v14l11-7z"/></svg>
         </div>
       `;

@@ -171,7 +171,7 @@ function setWritableViewProperty(view: any, key: string, value: unknown): void {
 const resizerClass =
   "resizer relative z-10 w-1 shrink-0 cursor-ew-resize bg-transparent transition-colors duration-100 after:absolute after:inset-y-0 after:left-px after:w-0.5 after:bg-[var(--divider-color)] after:opacity-100 hover:after:left-0.5 hover:after:w-[3px] hover:after:bg-[var(--interactive-accent)] active:after:left-0.5 active:after:w-[3px] active:after:bg-[var(--interactive-accent)]";
 const inlineAiToolbarClass =
-  "inline-ai-toolbar flex min-w-[400px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] p-0 shadow-[var(--shadow-md)] transition-all duration-150";
+  "inline-ai-toolbar flex min-w-[400px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] p-0 shadow-none transition-all duration-150";
 const inlineAiButtonsRowClass = "flex w-full items-center";
 const inlineAiButtonsRowPromptClass =
   "border-b border-[var(--border-subtle)]";
@@ -188,7 +188,7 @@ const inlineAiPromptSubmitClass =
 const inlineAiLoadingClass =
   "inline-ai-toolbar flex min-w-[200px] items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] px-5 py-2.5 text-[12.5px] text-[var(--text-secondary)]";
 const inlineAiExplanationClass =
-  "flex w-[340px] flex-col overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--color-base-25)] shadow-[var(--shadow-lg)] backdrop-blur-xl";
+  "flex w-[340px] flex-col overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--color-base-25)] shadow-none backdrop-blur-xl";
 const inlineAiExplanationHeaderClass =
   "flex items-center justify-between border-b border-[var(--border-strong)] bg-[var(--bg-hover)] px-3 py-2 text-[11px] font-semibold text-[var(--text-primary)]";
 const inlineAiExplanationCloseClass =
@@ -196,7 +196,7 @@ const inlineAiExplanationCloseClass =
 const inlineAiExplanationBodyClass =
   "max-h-[200px] overflow-y-auto p-3 text-[11px] leading-normal text-[var(--text-secondary)]";
 const editorAnnotationClass =
-  "mx-[clamp(24px,5vw,72px)] my-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-5 py-4 shadow-[0_6px_18px_rgba(0,0,0,0.12)]";
+  "mx-[clamp(24px,5vw,72px)] my-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-5 py-4 shadow-none";
 const editorAnnotationHeaderClass =
   "mb-2 flex items-center justify-between";
 const editorAnnotationTitleClass =
@@ -219,7 +219,7 @@ const editorContainerClass =
 const editorLightboxBackdropClass =
   "fixed inset-0 z-[9999] flex items-center justify-center bg-[color-mix(in_srgb,var(--bg-primary)_45%,transparent)] backdrop-blur-[3px]";
 const editorLightboxModalClass =
-  "relative flex max-h-[min(88vh,900px)] max-w-[min(92vw,1200px)] items-center justify-center rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] p-[var(--space-3)] shadow-[var(--shadow-xl)]";
+  "relative flex max-h-[min(88vh,900px)] max-w-[min(92vw,1200px)] items-center justify-center rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] p-[var(--space-3)] shadow-none";
 const editorLightboxCloseClass =
   "absolute right-2 top-2 h-7 w-7 cursor-pointer rounded-full border border-[var(--border-medium)] bg-[var(--bg-secondary)] text-xl leading-none text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--text-primary)]";
 const editorLightboxImageClass =

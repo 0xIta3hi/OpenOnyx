@@ -175,7 +175,7 @@ const sidebarFilterInputClass =
 const sidebarFilterClearClass =
   "flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarSortMenuClass =
-  "absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]";
+  "absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-none";
 const sidebarSortMenuItemClass =
   "flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const fileExplorerClass =
@@ -253,7 +253,7 @@ const vaultSelectorNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whi
 const sidebarSettingsBtnClass =
   "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const vaultMenuClass =
-  "absolute bottom-[calc(100%+6px)] left-2 right-2 z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-lg)]";
+  "absolute bottom-[calc(100%+6px)] left-2 right-2 z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-none";
 const vaultMenuHeaderClass =
   "px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
 const vaultMenuItemClass =
@@ -264,13 +264,32 @@ const vaultNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-
 const vaultCheckIconClass = "shrink-0 text-[var(--accent-primary)]";
 const vaultMenuSeparatorClass = "mx-2 my-1 h-px bg-[var(--border-subtle)]";
 const contextMenuClass =
-  "context-menu fixed z-[3301] flex min-w-[180px] flex-col rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-[var(--shadow-lg,0_10px_30px_rgba(0,0,0,0.3))] backdrop-blur-xl pointer-events-auto";
+  "context-menu fixed z-[3301] flex min-w-[180px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] flex-col overflow-y-auto rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl pointer-events-auto";
 const contextMenuItemClass =
   "context-menu-item flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-sans text-[13px] text-[var(--text-secondary,#b0b0bc)] transition-colors duration-150 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
 const contextMenuDangerClass =
   "danger text-[var(--danger,#f43f5e)] hover:bg-[rgba(244,63,94,0.12)] hover:text-[var(--danger,#f43f5e)]";
 const contextMenuSeparatorClass =
   "context-menu-separator mx-2 my-1 h-px bg-[var(--border-subtle)]";
+
+const MENU_VIEWPORT_MARGIN = 8;
+const SIDEBAR_CONTEXT_MENU_WIDTH = 220;
+const FILE_CONTEXT_MENU_HEIGHT = 260;
+const GROUP_CONTEXT_MENU_HEIGHT = 280;
+
+function clampMenuPosition(
+  x: number,
+  y: number,
+  width = SIDEBAR_CONTEXT_MENU_WIDTH,
+  height = FILE_CONTEXT_MENU_HEIGHT,
+) {
+  const maxX = Math.max(MENU_VIEWPORT_MARGIN, window.innerWidth - width - MENU_VIEWPORT_MARGIN);
+  const maxY = Math.max(MENU_VIEWPORT_MARGIN, window.innerHeight - height - MENU_VIEWPORT_MARGIN);
+  return {
+    x: Math.min(Math.max(x, MENU_VIEWPORT_MARGIN), maxX),
+    y: Math.min(Math.max(y, MENU_VIEWPORT_MARGIN), maxY),
+  };
+}
 
 export function Sidebar({
   visible,
@@ -406,7 +425,11 @@ export function Sidebar({
   ) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, path, isDir });
+    setContextMenu({
+      ...clampMenuPosition(e.clientX, e.clientY, SIDEBAR_CONTEXT_MENU_WIDTH, isDir ? FILE_CONTEXT_MENU_HEIGHT : 190),
+      path,
+      isDir,
+    });
   };
 
   const closeContextMenu = () => setContextMenu(null);
@@ -414,7 +437,10 @@ export function Sidebar({
   const handleGroupContextMenu = (e: React.MouseEvent, groupId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setGroupContextMenu({ x: e.clientX, y: e.clientY, groupId });
+    setGroupContextMenu({
+      ...clampMenuPosition(e.clientX, e.clientY, SIDEBAR_CONTEXT_MENU_WIDTH, GROUP_CONTEXT_MENU_HEIGHT),
+      groupId,
+    });
   };
 
   const startRename = (path: string) => {
@@ -759,10 +785,7 @@ export function Sidebar({
                     >
                       <span 
                         className={groupColorDotClass}
-                        style={{ 
-                          backgroundColor: group.color,
-                          boxShadow: `0 0 6px ${group.color}60`
-                        }}
+                        style={{ backgroundColor: group.color }}
                       />
                       <span className={groupNameTextClass}>{group.name}</span>
                       {group.auto_save_enabled && (
@@ -890,7 +913,7 @@ export function Sidebar({
       {contextMenu && (
         <>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 199 }}
+            style={{ position: "fixed", inset: 0, zIndex: 3300 }}
             onClick={closeContextMenu}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -980,7 +1003,7 @@ export function Sidebar({
       {groupContextMenu && (
         <>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 199 }}
+            style={{ position: "fixed", inset: 0, zIndex: 3300 }}
             onClick={() => setGroupContextMenu(null)}
             onContextMenu={(e) => {
               e.preventDefault();

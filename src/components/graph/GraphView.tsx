@@ -296,7 +296,7 @@ function ColorPicker({
                 background: "var(--bg-elevated)",
                 border: "1px solid var(--border-medium)",
                 borderRadius: "var(--radius-md)",
-                boxShadow: "var(--shadow-lg)",
+                boxShadow: "none",
                 padding: "8px",
               }}
             >

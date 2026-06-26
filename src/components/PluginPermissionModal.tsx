@@ -73,7 +73,7 @@ export function PluginPermissionModal({
           padding: '28px',
           maxWidth: '480px',
           width: '90vw',
-          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+          boxShadow: 'none',
           zIndex: 1,
         }}
       >
