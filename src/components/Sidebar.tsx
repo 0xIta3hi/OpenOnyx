@@ -26,7 +26,6 @@ import {
   Image,
   FileCode,
   File,
-  LayoutGrid,
   ChevronsUpDown,
   Check,
   Library,
@@ -220,27 +219,31 @@ const starIconClass = "star-icon mt-0.5 shrink-0";
 const starredTextClass = "flex min-w-0 flex-col items-start gap-0.5";
 const starredPathClass =
   "max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--text-muted)]";
-const groupHeaderWrapperClass = "flex items-center gap-1";
+const groupsSectionClass =
+  "groups-section shrink-0 border-b border-[var(--border-subtle)] px-3 py-0.5";
+const groupHeaderWrapperClass = "flex min-h-[23px] items-center gap-px";
+const groupSectionHeaderClass =
+  "flex min-h-[23px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-1.5 pr-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-secondary)]";
 const sectionHeaderActionClass =
-  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex h-[23px] w-[23px] shrink-0 cursor-pointer items-center justify-center rounded-[var(--nav-item-radius)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
 const groupsListWrapperClass =
   "grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]";
-const groupsListClass = "min-h-0 space-y-1 overflow-hidden pt-1";
+const groupsListClass = "min-h-0 overflow-hidden py-0.5";
 const groupItemContainerClass =
-  "group relative flex min-h-[24px] items-center rounded-[var(--radius-sm)]";
+  "group relative flex min-h-[23px] items-center rounded-[var(--nav-item-radius)]";
 const groupItemActiveClass =
   "bg-[var(--nav-item-background-selected)]";
 const groupItemBtnClass =
-  "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border-0 bg-transparent px-2 py-0.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex min-h-[23px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-6 pr-8 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.2] text-[var(--nav-item-color)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
 const groupColorDotClass =
-  "h-2 w-2 shrink-0 rounded-full";
+  "absolute left-2.5 h-2 w-2 shrink-0 rounded-full";
 const groupNameTextClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
 const groupAutoBadgeClass =
-  "ml-auto rounded border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)]";
+  "ml-auto rounded-lg bg-[var(--bg-tertiary)] px-[5px] text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-[var(--text-muted)]";
 const groupItemActionsClass =
   "absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100";
 const groupActionBtnClass =
-  "flex h-6 w-6 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex h-[21px] w-[21px] cursor-pointer items-center justify-center rounded-[var(--nav-item-radius)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
 const sidebarFooterClass =
   "relative mt-auto flex shrink-0 items-center gap-1 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-2";
 const vaultSelectorBtnClass =
@@ -718,10 +721,10 @@ export function Sidebar({
 
         {/* Layout Groups Section */}
         {!filterQuery && (
-          <div className={cx(sidebarSectionClass, "groups-section")}>
+          <div className={groupsSectionClass}>
             <div className={groupHeaderWrapperClass}>
               <button
-                className={cx(sectionHeaderClass, "flex-1")}
+                className={groupSectionHeaderClass}
                 onClick={() => setShowGroups(!showGroups)}
               >
                 <span className={sectionChevronClass}>
@@ -731,7 +734,6 @@ export function Sidebar({
                     <ChevronRight size={14} />
                   )}
                 </span>
-                <LayoutGrid size={14} className="text-[var(--accent)]" />
                 <span>Groups</span>
                 <span className={sectionCountClass}>{groups.length}</span>
               </button>

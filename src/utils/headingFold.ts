@@ -9,8 +9,6 @@ import {
   EditorView,
   Decoration,
   DecorationSet,
-  ViewPlugin,
-  ViewUpdate,
   gutter,
   GutterMarker,
   WidgetType,
@@ -169,49 +167,41 @@ const foldDecoration = Decoration.replace({
   widget: new FoldWidget(),
 });
 
-// Plugin to apply fold decorations
-const foldDecorations = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
+function buildFoldDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const folded = state.field(foldedRanges);
 
-    constructor(view: EditorView) {
-      this.decorations = this.buildDecorations(view);
+  const sortedFolds = Array.from(folded)
+    .map((key) => {
+      const [from, to] = key.split("-").map(Number);
+      return { from, to };
+    })
+    .sort((a, b) => a.from - b.from);
+
+  for (const { from, to } of sortedFolds) {
+    if (from < to && from < state.doc.length) {
+      builder.add(from, to, foldDecoration);
     }
+  }
 
-    update(update: ViewUpdate) {
-      if (
-        update.docChanged ||
-        update.state.field(foldedRanges) !==
-          update.startState.field(foldedRanges)
-      ) {
-        this.decorations = this.buildDecorations(update.view);
-      }
-    }
+  return builder.finish();
+}
 
-    buildDecorations(view: EditorView): DecorationSet {
-      const builder = new RangeSetBuilder<Decoration>();
-      const folded = view.state.field(foldedRanges);
-
-      const sortedFolds = Array.from(folded)
-        .map((key) => {
-          const [from, to] = key.split("-").map(Number);
-          return { from, to };
-        })
-        .sort((a, b) => a.from - b.from);
-
-      for (const { from, to } of sortedFolds) {
-        if (from < to && from < view.state.doc.length) {
-          builder.add(from, to, foldDecoration);
-        }
-      }
-
-      return builder.finish();
-    }
+const foldDecorations = StateField.define<DecorationSet>({
+  create(state) {
+    return buildFoldDecorations(state);
   },
-  {
-    decorations: (v) => v.decorations,
+  update(decorations, tr) {
+    if (
+      tr.docChanged ||
+      tr.state.field(foldedRanges) !== tr.startState.field(foldedRanges)
+    ) {
+      return buildFoldDecorations(tr.state);
+    }
+    return decorations.map(tr.changes);
   },
-);
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 // Theme for fold gutter and markers
 export const foldTheme = EditorView.theme({

@@ -509,10 +509,7 @@ export function injectPluginBaseCss(): void {
 /* ── Plugin Ribbon Button ────────────────────────── */
 .oo-plugin-ribbon-btn {
   cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.15s;
 }
-.oo-plugin-ribbon-btn:hover { opacity: 1; }
 
 /* ── Plugin Status Bar Item ──────────────────────── */
 .oo-plugin-status-item {

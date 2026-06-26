@@ -14,6 +14,7 @@ import { SpacesIcon } from "./SpacesIcon";
 const ribbonRootClass = "flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
 const ribbonGroupClass = "flex flex-col items-center gap-1";
 const ribbonBtnClass = "flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)";
+const pluginRibbonIconClass = "flex h-5 w-5 items-center justify-center text-current [&_.svg-icon]:block [&_.svg-icon]:h-5 [&_.svg-icon]:w-5 [&_.svg-icon]:shrink-0 [&_.svg-icon]:text-current [&_.svg-icon]:[stroke-width:1.5]";
 
 interface RibbonProps {
   onNewNote: () => void;
@@ -46,6 +47,24 @@ export function Ribbon({
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ribbonRootRef = useRef<HTMLDivElement | null>(null);
   const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
+
+  const renderPluginIcon = (el: HTMLSpanElement | null, action: PluginRibbonAction) => {
+    if (!el) return;
+    setIcon(el, action.icon);
+    const svg = el.querySelector("svg");
+    if (svg) {
+      svg.setAttribute("width", "20");
+      svg.setAttribute("height", "20");
+      svg.style.width = "20px";
+      svg.style.height = "20px";
+      svg.style.strokeWidth = "1.5";
+      svg.style.color = "currentColor";
+    }
+    const item = (window as any).__oo_app?.workspace?.leftRibbon?.items?.find(
+      (entry: any) => entry.id === (action as any).id,
+    );
+    if (item) item.buttonEl = el;
+  };
 
   useEffect(() => {
     const ribbon = (window as any).__oo_app?.workspace?.leftRibbon;
@@ -144,16 +163,9 @@ export function Ribbon({
             onClick={(e) => action.callback(e.nativeEvent)}
             data-tooltip={action.title}
           >
-            <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              ref={(el) => {
-                if (el) {
-                  setIcon(el, action.icon);
-                  const item = (window as any).__oo_app?.workspace?.leftRibbon?.items?.find(
-                    (entry: any) => entry.id === (action as any).id,
-                  );
-                  if (item) item.buttonEl = el;
-                }
-              }}
+            <span
+              className={pluginRibbonIconClass}
+              ref={(el) => renderPluginIcon(el, action)}
             />
           </button>
         ))}

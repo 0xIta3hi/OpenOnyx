@@ -173,15 +173,8 @@ async function ensureLoaded(): Promise<void> {
   _loadPromise = (async () => {
     _isLoading = true;
     try {
-      // Load index first
-      const index = await readData<EmbeddingIndex>("embeddings/_index.json");
-      if (!index) {
-        _isLoaded = true;
-        _isLoading = false;
-        return;
-      }
-
-      // Load individual embedding files
+      // Load individual embedding files. Older or interrupted writes may have
+      // entry files without a fresh index, so the files are the source of truth.
       const files = await listData("embeddings");
       for (const file of files) {
         if (file === "_index.json") continue;
@@ -315,6 +308,39 @@ export async function embedNote(
   // Persist to disk (debounced)
   persistEntry(entry);
 
+  return true;
+}
+
+/**
+ * Refresh stored filesystem metadata when the note content hash still matches.
+ * This avoids re-running embeddings when only mtime precision or stat metadata
+ * changed across app/vault loads.
+ */
+export function refreshEmbeddingMetadataIfUnchanged(
+  store: EmbeddingStore,
+  path: string,
+  content: string,
+  modifiedAt?: number,
+  size?: number,
+): boolean {
+  const existing = store.entries.get(path);
+  if (!existing || existing.hash !== simpleHash(content)) return false;
+
+  const nextModifiedAt = modifiedAt ?? existing.modifiedAt;
+  const nextSize = size ?? existing.size;
+  if (existing.modifiedAt === nextModifiedAt && existing.size === nextSize) {
+    return true;
+  }
+
+  const updated: StoredEmbedding = {
+    ...existing,
+    modifiedAt: nextModifiedAt,
+    size: nextSize,
+    updatedAt: Date.now(),
+  };
+  store.entries.set(path, updated);
+  _memoryStore.entries.set(path, updated);
+  persistEntry(updated);
   return true;
 }
 
@@ -647,4 +673,3 @@ export function applyHistoryWeighting(
     .filter((r) => r.similarity > 0.1)
     .sort((a, b) => b.similarity - a.similarity);
 }
-

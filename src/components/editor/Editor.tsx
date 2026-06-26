@@ -69,6 +69,22 @@ const codeMirrorPluginExceptionSink = EditorView.exceptionSink.of((exception) =>
   console.warn("[CodeMirror Plugin Error]", exception);
 });
 
+const pluginExtensionValidationDoc = [
+  "# Heading",
+  "",
+  "- [ ] Task item",
+  "",
+  "| Name | Value |",
+  "| --- | --- |",
+  "| A | B |",
+  "",
+  "```",
+  "code",
+  "```",
+  "",
+  "[[Link]] #tag",
+].join("\n");
+
 function isPluginEditorExtensionUsable(extension: any): boolean {
   if (!extension) return false;
   if (typeof extension === "object" || typeof extension === "function") {
@@ -79,15 +95,26 @@ function isPluginEditorExtensionUsable(extension: any): boolean {
   }
 
   try {
-    EditorState.create({
-      doc: "",
+    let validationException: unknown = null;
+    const state = EditorState.create({
+      doc: pluginExtensionValidationDoc,
       extensions: [
+        EditorView.exceptionSink.of((exception) => {
+          validationException = exception;
+        }),
         editorInfoField,
         editorEditorField,
         editorLivePreviewField,
         extension,
       ],
     });
+    if (typeof document !== "undefined") {
+      const parent = document.createElement("div");
+      const view = new EditorView({ state, parent });
+      view.destroy();
+      parent.remove();
+    }
+    if (validationException) throw validationException;
     if (typeof extension === "object" || typeof extension === "function") {
       validPluginEditorExtensionCache.set(extension, true);
     }
@@ -1203,141 +1230,131 @@ function markdownLivePreviewPlugin() {
   const headingRegex = /^(#{1,6})\s/;
   const codeFenceRegex = /^\s*```/;
 
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
+  const buildDecorations = (state: EditorState): DecorationSet => {
+    const decorations: any[] = [];
+    const doc = state.doc;
+    const selection = state.selection;
 
-      constructor(view: EditorView) {
-        this.decorations = this.buildDecorations(view);
+    // Get the set of lines that have a cursor
+    const activeLinesSet = new Set<number>();
+    for (const range of selection.ranges) {
+      const startLine = doc.lineAt(range.from).number;
+      const endLine = doc.lineAt(range.to).number;
+      for (let l = startLine; l <= endLine; l++) {
+        activeLinesSet.add(l);
+      }
+    }
+
+    let inCodeBlock = false;
+
+    for (let i = 1; i <= doc.lines; i++) {
+      const line = doc.line(i);
+      const isFence = codeFenceRegex.test(line.text);
+      const match = headingRegex.exec(line.text);
+      const isActive = activeLinesSet.has(i);
+
+      if (isFence) {
+        if (!isActive) {
+          decorations.push(
+            Decoration.line({
+              attributes: { class: "cm-live-codeblock-line" },
+            }).range(line.from),
+          );
+        }
+        inCodeBlock = !inCodeBlock;
+        continue;
       }
 
-      update(update: ViewUpdate) {
-        if (
-          update.docChanged ||
-          update.selectionSet ||
-          update.viewportChanged
-        ) {
-          this.decorations = this.buildDecorations(update.view);
+      if (inCodeBlock) {
+        if (!isActive) {
+          decorations.push(
+            Decoration.line({
+              attributes: { class: "cm-live-codeblock-line" },
+            }).range(line.from),
+          );
+        }
+        continue;
+      }
+
+      if (isTableRow(line.text) && i < doc.lines && isTableSeparator(doc.line(i + 1).text)) {
+        const tableStart = i;
+        const tableRows: string[] = [line.text, doc.line(i + 1).text];
+        let tableEnd = i + 1;
+        while (tableEnd + 1 <= doc.lines && isTableRow(doc.line(tableEnd + 1).text)) {
+          tableEnd++;
+          tableRows.push(doc.line(tableEnd).text);
+        }
+        const tableHasActiveLine = Array.from({ length: tableEnd - tableStart + 1 }, (_, index) => tableStart + index)
+          .some((lineNumber) => activeLinesSet.has(lineNumber));
+
+        if (!tableHasActiveLine) {
+          decorations.push(
+            Decoration.replace({
+              widget: new MarkdownTableWidget(tableRows),
+              block: true,
+            }).range(line.from, doc.line(tableEnd).to),
+          );
+          i = tableEnd;
+          continue;
+        }
+
+        for (let tableLine = tableStart; tableLine <= tableEnd; tableLine++) {
+          const targetLine = doc.line(tableLine);
+          decorations.push(
+            Decoration.line({
+              attributes: {
+                class: isTableSeparator(targetLine.text)
+                  ? "cm-live-table-source-separator"
+                  : "cm-live-table-source-row",
+              },
+            }).range(targetLine.from),
+          );
         }
       }
 
-      buildDecorations(view: EditorView): DecorationSet {
-        const decorations: any[] = [];
-        const doc = view.state.doc;
-        const selection = view.state.selection;
+      if (match) {
+        const level = match[1].length;
 
-        // Get the set of lines that have a cursor
-        const activeLinesSet = new Set<number>();
-        for (const range of selection.ranges) {
-          const startLine = doc.lineAt(range.from).number;
-          const endLine = doc.lineAt(range.to).number;
-          for (let l = startLine; l <= endLine; l++) {
-            activeLinesSet.add(l);
-          }
+        if (!isActive) {
+          // Hide the `# ` prefix on non-active heading lines
+          const markerEnd = line.from + match[0].length;
+          hideMarkdownSyntax(decorations, line.from, markerEnd);
         }
 
-        let inCodeBlock = false;
-
-        for (let i = 1; i <= doc.lines; i++) {
-          const line = doc.line(i);
-          const isFence = codeFenceRegex.test(line.text);
-          const match = headingRegex.exec(line.text);
-          const isActive = activeLinesSet.has(i);
-
-          if (isFence) {
-            if (!isActive) {
-              decorations.push(
-                Decoration.line({
-                  attributes: { class: "cm-live-codeblock-line" },
-                }).range(line.from),
-              );
-            }
-            inCodeBlock = !inCodeBlock;
-            continue;
-          }
-
-          if (inCodeBlock) {
-            if (!isActive) {
-              decorations.push(
-                Decoration.line({
-                  attributes: { class: "cm-live-codeblock-line" },
-                }).range(line.from),
-              );
-            }
-            continue;
-          }
-
-          if (isTableRow(line.text) && i < doc.lines && isTableSeparator(doc.line(i + 1).text)) {
-            const tableStart = i;
-            const tableRows: string[] = [line.text, doc.line(i + 1).text];
-            let tableEnd = i + 1;
-            while (tableEnd + 1 <= doc.lines && isTableRow(doc.line(tableEnd + 1).text)) {
-              tableEnd++;
-              tableRows.push(doc.line(tableEnd).text);
-            }
-            const tableHasActiveLine = Array.from({ length: tableEnd - tableStart + 1 }, (_, index) => tableStart + index)
-              .some((lineNumber) => activeLinesSet.has(lineNumber));
-
-            if (!tableHasActiveLine) {
-              decorations.push(
-                Decoration.replace({
-                  widget: new MarkdownTableWidget(tableRows),
-                  block: true,
-                }).range(line.from, doc.line(tableEnd).to),
-              );
-              i = tableEnd;
-              continue;
-            }
-
-            for (let tableLine = tableStart; tableLine <= tableEnd; tableLine++) {
-              const targetLine = doc.line(tableLine);
-              decorations.push(
-                Decoration.line({
-                  attributes: {
-                    class: isTableSeparator(targetLine.text)
-                      ? "cm-live-table-source-separator"
-                      : "cm-live-table-source-row",
-                  },
-                }).range(targetLine.from),
-              );
-            }
-          }
-
-          if (match) {
-            const level = match[1].length;
-
-            if (!isActive) {
-              // Hide the `# ` prefix on non-active heading lines
-              const markerEnd = line.from + match[0].length;
-              hideMarkdownSyntax(decorations, line.from, markerEnd);
-            }
-
-            // Apply heading font size as a line decoration
-            const sizes = ["1.6em", "1.4em", "1.2em", "1.1em", "1.05em", "1em"];
-            const fontSize = sizes[level - 1] || "1em";
-            decorations.push(
-              Decoration.line({
-                attributes: {
-                  style: `font-size: ${fontSize}; line-height: 1.4`,
-                  class: `cm-heading-${level}`,
-                },
-              }).range(line.from),
-            );
-          }
-
-          if (!isActive) {
-            addInactiveBlockPreviewDecorations(decorations, line.from, line.text);
-            addInactiveInlinePreviewDecorations(decorations, line.from, line.text);
-          }
-        }
-
-        return Decoration.set(decorations, true);
+        // Apply heading font size as a line decoration
+        const sizes = ["1.6em", "1.4em", "1.2em", "1.1em", "1.05em", "1em"];
+        const fontSize = sizes[level - 1] || "1em";
+        decorations.push(
+          Decoration.line({
+            attributes: {
+              style: `font-size: ${fontSize}; line-height: 1.4`,
+              class: `cm-heading-${level}`,
+            },
+          }).range(line.from),
+        );
       }
+
+      if (!isActive) {
+        addInactiveBlockPreviewDecorations(decorations, line.from, line.text);
+        addInactiveInlinePreviewDecorations(decorations, line.from, line.text);
+      }
+    }
+
+    return Decoration.set(decorations, true);
+  };
+
+  return StateField.define<DecorationSet>({
+    create(state) {
+      return buildDecorations(state);
     },
-    {
-      decorations: (v) => v.decorations,
+    update(decorations, tr) {
+      if (tr.docChanged || tr.selection) {
+        return buildDecorations(tr.state);
+      }
+      return decorations.map(tr.changes);
     },
-  );
+    provide: (field) => EditorView.decorations.from(field),
+  });
 }
 
 const INLINE_PHRASE_STOP_WORDS = new Set([

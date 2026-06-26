@@ -12,7 +12,12 @@
  *  - Temporal weighting (recently edited notes processed first)
  */
 
-import { loadStoreAsync, embedNote, type EmbeddingStore } from "./embeddings";
+import {
+  loadStoreAsync,
+  embedNote,
+  refreshEmbeddingMetadataIfUnchanged,
+  type EmbeddingStore,
+} from "./embeddings";
 import { getAnnotation } from "./ai-core";
 import { readData, writeData } from "./disk-store";
 
@@ -307,6 +312,21 @@ export async function initializeVault(
     if (isUnchanged) {
       alreadyIndexed++;
       continue;
+    }
+
+    if (existing && api?.readFile) {
+      try {
+        const content = await api.readFile(note.path);
+        if (
+          typeof content === "string" &&
+          refreshEmbeddingMetadataIfUnchanged(store, note.path, content, note.modifiedAt, note.size)
+        ) {
+          alreadyIndexed++;
+          continue;
+        }
+      } catch {
+        // If content cannot be read here, let the queue processor handle/skip it.
+      }
     }
 
     let priority = 2;
