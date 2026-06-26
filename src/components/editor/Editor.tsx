@@ -44,6 +44,9 @@ import {
   editorEditorField,
   editorInfoField,
   editorLivePreviewField,
+  setEditorEditorEffect,
+  setEditorInfoEffect,
+  setEditorLivePreviewEffect,
 } from "../../lib/obsidian-api";
 import { getAPI } from "../../utils/api";
 import {
@@ -65,6 +68,11 @@ import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from
 const validPluginEditorExtensionCache = new WeakMap<object, boolean>();
 const invalidPluginEditorExtensions = new Set<any>();
 
+type PluginEditorExtensionEntry = {
+  pluginId?: string;
+  extension: any;
+};
+
 const codeMirrorPluginExceptionSink = EditorView.exceptionSink.of((exception) => {
   console.warn("[CodeMirror Plugin Error]", exception);
 });
@@ -85,7 +93,7 @@ const pluginExtensionValidationDoc = [
   "[[Link]] #tag",
 ].join("\n");
 
-function isPluginEditorExtensionUsable(extension: any): boolean {
+function isPluginEditorExtensionUsable(extension: any, pluginId?: string): boolean {
   if (!extension) return false;
   if (typeof extension === "object" || typeof extension === "function") {
     const cached = validPluginEditorExtensionCache.get(extension);
@@ -105,6 +113,8 @@ function isPluginEditorExtensionUsable(extension: any): boolean {
         editorInfoField,
         editorEditorField,
         editorLivePreviewField,
+        markdown(),
+        EditorView.lineWrapping,
         extension,
       ],
     });
@@ -125,15 +135,27 @@ function isPluginEditorExtensionUsable(extension: any): boolean {
     } else {
       invalidPluginEditorExtensions.add(extension);
     }
-    console.warn("[PluginSystem] Skipping incompatible CodeMirror extension", error);
+    const owner = pluginId ? ` from ${pluginId}` : "";
+    console.warn(`[PluginSystem] Skipping incompatible CodeMirror extension${owner}`, error);
     return false;
   }
 }
 
-function getSafePluginEditorExtensions(): any[] {
+function getPluginEditorExtensionEntries(): PluginEditorExtensionEntry[] {
+  const entries = (window as any).__oo_editor_extension_entries;
+  if (Array.isArray(entries)) {
+    return entries.filter((entry) => entry && "extension" in entry);
+  }
+
   const extensions = (window as any).__oo_editor_extensions;
   if (!Array.isArray(extensions)) return [];
-  return extensions.filter(isPluginEditorExtensionUsable);
+  return extensions.map((extension) => ({ extension }));
+}
+
+function getSafePluginEditorExtensions(): any[] {
+  return getPluginEditorExtensionEntries()
+    .filter(({ extension, pluginId }) => isPluginEditorExtensionUsable(extension, pluginId))
+    .map(({ extension }) => extension);
 }
 
 function setWritableViewProperty(view: any, key: string, value: unknown): void {
@@ -3615,6 +3637,20 @@ export function Editor({
     viewRef.current = view;
     const obsidianEditor = new ObsidianEditor(view);
     const obsidianApp = (window as any).__oo_app;
+    const currentPath = activePathRef.current || (window as any).__oo_active_file || '';
+    const currentFile = obsidianApp?.vault?.getFileByPath?.(currentPath) || null;
+    view.dispatch({
+      effects: [
+        setEditorInfoEffect.of({
+          file: currentFile,
+          editor: obsidianEditor,
+          node: view.dom,
+          view,
+        }),
+        setEditorEditorEffect.of(obsidianEditor),
+        setEditorLivePreviewEffect.of(true),
+      ],
+    });
     const activeLeaf = obsidianApp?.workspace?.activeLeaf;
     // Some custom file views inherit MarkdownView for its file lifecycle but
     // own their editor and expose file as a getter (for example Kanban).
@@ -3625,13 +3661,13 @@ export function Editor({
       setWritableViewProperty(
         activeLeaf.view,
         'file',
-        obsidianApp.vault.getFileByPath((window as any).__oo_active_file || ''),
+        currentFile,
       );
     }
     if (obsidianApp?.workspace) {
       obsidianApp.workspace.activeEditor = {
         editor: obsidianEditor,
-        file: obsidianApp.vault.getFileByPath((window as any).__oo_active_file || ''),
+        file: currentFile,
       };
     }
     if (initialScroll > 0) {

@@ -306,23 +306,41 @@ export interface EditorPosition { line: number; ch: number; }
 export interface EditorRange { from: EditorPosition; to: EditorPosition; }
 
 // CM6 StateField stubs — plugins like obsidian-git import these
-import { EditorSelection as CMEditorSelection, StateField } from '@codemirror/state';
+import { EditorSelection as CMEditorSelection, StateEffect, StateField } from '@codemirror/state';
+export const setEditorInfoEffect: any = StateEffect.define<any>();
+export const setEditorEditorEffect: any = StateEffect.define<any>();
+export const setEditorLivePreviewEffect: any = StateEffect.define<boolean>();
 export const editorInfoField: any = StateField.define({
   create: () => {
     const app = (window as any).__oo_app;
     const file = app?.vault?.getFileByPath?.((window as any).__oo_active_file || '') || null;
-    return { file, editor: null, node: null };
+    return { file, editor: null, node: null, view: null };
   },
-  update: (value: any) => value,
+  update: (value: any, tr: any) => {
+    for (const effect of tr.effects) {
+      if (effect.is(setEditorInfoEffect)) return effect.value;
+    }
+    return value;
+  },
 });
 export const editorEditorField: any = StateField.define({
   create: () => null,
-  update: (value: any) => value,
+  update: (value: any, tr: any) => {
+    for (const effect of tr.effects) {
+      if (effect.is(setEditorEditorEffect)) return effect.value;
+    }
+    return value;
+  },
 });
 export const editorViewField: any = editorInfoField;
 export const editorLivePreviewField: any = StateField.define({
   create: () => false,
-  update: (value: any) => value,
+  update: (value: any, tr: any) => {
+    for (const effect of tr.effects) {
+      if (effect.is(setEditorLivePreviewEffect)) return effect.value;
+    }
+    return value;
+  },
 });
 
 // EditorSuggest — ES5 function constructor for plugin compatibility

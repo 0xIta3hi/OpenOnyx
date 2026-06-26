@@ -17,6 +17,7 @@ import * as cmView from '@codemirror/view';
 import * as cmCommands from '@codemirror/commands';
 import * as cmLanguage from '@codemirror/language';
 import * as cmSearch from '@codemirror/search';
+import { NodeProp } from '@lezer/common';
 import * as lezerHighlight from '@lezer/highlight';
 import JSZip from 'jszip';
 import type { IPlugin } from './obsidian-api/plugin';
@@ -46,6 +47,12 @@ import { getAPI } from '../utils/api';
 const api = () => getAPI();
 
 // ── Constants ────────────────────────────────────────
+
+const cmLanguageExports = cmLanguage as Record<string, unknown>;
+const cmLanguageCompat = {
+  ...cmLanguage,
+  tokenClassNodeProp: cmLanguageExports["tokenClassNodeProp"] ?? new NodeProp<string>({ deserialize: (value) => value }),
+};
 
 const APP_VERSION = '1.13.1';
 const LOAD_TIMEOUT_MS = 8000;
@@ -249,7 +256,11 @@ export class PluginManager {
     };
 
     const publishEditorExtensions = () => {
-      win.__oo_editor_extensions = Array.from(this._editorExtensions.values()).flat();
+      const entries = Array.from(this._editorExtensions.entries()).flatMap(([pluginId, extensions]) => (
+        extensions.map((extension) => ({ pluginId, extension }))
+      ));
+      win.__oo_editor_extension_entries = entries;
+      win.__oo_editor_extensions = entries.map((entry) => entry.extension);
       window.dispatchEvent(new CustomEvent('obsidian:editor-extensions-changed'));
     };
 
@@ -403,7 +414,7 @@ export class PluginManager {
       if (id === '@codemirror/state') return cmState;
       if (id === '@codemirror/view') return cmView;
       if (id === '@codemirror/commands') return cmCommands;
-      if (id === '@codemirror/language') return cmLanguage;
+      if (id === '@codemirror/language') return cmLanguageCompat;
       if (id === '@codemirror/search') return cmSearch;
       if (id === '@lezer/highlight') return lezerHighlight;
 
@@ -1043,5 +1054,6 @@ window["${globalKey}"].__done = true;
     this._loggers.clear();
     this._editorExtensions.clear();
     (window as any).__oo_editor_extensions = [];
+    (window as any).__oo_editor_extension_entries = [];
   }
 }
