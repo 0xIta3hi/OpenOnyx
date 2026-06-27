@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
 export type AuthState = {
@@ -33,30 +33,40 @@ function getOAuthRedirectUrl(): string | undefined {
 }
 
 class AuthManager {
-  private state: AuthState = { user: null, session: null, isLoading: true };
+  private state: AuthState = { user: null, session: null, isLoading: isSupabaseConfigured };
   private listeners: Set<AuthListener> = new Set();
 
   constructor() {
-    this.init();
+    if (isSupabaseConfigured) void this.init();
   }
 
   private async init() {
-    // Get initial session
-    const { data: { session } } = await supabase.auth.getSession();
-    this.updateState({
-      user: session?.user ?? null,
-      session: session ?? null,
-      isLoading: false,
-    });
-
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange((_event, session) => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) throw error;
       this.updateState({
         user: session?.user ?? null,
         session: session ?? null,
         isLoading: false,
       });
-    });
+
+      supabase.auth.onAuthStateChange((_event, nextSession) => {
+        this.updateState({
+          user: nextSession?.user ?? null,
+          session: nextSession ?? null,
+          isLoading: false,
+        });
+      });
+    } catch (error) {
+      console.warn('[Auth] Initialization failed; continuing without a cloud session.', error);
+      this.updateState({ user: null, session: null, isLoading: false });
+    }
+  }
+
+  private requireSupabase(): void {
+    if (!isSupabaseConfigured) {
+      throw new Error('Cloud accounts are unavailable in local-only mode. Configure Supabase to enable sign-in and sync.');
+    }
   }
 
   private updateState(newState: AuthState) {
@@ -88,18 +98,21 @@ class AuthManager {
   }
 
   async signInWithEmail(email: string, password: string) {
+    this.requireSupabase();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
   }
 
   async signUpWithEmail(email: string, password: string) {
+    this.requireSupabase();
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
     return data;
   }
 
   async signInWithOAuth(provider: 'google' | 'github') {
+    this.requireSupabase();
     const redirectTo = getOAuthRedirectUrl();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -115,11 +128,16 @@ class AuthManager {
   }
 
   async signOut() {
+    if (!isSupabaseConfigured) {
+      this.updateState({ user: null, session: null, isLoading: false });
+      return;
+    }
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   }
 
   async resetPassword(email: string) {
+    this.requireSupabase();
     const { error } = await supabase.auth.resetPasswordForEmail(email);
     if (error) throw error;
   }

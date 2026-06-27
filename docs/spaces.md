@@ -103,7 +103,7 @@ Constructs the interactive workflow inside an active space:
 
 ## 6. Integration Checklist
 
-To fully operate the Spaces sync feature in any new vault or deployment, ensure that:
-1. **Environment Variables**: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are defined in your `.env.local` to enable cloud synchronization.
+Local Spaces work without an account or environment configuration. To enable the optional Spaces cloud sync feature in a deployment, ensure that:
+1. **Environment Variables**: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are defined in your `.env.local`.
 2. **Engine Bootstrapping**: Import `syncEngine` inside your main entry file [main.tsx](file:///home/varshith/VOLT/notework/src/main.tsx) to ensure background processes are fully instantiated on startup.
 3. **In-UI Status Observers**: Subscribe your interface to `syncEngine.onStatusChange(state)` to render state changes dynamically in the interface.

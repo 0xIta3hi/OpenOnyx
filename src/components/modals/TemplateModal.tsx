@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from "react";
 import { FileText, Clock, Calendar, User, Hash } from "lucide-react";
-import { getAPI } from "../utils/api";
+import { getAPI } from "../../utils/api";
 
 interface TemplateModalProps {
   onClose: () => void;

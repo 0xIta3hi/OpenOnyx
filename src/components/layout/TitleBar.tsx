@@ -8,10 +8,10 @@
  */
 
 import React, { useRef, useEffect } from "react";
-import { Tab, Theme } from "../types";
-import { getAPI } from "../utils/api";
-import { DragCtx } from "../context/DragContext";
-import { LocalGroup } from "../lib/localdb";
+import { Tab, Theme } from "../../types";
+import { getAPI } from "../../utils/api";
+import { DragCtx } from "../../context/DragContext";
+import { LocalGroup } from "../../lib/localdb";
 import {
   PanelLeft,
   PanelRight,
@@ -293,7 +293,7 @@ interface TitleBarProps {
   rightSidebarWidth?: number;
 }
 
-import { setIcon } from "../lib/obsidian-api/utils";
+import { setIcon } from "../../lib/obsidian-api/utils";
 
 function PluginIcon({ iconId, className }: { iconId: string; className?: string }) {
   const containerRef = useRef<HTMLSpanElement>(null);

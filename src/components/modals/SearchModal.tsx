@@ -14,9 +14,9 @@ import React, {
   useMemo,
 } from "react";
 import { Search, Clock, FileText, Star, X } from "lucide-react";
-import { SearchResult, FileEntry } from "../types";
-import { debounce, getNoteName } from "../utils/helpers";
-import { getAPI } from "../utils/api";
+import { SearchResult, FileEntry } from "../../types";
+import { debounce, getNoteName } from "../../utils/helpers";
+import { getAPI } from "../../utils/api";
 
 interface SearchModalProps {
   onClose: () => void;

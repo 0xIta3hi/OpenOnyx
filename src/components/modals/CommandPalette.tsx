@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Command } from "../types";
+import { Command } from "../../types";
 
 interface CommandPaletteProps {
   commands: Command[];

@@ -7,8 +7,8 @@
 
 import React, { useCallback } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, X, Globe, HardDrive, Palette, Code, Cpu } from 'lucide-react';
-import type { PluginManifest, PluginPermission } from '../types/plugin';
-import { PERMISSION_DESCRIPTIONS } from '../types/plugin';
+import type { PluginManifest, PluginPermission } from '../../types/plugin';
+import { PERMISSION_DESCRIPTIONS } from '../../types/plugin';
 
 interface PluginPermissionModalProps {
   manifest: PluginManifest;

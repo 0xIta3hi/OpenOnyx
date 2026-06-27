@@ -7,8 +7,8 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { getAPI } from "../utils/api";
-import { FileEntry, Theme } from "../types";
+import { getAPI } from "../../utils/api";
+import { FileEntry, Theme } from "../../types";
 import {
   Sparkles,
   Loader2,
@@ -35,7 +35,7 @@ import {
   getLoadProgress,
   setProgressCallback,
   type EmbeddingStore,
-} from "../utils/embeddings";
+} from "../../utils/embeddings";
 import {
   detectClusters,
   detectMissingLinks,
@@ -45,13 +45,13 @@ import {
   type MissingLinkSuggestion,
   type UnwrittenInsight,
   type SynthesisResult,
-} from "../utils/synthesis";
+} from "../../utils/synthesis";
 import {
   loadSettings,
   type AISettings,
-} from "../utils/ai-settings";
+} from "../../utils/ai-settings";
 import { LINK_TYPES, type LinkType } from "./SuggestionBanner";
-import { enrichSuggestions, type EnrichedSuggestion } from "../utils/suggestion-enrichment";
+import { enrichSuggestions, type EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

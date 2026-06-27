@@ -21,21 +21,21 @@ import {
   loadSpaceConversations, saveSpaceConversations,
   loadSpaceConversationMessages, saveSpaceConversationMessages,
   deleteSpaceConversationMessages
-} from "../utils/spaces-store";
-import { buildVectorIndex, type VaultNote } from "../utils/spaces-processing";
-import { querySpaceStreaming, parseActionPayload, stripJSONBlock, type RAGResult, type SpaceMetadata } from "../utils/spaces-rag";
-import { isAIConfigured } from "../utils/ai-core";
-import { getAPI } from "../utils/api";
-import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility, SpaceConversation } from "../types/spaces";
-import type { FileEntry } from "../types/index";
-import { MarkdownPreview } from "./editor/MarkdownPreview";
-import { authManager, AuthRequiredError } from "../lib/auth";
-import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { AuthModal } from "./AuthModal";
-import { collaborationEngine } from "../lib/collaborationEngine";
-import { syncEngine } from "../lib/syncEngine";
-import { generateDiffMarkdown } from "../utils/diff";
-import { privateCrypto } from "../lib/privateCrypto";
+} from "../../utils/spaces-store";
+import { buildVectorIndex, type VaultNote } from "../../utils/spaces-processing";
+import { querySpaceStreaming, parseActionPayload, stripJSONBlock, type RAGResult, type SpaceMetadata } from "../../utils/spaces-rag";
+import { isAIConfigured } from "../../utils/ai-core";
+import { getAPI } from "../../utils/api";
+import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility, SpaceConversation } from "../../types/spaces";
+import type { FileEntry } from "../../types/index";
+import { MarkdownPreview } from "../editor/MarkdownPreview";
+import { authManager, AuthRequiredError } from "../../lib/auth";
+import { supabase, isSupabaseConfigured } from "../../lib/supabase";
+import { AuthModal } from "../modals/AuthModal";
+import { collaborationEngine } from "../../lib/collaborationEngine";
+import { syncEngine } from "../../lib/syncEngine";
+import { generateDiffMarkdown } from "../../utils/diff";
+import { privateCrypto } from "../../lib/privateCrypto";
 import {
   AI_PROVIDER_PRESETS,
   getModelsForProvider,
@@ -43,7 +43,7 @@ import {
   saveSettings,
   type AIModel,
   type AISettings,
-} from "../utils/ai-settings";
+} from "../../utils/ai-settings";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -1198,7 +1198,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         description: createDesc.trim(),
         helpsWith: createTags,
         noteCount: vaultNoteCount,
-        visibility: createVisibility,
+        visibility: isSupabaseConfigured ? createVisibility : "local",
         encryptionPassword: createVisibility === "private" ? createEncryptionPassword : undefined,
       });
       setCreateTitle("");

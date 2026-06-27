@@ -16,11 +16,11 @@ import {
 import {
   getTrendingSpaces, getNewSpaces, getRecommendedSpaces,
   searchSpacesSemantic, recordSpaceView, type ExploreSpace,
-} from '../lib/explore';
-import { voteOnSpace, getUserVote, type VoteValue } from '../lib/votes';
-import { forkSpace } from '../utils/spaces-store';
-import { authManager, AuthRequiredError } from '../lib/auth';
-import { AuthModal } from './AuthModal';
+} from '../../lib/explore';
+import { voteOnSpace, getUserVote, type VoteValue } from '../../lib/votes';
+import { forkSpace } from '../../utils/spaces-store';
+import { authManager, AuthRequiredError } from '../../lib/auth';
+import { AuthModal } from '../modals/AuthModal';
 import { SpacesIcon } from './SpacesIcon';
 
 interface ExploreSpacesPageProps {

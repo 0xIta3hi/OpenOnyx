@@ -10,8 +10,8 @@ import {
   Pencil,
   X,
 } from "lucide-react";
-import { Theme } from "../types";
-import { isDarkTheme } from "../utils/helpers";
+import { Theme } from "../../types";
+import { isDarkTheme } from "../../utils/helpers";
 
 interface VaultManagerProps {
   currentVaultPath: string | null;

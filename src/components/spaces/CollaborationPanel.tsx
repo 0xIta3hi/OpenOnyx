@@ -15,9 +15,9 @@ import {
   collaborationEngine,
   type CloudSpace, type SpaceInvite, type SpaceCollaborator,
   type CollabStatus,
-} from '../lib/collaborationEngine';
-import { authManager } from '../lib/auth';
-import { getAPI } from '../utils/api';
+} from '../../lib/collaborationEngine';
+import { authManager } from '../../lib/auth';
+import { getAPI } from '../../utils/api';
 
 interface CollaborationPanelProps {
   vaultPath: string | null;

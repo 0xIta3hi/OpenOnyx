@@ -38,10 +38,10 @@ import {
   SortDesc,
   Clock,
 } from "lucide-react";
-import { FileEntry } from "../types";
-import { getNoteName } from "../utils/helpers";
-import { PluginViewPanel } from "./PluginViewPanel";
-import { LocalGroup } from "../lib/localdb";
+import { FileEntry } from "../../types";
+import { getNoteName } from "../../utils/helpers";
+import { PluginViewPanel } from "../plugins/PluginViewPanel";
+import { LocalGroup } from "../../lib/localdb";
 
 interface SidebarProps {
   visible: boolean;

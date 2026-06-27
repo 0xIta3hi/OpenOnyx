@@ -15,41 +15,41 @@ import React, {
 } from "react";
 // Patch HTMLElement.prototype with Obsidian DOM helpers (must be before any plugin code)
 import './lib/obsidian-api/dom-extensions';
-import { TitleBar } from "./components/TitleBar";
-import { Sidebar } from "./components/Sidebar";
+import { TitleBar } from "./components/layout/TitleBar";
+import { Sidebar } from "./components/layout/Sidebar";
 import { Editor } from "./components/editor/Editor";
 import { EditorHeader } from "./components/editor/EditorHeader";
-import { LeafPaneEditor } from "./components/LeafPaneEditor";
+import { LeafPaneEditor } from "./components/layout/LeafPaneEditor";
 import { GraphView } from "./components/graph/GraphView";
 import { AIKnowledgeGraph } from "./components/graph/AIKnowledgeGraph";
 import { CanvasView } from "./components/canvas/CanvasView";
-import { SearchModal } from "./components/SearchModal";
-import { CommandPalette } from "./components/CommandPalette";
-import { BacklinksPanel } from "./components/BacklinksPanel";
-import { RightSidebar, RightSidebarTabType } from "./components/RightSidebar";
-import { StatusBar } from "./components/StatusBar";
+import { SearchModal } from "./components/modals/SearchModal";
+import { CommandPalette } from "./components/modals/CommandPalette";
+import { BacklinksPanel } from "./components/panels/BacklinksPanel";
+import { RightSidebar, RightSidebarTabType } from "./components/layout/RightSidebar";
+import { StatusBar } from "./components/layout/StatusBar";
 import {
   WelcomeScreen,
   type VaultEntryAction,
   type VaultEntryTransitionPhase,
-} from "./components/WelcomeScreen";
-import { VaultManager } from "./components/VaultManager";
-import { Modal } from "./components/Modal";
-import { Ribbon } from "./components/Ribbon";
-import { OutlinePane } from "./components/OutlinePane";
-import { TagPane } from "./components/TagPane";
-import { OutgoingLinksPanel } from "./components/OutgoingLinksPanel";
-import { PropertiesPanel } from "./components/PropertiesPanel";
+} from "./components/settings/WelcomeScreen";
+import { VaultManager } from "./components/settings/VaultManager";
+import { Modal } from "./components/modals/Modal";
+import { Ribbon } from "./components/layout/Ribbon";
+import { OutlinePane } from "./components/panels/OutlinePane";
+import { TagPane } from "./components/panels/TagPane";
+import { OutgoingLinksPanel } from "./components/panels/OutgoingLinksPanel";
+import { PropertiesPanel } from "./components/panels/PropertiesPanel";
 import {
   SettingsPage,
   AppSettings,
   DEFAULT_SETTINGS,
-} from "./components/SettingsPage";
-import { TemplateModal } from "./components/TemplateModal";
-import { UnlinkedMentionsPanel } from "./components/UnlinkedMentionsPanel";
-import { AIPage } from "./components/AIPage";
-import { SpacesPage } from "./components/SpacesPage";
-import { DatabaseView } from "./components/DatabaseView";
+} from "./components/settings/SettingsPage";
+import { TemplateModal } from "./components/modals/TemplateModal";
+import { UnlinkedMentionsPanel } from "./components/panels/UnlinkedMentionsPanel";
+import { AIPage } from "./components/ai/AIPage";
+import { SpacesPage } from "./components/spaces/SpacesPage";
+import { DatabaseView } from "./components/settings/DatabaseView";
 import {
   embedNote,
   loadStore,
@@ -70,7 +70,7 @@ import {
 } from "./utils/embeddings";
 import { getAnnotation, getCachedAnnotation, generateFirstThoughtExpansion } from "./utils/ai-core";
 import { initializeVault, setQueueStatusCallback, resetQueueState, type QueueStatus } from "./utils/background-queue";
-import { type LinkType } from "./components/SuggestionBanner";
+import { type LinkType } from "./components/ai/SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-enrichment";
 import { resetSynthesisCache } from "./utils/synthesis";
 import { clearCache as clearSpacesCache } from "./utils/spaces-store";
@@ -87,15 +87,15 @@ import {
   removeTabFromTree,
   setActiveTabInLeaf,
   moveTabInTree,
-} from "./components/SplitPaneContainer";
+} from "./components/layout/SplitPaneContainer";
 import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
 import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers";
 import { getAPI } from "./utils/api";
 import { PluginManager } from "./lib/pluginManager";
 import { OOApp } from "./lib/obsidian-api/app";
 import { TFile } from "./lib/obsidian-api";
-import { PluginPermissionModal } from "./components/PluginPermissionModal";
-import { PluginViewPanel } from "./components/PluginViewPanel";
+import { PluginPermissionModal } from "./components/plugins/PluginPermissionModal";
+import { PluginViewPanel } from "./components/plugins/PluginViewPanel";
 import type { PluginPermission, PluginManifest } from "./types/plugin";
 import {
   FTUXState,
@@ -137,7 +137,7 @@ import {
   initGlobalKeybindings,
   setGlobalKeybindingsEnabled,
 } from "./keybindings/globalKeys";
-import { GroupModal } from "./components/GroupModal";
+import { GroupModal } from "./components/modals/GroupModal";
 const api = getAPI();
 const MIN_EDITOR_FONT_SIZE = 12;
 const MAX_EDITOR_FONT_SIZE = 24;
@@ -996,6 +996,7 @@ import { syncEngine } from "./lib/syncEngine";
 import { collaborationEngine, type CollabStatus } from "./lib/collaborationEngine";
 import { localDB, LocalGroup } from "./lib/localdb";
 import { authManager } from "./lib/auth";
+import { isSupabaseConfigured } from "./lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
 const resizerClass =
@@ -1087,7 +1088,9 @@ export default function App() {
     try {
       const saved = localStorage.getItem("openobsidian-settings");
       if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        if (parsed.theme === "peach-white") parsed.theme = "light";
+        return { ...DEFAULT_SETTINGS, ...parsed };
       }
     } catch (e) {
       console.error("Failed to load settings:", e);
@@ -1241,8 +1244,13 @@ export default function App() {
     };
 
     const onMove = (ev: MouseEvent) => {
-      const newWidth = ev.clientX - 48;
-      if (newWidth > 150 && newWidth < 600) {
+      const requestedWidth = ev.clientX - 48;
+      // Keep enough room for the editor while allowing wide plugin layouts.
+      // Notebook Navigator's dual-pane minimum can exceed 600px when its
+      // navigation pane is resized or its UI scale is increased.
+      const maxWidth = Math.max(320, Math.min(960, window.innerWidth - 320));
+      if (requestedWidth > 150) {
+        const newWidth = Math.min(requestedWidth, maxWidth);
         pendingWidth = newWidth;
         if (rafId === null) {
           rafId = requestAnimationFrame(applyWidth);
@@ -5882,6 +5890,15 @@ export default function App() {
   useEffect(() => {
     if (authLoading) return;
     if (!vaultPath) return;
+    if (!isSupabaseConfigured) {
+      collaborationEngine.clearActiveSpace();
+      syncEngine.setActiveVault(null);
+      setCollaborators([]);
+      setActiveUsers([]);
+      setInvitesSent([]);
+      setInvitesReceived([]);
+      return;
+    }
 
     const currentUserId = currentUser?.id || null;
     const prevSub = collabSubRef.current;

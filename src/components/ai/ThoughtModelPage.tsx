@@ -26,8 +26,8 @@ import {
   Maximize,
   Minimize,
 } from "lucide-react";
-import { getAPI } from "../utils/api";
-import type { ThoughtModelStatus, Theme } from "../types";
+import { getAPI } from "../../utils/api";
+import type { ThoughtModelStatus, Theme } from "../../types";
 
 const api = getAPI();
 

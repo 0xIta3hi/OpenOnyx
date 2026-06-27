@@ -1,18 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim();
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("Supabase URL or Anon Key is missing. Ensure .env.local is configured.");
+if (!isSupabaseConfigured) {
+  console.info("[OpenObsidian] Supabase is not configured; running in local-only mode.");
 }
 
+// createClient requires non-empty values even when cloud features are disabled.
+// These loopback placeholders prevent import-time crashes and are never contacted:
+// every cloud/auth entry point checks isSupabaseConfigured first.
+const clientUrl = supabaseUrl || "http://127.0.0.1:54321";
+const clientAnonKey = supabaseAnonKey || "openobsidian-local-only";
+
 export const supabase = createClient<Database>(
-  supabaseUrl || '',
-  supabaseAnonKey || '',
+  clientUrl,
+  clientAnonKey,
   {
     auth: {
       persistSession: true,

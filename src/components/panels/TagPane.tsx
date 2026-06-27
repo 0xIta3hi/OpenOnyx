@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Hash, ChevronRight, ChevronDown } from "lucide-react";
-import { getAPI } from "../utils/api";
+import { getAPI } from "../../utils/api";
 
 interface TagPaneProps {
   visible: boolean;

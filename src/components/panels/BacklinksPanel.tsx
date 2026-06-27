@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { getNoteName } from "../utils/helpers";
-import { getAPI } from "../utils/api";
+import { getNoteName } from "../../utils/helpers";
+import { getAPI } from "../../utils/api";
 
 const api = getAPI();
 

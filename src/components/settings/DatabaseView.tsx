@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAPI } from '../utils/api';
-import { FileEntry } from '../types';
-import { parseFrontmatter, updateFrontmatter, getAllMarkdownFiles } from '../utils/frontmatter';
+import { getAPI } from '../../utils/api';
+import { FileEntry } from '../../types';
+import { parseFrontmatter, updateFrontmatter, getAllMarkdownFiles } from '../../utils/frontmatter';
 import { Table, ArrowUpDown, Plus } from 'lucide-react';
 
 interface DatabaseViewProps {

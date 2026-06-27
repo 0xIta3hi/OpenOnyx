@@ -34,14 +34,14 @@ import {
   AlertCircle,
   ExternalLink
 } from "lucide-react";
-import { PluginSettingsPanel } from './PluginSettingsPanel';
-import { PluginMarketplace } from './PluginMarketplace';
-import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
-import { isDarkTheme } from "../utils/helpers";
-import type { LocalVaultCollaborator, LocalVaultInvite } from "../lib/localdb";
-import { CollaborationPanel } from './CollaborationPanel';
-import { authManager } from "../lib/auth";
-import { AuthModal } from "./AuthModal";
+import { PluginSettingsPanel } from '../plugins/PluginSettingsPanel';
+import { PluginMarketplace } from '../plugins/PluginMarketplace';
+import type { PluginRegistration, PluginSettingTabRegistration } from '../../types/plugin';
+import { isDarkTheme } from "../../utils/helpers";
+import type { LocalVaultCollaborator, LocalVaultInvite } from "../../lib/localdb";
+import { CollaborationPanel } from '../spaces/CollaborationPanel';
+import { authManager } from "../../lib/auth";
+import { AuthModal } from "../modals/AuthModal";
 import {
   loadSettings,
   saveSettings,
@@ -49,13 +49,13 @@ import {
   AI_PROVIDER_PRESETS,
   DEFAULT_MODEL_ID,
   type AISettings
-} from "../utils/ai-settings";
-import { isModelLoaded, loadStore } from "../utils/embeddings";
+} from "../../utils/ai-settings";
+import { isModelLoaded, loadStore } from "../../utils/embeddings";
 
 
 export interface AppSettings {
   // Appearance
-  theme: "dark" | "light" | "oceanic" | "dark-plus" | "blue-night" | "night-light" | "peach-white" | "system" | "custom";
+  theme: "dark" | "light" | "oceanic" | "dark-plus" | "blue-night" | "night-light" | "parchment" | "system" | "custom";
   customThemeType: "dark" | "light";
   accentColor: string;
   fontFamily: string;
@@ -109,11 +109,11 @@ const settingsCloseClass =
   "settings-close absolute right-5 top-4 flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1.5 text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const settingsBodyClass = "settings-body flex h-full flex-1 overflow-hidden";
 const settingsNavClass =
-  "settings-nav flex w-60 shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-4";
+  "settings-nav flex w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-4";
 const settingsNavSubheaderClass =
-  "settings-nav-subheader mt-4 select-none px-3 pb-1.5 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] first:mt-0";
+  "settings-nav-subheader mt-3 select-none px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] first:mt-0 first:pt-1";
 const settingsNavItemClass =
-  "settings-nav-item flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] font-normal text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "settings-nav-item flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-3 py-1.5 text-left font-[inherit] text-[13px] font-normal text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const settingsNavItemActiveClass =
   "active bg-[var(--bg-active)] font-medium text-[var(--text-primary)]";
 const settingsNavIconClass =
@@ -986,9 +986,9 @@ export function SettingsPage({
                       <option value="dark-plus">Dark+</option>
                       <option value="blue-night">Blue Night</option>
                       <option value="oceanic">Oceanic</option>
-                      <option value="light">Classic Light</option>
+                      <option value="light">Calm White</option>
                       <option value="night-light">Sunset Glow</option>
-                      <option value="peach-white">Peach White</option>
+                      <option value="parchment">Parchment</option>
                       <option value="system">System match</option>
                       <option value="custom">Custom properties</option>
                     </select>

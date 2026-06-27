@@ -7,8 +7,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { FolderOpen, Plus, Network } from "lucide-react";
-import { Theme } from "../types";
-import { isDarkTheme } from "../utils/helpers";
+import { Theme } from "../../types";
+import { isDarkTheme } from "../../utils/helpers";
 
 export type VaultEntryAction = "open" | "create";
 export type VaultEntryTransitionPhase = "idle" | "transitioning" | "entered";

@@ -502,10 +502,13 @@ export class OOWorkspace extends Events {
 
   private _setSideDockCollapsed(side: 'left' | 'right', collapsed: boolean): void {
     const dock = side === 'left' ? this.leftSplit : this.rightSplit;
-    if (dock.collapsed === collapsed) return;
+    const changed = dock.collapsed !== collapsed;
     dock.collapsed = collapsed;
+    // Always notify the renderer. The compatibility dock and React shell can
+    // initialize in different ticks, so equal dock state does not guarantee
+    // that the physical sidebar already has the matching width.
     this.trigger('sidebar-change', { side, collapsed });
-    this.trigger('layout-change');
+    if (changed) this.trigger('layout-change');
   }
 
   private _revealSideLeaf(leaf: WorkspaceLeaf): void {

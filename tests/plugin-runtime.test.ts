@@ -549,6 +549,11 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     expect(leaf.parent.getRoot()).toBe(app.workspace.rootSplit);
     expect(leaf.getContainer().win).toBe(window);
 
+    const sidebarChanges: Array<{ side: string; collapsed: boolean }> = [];
+    app.workspace.on('sidebar-change', (state: { side: string; collapsed: boolean }) => sidebarChanges.push(state));
+    app.workspace.leftSplit.expand();
+    expect(sidebarChanges.at(-1)).toEqual({ side: 'left', collapsed: false });
+
     app.workspace.leftSplit.collapse();
     expect(app.workspace.leftSplit.collapsed).toBe(true);
     app.workspace.leftSplit.expand();

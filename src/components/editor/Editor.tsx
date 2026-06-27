@@ -57,7 +57,7 @@ import {
 import { headingFold, foldTheme } from "../../utils/headingFold";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { vimCompartment, toggleVimMode } from "../../editor/vimExtension";
-import { type LinkType } from "../SuggestionBanner";
+import { type LinkType } from "../ai/SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 import type { CollabOperation, CursorPresence } from "../../utils/collabOperations";
 import { extractOperations } from "../../utils/collabOperations";

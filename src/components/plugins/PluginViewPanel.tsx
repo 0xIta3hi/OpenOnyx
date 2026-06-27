@@ -6,8 +6,8 @@
  */
 
 import React, { useEffect, useRef, useState, useContext } from 'react';
-import { getPluginScopeClass } from '../lib/pluginStyles';
-import { DragCtx } from '../context/DragContext';
+import { getPluginScopeClass } from '../../lib/pluginStyles';
+import { DragCtx } from '../../context/DragContext';
 
 interface PluginViewInfo {
   viewType: string;

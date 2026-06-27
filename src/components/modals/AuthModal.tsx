@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { X, Mail, Lock, LogIn, UserPlus, AlertCircle, Loader2 } from 'lucide-react';
-import { authManager } from '../lib/auth';
+import { authManager } from '../../lib/auth';
 
 interface AuthModalProps {
   onClose: () => void;

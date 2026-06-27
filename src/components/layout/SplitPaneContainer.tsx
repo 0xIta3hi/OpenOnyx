@@ -22,7 +22,7 @@ import type {
   PaneLeaf,
   PaneSplit,
   DropZone,
-} from "../types";
+} from "../../types";
 
 /* ─────── Helpers ─────── */
 
@@ -231,7 +231,7 @@ function findLeafById(node: PaneNode, leafId: string): PaneLeaf | null {
 }
 
 
-import { DragCtx, DragContextData } from "../context/DragContext";
+import { DragCtx, DragContextData } from "../../context/DragContext";
 
 const splitClasses = {
   root: "flex flex-1 w-full h-full overflow-hidden",

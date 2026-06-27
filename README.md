@@ -87,11 +87,11 @@ OpenObsidian implements a secure, offline-first multi-process architecture combi
    npm install
    ```
 
-3. **Configure environment variables:**
+3. **Optional — configure cloud features:**
    ```bash
    cp .env.example .env.local
    ```
-   Edit `.env.local` with your Supabase credentials (see [Supabase Setup](#supabase-setup) below).
+   This step is not required for local notes or local Spaces. Add Supabase credentials only if you need accounts, cloud sync, collaboration, or the public Spaces marketplace (see [Supabase Setup](#supabase-setup) below).
 
 4. **Start the development server:**
    ```bash

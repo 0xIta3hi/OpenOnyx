@@ -24,9 +24,9 @@ import {
   Download,
   Trash2,
 } from 'lucide-react';
-import type { PluginRegistration, PluginSettingTabRegistration } from '../types/plugin';
-import { pluginLogStore, pluginErrorTracker, isVersionCompatible } from '../lib/pluginDevTools';
-import type { PluginLogEntry, PluginErrorRecord } from '../lib/pluginDevTools';
+import type { PluginRegistration, PluginSettingTabRegistration } from '../../types/plugin';
+import { pluginLogStore, pluginErrorTracker, isVersionCompatible } from '../../lib/pluginDevTools';
+import type { PluginLogEntry, PluginErrorRecord } from '../../lib/pluginDevTools';
 import { PluginMarketplace } from './PluginMarketplace';
 
 const APP_VERSION = '1.13.1';

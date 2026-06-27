@@ -1,10 +1,10 @@
 import React from "react";
-import { BacklinksPanel } from "./BacklinksPanel";
-import { OutgoingLinksPanel } from "./OutgoingLinksPanel";
-import { OutlinePane } from "./OutlinePane";
-import { UnlinkedMentionsPanel } from "./UnlinkedMentionsPanel";
+import { BacklinksPanel } from "../panels/BacklinksPanel";
+import { OutgoingLinksPanel } from "../panels/OutgoingLinksPanel";
+import { OutlinePane } from "../panels/OutlinePane";
+import { UnlinkedMentionsPanel } from "../panels/UnlinkedMentionsPanel";
 import { X } from "lucide-react";
-import { getPluginScopeClass } from "../lib/pluginStyles";
+import { getPluginScopeClass } from "../../lib/pluginStyles";
 
 export type RightSidebarTabType = "backlinks" | "outgoing" | "outline" | string;
 

@@ -24,7 +24,7 @@ import {
   Sparkles,
   Eye,
 } from "lucide-react";
-import type { EnrichedSuggestion } from "../utils/suggestion-enrichment";
+import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 
 // ── Link types ───────────────────────────────────────────────────────────────
 

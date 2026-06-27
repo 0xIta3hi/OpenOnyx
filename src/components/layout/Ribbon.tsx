@@ -7,9 +7,9 @@ import {
   Sparkles,
   Layout,
 } from "lucide-react";
-import type { PluginRibbonAction } from '../types/plugin';
-import { setIcon } from '../lib/obsidian-api/utils';
-import { SpacesIcon } from "./SpacesIcon";
+import type { PluginRibbonAction } from '../../types/plugin';
+import { setIcon } from '../../lib/obsidian-api/utils';
+import { SpacesIcon } from "../spaces/SpacesIcon";
 
 const ribbonRootClass = "flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
 const ribbonGroupClass = "flex flex-col items-center gap-1";

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Download, ExternalLink, ArrowLeft, Loader2, ShieldAlert, Check } from 'lucide-react';
-import type { PluginRegistryEntry } from '../types/plugin';
-import { getAPI } from '../utils/api';
+import type { PluginRegistryEntry } from '../../types/plugin';
+import { getAPI } from '../../utils/api';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 

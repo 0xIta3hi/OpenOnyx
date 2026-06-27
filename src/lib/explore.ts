@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 import { authManager } from './auth';
 import { generateEmbedding, toVectorLiteral } from './vector';
 
@@ -24,6 +24,7 @@ export interface ExploreSpace {
  * Fetch trending public spaces (ordered by score DESC)
  */
 export async function getTrendingSpaces(limit = 20): Promise<ExploreSpace[]> {
+  if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
     .from('spaces')
     .select(`
@@ -46,6 +47,7 @@ export async function getTrendingSpaces(limit = 20): Promise<ExploreSpace[]> {
  * Fetch recently published public spaces
  */
 export async function getNewSpaces(limit = 20): Promise<ExploreSpace[]> {
+  if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
     .from('spaces')
     .select(`
@@ -64,6 +66,7 @@ export async function getNewSpaces(limit = 20): Promise<ExploreSpace[]> {
  * Semantic search for spaces using vector similarity
  */
 export async function searchSpacesSemantic(query: string, limit = 10): Promise<ExploreSpace[]> {
+  if (!isSupabaseConfigured) return [];
   const embedding = await generateEmbedding(query);
 
   const { data, error } = await supabase.rpc('match_spaces', {
@@ -97,6 +100,7 @@ export async function searchSpacesSemantic(query: string, limit = 10): Promise<E
  * Find spaces similar to the user's own spaces
  */
 export async function getRecommendedSpaces(limit = 10): Promise<ExploreSpace[]> {
+  if (!isSupabaseConfigured) return [];
   const userId = authManager.getUserId();
   if (!userId) return [];
 
@@ -130,6 +134,7 @@ export async function getRecommendedSpaces(limit = 10): Promise<ExploreSpace[]> 
  * Record a view on a space
  */
 export async function recordSpaceView(spaceId: string): Promise<void> {
+  if (!isSupabaseConfigured) return;
   await supabase.rpc('increment_space_views', { p_space_id: spaceId });
 }
 
@@ -137,6 +142,7 @@ export async function recordSpaceView(spaceId: string): Promise<void> {
  * Get stats for a space
  */
 export async function getSpaceStats(spaceId: string) {
+  if (!isSupabaseConfigured) return null;
   const { data, error } = await supabase
     .from('space_stats')
     .select('*')

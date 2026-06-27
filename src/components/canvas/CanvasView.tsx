@@ -637,6 +637,7 @@ export function CanvasView({
     fy: number;
     tx: number;
     ty: number;
+    targetPort?: { x: number; y: number; side: EdgeSide } | null;
   } | null>(null);
   const [selBox, setSelBox] = useState<{
     x: number;
@@ -2482,7 +2483,37 @@ export function CanvasView({
           const side = drag.edgeFromSide || "right";
           const fp = portXY(from, side);
           const cp = s2c(e.clientX, e.clientY);
-          setTempEdge({ fx: fp.x, fy: fp.y, tx: cp.x, ty: cp.y });
+          let targetPort = null;
+          const sorted = [...nodesRef.current].sort((a, b) => {
+            if (a.type === "group" && b.type !== "group") return 1;
+            if (a.type !== "group" && b.type === "group") return -1;
+            return nodesRef.current.indexOf(b) - nodesRef.current.indexOf(a);
+          });
+          for (const n of sorted) {
+            if (
+              cp.x >= n.x &&
+              cp.x <= n.x + n.width &&
+              cp.y >= n.y &&
+              cp.y <= n.y + n.height
+            ) {
+              const cx = n.x + n.width / 2,
+                cy = n.y + n.height / 2;
+              const dx = cp.x - cx,
+                dy = cp.y - cy;
+              const toSide: EdgeSide =
+                Math.abs(dx) > Math.abs(dy)
+                  ? dx > 0
+                    ? "right"
+                    : "left"
+                  : dy > 0
+                    ? "bottom"
+                    : "top";
+              const tp = portXY(n, toSide);
+              targetPort = { x: tp.x, y: tp.y, side: toSide };
+              break;
+            }
+          }
+          setTempEdge({ fx: fp.x, fy: fp.y, tx: cp.x, ty: cp.y, targetPort });
           break;
         }
         case "edge-stretch": {
@@ -2768,8 +2799,12 @@ export function CanvasView({
 
       if (drag.type === "edge") {
         const cp = s2c(e.clientX, e.clientY);
-        for (const n of [...nodesRef.current].reverse()) {
-          if (n.id === drag.edgeFromNode) continue;
+        const sorted = [...nodesRef.current].sort((a, b) => {
+          if (a.type === "group" && b.type !== "group") return 1;
+          if (a.type !== "group" && b.type === "group") return -1;
+          return nodesRef.current.indexOf(b) - nodesRef.current.indexOf(a);
+        });
+        for (const n of sorted) {
           if (
             cp.x >= n.x &&
             cp.x <= n.x + n.width &&
@@ -4856,12 +4891,20 @@ function EdgePath({
 function TempEdgePath({
   from,
 }: {
-  from: { fx: number; fy: number; tx: number; ty: number };
+  from: {
+    fx: number;
+    fy: number;
+    tx: number;
+    ty: number;
+    targetPort?: { x: number; y: number; side: EdgeSide } | null;
+  };
 }) {
-  const dx = from.tx - from.fx,
-    dy = from.ty - from.fy;
+  const endX = from.targetPort ? from.targetPort.x : from.tx;
+  const endY = from.targetPort ? from.targetPort.y : from.ty;
+  const dx = endX - from.fx,
+    dy = endY - from.fy;
   const off = Math.max(80, Math.hypot(dx, dy) * 0.45);
-  const d = `M${from.fx},${from.fy} C${from.fx + (dx > 0 ? off : -off)},${from.fy} ${from.tx + (dx > 0 ? -off : off)},${from.ty} ${from.tx},${from.ty}`;
+  const d = `M${from.fx},${from.fy} C${from.fx + (dx > 0 ? off : -off)},${from.fy} ${endX + (dx > 0 ? -off : off)},${endY} ${endX},${endY}`;
   return (
     <g className="cv-edge temp">
       <path
@@ -4872,7 +4915,23 @@ function TempEdgePath({
         strokeDasharray="6 3"
         opacity={0.7}
       />
-      <circle cx={from.tx} cy={from.ty} r={4} fill="var(--accent-color)" />
+      {from.targetPort ? (
+        <g>
+          <circle
+            cx={endX}
+            cy={endY}
+            r={8}
+            fill="none"
+            stroke="var(--accent-color)"
+            strokeWidth={1.5}
+            opacity={0.8}
+            className="animate-pulse"
+          />
+          <circle cx={endX} cy={endY} r={5} fill="var(--accent-color)" />
+        </g>
+      ) : (
+        <circle cx={from.tx} cy={from.ty} r={4} fill="var(--accent-color)" />
+      )}
     </g>
   );
 }
@@ -5157,15 +5216,15 @@ function NodeCard({
       onDoubleClick={() => onDoubleClick(nodeId)}
       data-id={node.id}
     >
-      {/* Connection ports (only non-group) */}
-      {!isGroup &&
-        selected &&
+      {/* Connection ports */}
+      {selected &&
         !node.locked &&
         (["top", "right", "bottom", "left"] as EdgeSide[]).map((s) => (
           <div
             key={s}
             className={`cv-port cv-port-${s}`}
             onMouseDown={(e) => onPortDown(nodeId, s, e)}
+            style={isGroup ? { pointerEvents: "auto" } : undefined}
           />
         ))}
 
@@ -5276,7 +5335,7 @@ function NodeCard({
         if (isNoEmbed) {
           return (
             <div className="cv-node-body cv-link-body link-only-mode" style={{ height: "100%", display: "flex", flexDirection: "column", padding: "8px 12px" }}>
-              <div className="cv-link-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "6px", marginBottom: "8px" }} data-cv-no-drag="true">
+              <div className="cv-link-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "6px", marginBottom: "8px" }}>
                 <span style={{ fontSize: "11px", fontWeight: "bold", opacity: 0.7 }}>{displayDomain}</span>
               </div>
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }} data-cv-no-drag="true">
@@ -5293,6 +5352,19 @@ function NodeCard({
 
         return (
           <div className="cv-node-body cv-link-body iframe-mode" style={{ height: "100%", width: "100%", overflow: "hidden", display: "flex", flexDirection: "column", padding: 0 }}>
+            {/* Transparent absolute-positioned handle at the top allows selection/dragging without visual changes */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: "16px",
+                zIndex: 10,
+                cursor: "move",
+                background: "transparent",
+              }}
+            />
             <div style={{ flex: 1, width: "100%", height: "100%", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }} data-cv-no-drag="true">
               <iframe
                 src={embedSrc}

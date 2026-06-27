@@ -5,16 +5,16 @@
  */
 
 import React from "react";
-import type { QueueStatus } from "../utils/background-queue";
+import type { QueueStatus } from "../../utils/background-queue";
 import {
   Check,
   Circle,
   Link2,
   PencilLine,
 } from "lucide-react";
-import { Tab, Theme, ViewMode, FileEntry } from "../types";
-import { countWords, countCharacters } from "../utils/helpers";
-import type { PluginStatusBarItem } from '../types/plugin';
+import { Tab, Theme, ViewMode, FileEntry } from "../../types";
+import { countWords, countCharacters } from "../../utils/helpers";
+import type { PluginStatusBarItem } from '../../types/plugin';
 import { VimModeIndicator } from "./VimModeIndicator";
 
 const statusBarClass =
