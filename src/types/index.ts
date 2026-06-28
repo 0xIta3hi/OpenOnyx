@@ -13,6 +13,14 @@ export interface FileEntry {
   size: number;
 }
 
+export interface BookmarkEntry {
+  id: string;
+  path: string;
+  title: string;
+  group: string;
+  createdAt: number;
+}
+
 export interface SearchResult {
   path: string;
   name: string;

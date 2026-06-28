@@ -230,7 +230,10 @@ export function OutlinePane({
                 ? "bg-[var(--bg-active)] text-[var(--text-primary)] font-medium"
                 : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
             }`}
-          onClick={() => onHeadingClick(node.line)}
+          onClick={() => {
+            setActiveLine(node.line);
+            onHeadingClick(node.line);
+          }}
         >
           {/* Collapse/Expand Chevron */}
           <span

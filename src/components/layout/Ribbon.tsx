@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  FilePlus,
   Network,
   Calendar,
-  List,
   Sparkles,
   Layout,
 } from "lucide-react";
@@ -17,13 +15,11 @@ const ribbonBtnClass = "flex h-8 w-8 cursor-pointer items-center justify-center 
 const pluginRibbonIconClass = "flex h-5 w-5 items-center justify-center text-current [&_.svg-icon]:block [&_.svg-icon]:h-5 [&_.svg-icon]:w-5 [&_.svg-icon]:shrink-0 [&_.svg-icon]:text-current [&_.svg-icon]:[stroke-width:1.5]";
 
 interface RibbonProps {
-  onNewNote: () => void;
   onToggleExplorer?: () => void;
   onGraph: () => void;
   onSettings: () => void;
   onDailyNote?: () => void;
   onToggleTags?: () => void;
-  onToggleOutline?: () => void;
   onThoughtModel?: () => void;
   onSpaces?: () => void;
   onCanvas?: () => void;
@@ -31,13 +27,11 @@ interface RibbonProps {
 }
 
 export function Ribbon({
-  onNewNote,
   onGraph,
   onToggleExplorer,
   onSettings,
   onDailyNote,
   onToggleTags,
-  onToggleOutline,
   onThoughtModel,
   onSpaces,
   onCanvas,
@@ -96,13 +90,6 @@ export function Ribbon({
       onMouseLeave={handleMouseLeave}
     >
       <div className={ribbonGroupClass} ref={ribbonItemsRef}>
-        <button
-          className={ribbonBtnClass}
-          onClick={onNewNote}
-          data-tooltip="New Note (Ctrl+N)"
-        >
-          <FilePlus size={20} strokeWidth={1.5} />
-        </button>
         {onDailyNote && (
           <button
             className={ribbonBtnClass}
@@ -119,15 +106,6 @@ export function Ribbon({
         >
           <Network size={20} strokeWidth={1.5} />
         </button>
-        {onToggleOutline && (
-          <button
-            className={ribbonBtnClass}
-            onClick={onToggleOutline}
-            data-tooltip="Toggle Outline"
-          >
-            <List size={20} strokeWidth={1.5} />
-          </button>
-        )}
         {onThoughtModel && (
           <button
             className={ribbonBtnClass}

@@ -16,7 +16,7 @@ import {
   PanelLeft,
   PanelRight,
   Search,
-  FilePlus,
+  Bookmark,
   Plus,
   FolderOpen,
   X,
@@ -250,9 +250,10 @@ interface TitleBarProps {
   showSidebar?: boolean;
   onToggleRightSidebar?: () => void;
   showRightSidebar?: boolean;
-  onNewNote?: () => void;
   onSearch?: () => void;
   onToggleExplorer?: () => void;
+  onToggleBookmarks?: () => void;
+  bookmarksActive?: boolean;
   /** Width of the left section (ribbon + sidebar) so tabs align with editor */
   leftWidth?: number;
   /** Tab data */
@@ -327,9 +328,10 @@ export function TitleBar({
   showSidebar = true,
   onToggleRightSidebar,
   showRightSidebar = true,
-  onNewNote,
   onSearch,
   onToggleExplorer,
+  onToggleBookmarks,
+  bookmarksActive = false,
   leftWidth,
   tabs = [],
   activeTabId,
@@ -582,13 +584,17 @@ export function TitleBar({
                 <Search size={20} strokeWidth={1.5} />
               </button>
             )}
-            {onNewNote && (
+            {onToggleBookmarks && (
               <button
-                className={titlebarActionBtnClass}
-                onClick={onNewNote}
-                title="New Note (Ctrl+N)"
+                className={`${titlebarActionBtnClass} ${
+                  bookmarksActive
+                    ? "bg-(--bg-active) !text-(--text-primary)"
+                    : "text-(--text-muted) hover:text-(--text-secondary)"
+                }`}
+                onClick={onToggleBookmarks}
+                title="Bookmarks"
               >
-                <FilePlus size={20} strokeWidth={1.5} />
+                <Bookmark size={20} strokeWidth={1.5} fill={bookmarksActive ? "currentColor" : "none"} />
               </button>
             )}
             {leftPluginViews.map((view) => (

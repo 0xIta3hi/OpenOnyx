@@ -24,6 +24,8 @@ import { GraphView } from "./components/graph/GraphView";
 import { AIKnowledgeGraph } from "./components/graph/AIKnowledgeGraph";
 import { CanvasView } from "./components/canvas/CanvasView";
 import { SearchModal } from "./components/modals/SearchModal";
+import { BookmarkModal } from "./components/modals/BookmarkModal";
+import { BookmarksPanel } from "./components/layout/BookmarksPanel";
 import { CommandPalette } from "./components/modals/CommandPalette";
 import { BacklinksPanel } from "./components/panels/BacklinksPanel";
 import { RightSidebar, RightSidebarTabType } from "./components/layout/RightSidebar";
@@ -75,7 +77,7 @@ import { enrichSuggestions, type EnrichedSuggestion } from "./utils/suggestion-e
 import { resetSynthesisCache } from "./utils/synthesis";
 import { clearCache as clearSpacesCache } from "./utils/spaces-store";
 import { FileText, Layout } from "lucide-react";
-import { Tab, ViewMode, Theme, Command, FileEntry, PaneNode, PaneLeaf } from "./types";
+import { Tab, ViewMode, Theme, Command, FileEntry, PaneNode, PaneLeaf, BookmarkEntry } from "./types";
 import {
   SplitPaneContainer,
   createLeaf,
@@ -1015,6 +1017,12 @@ export default function App() {
   const [graphMode, setGraphMode] = useState<GraphMode>("manual");
   const [graphFullScreen, setGraphFullScreen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [bookmarkStore, setBookmarkStore] = useState<{
+    vaultPath: string | null;
+    items: BookmarkEntry[];
+  }>({ vaultPath: null, items: [] });
+  const [bookmarkModalPath, setBookmarkModalPath] = useState<string | null>(null);
   const [searchInitialQuery, setSearchInitialQuery] = useState("");
   const [searchInitialMode, setSearchInitialMode] = useState<"search" | "switcher">("switcher");
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -1024,6 +1032,77 @@ export default function App() {
   const [showProperties, setShowProperties] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<string>("general");
+
+  const bookmarks = bookmarkStore.vaultPath === vaultPath ? bookmarkStore.items : [];
+  const bookmarkGroups = useMemo(
+    () => Array.from(new Set(bookmarks.map((bookmark) => bookmark.group).filter(Boolean))).sort(),
+    [bookmarks],
+  );
+
+  useEffect(() => {
+    if (!vaultPath) {
+      setBookmarkStore({ vaultPath: null, items: [] });
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(`openobsidian-bookmarks:${vaultPath}`);
+      const items = saved ? JSON.parse(saved) as BookmarkEntry[] : [];
+      setBookmarkStore({ vaultPath, items: Array.isArray(items) ? items : [] });
+    } catch {
+      setBookmarkStore({ vaultPath, items: [] });
+    }
+  }, [vaultPath]);
+
+  useEffect(() => {
+    if (!vaultPath || bookmarkStore.vaultPath !== vaultPath) return;
+    localStorage.setItem(
+      `openobsidian-bookmarks:${vaultPath}`,
+      JSON.stringify(bookmarkStore.items),
+    );
+  }, [bookmarkStore, vaultPath]);
+
+  const saveBookmark = useCallback((path: string, title: string, group: string) => {
+    setBookmarkStore((previous) => {
+      const items = previous.vaultPath === vaultPath ? previous.items : [];
+      const existing = items.find((bookmark) => bookmark.path === path);
+      const next = existing
+        ? items.map((bookmark) => bookmark.path === path ? { ...bookmark, title, group } : bookmark)
+        : [...items, { id: uuidv4(), path, title, group, createdAt: Date.now() }];
+      return { vaultPath, items: next };
+    });
+  }, [vaultPath]);
+
+  const removeBookmark = useCallback((id: string) => {
+    setBookmarkStore((previous) => ({
+      ...previous,
+      items: previous.items.filter((bookmark) => bookmark.id !== id),
+    }));
+  }, []);
+
+  const removeBookmarksForPath = useCallback((path: string, isDirectory: boolean) => {
+    const prefix = `${path.replace(/\/$/, "")}/`;
+    setBookmarkStore((previous) => ({
+      ...previous,
+      items: previous.items.filter((bookmark) => (
+        isDirectory ? bookmark.path !== path && !bookmark.path.startsWith(prefix) : bookmark.path !== path
+      )),
+    }));
+  }, []);
+
+  const remapBookmarkPaths = useCallback((oldPath: string, newPath: string, isDirectory: boolean) => {
+    const oldPrefix = `${oldPath.replace(/\/$/, "")}/`;
+    const newPrefix = `${newPath.replace(/\/$/, "")}/`;
+    setBookmarkStore((previous) => ({
+      ...previous,
+      items: previous.items.map((bookmark) => {
+        if (bookmark.path === oldPath) return { ...bookmark, path: newPath };
+        if (isDirectory && bookmark.path.startsWith(oldPrefix)) {
+          return { ...bookmark, path: `${newPrefix}${bookmark.path.slice(oldPrefix.length)}` };
+        }
+        return bookmark;
+      }),
+    }));
+  }, []);
 
   useEffect(() => {
     const handleOpenSettings = (e: Event) => {
@@ -1493,6 +1572,7 @@ export default function App() {
     initialName?: string;
     initialColor?: string;
     tabId?: string;
+    filePath?: string;
   } | null>(null);
 
   const handleOpenNewTab = useCallback((groupId?: any) => {
@@ -3210,7 +3290,12 @@ export default function App() {
     });
   };
 
-  const handleSaveGroupConfirm = async (name: string, color: string, tabId?: string) => {
+  const handleSaveGroupConfirm = async (
+    name: string,
+    color: string,
+    tabId?: string,
+    filePath?: string,
+  ) => {
     if (!vaultPath) return;
 
     const newGroupId = "group-" + generateId();
@@ -3228,6 +3313,52 @@ export default function App() {
       }
     }
 
+    let savedPaneTree = paneTree;
+    let savedActiveTabId = activeTabId;
+    let savedFocusedLeafId = focusedLeafId;
+
+    if (filePath) {
+      savedPaneTree = JSON.parse(JSON.stringify(paneTree)) as PaneNode;
+      const existingTab = collectAllTabs(savedPaneTree).find((tab) => tab.path === filePath);
+      const fileTab = existingTab
+        ? { ...existingTab, groupId: newGroupId }
+        : {
+            id: generateId(),
+            path: filePath,
+            name: getNoteName(filePath),
+            isModified: false,
+            groupId: newGroupId,
+          };
+
+      if (existingTab) {
+        const assignGroup = (node: PaneNode): PaneNode => {
+          if (node.type === "leaf") {
+            return {
+              ...node,
+              tabs: node.tabs.map((tab) => tab.id === existingTab.id ? fileTab : tab),
+            };
+          }
+          return {
+            ...node,
+            children: [assignGroup(node.children[0]), assignGroup(node.children[1])],
+          };
+        };
+        savedPaneTree = assignGroup(savedPaneTree);
+      } else {
+        const targetLeaf = findLeafById(savedPaneTree, focusedLeafId) || findFirstLeaf(savedPaneTree);
+        if (targetLeaf) {
+          savedPaneTree = insertTabIntoLeaf(savedPaneTree, targetLeaf.id, fileTab);
+        }
+      }
+
+      const fileLeaf = findLeafWithTab(savedPaneTree, fileTab.id);
+      if (fileLeaf) {
+        savedPaneTree = setActiveTabInLeaf(savedPaneTree, fileLeaf.id, fileTab.id);
+        savedActiveTabId = fileTab.id;
+        savedFocusedLeafId = fileLeaf.id;
+      }
+    }
+
     const newGroup: LocalGroup = {
       id: newGroupId,
       vault_path: vaultPath,
@@ -3237,9 +3368,9 @@ export default function App() {
       updated_at: new Date().toISOString(),
       auto_save_enabled: true,
       layout_state: {
-        paneTree,
-        activeTabId,
-        focusedLeafId,
+        paneTree: savedPaneTree,
+        activeTabId: savedActiveTabId,
+        focusedLeafId: savedFocusedLeafId,
         scrollPositions: currentScrolls,
         cursorPositions: currentCursors,
         viewModes: currentViewModes,
@@ -3759,11 +3890,83 @@ export default function App() {
     });
   }, [activeGroupId, groups, tabs, paneTree, activeTabId, focusedLeafId, handleRestoreGroup]);
 
+  const handleAddFileToGroup = useCallback(async (path: string, groupId: string) => {
+    const group = groups.find((candidate) => candidate.id === groupId);
+    if (!group) return;
+
+    const sourceTree = groupId === activeGroupId
+      ? paneTree
+      : group.layout_state?.paneTree as PaneNode | undefined;
+    let tree = sourceTree
+      ? JSON.parse(JSON.stringify(sourceTree)) as PaneNode
+      : createLeaf([]);
+
+    const existingTab = collectAllTabs(tree).find((tab) => tab.path === path);
+    let targetTab = existingTab;
+
+    if (!targetTab) {
+      targetTab = {
+        id: generateId(),
+        path,
+        name: getNoteName(path),
+        isModified: false,
+        groupId,
+      };
+
+      const targetLeaf = group.layout_state?.focusedLeafId
+        ? findLeafById(tree, group.layout_state.focusedLeafId)
+        : null;
+      const leaf = targetLeaf || findFirstLeaf(tree);
+      if (!leaf) return;
+      tree = insertTabIntoLeaf(tree, leaf.id, targetTab);
+    } else {
+      const leaf = findLeafWithTab(tree, targetTab.id);
+      if (leaf) tree = setActiveTabInLeaf(tree, leaf.id, targetTab.id);
+    }
+
+    const targetLeaf = findLeafWithTab(tree, targetTab.id);
+    const updatedGroup: LocalGroup = {
+      ...group,
+      updated_at: new Date().toISOString(),
+      layout_state: {
+        ...group.layout_state,
+        paneTree: tree,
+        activeTabId: targetTab.id,
+        focusedLeafId: targetLeaf?.id || group.layout_state?.focusedLeafId,
+      },
+    };
+
+    try {
+      await localDB.putGroup(updatedGroup);
+      setGroups((previous) =>
+        previous.map((candidate) => candidate.id === groupId ? updatedGroup : candidate),
+      );
+      await handleRestoreGroup(groupId, updatedGroup);
+      showToast(
+        existingTab
+          ? `${getNoteName(path)} is already in ${group.name}`
+          : `Added ${getNoteName(path)} to ${group.name}`,
+        existingTab ? "info" : "success",
+      );
+    } catch (err) {
+      console.error("Failed to add file to group:", err);
+      showToast("Failed to add file to group", "error");
+    }
+  }, [activeGroupId, groups, handleRestoreGroup, paneTree, showToast]);
+
   const handleCreateGroupFromTab = useCallback((tabId: string) => {
     setGroupModalData({
       type: "create",
       title: "Create Group from Tab",
       tabId,
+    });
+  }, []);
+
+  const handleCreateGroupFromFile = useCallback((filePath: string) => {
+    setGroupModalData({
+      type: "create",
+      title: "Create Group for File",
+      filePath,
     });
   }, []);
 
@@ -3773,7 +3976,7 @@ export default function App() {
     if (!result || !data) return;
 
     if (data.type === "create") {
-      void handleSaveGroupConfirm(result.name, result.color, data.tabId);
+      void handleSaveGroupConfirm(result.name, result.color, data.tabId, data.filePath);
     } else if (data.type === "rename" || data.type === "color") {
       if (!data.groupId) return;
       const group = groups.find((g) => g.id === data.groupId);
@@ -5235,24 +5438,31 @@ export default function App() {
 
   // ── Link Navigation ─────────────────────────────────
   const handleLinkClick = async (linkName: string, heading?: string) => {
+    const normalizedLink = decodeURIComponent(linkName)
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/\.md$/i, "")
+      .toLowerCase();
+
     // Find the note by name
-    const findNote = (entries: FileEntry[], name: string): string | null => {
+    const findNote = (entries: FileEntry[]): string | null => {
       for (const entry of entries) {
         if (!entry.isDirectory) {
           const noteName = getNoteName(entry.path);
-          if (noteName.toLowerCase() === name.toLowerCase()) {
+          const notePath = entry.path.replace(/\.md$/i, "").toLowerCase();
+          if (notePath === normalizedLink || noteName.toLowerCase() === normalizedLink) {
             return entry.path;
           }
         }
         if (entry.children) {
-          const found = findNote(entry.children, name);
+          const found = findNote(entry.children);
           if (found) return found;
         }
       }
       return null;
     };
 
-    const filePath = findNote(fileTree, linkName);
+    const filePath = findNote(fileTree);
     if (filePath) {
       await openFile(filePath, "preview");
       // TODO: Scroll to heading if specified
@@ -5276,7 +5486,7 @@ export default function App() {
       }
     } else {
       // Auto-create note if it doesn't exist
-      const newPath = `${linkName}.md`;
+      const newPath = linkName.toLowerCase().endsWith(".md") ? linkName : `${linkName}.md`;
       const content = `# ${linkName}\n\n`;
       await api.createFile(newPath, content);
       await refreshFileTree();
@@ -5327,6 +5537,7 @@ export default function App() {
               removeEmbedding(store, filePath);
             }
           }
+          removeBookmarksForPath(filePath, isDir);
 
           // Close tab if open (for files) or close all tabs within the folder
           if (isDir) {
@@ -5427,6 +5638,7 @@ export default function App() {
 
     updateEmbeddingsAfterRename(oldPath, newPath, isDirectory);
     updateOpenPathsAfterRename(oldPath, newPath, isDirectory);
+    remapBookmarkPaths(oldPath, newPath, isDirectory);
 
     await refreshFileTree();
   };
@@ -5485,6 +5697,7 @@ export default function App() {
 
       updateEmbeddingsAfterRename(oldPath, newPath, isDirectory);
       updateOpenPathsAfterRename(oldPath, newPath, isDirectory);
+      remapBookmarkPaths(oldPath, newPath, isDirectory);
 
       await refreshFileTree();
     } catch (err) {
@@ -5495,7 +5708,7 @@ export default function App() {
         message: `Could not move ${oldPath} to ${newPath}.`,
       });
     }
-  }, [refreshFileTree, clearAutoSaveTimer, updateEmbeddingsAfterRename, updateOpenPathsAfterRename]);
+  }, [refreshFileTree, clearAutoSaveTimer, updateEmbeddingsAfterRename, updateOpenPathsAfterRename, remapBookmarkPaths]);
 
   const handleCreateFolder = async (parentPath: string) => {
     setModal({
@@ -6579,17 +6792,24 @@ export default function App() {
           onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
           showRightSidebar={showRightSidebar}
           leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
-          onNewNote={handleNewNote}
           onSearch={() => {
             setShowSidebar(true);
             setSearchInitialMode("search");
+            setShowBookmarks(false);
             setShowSearch(true);
           }}
           onToggleExplorer={() => {
             setShowSidebar(true);
             setShowSearch(false);
+            setShowBookmarks(false);
             ooAppRef.current?.workspace?.revealDefaultView?.('left');
           }}
+          onToggleBookmarks={() => {
+            setShowSidebar(true);
+            setShowSearch(false);
+            setShowBookmarks(true);
+          }}
+          bookmarksActive={showBookmarks}
           tabs={tabs}
           activeTabId={activeTabId}
           onTabSelect={handleTabSelect}
@@ -6625,6 +6845,7 @@ export default function App() {
               void ooAppRef.current?.workspace?.revealLeaf?.(view.leaf);
               setShowSidebar(true);
               setShowSearch(false);
+              setShowBookmarks(false);
             }
           }}
           rightPluginViews={rightPluginViews}
@@ -6641,14 +6862,12 @@ export default function App() {
       >
         {vaultPath && !isFTUXZeroState && (
           <Ribbon
-            onNewNote={handleNewNote}
             onGraph={() => {
               openGraphAsTab();
             }}
             onSettings={() => setShowSettings(true)}
             onDailyNote={handleCreateDailyNote}
             onToggleTags={() => setShowTags((t) => !t)}
-            onToggleOutline={handleToggleOutline}
             onThoughtModel={() => {
               setShowGraph(false);
               setShowCanvas(false);
@@ -6670,7 +6889,14 @@ export default function App() {
             style={{ width: showSidebar ? "var(--sidebar-width)" : 0 }}
           >
             <div className="h-full w-full">
-              {showSearch ? (
+              {showBookmarks ? (
+                <BookmarksPanel
+                  bookmarks={bookmarks}
+                  activeFilePath={activeTab?.path || null}
+                  onOpen={(path) => void openFile(path)}
+                  onRemove={removeBookmark}
+                />
+              ) : showSearch ? (
                 <SearchModal
                   onClose={() => {
                     setShowSearch(false);
@@ -6724,12 +6950,15 @@ export default function App() {
                   groups={groups}
                   activeGroupId={activeGroupId}
                   onCreateGroup={handleOpenCreateGroupModal}
+                  onCreateGroupFromFile={handleCreateGroupFromFile}
+                  onBookmarkFile={setBookmarkModalPath}
                   onRestoreGroup={handleRestoreGroup}
                   onRenameGroup={handleRenameGroup}
                   onChangeGroupColor={handleChangeGroupColor}
                   onDeleteGroup={handleDeleteGroup}
                   onDuplicateGroup={handleDuplicateGroup}
                   onToggleGroupAutoSave={handleToggleGroupAutoSave}
+                  onAddFileToGroup={handleAddFileToGroup}
                 />
               )}
             </div>
@@ -7099,6 +7328,22 @@ export default function App() {
           onClose={() => setShowTemplateModal(false)}
           onInsert={handleTemplateInsert}
           currentNoteName={activeTab?.name}
+        />
+      )}
+
+      {bookmarkModalPath && (
+        <BookmarkModal
+          path={bookmarkModalPath}
+          initialTitle={
+            bookmarks.find((bookmark) => bookmark.path === bookmarkModalPath)?.title
+              || getNoteName(bookmarkModalPath)
+          }
+          groups={bookmarkGroups}
+          onClose={(result) => {
+            const path = bookmarkModalPath;
+            setBookmarkModalPath(null);
+            if (result) saveBookmark(path, result.title, result.group);
+          }}
         />
       )}
 
