@@ -158,18 +158,6 @@ export function RightSidebar({
 
         {activePluginView && (
           <div className="flex flex-col h-full overflow-hidden">
-            <div className="flex h-9 shrink-0 items-center justify-between border-b border-(--border-subtle) bg-(--bg-secondary) px-3 text-[11px] font-medium text-(--text-muted)">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap">{activePluginView.displayText}</span>
-              {onClosePluginView && (
-                <button
-                  className="hover:text-(--danger) opacity-60 hover:opacity-100 transition-opacity border-0 bg-transparent cursor-pointer p-0 flex items-center justify-center text-(--text-muted)"
-                  onClick={() => onClosePluginView(activePluginView.viewType)}
-                  title="Close panel"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
             <div className="flex-1 overflow-hidden">
               <PluginViewHost view={activePluginView} />
             </div>
