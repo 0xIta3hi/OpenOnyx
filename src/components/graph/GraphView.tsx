@@ -689,7 +689,11 @@ export function GraphView({
           },
         });
 
-        if (!savedPositions || Object.keys(savedPositions).length === 0) {
+        const hasUnplacedNodes = filteredData.nodes.some(
+          (n) => !savedPositions || !savedPositions[n.id]
+        );
+
+        if (!savedPositions || Object.keys(savedPositions).length === 0 || hasUnplacedNodes) {
           setSimulating(true);
           worker.postMessage({ type: "start" });
         } else {

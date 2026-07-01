@@ -197,7 +197,7 @@ self.onmessage = (e: MessageEvent) => {
     case "start": {
       if (simulation && !isRunning) {
         isRunning = true;
-        simulation.alpha(0.35).restart();
+        simulation.alpha(1.0).restart();
       }
       break;
     }
@@ -220,10 +220,7 @@ self.onmessage = (e: MessageEvent) => {
     case "reheat": {
       if (simulation) {
         isRunning = true;
-        // Use a moderate alpha for reheating, not 1.0 which causes violent scatter
-        // Obsidian uses alphaTarget adjustments, never hard alpha(1) resets
-        // except on initial layout. For user-triggered reheat, use 0.5.
-        simulation.alpha(0.5).restart();
+        simulation.alpha(1.0).restart();
       }
       break;
     }

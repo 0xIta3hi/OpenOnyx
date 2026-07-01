@@ -1276,7 +1276,11 @@ export function AIKnowledgeGraph({
     const hasLivePositions = livePositions.size > 0;
     const hasSavedPositions = !!savedPositions && Object.keys(savedPositions).length > 0;
 
-    if (shouldResetLayout || (!hasLivePositions && !hasSavedPositions)) {
+    const hasUnplacedNodes = filteredData.nodes.some(
+      (n) => (hasLivePositions ? !livePositions.has(n.id) : (!savedPositions || !savedPositions[n.id]))
+    );
+
+    if (shouldResetLayout || (!hasLivePositions && !hasSavedPositions) || hasUnplacedNodes) {
       setSimulating(true);
       worker.postMessage({ type: "start" });
     } else if (hasSavedPositions && !hasLivePositions) {
