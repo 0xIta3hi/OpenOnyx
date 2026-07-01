@@ -220,7 +220,8 @@ ItemView.prototype.constructor = ItemView;
 ItemView.prototype.addAction = function(icon: string, title: string, callback: (evt: MouseEvent) => any) {
   const btn = document.createElement('div');
   btn.className = 'view-action clickable-icon';
-  btn.title = title;
+  btn.dataset.tooltip = title;
+  btn.removeAttribute('title');
   setIcon(btn, icon);
   btn.addEventListener('click', callback);
   const action = {

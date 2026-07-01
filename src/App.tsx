@@ -6664,7 +6664,7 @@ export default function App() {
           </button>
         </div>
 
-        {graphMode === "ai" ? (
+        <div style={{ display: graphMode === "ai" ? "block" : "none", height: "100%", width: "100%" }}>
           <AIKnowledgeGraph
             onNodeClick={onNodeClick}
             onClose={onClose}
@@ -6676,7 +6676,8 @@ export default function App() {
             onCreateGroupFromPaths={handleCreateGroupFromPaths}
             onOpenPathsAsGroup={handleOpenPathsAsGroup}
           />
-        ) : (
+        </div>
+        <div style={{ display: graphMode !== "ai" ? "block" : "none", height: "100%", width: "100%" }}>
           <GraphView
             onNodeClick={onNodeClick}
             onClose={onClose}
@@ -6686,7 +6687,7 @@ export default function App() {
             vaultPath={vaultPath}
             localNodePath={localNodePath}
           />
-        )}
+        </div>
       </div>
     ),
     [

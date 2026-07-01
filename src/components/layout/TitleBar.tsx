@@ -146,13 +146,21 @@ const titlebarActionBtnClass =
   "titlebar-action-btn flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-[var(--text-secondary)] transition-all duration-120 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const titlebarVaultActionsClass = "flex items-center gap-0.5 px-2";
 const titlebarTabsClass =
-  "relative z-[2] flex h-full min-w-0 flex-1 items-end overflow-hidden border-b border-[var(--border-subtle)] pl-1 pr-3 pointer-events-none [-webkit-app-region:no-drag]";
+  "relative z-[2] flex h-full min-w-0 flex-1 items-end overflow-hidden pl-1 pr-3 pointer-events-none [-webkit-app-region:no-drag]";
 const titlebarTabScrollClass =
-  "flex h-full min-w-0 items-end overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+  "relative z-[1] flex h-full min-w-0 flex-1 items-end overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+const titlebarTabSlotClass =
+  "flex h-full min-w-[100px] max-w-[200px] shrink items-end border-b";
+const titlebarInactiveTabSlotClass = "border-[var(--border-subtle)]";
+const titlebarActiveTabSlotClass = "border-transparent";
+const titlebarGroupSlotClass =
+  "flex h-full shrink-0 items-center border-b border-[var(--border-subtle)]";
+const titlebarTabsRemainderClass =
+  "h-full min-w-0 flex-1 shrink-0 border-b border-[var(--border-subtle)] pointer-events-none";
 const titlebarTabClass =
-  "titlebar-tab group relative z-[2] flex h-[30px] min-w-[100px] max-w-[200px] shrink cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[var(--transition-fast)] [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:absolute [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bottom-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:right-0 [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:top-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:w-px [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bg-[var(--border-strong,rgba(255,255,255,0.15))] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:content-['']";
+  "titlebar-tab group relative z-[2] flex h-[30px] w-full min-w-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[var(--transition-fast)] [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:absolute [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bottom-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:right-0 [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:top-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:w-px [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bg-[var(--border-strong,rgba(255,255,255,0.15))] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:content-['']";
 const titlebarTabActiveClass =
-  "active z-[4] mb-[-1px] h-[31px] !border !border-b-0 !border-[var(--border-subtle)] bg-[var(--tab-background-active)] text-[var(--tab-text-color-focused-active-current)] shadow-[inset_0_var(--tab-outline-width)_0_var(--tab-outline-color),inset_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_calc(var(--tab-outline-width)*-1)_0_0_var(--tab-outline-color),inset_0_-2px_0_var(--tab-background-active)] before:absolute before:bottom-0 before:left-[calc(var(--tab-curve)*-2)] before:-z-[1] before:block before:h-[calc(var(--tab-curve)*2)] before:w-[calc(var(--tab-curve)*2)] before:rounded-full before:shadow-[0_0_0_calc(var(--tab-curve)*3)_var(--tab-background-active)] before:[clip-path:inset(50%_calc(var(--tab-curve)*-1)_0_50%)] before:content-[''] after:absolute after:bottom-0 after:right-[calc(var(--tab-curve)*-2)] after:-z-[1] after:block after:h-[calc(var(--tab-curve)*2)] after:w-[calc(var(--tab-curve)*2)] after:rounded-full after:shadow-[0_0_0_calc(var(--tab-curve)*3)_var(--tab-background-active)] after:[clip-path:inset(50%_50%_0_calc(var(--tab-curve)*-1))] after:content-['']";
+  "active z-[4] h-[31px] !border-x !border-t !border-b-0 !border-[var(--border-subtle)] bg-[var(--tab-background-active)] text-[var(--tab-text-color-focused-active-current)] shadow-[inset_0_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_calc(var(--tab-outline-width)*-1)_0_0_var(--tab-outline-color)]";
 const titlebarTabDropLeftClass =
   "drop-target-left !shadow-[inset_2px_0_0_var(--accent-color,#7c6ef6)]";
 const titlebarTabDropRightClass =
@@ -170,6 +178,8 @@ const titlebarTabCloseClass =
   "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent p-0 text-[10px] text-[var(--text-muted)] opacity-0 transition-[var(--transition-fast)] group-hover:opacity-100 group-hover:text-[var(--tab-text-color-focused)] group-[.active]:opacity-100 group-[.active]:text-[var(--tab-text-color-focused)] hover:bg-[var(--bg-hover)] hover:text-[var(--tab-text-color-focused-active-current)]";
 const titlebarNewTabClass =
   "titlebar-new-tab titlebar-btn mb-0.5 ml-0.5 !h-7 !w-7 shrink-0";
+const titlebarNewTabSlotClass =
+  "flex h-full shrink-0 items-end border-b border-[var(--border-subtle)]";
 const titlebarRightControlsClass =
   "relative z-[2] flex shrink-0 items-center pl-3 pr-4 pointer-events-auto [-webkit-app-region:no-drag]";
 const titlebarControlsClass =
@@ -177,8 +187,6 @@ const titlebarControlsClass =
 const titlebarBtnClass =
   "titlebar-btn flex h-[var(--titlebar-height)] w-[46px] cursor-pointer items-center justify-center rounded-none border-0 bg-transparent text-[length:var(--font-ui-small)] text-[var(--text-secondary)] transition-colors duration-100 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const titlebarCloseBtnClass = "close hover:bg-[#e81123] hover:text-white";
-const titlebarTooltipClass =
-  "titlebar-tooltip pointer-events-none absolute z-[5000] -translate-x-1/2 whitespace-nowrap rounded bg-black px-2.5 py-[5px] text-[12.5px] font-medium text-white opacity-100 shadow-none after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-x-4 after:border-b-4 after:border-x-transparent after:border-b-black after:content-['']";
 const titlebarGroupPillClass =
   "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-none transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97]";
 const titlebarGroupActiveClass =
@@ -375,9 +383,6 @@ export function TitleBar({
 
   const [dragOverTabId, setDragOverTabId] = React.useState<string | null>(null);
   const [dragDirection, setDragDirection] = React.useState<'left' | 'right' | null>(null);
-  const [hoveredTab, setHoveredTab] = React.useState<{ name: string; x: number; y: number } | null>(null);
-  const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
   const [tabContextMenu, setTabContextMenu] = React.useState<{
     x: number;
     y: number;
@@ -442,40 +447,11 @@ export function TitleBar({
   const activeLeftPluginView = leftPluginViews.find((view) => view.viewType === activeLeftViewType);
   const activeRightPluginView = rightPluginViews.find((view) => view.viewType === activeRightTab);
 
-  React.useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    };
-  }, []);
-
-  const handleTabMouseEnter = (e: React.MouseEvent, name: string) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const parentRect = titlebarRef.current?.getBoundingClientRect();
-    if (!parentRect) return;
-
-    const x = rect.left + rect.width / 2 - parentRect.left;
-    const y = rect.bottom - parentRect.top + 6;
-
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredTab({ name, x, y });
-    }, 400);
-  };
-
-  const handleTabMouseLeave = () => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setHoveredTab(null);
-  };
-
   const handleTabClick = (tabId: string) => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setHoveredTab(null);
     onTabSelect?.(tabId);
   };
 
   const handleDragStart = (e: React.DragEvent, tabId: string) => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setHoveredTab(null);
     e.dataTransfer.setData("text/plain", tabId);
     e.dataTransfer.effectAllowed = "move";
     const tabObj = tabs.find(t => t.id === tabId);
@@ -557,7 +533,7 @@ export function TitleBar({
             <button
               className={titlebarActionBtnClass}
               onClick={onToggleSidebar}
-              title={showSidebar ? "Close left sidebar" : "Open left sidebar"}
+              data-tooltip={showSidebar ? "Close left sidebar" : "Open left sidebar"}
             >
               <PanelLeft size={20} strokeWidth={1.5} />
             </button>
@@ -570,7 +546,7 @@ export function TitleBar({
               <button
                 className={titlebarActionBtnClass}
                 onClick={onToggleExplorer}
-                title="File Explorer"
+                data-tooltip="File Explorer"
               >
                 <FolderOpen size={20} strokeWidth={1.5} />
               </button>
@@ -579,7 +555,7 @@ export function TitleBar({
               <button
                 className={titlebarActionBtnClass}
                 onClick={onSearch}
-                title="Search (Ctrl+F)"
+                data-tooltip="Search (Ctrl+F)"
               >
                 <Search size={20} strokeWidth={1.5} />
               </button>
@@ -592,7 +568,7 @@ export function TitleBar({
                     : "text-(--text-muted) hover:text-(--text-secondary)"
                 }`}
                 onClick={onToggleBookmarks}
-                title="Bookmarks"
+                data-tooltip="Bookmarks"
               >
                 <Bookmark size={20} strokeWidth={1.5} fill={bookmarksActive ? "currentColor" : "none"} />
               </button>
@@ -606,7 +582,7 @@ export function TitleBar({
                     : "text-(--text-muted) hover:text-(--text-secondary)"
                 }`}
                 onClick={() => onSelectLeftPluginView?.(view.viewType)}
-                title={view.displayText}
+                data-tooltip={view.displayText}
               >
                 <PluginIcon iconId={view.icon} />
               </button>
@@ -616,7 +592,7 @@ export function TitleBar({
                 key={action.id}
                 className={titlebarActionBtnClass}
                 onClick={() => triggerPluginAction(action)}
-                title={action.title}
+                data-tooltip={action.title}
               >
                 <PluginIcon iconId={action.icon} />
               </button>
@@ -635,40 +611,41 @@ export function TitleBar({
             if (item.type === "group-header") {
               const { group, tabsCount, isCollapsed } = item;
               return (
-                <div
-                  key={item.key}
-                  className={cx(
-                    titlebarGroupPillClass,
-                    activeGroupId === group.id && titlebarGroupActiveClass,
-                    isCollapsed && "is-collapsed",
-                  )}
-                  style={{
-                    backgroundColor: group.color,
-                    color: getContrastColor(group.color),
-                  }}
-                  onClick={() => {
-                    if (group.id === activeGroupId) {
-                      onToggleGroupCollapse?.(group.id);
-                    } else {
-                      onRestoreGroup?.(group.id);
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const position = clampMenuPosition(rect.left, rect.bottom + 4, 240, 430);
-                    setGroupPopup({
-                      x: position.x,
-                      y: position.y,
-                      group,
-                    });
-                  }}
-                  title={`Group: ${group.name} (${tabsCount} tabs)`}
-                >
-                  <span className={titlebarGroupNameClass}>
-                    {group.name}
-                    {group.id === activeGroupId && hasUnsavedChanges ? " *" : ""}
-                  </span>
+                <div key={item.key} className={titlebarGroupSlotClass}>
+                  <div
+                    className={cx(
+                      titlebarGroupPillClass,
+                      activeGroupId === group.id && titlebarGroupActiveClass,
+                      isCollapsed && "is-collapsed",
+                    )}
+                    style={{
+                      backgroundColor: group.color,
+                      color: getContrastColor(group.color),
+                    }}
+                    onClick={() => {
+                      if (group.id === activeGroupId) {
+                        onToggleGroupCollapse?.(group.id);
+                      } else {
+                        onRestoreGroup?.(group.id);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const position = clampMenuPosition(rect.left, rect.bottom + 4, 240, 430);
+                      setGroupPopup({
+                        x: position.x,
+                        y: position.y,
+                        group,
+                      });
+                    }}
+                    data-tooltip={`Group: ${group.name} (${tabsCount} tabs)`}
+                  >
+                    <span className={titlebarGroupNameClass}>
+                      {group.name}
+                      {group.id === activeGroupId && hasUnsavedChanges ? " *" : ""}
+                    </span>
+                  </div>
                 </div>
               );
             } else {
@@ -676,67 +653,76 @@ export function TitleBar({
               return (
                 <div
                   key={item.key}
-                  data-tab-id={tab.id}
                   className={cx(
-                    titlebarTabClass,
-                    tab.id === activeTabId && titlebarTabActiveClass,
-                    dragOverTabId === tab.id && dragDirection === "left" && titlebarTabDropLeftClass,
-                    dragOverTabId === tab.id && dragDirection === "right" && titlebarTabDropRightClass,
-                    tabGroup && titlebarGroupedTabClass,
-                    tabGroup && tab.id === activeTabId && titlebarGroupedActiveTabClass,
+                    titlebarTabSlotClass,
+                    tab.id === activeTabId
+                      ? titlebarActiveTabSlotClass
+                      : titlebarInactiveTabSlotClass,
                   )}
-                  style={{
-                    borderTop: tabGroup ? `3px solid ${tabGroup.color}` : undefined,
-                  }}
-                  onClick={() => handleTabClick(tab.id)}
-                  onMouseEnter={(e) => handleTabMouseEnter(e, tab.name)}
-                  onMouseLeave={handleTabMouseLeave}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, tab.id)}
-                  onDragOver={(e) => handleDragOver(e, tab.id)}
-                  onDragLeave={handleDragLeave}
-                  onDragEnd={handleDragEnd}
-                  onDrop={(e) => handleDrop(e, tab.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    const position = clampMenuPosition(e.clientX, e.clientY, 220, 180);
-                    setTabContextMenu({
-                      x: position.x,
-                      y: position.y,
-                      tab,
-                    });
-                  }}
                 >
-                  <div className={titlebarTabInnerClass}>
-                    {tab.isModified && (
-                      <span className={titlebarTabDotClass}>{"\u25CF"}</span>
+                  <div
+                    data-tab-id={tab.id}
+                    data-tooltip={tab.name}
+                    className={cx(
+                      titlebarTabClass,
+                      tab.id === activeTabId && titlebarTabActiveClass,
+                      dragOverTabId === tab.id && dragDirection === "left" && titlebarTabDropLeftClass,
+                      dragOverTabId === tab.id && dragDirection === "right" && titlebarTabDropRightClass,
+                      tabGroup && titlebarGroupedTabClass,
+                      tabGroup && tab.id === activeTabId && titlebarGroupedActiveTabClass,
                     )}
-                    <span className={titlebarTabTitleClass}>{tab.name}</span>
-                    <button
-                      className={titlebarTabCloseClass}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                        setHoveredTab(null);
-                        onTabClose?.(tab.id);
-                      }}
-                    >
-                      <X size={16} />
-                    </button>
+                    style={{
+                      borderTop: tabGroup ? `3px solid ${tabGroup.color}` : undefined,
+                    }}
+                    onClick={() => handleTabClick(tab.id)}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, tab.id)}
+                    onDragOver={(e) => handleDragOver(e, tab.id)}
+                    onDragLeave={handleDragLeave}
+                    onDragEnd={handleDragEnd}
+                    onDrop={(e) => handleDrop(e, tab.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      const position = clampMenuPosition(e.clientX, e.clientY, 220, 180);
+                      setTabContextMenu({
+                        x: position.x,
+                        y: position.y,
+                        tab,
+                      });
+                    }}
+                  >
+                    <div className={titlebarTabInnerClass}>
+                      {tab.isModified && (
+                        <span className={titlebarTabDotClass}>{"\u25CF"}</span>
+                      )}
+                      <span className={titlebarTabTitleClass}>{tab.name}</span>
+                      <button
+                        className={titlebarTabCloseClass}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTabClose?.(tab.id);
+                        }}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
             }
           })}
           {onNewTab && (
-            <button
-              className={titlebarNewTabClass}
-              onClick={() => onNewTab?.()}
-              title="New tab"
-            >
-              <Plus size={16} strokeWidth={1.5} />
-            </button>
+            <div className={titlebarNewTabSlotClass}>
+              <button
+                className={titlebarNewTabClass}
+                onClick={() => onNewTab?.()}
+                data-tooltip="New tab"
+              >
+                <Plus size={16} strokeWidth={1.5} />
+              </button>
+            </div>
           )}
+          <div aria-hidden="true" className={titlebarTabsRemainderClass} />
         </div>
       </div>
 
@@ -746,7 +732,7 @@ export function TitleBar({
           <button
             className={titlebarActionBtnClass}
             onClick={onToggleRightSidebar}
-            title={showRightSidebar ? "Close right sidebar" : "Open right sidebar"}
+            data-tooltip={showRightSidebar ? "Close right sidebar" : "Open right sidebar"}
             style={{ marginRight: showRightSidebar ? '8px' : '0' }}
           >
             <PanelRight size={20} strokeWidth={1.5} />
@@ -779,7 +765,7 @@ export function TitleBar({
                     : "text-(--text-muted) hover:text-(--text-secondary)"
                 }`}
                 onClick={() => setActiveRightTab("backlinks")}
-                title="Backlinks"
+                data-tooltip="Backlinks"
               >
                 <BacklinksIcon />
               </button>
@@ -791,7 +777,7 @@ export function TitleBar({
                     : "text-(--text-muted) hover:text-(--text-secondary)"
                 }`}
                 onClick={() => setActiveRightTab("outgoing")}
-                title="Outgoing links"
+                data-tooltip="Outgoing links"
               >
                 <OutgoingIcon />
               </button>
@@ -803,7 +789,7 @@ export function TitleBar({
                     : "text-(--text-muted) hover:text-(--text-secondary)"
                 }`}
                 onClick={() => setActiveRightTab("outline")}
-                title="Outline"
+                data-tooltip="Outline"
               >
                 <List size={20} strokeWidth={1.5} />
               </button>
@@ -817,7 +803,7 @@ export function TitleBar({
                       : "text-(--text-muted) hover:text-(--text-secondary)"
                   }`}
                   onClick={() => setActiveRightTab(view.viewType)}
-                  title={view.displayText}
+                  data-tooltip={view.displayText}
                 >
                   <PluginIcon iconId={view.icon} />
                 </button>
@@ -828,7 +814,7 @@ export function TitleBar({
                   key={action.id}
                   className={titlebarActionBtnClass}
                   onClick={() => triggerPluginAction(action)}
-                  title={action.title}
+                  data-tooltip={action.title}
                 >
                   <PluginIcon iconId={action.icon} />
                 </button>
@@ -846,7 +832,7 @@ export function TitleBar({
               {activeUsers.slice(0, 3).map((u, i) => (
                 <div 
                   key={u.id}
-                  title={`${u.name || u.email} - ${u.isEditing ? 'Editing' : 'Viewing'}`}
+                  data-tooltip={`${u.name || u.email} - ${u.isEditing ? 'Editing' : 'Viewing'}`}
                   style={{
                     width: '24px', height: '24px', borderRadius: '50%',
                     backgroundColor: u.color || 'var(--interactive-accent)',
@@ -862,7 +848,7 @@ export function TitleBar({
                       position: 'absolute', bottom: '-2px', right: '-2px',
                       width: '8px', height: '8px', borderRadius: '50%',
                       background: '#10b981', border: '1px solid var(--background-primary)'
-                    }} title="Editing" />
+                    }} data-tooltip="Editing" />
                   )}
                 </div>
               ))}
@@ -881,7 +867,7 @@ export function TitleBar({
                   className={titlebarActionBtnClass}
                   style={{ marginLeft: '4px', width: '24px', height: '24px', padding: 0 }}
                   onClick={onInvite}
-                  title="Invite collaborators"
+                  data-tooltip="Invite collaborators"
                 >
                   <Plus size={16} strokeWidth={2} />
                 </button>
@@ -917,18 +903,6 @@ export function TitleBar({
           </div>
         </div>
       </div>
-
-      {hoveredTab && (
-        <div
-          className={titlebarTooltipClass}
-          style={{
-            left: `${hoveredTab.x}px`,
-            top: `${hoveredTab.y}px`,
-          }}
-        >
-          {hoveredTab.name}
-        </div>
-      )}
 
       {tabContextMenu && (
         <div
@@ -1071,7 +1045,7 @@ export function TitleBar({
                         group: { ...prev.group, color: c.value }
                       } : null);
                     }}
-                    title={c.name}
+                    data-tooltip={c.name}
                   />
                 );
               })}

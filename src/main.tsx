@@ -8,9 +8,9 @@ import './lib/obsidian-api/dom-extensions';
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { installGlobalTooltips } from "./lib/tooltips";
 import { documentTailwindClasses } from "./styles/documentTailwindClasses";
-import { parchmentThemeClasses } from "./styles/parchmentThemeClasses";
-import { calmWhiteThemeClasses } from "./styles/calmWhiteThemeClasses";
+import { themeClasses } from "./styles/themeClasses";
 
 import "@fontsource/inter/300.css";
 import "@fontsource/inter/400.css";
@@ -22,7 +22,8 @@ import "@fontsource/jetbrains-mono/500.css";
 import "katex/dist/katex.min.css";
 import "./tailwind.css";
 
-document.documentElement.className = `${document.documentElement.className} ${documentTailwindClasses} ${parchmentThemeClasses} ${calmWhiteThemeClasses}`.trim();
+document.documentElement.className = `${document.documentElement.className} ${documentTailwindClasses} ${themeClasses}`.trim();
+installGlobalTooltips();
 
 // Excalidraw copies body styles into an iframe when it reads Obsidian tokens.
 // Mirror the computed Tailwind values, rather than another class set, so this

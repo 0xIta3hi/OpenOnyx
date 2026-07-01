@@ -443,7 +443,7 @@ Setting.prototype.setDesc = function(desc: string | DocumentFragment) {
 Setting.prototype.setClass = function(cls: string) { this.settingEl.classList.add(cls); return this; };
 Setting.prototype.setHeading = function() { this.settingEl.classList.add('setting-item-heading'); return this; };
 Setting.prototype.setDisabled = function(disabled: boolean) { this.settingEl.classList.toggle('is-disabled', disabled); return this; };
-Setting.prototype.setTooltip = function(tooltip: string) { this.settingEl.title = tooltip; return this; };
+Setting.prototype.setTooltip = function(tooltip: string) { this.settingEl.dataset.tooltip = tooltip; this.settingEl.removeAttribute("title"); return this; };
 
 Setting.prototype.addText = function(cb: (component: TextComponent) => any) {
   const comp = new TextComponent(this.controlEl);
@@ -836,7 +836,7 @@ export class ButtonComponent {
     this.buttonEl.classList.add('has-icon');
     return this;
   }
-  setTooltip(tooltip: string): this { this.buttonEl.title = tooltip; return this; }
+  setTooltip(tooltip: string): this { this.buttonEl.dataset.tooltip = tooltip; this.buttonEl.removeAttribute("title"); return this; }
   removeCta(): this { this.buttonEl.classList.remove('mod-cta'); return this; }
   setDestructive(): this { this.buttonEl.classList.add('mod-destructive'); return this; }
   removeDestructive(): this { this.buttonEl.classList.remove('mod-destructive'); return this; }
@@ -910,7 +910,7 @@ export class ToggleComponent {
     return this;
   }
   setDisabled(disabled: boolean): this { this.toggleEl.classList.toggle('is-disabled', disabled); return this; }
-  setTooltip(tooltip: string): this { this.toggleEl.title = tooltip; return this; }
+  setTooltip(tooltip: string): this { this.toggleEl.dataset.tooltip = tooltip; this.toggleEl.removeAttribute("title"); return this; }
   onClick(): void { /* compat */ }
   onChange(callback: (value: boolean) => any): this { this._onChange = callback; return this; }
 }
@@ -1000,7 +1000,7 @@ export class ExtraButtonComponent {
     this.extraSettingsEl.addEventListener('click', (e) => this._onClick?.(e));
   }
   setIcon(icon: string): this { setIcon(this.extraSettingsEl, icon); return this; }
-  setTooltip(tooltip: string): this { this.extraSettingsEl.title = tooltip; return this; }
+  setTooltip(tooltip: string): this { this.extraSettingsEl.dataset.tooltip = tooltip; this.extraSettingsEl.removeAttribute("title"); return this; }
   setDisabled(disabled: boolean): this { this.extraSettingsEl.classList.toggle('is-disabled', disabled); return this; }
   onClick(callback: (evt: MouseEvent) => any): this { this._onClick = callback; return this; }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Network,
   Calendar,
@@ -9,7 +9,7 @@ import type { PluginRibbonAction } from '../../types/plugin';
 import { setIcon } from '../../lib/obsidian-api/utils';
 import { SpacesIcon } from "../spaces/SpacesIcon";
 
-const ribbonRootClass = "flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
+const ribbonRootClass = "ribbon flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
 const ribbonGroupClass = "flex flex-col items-center gap-1";
 const ribbonBtnClass = "flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)";
 const pluginRibbonIconClass = "flex h-5 w-5 items-center justify-center text-current [&_.svg-icon]:block [&_.svg-icon]:h-5 [&_.svg-icon]:w-5 [&_.svg-icon]:shrink-0 [&_.svg-icon]:text-current [&_.svg-icon]:[stroke-width:1.5]";
@@ -37,8 +37,6 @@ export function Ribbon({
   onCanvas,
   pluginRibbonActions = [],
 }: RibbonProps) {
-  const [hoveringRibbon, setHoveringRibbon] = useState(false);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ribbonRootRef = useRef<HTMLDivElement | null>(null);
   const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
 
@@ -71,23 +69,10 @@ export function Ribbon({
     };
   }, []);
 
-  const handleMouseEnter = () => {
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveringRibbon(true);
-    }, 400);
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setHoveringRibbon(false);
-  };
-
   return (
     <div 
-      className={`${ribbonRootClass} ${hoveringRibbon ? "tooltips-ready" : ""}`}
+      className={ribbonRootClass}
       ref={ribbonRootRef}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <div className={ribbonGroupClass} ref={ribbonItemsRef}>
         {onDailyNote && (

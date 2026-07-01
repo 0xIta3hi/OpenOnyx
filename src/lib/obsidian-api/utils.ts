@@ -250,7 +250,8 @@ export function setIcon(parent: HTMLElement, iconId: string): void {
 }
 
 export function setTooltip(el: HTMLElement, tooltip: string, options?: any): void {
-  el.title = tooltip;
+  el.dataset.tooltip = tooltip;
+  el.removeAttribute("title");
 }
 
 export const Platform = {

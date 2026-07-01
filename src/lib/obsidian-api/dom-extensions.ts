@@ -62,7 +62,10 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
       if (o.href) el.setAttribute('href', o.href);
       if (o.placeholder) el.setAttribute('placeholder', o.placeholder);
       if (o.value) (el as HTMLInputElement).value = o.value;
-      if (o.title) el.title = o.title;
+      if (o.title) {
+        el.dataset.tooltip = o.title;
+        el.removeAttribute('title');
+      }
       if (o.prepend && this.firstChild) {
         this.insertBefore(el, this.firstChild);
       } else {

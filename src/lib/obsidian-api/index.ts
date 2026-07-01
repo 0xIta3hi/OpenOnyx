@@ -761,7 +761,8 @@ export function iterateRefs(refs: any[], cb: (ref: any) => void): void {
 }
 
 export function displayTooltip(el: HTMLElement, text: string, options?: any): void {
-  el.title = text;
+  el.dataset.tooltip = text;
+  el.removeAttribute("title");
 }
 
 // Math/rendering stubs -- safe no-ops

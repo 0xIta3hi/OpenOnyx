@@ -175,13 +175,17 @@ self.onmessage = (e: MessageEvent) => {
 
   switch (type) {
     case "init": {
-      nodes = data.nodes.map((n: any) => ({
-        ...n,
-        x: n.x ?? (Math.random() - 0.5) * 500,
-        y: n.y ?? (Math.random() - 0.5) * 500,
-        vx: 0,
-        vy: 0,
-      }));
+      nodes = data.nodes.map((n: any) => {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 100 + Math.random() * 900;
+        return {
+          ...n,
+          x: n.x ?? Math.cos(angle) * radius,
+          y: n.y ?? Math.sin(angle) * radius,
+          vx: 0,
+          vy: 0,
+        };
+      });
       edges = data.edges.map((e: any) => ({ ...e }));
       if (data.forces) {
         forceParams = { ...forceParams, ...data.forces };
@@ -193,7 +197,7 @@ self.onmessage = (e: MessageEvent) => {
     case "start": {
       if (simulation && !isRunning) {
         isRunning = true;
-        simulation.alpha(1).restart();
+        simulation.alpha(0.35).restart();
       }
       break;
     }

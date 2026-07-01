@@ -156,7 +156,8 @@ _Plugin.prototype.addRibbonIcon = function (icon: string, title: string, callbac
 
   const el = document.createElement('div');
   el.className = 'ribbon-btn oo-plugin-ribbon-btn';
-  el.title = title;
+  el.dataset.tooltip = title;
+  el.removeAttribute('title');
   setIcon(el, icon);
   el.addEventListener('click', guardedCallback);
 

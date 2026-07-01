@@ -22,6 +22,12 @@ import { askAI, isAIConfigured } from "../../utils/ai-core";
 
 const api = getAPI();
 
+interface CachedGraph {
+  vaultPath: string;
+  graphData: any;
+}
+let cachedGraph: CachedGraph | null = null;
+
 const AI_GRAPH_SIMILARITY_THRESHOLD = 0.45;
 const AI_GRAPH_CLUSTER_THRESHOLD = 0.58;
 const AI_GRAPH_MAX_EDGES_PER_NODE = 4;
@@ -451,8 +457,18 @@ export function AIKnowledgeGraph({
 
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [graphData, setGraphData] = useState<AIGraphData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [graphData, setGraphData] = useState<AIGraphData | null>(() => {
+    if (cachedGraph && cachedGraph.vaultPath === vaultPath) {
+      return cachedGraph.graphData;
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (cachedGraph && cachedGraph.vaultPath === vaultPath) {
+      return false;
+    }
+    return true;
+  });
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [simulating, setSimulating] = useState(false);
@@ -862,7 +878,7 @@ export function AIKnowledgeGraph({
 
         if (!cancelled) {
           hasRenderedGraphRef.current = true;
-          setGraphData({
+          const nextData = {
             nodes,
             edges: aiEdges,
             directionalFlows,
@@ -870,7 +886,11 @@ export function AIKnowledgeGraph({
             hiddenConnectionCount,
             bridgeNotes,
             ideaIslands,
-          });
+          };
+          if (vaultPath) {
+            cachedGraph = { vaultPath, graphData: nextData };
+          }
+          setGraphData(nextData);
         }
       } catch (err) {
         if (!cancelled) {
@@ -1214,10 +1234,12 @@ export function AIKnowledgeGraph({
       };
       if (live) return { ...baseNode, ...live };
       if (savedPositions && savedPositions[n.id]) return { ...baseNode, ...savedPositions[n.id] };
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 100 + Math.random() * 900;
       return {
         ...baseNode,
-        x: (Math.random() - 0.5) * 500,
-        y: (Math.random() - 0.5) * 500,
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
       };
     });
 
@@ -1963,7 +1985,34 @@ Summarize the theme and key intersections. No emojis.`;
           {(!!selectedNode || !!selectedEdge || selectedClusterId !== null || !!activeInsight) && (
             <div style={{ display: "contents" }}>
               {selectedNode && (
-                <div className="ai-graph-focus-card">
+                <div className="ai-graph-focus-card" style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="graph-btn"
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      padding: "4px",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                    onClick={() => {
+                      setSelectedNodeId(null);
+                      setSelectedEdge(null);
+                      setSelectedClusterId(null);
+                      setAiExplainText(null);
+                      rendererRef.current?.selectNode(null);
+                    }}
+                    title="Deselect node (back to full graph)"
+                  >
+                    <X size={14} />
+                  </button>
                   <div className="ai-graph-focus-title">{selectedNode.name}</div>
                   <div className="ai-graph-focus-meta">
                     {adjacencyByNode.get(selectedNode.id)?.length || 0} semantic connections &bull; Cluster {selectedNode.clusterId + 1}
@@ -2128,7 +2177,33 @@ Summarize the theme and key intersections. No emojis.`;
               )}
 
               {selectedEdge && (
-                <div className="ai-graph-focus-card">
+                <div className="ai-graph-focus-card" style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="graph-btn"
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      padding: "4px",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                    onClick={() => {
+                      setSelectedNodeId(null);
+                      setSelectedEdge(null);
+                      setSelectedClusterId(null);
+                      setAiExplainText(null);
+                    }}
+                    title="Deselect edge"
+                  >
+                    <X size={14} />
+                  </button>
                   <div className="ai-graph-focus-title">
                     {noteNameFromPath(selectedEdge.source)} &harr; {noteNameFromPath(selectedEdge.target)}
                   </div>
@@ -2217,7 +2292,33 @@ Summarize the theme and key intersections. No emojis.`;
               )}
 
               {selectedClusterId !== null && !selectedNode && !selectedEdge && (
-                <div className="ai-graph-focus-card">
+                <div className="ai-graph-focus-card" style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="graph-btn"
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      padding: "4px",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                    onClick={() => {
+                      setSelectedNodeId(null);
+                      setSelectedEdge(null);
+                      setSelectedClusterId(null);
+                      setAiExplainText(null);
+                    }}
+                    title="Deselect cluster"
+                  >
+                    <X size={14} />
+                  </button>
                   <div className="ai-graph-focus-title">
                     {clusterLabelById.get(selectedClusterId) || `Cluster ${selectedClusterId + 1}`}
                   </div>
@@ -2310,7 +2411,34 @@ Summarize the theme and key intersections. No emojis.`;
               )}
 
               {activeInsight && !selectedNode && !selectedEdge && selectedClusterId === null && (
-                <div className="ai-graph-focus-card">
+                <div className="ai-graph-focus-card" style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="graph-btn"
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      padding: "4px",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                    onClick={() => {
+                      setSelectedNodeId(null);
+                      setSelectedEdge(null);
+                      setSelectedClusterId(null);
+                      setActiveInsight(null);
+                      setAiExplainText(null);
+                    }}
+                    title="Deselect insight"
+                  >
+                    <X size={14} />
+                  </button>
                   <div className="ai-graph-focus-title">{activeInsight.title}</div>
                   <div className="ai-graph-focus-meta">{activeInsight.detail}</div>
                   <div className="ai-graph-insights-list" style={{ gap: 4 }}>

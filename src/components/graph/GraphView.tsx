@@ -654,10 +654,12 @@ export function GraphView({
           if (savedPositions && savedPositions[n.id]) {
             return { ...n, ...savedPositions[n.id] };
           }
+          const angle = Math.random() * Math.PI * 2;
+          const radius = 100 + Math.random() * 900;
           return {
             ...n,
-            x: (Math.random() - 0.5) * 500,
-            y: (Math.random() - 0.5) * 500,
+            x: Math.cos(angle) * radius,
+            y: Math.sin(angle) * radius,
           };
         });
 
