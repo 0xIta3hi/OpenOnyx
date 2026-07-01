@@ -1095,6 +1095,7 @@ export function AIKnowledgeGraph({
         } catch {
           // Ignore position persistence errors.
         }
+        renderer.centerView();
       }
     };
 
@@ -1278,6 +1279,10 @@ export function AIKnowledgeGraph({
     if (shouldResetLayout || (!hasLivePositions && !hasSavedPositions)) {
       setSimulating(true);
       worker.postMessage({ type: "start" });
+    } else if (hasSavedPositions && !hasLivePositions) {
+      setTimeout(() => {
+        renderer.centerView();
+      }, 100);
     }
   }, [
     filteredData.signature,

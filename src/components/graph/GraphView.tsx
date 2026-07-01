@@ -601,6 +601,7 @@ export function GraphView({
           });
           localStorage.setItem(positionsKey, JSON.stringify(posObj));
         } catch {}
+        renderer.centerView();
       }
     };
 
