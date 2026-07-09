@@ -106,6 +106,7 @@ import {
 } from "./utils/ftux";
 import { readData, writeData } from "./utils/disk-store";
 import { DragCtx, DragContextData } from "./context/DragContext";
+import { initializePersistedUserDatabase } from "./lib/userDatabase";
 
 type AppPluginViewAction = {
   id: string;
@@ -1038,6 +1039,10 @@ export default function App() {
     () => Array.from(new Set(bookmarks.map((bookmark) => bookmark.group).filter(Boolean))).sort(),
     [bookmarks],
   );
+
+  useEffect(() => {
+    initializePersistedUserDatabase();
+  }, []);
 
   useEffect(() => {
     if (!vaultPath) {

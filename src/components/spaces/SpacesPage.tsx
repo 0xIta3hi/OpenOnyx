@@ -2114,7 +2114,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                       setShowAuthModal(true);
                     }}
                     disabled={!isSupabaseConfigured}
-                    title={!isSupabaseConfigured ? "Configure Supabase vars in environment to enable cloud database" : undefined}
+                    title={!isSupabaseConfigured ? "Configure Supabase in Settings > Database to enable cloud database" : undefined}
                   >
                     Sign in
                   </button>
@@ -2307,7 +2307,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                   </div>
                   {!isSupabaseConfigured && (
                     <div className={cx(spaceFormHintClass, spaceFormWarningClass)}>
-                      Cloud DB parameters (Supabase environment keys) are required to toggle remote features.
+                      Configure Supabase in Settings &gt; Database to toggle remote features.
                     </div>
                   )}
                 </div>

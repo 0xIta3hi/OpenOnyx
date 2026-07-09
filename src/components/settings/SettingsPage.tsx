@@ -30,6 +30,7 @@ import {
   Shield,
   FileCode,
   Brain,
+  Database,
   Check,
   AlertCircle,
   ExternalLink
@@ -51,6 +52,18 @@ import {
   type AISettings
 } from "../../utils/ai-settings";
 import { isModelLoaded, loadStore } from "../../utils/embeddings";
+import {
+  clearSavedUserDatabaseConfig,
+  connectUserDatabase,
+  disconnectUserDatabase,
+  getUserDatabaseConfig,
+  loadSavedUserDatabaseConfig,
+  saveUserDatabaseConfig,
+  testConnection,
+  type UserDatabaseConfig,
+} from "../../lib/userDatabase";
+import { configureSupabaseClient } from "../../lib/supabase";
+import { parseSupabaseEnv } from "../../lib/supabaseConfig";
 
 
 export interface AppSettings {
@@ -149,6 +162,8 @@ const settingSelectClass =
   "setting-select min-w-40 cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 font-[inherit] text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 focus:border-[var(--color-accent)]";
 const settingInputClass =
   "setting-input w-full max-w-60 rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
+const settingTextareaClass =
+  "setting-textarea min-h-24 w-full rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-2 font-mono text-[12px] leading-[1.45] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
 const browseControlClass =
   "setting-control browse-control flex w-full max-w-60 items-center gap-1.5 [&_.setting-input]:max-w-none [&_.setting-input]:flex-1";
 const settingGroupHeaderClass =
@@ -275,6 +290,7 @@ type SettingsSection =
   | "appearance" 
   | "hotkeys" 
   | "ai"
+  | "database"
   | "plugins"
   // Core Plugins sub-items
   | "backlinks"
@@ -369,6 +385,96 @@ export function SettingsPage({
 
   const hasApiKey = !!aiSettings.apiKey;
 
+  const [databaseConfig, setDatabaseConfig] = useState<UserDatabaseConfig>(() => (
+    loadSavedUserDatabaseConfig() ||
+    getUserDatabaseConfig() || {
+      supabaseUrl: "",
+      anonKey: "",
+    }
+  ));
+  const [databaseEnvText, setDatabaseEnvText] = useState("");
+  const [databaseStatus, setDatabaseStatus] = useState<{
+    type: "idle" | "success" | "error" | "info";
+    message: string;
+  }>(() => (
+    loadSavedUserDatabaseConfig()
+      ? { type: "success", message: "Saved local Supabase credentials are active." }
+      : { type: "idle", message: "" }
+  ));
+  const [isTestingDatabase, setIsTestingDatabase] = useState(false);
+
+  const normalizedDatabaseConfig = (): UserDatabaseConfig => ({
+    supabaseUrl: databaseConfig.supabaseUrl.trim(),
+    anonKey: databaseConfig.anonKey.trim(),
+  });
+
+  const handleImportDatabaseEnv = () => {
+    const parsed = parseSupabaseEnv(databaseEnvText);
+    if (!parsed.supabaseUrl && !parsed.anonKey) {
+      setDatabaseStatus({
+        type: "error",
+        message: "Could not find VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in that text.",
+      });
+      return;
+    }
+
+    setDatabaseConfig((current) => ({
+      supabaseUrl: parsed.supabaseUrl || current.supabaseUrl,
+      anonKey: parsed.anonKey || current.anonKey,
+    }));
+    setDatabaseStatus({ type: "info", message: "Imported credentials. Save to activate them." });
+  };
+
+  const handleTestDatabaseConnection = async () => {
+    const config = normalizedDatabaseConfig();
+    if (!config.supabaseUrl || !config.anonKey) {
+      setDatabaseStatus({ type: "error", message: "Supabase URL and anon key are required." });
+      return;
+    }
+
+    setIsTestingDatabase(true);
+    setDatabaseStatus({ type: "info", message: "Testing Supabase connection..." });
+    try {
+      const result = await testConnection(config);
+      setDatabaseStatus(
+        result.ok
+          ? { type: "success", message: "Connection verified." }
+          : { type: "error", message: result.error || "Connection failed." },
+      );
+    } finally {
+      setIsTestingDatabase(false);
+    }
+  };
+
+  const handleSaveDatabaseConfig = async () => {
+    const config = normalizedDatabaseConfig();
+    if (!config.supabaseUrl || !config.anonKey) {
+      setDatabaseStatus({ type: "error", message: "Supabase URL and anon key are required." });
+      return;
+    }
+
+    try {
+      const saved = saveUserDatabaseConfig(config);
+      connectUserDatabase(saved);
+      configureSupabaseClient(saved);
+      await authManager.refreshConfiguration();
+      setDatabaseConfig(saved);
+      setDatabaseStatus({ type: "success", message: "Saved locally. Cloud features now use these credentials." });
+    } catch (err: any) {
+      setDatabaseStatus({ type: "error", message: err.message || "Failed to save database credentials." });
+    }
+  };
+
+  const handleClearDatabaseConfig = async () => {
+    clearSavedUserDatabaseConfig();
+    disconnectUserDatabase();
+    configureSupabaseClient();
+    await authManager.refreshConfiguration();
+    setDatabaseConfig({ supabaseUrl: "", anonKey: "" });
+    setDatabaseEnvText("");
+    setDatabaseStatus({ type: "info", message: "Local Supabase credentials cleared." });
+  };
+
   // Keep localSettings in sync if props change
   useEffect(() => {
     setLocalSettings(settings);
@@ -414,6 +520,7 @@ export function SettingsPage({
     { id: "appearance" as const, label: "Appearance", icon: Palette },
     { id: "hotkeys" as const, label: "Hotkeys", icon: Keyboard },
     { id: "ai" as const, label: "Configure AI", icon: Brain },
+    { id: "database" as const, label: "Database", icon: Database },
     { id: "plugins" as const, label: "Community plugins", icon: Puzzle },
   ];
 
@@ -1327,6 +1434,108 @@ export function SettingsPage({
                         {hasApiKey ? `Connected: ${currentModel?.shortLabel || currentModel?.label}` : "No API key — local analysis still works"}
                       </span>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── DATABASE SECTION ────────────────────────────────── */}
+            {activeSection === "database" && (
+              <div className={settingsSectionClass}>
+                <div className="setting-description-box" style={{ marginBottom: "20px" }}>
+                  <p className={settingDescriptionClass} style={{ fontSize: "13px", lineHeight: "1.5" }}>
+                    Store Supabase credentials locally for this app. These values replace the usual VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables at runtime.
+                  </p>
+                </div>
+
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Supabase URL</div>
+                    <div className={settingDescriptionClass}>
+                      Project URL from your Supabase API settings.
+                    </div>
+                  </div>
+                  <div className={settingControlClass}>
+                    <input
+                      type="text"
+                      className={settingInputClass}
+                      style={{ width: "280px", maxWidth: "280px" }}
+                      value={databaseConfig.supabaseUrl}
+                      onChange={(e) => setDatabaseConfig((current) => ({ ...current, supabaseUrl: e.target.value }))}
+                      placeholder="https://project.supabase.co"
+                    />
+                  </div>
+                </div>
+
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Anon public key</div>
+                    <div className={settingDescriptionClass}>
+                      Use the anon public key. Do not paste a service role key into the app.
+                    </div>
+                  </div>
+                  <div className={settingControlClass}>
+                    <input
+                      type="password"
+                      className={settingInputClass}
+                      style={{ width: "280px", maxWidth: "280px" }}
+                      value={databaseConfig.anonKey}
+                      onChange={(e) => setDatabaseConfig((current) => ({ ...current, anonKey: e.target.value }))}
+                      placeholder="eyJhbGciOi..."
+                    />
+                  </div>
+                </div>
+
+                <h3 className={settingGroupHeaderClass}>Import from .env</h3>
+                <div className="mb-4">
+                  <textarea
+                    className={settingTextareaClass}
+                    value={databaseEnvText}
+                    onChange={(e) => setDatabaseEnvText(e.target.value)}
+                    placeholder={"VITE_SUPABASE_URL=https://project.supabase.co\nVITE_SUPABASE_ANON_KEY=eyJhbGciOi..."}
+                  />
+                  <div className={buttonRowClass} style={{ marginTop: "10px", justifyContent: "flex-end" }}>
+                    <button className={settingBtnSecondaryClass} onClick={handleImportDatabaseEnv}>
+                      Import values
+                    </button>
+                  </div>
+                </div>
+
+                <h3 className={settingGroupHeaderClass}>Local Storage</h3>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Saved credentials</div>
+                    <div className={settingDescriptionClass}>
+                      Credentials are saved in this app's local browser storage and restored automatically on startup.
+                    </div>
+                    {databaseStatus.message && (
+                      <div
+                        className={cx(
+                          "mt-2 flex items-center gap-1.5 text-[12.5px]",
+                          databaseStatus.type === "success" && "text-(--success)",
+                          databaseStatus.type === "error" && "text-(--danger)",
+                          (databaseStatus.type === "info" || databaseStatus.type === "idle") && "text-(--text-muted)",
+                        )}
+                      >
+                        {databaseStatus.type === "success" ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>{databaseStatus.message}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className={buttonRowClass}>
+                    <button
+                      className={settingBtnSecondaryClass}
+                      onClick={handleTestDatabaseConnection}
+                      disabled={isTestingDatabase}
+                    >
+                      {isTestingDatabase ? "Testing..." : "Test"}
+                    </button>
+                    <button className={settingBtnPrimaryClass} onClick={handleSaveDatabaseConfig}>
+                      Save
+                    </button>
+                    <button className={settingBtnSecondaryClass} onClick={handleClearDatabaseConfig}>
+                      Clear
+                    </button>
                   </div>
                 </div>
               </div>

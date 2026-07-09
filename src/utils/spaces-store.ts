@@ -113,7 +113,7 @@ function mapRemoteToSpace(remote: RemoteSpaceRow, noteCount: number = 0): Space 
 
 async function upsertCloudSpace(space: Space): Promise<void> {
   if (!isSupabaseConfigured) {
-    throw new Error("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.");
+    throw new Error("Supabase is not configured. Add credentials in Settings > Database.");
   }
 
   const { error } = await getClient()
@@ -514,7 +514,7 @@ export async function createSpace(data: {
   let ownerId = "local";
   if (visibility !== "local") {
     if (!isSupabaseConfigured) {
-      throw new Error("Cloud spaces require Supabase configuration. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.");
+      throw new Error("Cloud spaces require Supabase configuration. Add credentials in Settings > Database.");
     }
     const user = authManager.requireAuth();
     ownerId = user.id;

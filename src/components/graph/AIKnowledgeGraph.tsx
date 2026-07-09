@@ -475,6 +475,7 @@ export function AIKnowledgeGraph({
   const [alpha, setAlpha] = useState(0);
   const [layoutResetTick, setLayoutResetTick] = useState(0);
   const [rendererInitRetry, setRendererInitRetry] = useState(0);
+  const [rendererReadyTick, setRendererReadyTick] = useState(0);
   const [insightFocusNodeIds, setInsightFocusNodeIds] = useState<Set<string> | null>(null);
   const [activeInsight, setActiveInsight] = useState<{
     title: string;
@@ -1099,9 +1100,13 @@ export function AIKnowledgeGraph({
       }
     };
 
+    let disposed = false;
+
     renderer
       .init()
       .then(() => {
+        if (disposed || rendererRef.current !== renderer) return;
+
         renderer.setCallbacks({
           onNodeClick: (nodeId) => {
             setSelectedNodeId(nodeId);
@@ -1161,6 +1166,8 @@ export function AIKnowledgeGraph({
           show: true,
           threshold: manualSettings.labelThreshold,
         });
+
+        setRendererReadyTick((tick) => tick + 1);
       })
       .catch((err) => {
         console.error("[AI Graph] Renderer init failed", err);
@@ -1181,6 +1188,7 @@ export function AIKnowledgeGraph({
     resizeObserver.observe(container);
 
     return () => {
+      disposed = true;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       if (workerRef.current) {
@@ -1293,6 +1301,7 @@ export function AIKnowledgeGraph({
     filteredData.nodes,
     filteredData.edges,
     loading,
+    rendererReadyTick,
     positionsKey,
     theme,
     vaultHash,

@@ -1,5 +1,10 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
+import {
+  clearLocalSupabaseConfig,
+  loadLocalSupabaseConfig,
+  saveLocalSupabaseConfig,
+} from './supabaseConfig';
 
 /**
  * User-owned Supabase Database Setup
@@ -435,6 +440,19 @@ export function getUserDatabaseConfig(): UserDatabaseConfig | null {
   return userConfig;
 }
 
+export function loadSavedUserDatabaseConfig(): UserDatabaseConfig | null {
+  return loadLocalSupabaseConfig();
+}
+
+export function saveUserDatabaseConfig(config: UserDatabaseConfig): UserDatabaseConfig {
+  const saved = saveLocalSupabaseConfig(config);
+  return saved;
+}
+
+export function clearSavedUserDatabaseConfig(): void {
+  clearLocalSupabaseConfig();
+}
+
 /**
  * Connect to a user-owned Supabase instance.
  * This does NOT install the schema -- call setupUserDatabase for that.
@@ -460,6 +478,13 @@ export function connectUserDatabase(config: UserDatabaseConfig): SupabaseClient<
 export function disconnectUserDatabase(): void {
   userClient = null;
   userConfig = null;
+}
+
+export function initializePersistedUserDatabase(): UserDatabaseConfig | null {
+  const saved = loadSavedUserDatabaseConfig();
+  if (!saved) return null;
+  connectUserDatabase(saved);
+  return saved;
 }
 
 /**

@@ -1,35 +1,49 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
+import { getInitialSupabaseConfig, type LocalSupabaseConfig } from './supabaseConfig';
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim();
+function createSupabaseClient(config: LocalSupabaseConfig | null) {
+  // createClient requires non-empty values even when cloud features are disabled.
+  // These loopback placeholders prevent import-time crashes and are never contacted:
+  // every cloud/auth entry point checks isSupabaseConfigured first.
+  const clientUrl = config?.supabaseUrl || "http://127.0.0.1:54321";
+  const clientAnonKey = config?.anonKey || "openobsidian-local-only";
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+  return createClient<Database>(
+    clientUrl,
+    clientAnonKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        // Custom no-op lock function to bypass GoTrue/Supabase Web Locks API contention.
+        // In React Strict Mode (dev), components mount/unmount rapidly, causing locks to hang.
+        lock: async (name, acquireTimeout, fn) => {
+          return await fn();
+        },
+      },
+    }
+  );
+}
+
+let activeConfig = getInitialSupabaseConfig();
+
+export let isSupabaseConfigured = Boolean(activeConfig);
 
 if (!isSupabaseConfigured) {
   console.info("[OpenObsidian] Supabase is not configured; running in local-only mode.");
 }
 
-// createClient requires non-empty values even when cloud features are disabled.
-// These loopback placeholders prevent import-time crashes and are never contacted:
-// every cloud/auth entry point checks isSupabaseConfigured first.
-const clientUrl = supabaseUrl || "http://127.0.0.1:54321";
-const clientAnonKey = supabaseAnonKey || "openobsidian-local-only";
+export let supabase = createSupabaseClient(activeConfig);
 
-export const supabase = createClient<Database>(
-  clientUrl,
-  clientAnonKey,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-      // Custom no-op lock function to bypass GoTrue/Supabase Web Locks API contention.
-      // In React Strict Mode (dev), components mount/unmount rapidly, causing locks to hang.
-      lock: async (name, acquireTimeout, fn) => {
-        return await fn();
-      },
-    },
+export function configureSupabaseClient(config: LocalSupabaseConfig | null = getInitialSupabaseConfig()): void {
+  activeConfig = config;
+  isSupabaseConfigured = Boolean(activeConfig);
+  supabase = createSupabaseClient(activeConfig);
+
+  if (!isSupabaseConfigured) {
+    console.info("[OpenObsidian] Supabase is not configured; running in local-only mode.");
   }
-);
+}

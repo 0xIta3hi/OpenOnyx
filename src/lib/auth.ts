@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabase } from './supabase';
 import type { User, Session } from '@supabase/supabase-js';
+import { SUPABASE_CONFIG_CHANGED_EVENT } from './supabaseConfig';
 
 export type AuthState = {
   user: User | null;
@@ -35,13 +36,22 @@ function getOAuthRedirectUrl(): string | undefined {
 class AuthManager {
   private state: AuthState = { user: null, session: null, isLoading: isSupabaseConfigured };
   private listeners: Set<AuthListener> = new Set();
+  private unsubscribeAuthState: (() => void) | null = null;
 
   constructor() {
     if (isSupabaseConfigured) void this.init();
+    if (typeof window !== 'undefined') {
+      window.addEventListener(SUPABASE_CONFIG_CHANGED_EVENT, () => {
+        void this.refreshConfiguration();
+      });
+    }
   }
 
   private async init() {
     try {
+      this.unsubscribeAuthState?.();
+      this.unsubscribeAuthState = null;
+
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) throw error;
       this.updateState({
@@ -50,17 +60,31 @@ class AuthManager {
         isLoading: false,
       });
 
-      supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
         this.updateState({
           user: nextSession?.user ?? null,
           session: nextSession ?? null,
           isLoading: false,
         });
       });
+      this.unsubscribeAuthState = () => data.subscription.unsubscribe();
     } catch (error) {
       console.warn('[Auth] Initialization failed; continuing without a cloud session.', error);
       this.updateState({ user: null, session: null, isLoading: false });
     }
+  }
+
+  async refreshConfiguration() {
+    this.unsubscribeAuthState?.();
+    this.unsubscribeAuthState = null;
+
+    if (!isSupabaseConfigured) {
+      this.updateState({ user: null, session: null, isLoading: false });
+      return;
+    }
+
+    this.updateState({ ...this.state, isLoading: true });
+    await this.init();
   }
 
   private requireSupabase(): void {
