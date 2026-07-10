@@ -464,6 +464,8 @@ export function createMockAPI(): ElectronAPI {
     maximizeWindow: () => {},
     closeWindow: () => {},
     isMaximized: async () => false,
+    isFullScreen: async () => false,
+    onFullScreenChange: (_callback: (isFullScreen: boolean) => void) => () => {},
 
     // Menu events (no-op in browser)
     onMenuEvent: (_channel: string, _callback: (...args: any[]) => void) => {},

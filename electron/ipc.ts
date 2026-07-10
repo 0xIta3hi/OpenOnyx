@@ -164,6 +164,10 @@ export function registerIpcHandlers(
     return getMainWindow()?.isMaximized() || false;
   });
 
+  ipcMain.handle('window:isFullScreen', () => {
+    return getMainWindow()?.isFullScreen() || false;
+  });
+
   // ── Attachments/Images ────────────────────────────
   ipcMain.handle('attachments:saveImage', async (_event, fileName: string, base64Data: string) => {
     return fsManager.saveImage(fileName, base64Data);

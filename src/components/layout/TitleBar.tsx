@@ -139,7 +139,7 @@ const titlebarClass =
 const titlebarDragHandleClass =
   "absolute inset-0 z-[1] pointer-events-none [-webkit-app-region:drag]";
 const titlebarLeftClass =
-  "relative z-[2] flex h-full shrink-0 items-center bg-transparent pointer-events-auto [-webkit-app-region:no-drag]";
+  "titlebar-left relative z-[2] flex h-full shrink-0 items-center bg-transparent pointer-events-auto [-webkit-app-region:no-drag]";
 const titlebarRibbonSlotClass =
   "flex h-full w-[var(--ribbon-width)] shrink-0 items-center justify-center";
 const titlebarActionBtnClass =
@@ -300,6 +300,7 @@ interface TitleBarProps {
   onSelectLeftPluginView?: (viewType: string) => void;
   rightPluginViews?: TitlebarPluginViewInfo[];
   rightSidebarWidth?: number;
+  isFullScreen?: boolean;
 }
 
 import { setIcon } from "../../lib/obsidian-api/utils";
@@ -375,9 +376,11 @@ export function TitleBar({
   onSelectLeftPluginView,
   rightPluginViews = [],
   rightSidebarWidth = 300,
+  isFullScreen = false,
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
+  const shouldReserveMacTrafficLights = isMac && !isFullScreen;
   const titlebarRef = useRef<HTMLDivElement>(null);
   const { setDragCtx } = React.useContext(DragCtx);
 
@@ -522,9 +525,13 @@ export function TitleBar({
       <div
         className={titlebarLeftClass}
         style={{
-          width: leftWidth ? `${isMac ? Math.max(leftWidth, 120) : leftWidth}px` : undefined,
-          minWidth: leftWidth ? `${isMac ? Math.max(leftWidth, 120) : leftWidth}px` : undefined,
-          paddingLeft: isMac ? "75px" : undefined,
+          width: leftWidth
+            ? `${shouldReserveMacTrafficLights ? Math.max(leftWidth, 120) : leftWidth}px`
+            : undefined,
+          minWidth: leftWidth
+            ? `${shouldReserveMacTrafficLights ? Math.max(leftWidth, 120) : leftWidth}px`
+            : undefined,
+          paddingLeft: shouldReserveMacTrafficLights ? "75px" : undefined,
           boxSizing: "border-box",
         }}
       >

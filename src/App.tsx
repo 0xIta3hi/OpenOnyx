@@ -1014,6 +1014,7 @@ export default function App() {
   const [collabStatus, setCollabStatus] = useState<CollabStatus>({ state: 'idle' });
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [isNativeFullScreen, setIsNativeFullScreen] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [graphMode, setGraphMode] = useState<GraphMode>("manual");
   const [graphFullScreen, setGraphFullScreen] = useState(false);
@@ -1287,6 +1288,24 @@ export default function App() {
   // Keep ref in sync with state (for non-drag updates)
   useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
   useEffect(() => { showSidebarRef.current = showSidebar; }, [showSidebar]);
+
+  useEffect(() => {
+    if (!navigator.platform.includes("Mac")) return;
+
+    let disposed = false;
+    void api.isFullScreen?.().then((fullScreen) => {
+      if (!disposed) setIsNativeFullScreen(fullScreen);
+    });
+
+    const unsubscribe = api.onFullScreenChange?.((fullScreen) => {
+      setIsNativeFullScreen(fullScreen);
+    });
+
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
 
   useEffect(() => {
     const workspace = ooAppRef.current?.workspace;
@@ -6856,6 +6875,7 @@ export default function App() {
           }}
           rightPluginViews={rightPluginViews}
           rightSidebarWidth={rightSidebarWidth}
+          isFullScreen={isNativeFullScreen}
         />
 
       <div

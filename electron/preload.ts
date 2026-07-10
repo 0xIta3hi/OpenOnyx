@@ -99,6 +99,14 @@ const electronAPI = {
   maximizeWindow: (): void => ipcRenderer.send('window:maximize'),
   closeWindow: (): void => ipcRenderer.send('window:close'),
   isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+  isFullScreen: (): Promise<boolean> => ipcRenderer.invoke('window:isFullScreen'),
+  onFullScreenChange: (callback: (isFullScreen: boolean) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean) => {
+      callback(isFullScreen);
+    };
+    ipcRenderer.on('window:fullscreen-change', listener);
+    return () => ipcRenderer.removeListener('window:fullscreen-change', listener);
+  },
 
   // ── Menu Event Listeners ──────────────────────────
   onMenuEvent: (channel: string, callback: (...args: any[]) => void) => {

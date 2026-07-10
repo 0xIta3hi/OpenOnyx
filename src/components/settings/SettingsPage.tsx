@@ -33,7 +33,8 @@ import {
   Database,
   Check,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Copy,
 } from "lucide-react";
 import { PluginSettingsPanel } from '../plugins/PluginSettingsPanel';
 import { PluginMarketplace } from '../plugins/PluginMarketplace';
@@ -64,6 +65,8 @@ import {
 } from "../../lib/userDatabase";
 import { configureSupabaseClient } from "../../lib/supabase";
 import { parseSupabaseEnv } from "../../lib/supabaseConfig";
+import databaseSchemaSql from "../../../supabase/schema.sql?raw";
+import { getAPI } from "../../utils/api";
 
 
 export interface AppSettings {
@@ -401,6 +404,10 @@ export function SettingsPage({
       ? { type: "success", message: "Saved local Supabase credentials are active." }
       : { type: "idle", message: "" }
   ));
+  const [databaseSchemaCopyStatus, setDatabaseSchemaCopyStatus] = useState<{
+    type: "idle" | "success" | "error";
+    message: string;
+  }>({ type: "idle", message: "" });
   const [isTestingDatabase, setIsTestingDatabase] = useState(false);
 
   const normalizedDatabaseConfig = (): UserDatabaseConfig => ({
@@ -473,6 +480,22 @@ export function SettingsPage({
     setDatabaseConfig({ supabaseUrl: "", anonKey: "" });
     setDatabaseEnvText("");
     setDatabaseStatus({ type: "info", message: "Local Supabase credentials cleared." });
+  };
+
+  const handleCopyDatabaseSchema = async () => {
+    try {
+      await getAPI().writeClipboardText(databaseSchemaSql);
+      setDatabaseSchemaCopyStatus({
+        type: "success",
+        message: "Copied schema.sql migration to clipboard.",
+      });
+    } catch (err) {
+      console.error("Failed to copy database schema:", err);
+      setDatabaseSchemaCopyStatus({
+        type: "error",
+        message: "Failed to copy migration SQL.",
+      });
+    }
   };
 
   // Keep localSettings in sync if props change
@@ -1497,6 +1520,34 @@ export function SettingsPage({
                   <div className={buttonRowClass} style={{ marginTop: "10px", justifyContent: "flex-end" }}>
                     <button className={settingBtnSecondaryClass} onClick={handleImportDatabaseEnv}>
                       Import values
+                    </button>
+                  </div>
+                </div>
+
+                <h3 className={settingGroupHeaderClass}>Schema migration</h3>
+                <div className={settingCardClass}>
+                  <div className={settingInfoClass}>
+                    <div className={settingTitleClass}>Database creation SQL</div>
+                    <div className={settingDescriptionClass}>
+                      Copy the bundled schema.sql migration and run it in the Supabase SQL Editor for a personal database.
+                    </div>
+                    {databaseSchemaCopyStatus.message && (
+                      <div
+                        className={cx(
+                          "mt-2 flex items-center gap-1.5 text-[12.5px]",
+                          databaseSchemaCopyStatus.type === "success" && "text-(--success)",
+                          databaseSchemaCopyStatus.type === "error" && "text-(--danger)",
+                        )}
+                      >
+                        {databaseSchemaCopyStatus.type === "success" ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>{databaseSchemaCopyStatus.message}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className={buttonRowClass}>
+                    <button className={`${settingBtnSecondaryClass} flex items-center gap-2`} onClick={handleCopyDatabaseSchema}>
+                      <Copy size={14} />
+                      Copy SQL
                     </button>
                   </div>
                 </div>

@@ -6,53 +6,18 @@
  * exposed to the renderer via secure IPC channels.
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, protocol, net, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
 import { registerIpcHandlers } from './ipc';
 
-// This app intentionally hosts trusted Obsidian plugins that generate code at
-// runtime. Electron's development warning cannot distinguish that from an
-// accidental unsafe-eval policy; packaged builds do not emit the warning.
-process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
-
 let mainWindow: BrowserWindow | null = null;
 let fsManager: FileSystemManager | null = null;
 let searchEngine: SearchEngine | null = null;
 
 const isDevMode = !app.isPackaged;
-
-const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
-
-function configurePluginToolPath(): void {
-  const toolDirectories = [
-    process.env.OPENOBSIDIAN_PANDOC_DIR,
-    path.join(app.getPath('home'), '.local', 'share', 'openobsidian', 'tools', 'pandoc'),
-  ].filter((entry): entry is string => Boolean(entry));
-  const currentPath = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
-  process.env.PATH = [...new Set([...toolDirectories, ...currentPath])].join(path.delimiter);
-}
-
-function loadConfig() {
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-    }
-  } catch (e) {
-    console.error('Failed to load config:', e);
-  }
-  return {};
-}
-
-function saveConfig(config: any) {
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-  } catch (e) {
-    console.error('Failed to save config:', e);
-  }
-}
 
 function addDisableFeatures(features: string[]): void {
   const existing = app.commandLine.getSwitchValue('disable-features');
@@ -84,12 +49,6 @@ function configureLinuxFontConfig(): void {
 function configureChromiumRuntime(): void {
   configureLinuxFontConfig();
 
-  const debugPort = process.env.OPENOBSIDIAN_DEBUG_PORT;
-  if (debugPort) app.commandLine.appendSwitch('remote-debugging-port', debugPort);
-
-  // Globally disable web security (CORS) so plugins can fetch anything
-  app.commandLine.appendSwitch('disable-web-security');
-
   if (!isDevMode) return;
   if (process.env.OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS === '1') return;
 
@@ -112,7 +71,6 @@ function configureChromiumRuntime(): void {
   ]);
 }
 
-configurePluginToolPath();
 configureChromiumRuntime();
 
 function isExternalHttpUrl(url: string): boolean {
@@ -157,11 +115,9 @@ function createWindow(): void {
     frame: process.platform === 'darwin' ? true : false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: false,
-      nodeIntegration: true,
+      contextIsolation: true,
+      nodeIntegration: false,
       sandbox: false,
-      webSecurity: false,
-      webviewTag: true,
     },
   });
 
@@ -214,35 +170,8 @@ function createWindow(): void {
     void shell.openExternal(navigationUrl);
   });
 
-  // Open DevTools by default for debugging
+  // // Open DevTools by default for debugging
   // mainWindow.webContents.openDevTools();
-
-  // Allow framing of any site by stripping X-Frame-Options and CSP frame-ancestors headers
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    if (!details.responseHeaders) return callback({ cancel: false, responseHeaders: details.responseHeaders });
-    
-    const responseHeaders = { ...details.responseHeaders };
-    
-    // Remove headers that prevent framing
-    delete responseHeaders['x-frame-options'];
-    delete responseHeaders['X-Frame-Options'];
-    
-    // Also handle Content-Security-Policy if it contains frame-ancestors
-    if (responseHeaders['content-security-policy']) {
-      const csp = responseHeaders['content-security-policy'][0];
-      if (csp.includes('frame-ancestors')) {
-        responseHeaders['content-security-policy'][0] = csp.replace(/frame-ancestors\s+[^;]+(;|$)/, '');
-      }
-    }
-    if (responseHeaders['Content-Security-Policy']) {
-      const csp = responseHeaders['Content-Security-Policy'][0];
-      if (csp.includes('frame-ancestors')) {
-        responseHeaders['Content-Security-Policy'][0] = csp.replace(/frame-ancestors\s+[^;]+(;|$)/, '');
-      }
-    }
-
-    callback({ cancel: false, responseHeaders });
-  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -322,69 +251,12 @@ function buildMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'vault', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
-]);
-
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   fsManager = new FileSystemManager();
   searchEngine = new SearchEngine();
 
-  // Grant all permission requests (like storage-access for Apple Music/Spotify embedded players)
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(true);
-  });
-
-  // Spoof Referer and Origin for Apple Music embeds to bypass HTTP/localhost restrictions
-  session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['*://*.music.apple.com/*', '*://*.apple.com/*'] },
-    (details, callback) => {
-      details.requestHeaders['Origin'] = 'https://embed.music.apple.com';
-      details.requestHeaders['Referer'] = 'https://embed.music.apple.com/';
-      callback({ requestHeaders: details.requestHeaders });
-    }
-  );
-
-  // Load last used vault if exists
-  const config = loadConfig();
-  if (config.lastVaultPath && fs.existsSync(config.lastVaultPath)) {
-    fsManager.setVaultPath(config.lastVaultPath);
-    
-    // Ensure startup vault is in previouslyOpenedVaults
-    const previouslyOpened = config.previouslyOpenedVaults || [];
-    if (!previouslyOpened.includes(config.lastVaultPath)) {
-      previouslyOpened.push(config.lastVaultPath);
-      config.previouslyOpenedVaults = previouslyOpened;
-      saveConfig(config);
-    }
-
-    // Initial index build for the auto-loaded vault
-    await searchEngine.buildIndex(fsManager);
-  }
-
   // Register all IPC handlers for renderer communication
-  registerIpcHandlers(
-    ipcMain,
-    fsManager,
-    searchEngine,
-    () => mainWindow,
-    (vaultPath) => {
-      const config = loadConfig();
-      config.lastVaultPath = vaultPath;
-      
-      const previouslyOpened = config.previouslyOpenedVaults || [];
-      if (!previouslyOpened.includes(vaultPath)) {
-        previouslyOpened.push(vaultPath);
-        config.previouslyOpenedVaults = previouslyOpened;
-      }
-      
-      saveConfig(config);
-    },
-    () => {
-      const config = loadConfig();
-      return config.previouslyOpenedVaults || [];
-    }
-  );
+  registerIpcHandlers(ipcMain, fsManager, searchEngine, () => mainWindow);
 
   // Handle vault directory selection dialog
   ipcMain.handle('dialog:openDirectory', async () => {
@@ -395,76 +267,8 @@ app.whenReady().then(async () => {
     return result.canceled ? null : result.filePaths[0];
   });
 
-  ipcMain.handle('vault:removePreviousPath', async (_event, vaultPath: string) => {
-    const config = loadConfig();
-    config.previouslyOpenedVaults = (config.previouslyOpenedVaults || []).filter(
-      (path: string) => path !== vaultPath,
-    );
-    saveConfig(config);
-    return config.previouslyOpenedVaults;
-  });
-
-  ipcMain.handle('desktop:renamePath', async (_event, oldPath: string, newPath: string) => {
-    if (!oldPath || !newPath || oldPath === newPath) return;
-    await fs.promises.mkdir(path.dirname(newPath), { recursive: true });
-    await fs.promises.rename(oldPath, newPath);
-
-    const config = loadConfig();
-    if (config.lastVaultPath === oldPath) {
-      config.lastVaultPath = newPath;
-    }
-    config.previouslyOpenedVaults = (config.previouslyOpenedVaults || []).map(
-      (vaultPath: string) => (vaultPath === oldPath ? newPath : vaultPath),
-    );
-    saveConfig(config);
-  });
-
   buildMenu();
   createWindow();
-
-  protocol.handle('vault', async (request) => {
-    if (!fsManager) return new Response('No vault', { status: 404 });
-    const vaultPath = fsManager.getVaultPath();
-    if (!vaultPath) return new Response('No vault', { status: 404 });
-
-    const urlPath = decodeURIComponent(request.url.replace(/^vault:\/\/(?:local\/)?/, ''));
-    if (!urlPath) return new Response('Bad request', { status: 400 });
-
-    const fullPath = path.join(vaultPath, urlPath);
-
-    // 1. Try exact path match
-    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-      return net.fetch('file://' + fullPath);
-    }
-
-    // 2. Obsidian-style fallback: search for filename anywhere in vault
-    const fileName = path.basename(urlPath);
-    const searchVaultForFile = (dir: string, targetName: string): string | null => {
-      try {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-          const entryPath = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            const found = searchVaultForFile(entryPath, targetName);
-            if (found) return found;
-          } else if (entry.name === targetName) {
-            return entryPath;
-          }
-        }
-      } catch {
-        // ignore errors
-      }
-      return null;
-    };
-
-    const foundPath = searchVaultForFile(vaultPath, fileName);
-    if (foundPath) {
-      return net.fetch('file://' + foundPath);
-    }
-
-    return new Response('Not found', { status: 404 });
-  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
