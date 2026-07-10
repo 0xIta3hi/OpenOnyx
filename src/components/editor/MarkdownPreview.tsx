@@ -26,6 +26,7 @@ import DOMPurify from "dompurify";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl, toggleUrlInMarkdown } from "../../utils/urlHelper";
 import { runMarkdownPostProcessors } from "../../lib/obsidian-api/markdown";
+import type { AppSettings } from "../settings/SettingsPage";
 
 // Enable math formatting
 marked.use(markedKatex({ throwOnError: false }));
@@ -105,6 +106,7 @@ interface MarkdownPreviewProps {
   onGetLinkPreview?: (noteName: string) => string | null;
   onImageClick?: (src: string, alt: string) => void;
   theme?: string;
+  settings?: AppSettings;
   onContentChange?: (content: string) => void;
   constrainWidth?: boolean;
 }
@@ -386,6 +388,7 @@ export function MarkdownPreview({
   onGetLinkPreview,
   onImageClick,
   theme,
+  settings,
   onContentChange,
   constrainWidth = true,
 }: MarkdownPreviewProps) {
@@ -657,8 +660,15 @@ export function MarkdownPreview({
     );
     processed = protectedCode.restore(processed);
 
+    if (settings?.propertiesInDocument === "hidden") {
+      processed = processed.replace(/^---\n[\s\S]*?\n---\n?/, "");
+    }
+
     // Parse markdown to HTML
-    let html = marked.parse(processed, { gfm: true, breaks: true }) as string;
+    let html = marked.parse(processed, {
+      gfm: true,
+      breaks: settings?.strictLineBreaks === false,
+    }) as string;
     html = closeCallouts(html);
     html = html.replace(
       /<li>\s*(<input\b[^>]*class="task-checkbox"[^>]*>)/g,
@@ -786,11 +796,12 @@ export function MarkdownPreview({
   // Handle link hover for preview
   useEffect(() => {
     const container = previewRef.current;
-    if (!container || !onGetLinkPreview) return;
+    if (!container || !onGetLinkPreview || settings?.corePagePreview === false || settings?.pagePreviewReading === false) return;
 
     const handleMouseEnter = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.classList.contains("wiki-link")) {
+        if (settings?.pagePreviewRequireCtrl && !e.ctrlKey && !e.metaKey) return;
         const linkName = target.getAttribute("data-link");
         if (!linkName) return;
 
@@ -835,7 +846,7 @@ export function MarkdownPreview({
         clearTimeout(hoverTimeoutRef.current);
       }
     };
-  }, [onGetLinkPreview]);
+  }, [onGetLinkPreview, settings?.corePagePreview, settings?.pagePreviewReading, settings?.pagePreviewRequireCtrl]);
 
   // Render preview content for link preview popup
   const renderPreviewContent = useCallback((content: string | null) => {

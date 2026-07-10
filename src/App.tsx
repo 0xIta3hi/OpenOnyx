@@ -89,6 +89,7 @@ import {
   removeTabFromTree,
   setActiveTabInLeaf,
   moveTabInTree,
+  splitLeaf,
 } from "./components/layout/SplitPaneContainer";
 import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
 import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers";
@@ -1175,6 +1176,8 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.theme === "peach-white") parsed.theme = "light";
+        if (parsed.theme === "parchment") parsed.theme = "light";
+        if (parsed.accentColor === "#8b5cf6") parsed.accentColor = DEFAULT_SETTINGS.accentColor;
         return { ...DEFAULT_SETTINGS, ...parsed };
       }
     } catch (e) {
@@ -2043,7 +2046,7 @@ export default function App() {
           
           try {
             const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
-            if (workspaceData && workspaceData.paneTree) {
+            if (settings.defaultFileToOpen !== "new-tab" && workspaceData && workspaceData.paneTree) {
               setPaneTree(workspaceData.paneTree);
               setTabs(collectAllTabs(workspaceData.paneTree));
               if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
@@ -2117,9 +2120,12 @@ export default function App() {
     );
     root.style.setProperty(
       "--reading-view-width",
-      `${settings.readingViewWidth ?? DEFAULT_SETTINGS.readingViewWidth}px`,
+      settings.readableLineLength === false
+        ? "none"
+        : `${settings.readingViewWidth ?? DEFAULT_SETTINGS.readingViewWidth}px`,
     );
     root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
+    document.body.style.zoom = `${(settings.zoomLevel ?? DEFAULT_SETTINGS.zoomLevel) / 100}`;
 
     if (theme === "custom") {
       const bg = hexToRgb(settings.customBgPrimary) ?? { r: 21, g: 21, b: 21 };
@@ -2284,6 +2290,21 @@ export default function App() {
   useEffect(() => {
     saveFTUXState(ftuxState);
   }, [ftuxState]);
+
+  useEffect(() => {
+    const currentTab = tabs.find((tab) => tab.id === activeTabId);
+    if (
+      !settings.backlinksOpenByDefault ||
+      settings.coreBacklinks === false ||
+      !currentTab?.path ||
+      currentTab.path.startsWith("__") ||
+      !currentTab.path.toLowerCase().endsWith(".md")
+    ) {
+      return;
+    }
+    setShowRightSidebar(true);
+    setRightSidebarTab("backlinks");
+  }, [activeTabId, settings.backlinksOpenByDefault, settings.coreBacklinks, tabs]);
 
   useEffect(() => {
     return () => {
@@ -2896,7 +2917,9 @@ export default function App() {
     api.onMenuEvent("menu:new-note", handleNewNote);
     api.onMenuEvent("menu:save", handleSave);
     api.onMenuEvent("menu:toggle-graph", openGraphFromMenu);
-    api.onMenuEvent("menu:command-palette", () => setShowCommandPalette(true));
+    api.onMenuEvent("menu:command-palette", () => {
+      if (settings.coreCommandPalette !== false) setShowCommandPalette(true);
+    });
     api.onMenuEvent("menu:toggle-sidebar", () => setShowSidebar((s) => !s));
 
     return () => {
@@ -2909,7 +2932,7 @@ export default function App() {
         "menu:toggle-sidebar",
       ].forEach((ch) => api.removeMenuListener(ch));
     };
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, settings.coreCommandPalette]);
 
   // ── Keyboard Shortcuts ──────────────────────────────
   useEffect(() => {
@@ -2917,7 +2940,7 @@ export default function App() {
       const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
 
-      if (ctrl && e.key === "p") {
+      if (ctrl && e.key === "p" && settings.coreCommandPalette !== false) {
         e.preventDefault();
         setShowCommandPalette(true);
       } else if (ctrl && !shift && e.key.toLowerCase() === "f") {
@@ -2931,7 +2954,7 @@ export default function App() {
       } else if (ctrl && e.key === "n") {
         e.preventDefault();
         handleNewNote();
-      } else if (ctrl && e.key.toLowerCase() === "o") {
+      } else if (ctrl && e.key.toLowerCase() === "o" && settings.coreQuickSwitcher !== false) {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent("editor:open-search"));
       } else if (ctrl && e.key === "s") {
@@ -2940,7 +2963,7 @@ export default function App() {
       } else if (ctrl && e.key === "g") {
         e.preventDefault();
         openGraphAsTab();
-      } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
+      } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c" && settings.coreCanvas !== false) {
         e.preventDefault();
         void handleToggleCanvas();
       } else if (ctrl && e.key === "b") {
@@ -3011,7 +3034,7 @@ export default function App() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener('oo:open-database', handleOpenDatabase as EventListener);
     };
-  }, [activeTabId, tabs, paneTree]);
+  }, [activeTabId, tabs, paneTree, settings.coreCommandPalette, settings.coreQuickSwitcher, settings.coreCanvas]);
 
   const loadVaultData = async (path: string) => {
     await api.setVaultPath(path);
@@ -3025,7 +3048,7 @@ export default function App() {
     
     try {
       const workspaceData = await readData<{ paneTree: PaneNode; activeTabId: string | null; focusedLeafId: string }>("workspace.json");
-      if (workspaceData && workspaceData.paneTree) {
+      if (settings.defaultFileToOpen !== "new-tab" && workspaceData && workspaceData.paneTree) {
         setPaneTree(workspaceData.paneTree);
         setTabs(collectAllTabs(workspaceData.paneTree));
         if (workspaceData.activeTabId) setActiveTabId(workspaceData.activeTabId);
@@ -3266,9 +3289,18 @@ export default function App() {
       const canonical = isCanvasFile(safeBase)
         ? safeBase
         : `${safeBase}.canvas`;
-      const stem = canonical.replace(/\.canvas$/i, "");
+      const currentTab = tabs.find((tab) => tab.id === activeTabId);
+      const activeFolder =
+        settings.canvasDefaultLocation === "same-folder" &&
+        currentTab?.path &&
+        !currentTab.path.startsWith("__") &&
+        currentTab.path.includes("/")
+          ? currentTab.path.slice(0, currentTab.path.lastIndexOf("/") + 1)
+          : "";
+      const basePath = canonical.includes("/") ? canonical : `${activeFolder}${canonical}`;
+      const stem = basePath.replace(/\.canvas$/i, "");
 
-      let candidate = canonical;
+      let candidate = basePath;
       let suffix = 2;
       while (await api.fileExists(candidate)) {
         candidate = `${stem} ${suffix}.canvas`;
@@ -3276,7 +3308,7 @@ export default function App() {
       }
       return candidate;
     },
-    [],
+    [activeTabId, settings.canvasDefaultLocation, tabs],
   );
 
   const createCanvasDocumentWithPrompt = useCallback(
@@ -4105,6 +4137,7 @@ export default function App() {
   // ── File Operations ─────────────────────────────────
   const openFile = async (filePath: string, mode?: ViewMode) => {
     filePath = resolveRenamedPath(filePath);
+    const targetMode = mode ?? settings.defaultView ?? "editor";
     // Excalidraw drawings are Markdown-backed but must be opened in the
     // registered Excalidraw view, not the host Markdown editor.
     const app = ooAppRef.current;
@@ -4218,9 +4251,7 @@ export default function App() {
       } else {
         const content = await readOrCreateMissingMarkdown(filePath);
         setCurrentContent(content);
-        if (mode) {
-          setViewMode(mode);
-        }
+        setViewMode(targetMode);
         loadBacklinks(filePath);
       }
       return;
@@ -4271,9 +4302,7 @@ export default function App() {
       }
       const content = await readOrCreateMissingMarkdown(filePath);
       setCurrentContent(content);
-      if (mode) {
-        setViewMode(mode);
-      }
+      setViewMode(targetMode);
       loadBacklinks(filePath);
       return;
     }
@@ -4290,9 +4319,7 @@ export default function App() {
     setTabs([...baseTabs, newTab]);
     setActiveTabId(newTab.id);
     setCurrentContent(content);
-    if (mode) {
-      setViewMode(mode);
-    }
+    setViewMode(targetMode);
     loadBacklinks(filePath);
   };
 
@@ -4571,13 +4598,21 @@ export default function App() {
         const fileName = /\.(md|canvas)$/i.test(trimmed)
           ? trimmed
           : `${trimmed}.md`;
+        const activeFolder =
+          settings.defaultNoteLocation === "same-folder" &&
+          activeTab?.path &&
+          !activeTab.path.startsWith("__") &&
+          activeTab.path.includes("/")
+            ? activeTab.path.slice(0, activeTab.path.lastIndexOf("/") + 1)
+            : "";
+        const targetPath = fileName.includes("/") ? fileName : `${activeFolder}${fileName}`;
         const content = isCanvasFile(fileName)
           ? JSON.stringify({ nodes: [], edges: [] }, null, 2)
           : `# ${trimmed.replace(".md", "")}\n\n`;
 
-        await api.createFile(fileName, content);
+        await api.createFile(targetPath, content);
         await refreshFileTree();
-        await openFile(fileName);
+        await openFile(targetPath);
       },
     });
   };
@@ -5335,15 +5370,17 @@ export default function App() {
     };
 
     const onDailyNote = () => {
-      void handleCreateDailyNote();
+      if (settings.coreDailyNotes !== false) void handleCreateDailyNote();
     };
 
     const onFuzzySearch = (_event: Event) => {
+      if (settings.coreQuickSwitcher === false) return;
       setShowSidebar(true);
       setShowSearch(true);
     };
 
     const onToggleBacklinks = () => {
+      if (settings.coreBacklinks === false) return;
       handleToggleBacklinks();
     };
 
@@ -5381,6 +5418,7 @@ export default function App() {
     };
 
     const onCommandPalette = () => {
+      if (settings.coreCommandPalette === false) return;
       setShowCommandPalette(true);
     };
 
@@ -5458,6 +5496,10 @@ export default function App() {
     refreshFileTree,
     updateEmbeddingsAfterRename,
     updateOpenPathsAfterRename,
+    settings.coreBacklinks,
+    settings.coreCommandPalette,
+    settings.coreDailyNotes,
+    settings.coreQuickSwitcher,
   ]);
 
   // ── Link Navigation ─────────────────────────────────
@@ -5520,36 +5562,49 @@ export default function App() {
 
   // ── File Management ─────────────────────────────────
   const handleDeleteFile = async (filePath: string, isDir: boolean = false) => {
-    setModal({
-      type: "confirm",
-      title: isDir ? "Delete Folder" : "Delete File",
-      message: `Delete "${getNoteName(filePath)}"${isDir ? " and all its contents" : ""}?`,
-      onConfirm: async (confirmed) => {
-        if (!confirmed) return;
+    const performDelete = async () => {
+      try {
+        clearAutoSaveTimer();
 
-        try {
-          clearAutoSaveTimer();
-
-          // Propagate delete to collaboration database & sync queue
-          const spaceId = collaborationEngine.activeSpaceId;
-          if (spaceId) {
-            if (isDir) {
-              const notes = await localDB.getNotes(spaceId);
-              const dirPrefix = filePath.endsWith('/') ? filePath : `${filePath}/`;
-              for (const note of notes) {
-                if (note.path === filePath || note.path.startsWith(dirPrefix)) {
-                  await localDB.deleteNote(note.id, true);
-                }
-              }
-            } else {
-              const note = await localDB.getNoteByPath(spaceId, filePath);
-              if (note) {
+        // Propagate delete to collaboration database & sync queue
+        const spaceId = collaborationEngine.activeSpaceId;
+        if (spaceId) {
+          if (isDir) {
+            const notes = await localDB.getNotes(spaceId);
+            const dirPrefix = filePath.endsWith('/') ? filePath : `${filePath}/`;
+            for (const note of notes) {
+              if (note.path === filePath || note.path.startsWith(dirPrefix)) {
                 await localDB.deleteNote(note.id, true);
               }
             }
-            syncEngine.triggerPush();
+          } else {
+            const note = await localDB.getNoteByPath(spaceId, filePath);
+            if (note) {
+              await localDB.deleteNote(note.id, true);
+            }
           }
+          syncEngine.triggerPush();
+        }
 
+        if (settings.deletedFilesMode === "system-trash" && (api as any).trashFile) {
+          await (api as any).trashFile(filePath);
+          if (isDir) {
+            const store = loadStore();
+            removeEmbeddingsByPrefix(store, filePath);
+          } else if (filePath.toLowerCase().endsWith(".md")) {
+            const store = loadStore();
+            removeEmbedding(store, filePath);
+          }
+        } else if (!isDir && settings.deletedFilesMode === "app-trash") {
+          const trashPath = `.trash/${filePath}`;
+          const content = await api.readFile(filePath);
+          await api.createFile(trashPath, content);
+          await api.deleteFile(filePath);
+          if (filePath.toLowerCase().endsWith(".md")) {
+            const store = loadStore();
+            removeEmbedding(store, filePath);
+          }
+        } else {
           if (isDir) {
             await api.deleteDirectory(filePath);
             const store = loadStore();
@@ -5561,28 +5616,43 @@ export default function App() {
               removeEmbedding(store, filePath);
             }
           }
-          removeBookmarksForPath(filePath, isDir);
-
-          // Close tab if open (for files) or close all tabs within the folder
-          if (isDir) {
-            // Close all tabs that are within this directory
-            tabs.forEach((tab) => {
-              if (
-                tab.path.startsWith(filePath + "/") ||
-                tab.path === filePath
-              ) {
-                closeTab(tab.id);
-              }
-            });
-          } else {
-            const tab = tabs.find((t) => t.path === filePath);
-            if (tab) closeTab(tab.id);
-          }
-
-          await refreshFileTree();
-        } catch (error) {
-          console.error("Failed to delete:", error);
         }
+        removeBookmarksForPath(filePath, isDir);
+
+        // Close tab if open (for files) or close all tabs within the folder
+        if (isDir) {
+          // Close all tabs that are within this directory
+          tabs.forEach((tab) => {
+            if (
+              tab.path.startsWith(filePath + "/") ||
+              tab.path === filePath
+            ) {
+              closeTab(tab.id);
+            }
+          });
+        } else {
+          const tab = tabs.find((t) => t.path === filePath);
+          if (tab) closeTab(tab.id);
+        }
+
+        await refreshFileTree();
+      } catch (error) {
+        console.error("Failed to delete:", error);
+      }
+    };
+
+    if (settings.confirmBeforeDelete === false) {
+      await performDelete();
+      return;
+    }
+
+    setModal({
+      type: "confirm",
+      title: isDir ? "Delete Folder" : "Delete File",
+      message: `Delete "${getNoteName(filePath)}"${isDir ? " and all its contents" : ""}?`,
+      onConfirm: async (confirmed) => {
+        if (!confirmed) return;
+        await performDelete();
       },
     });
   };
@@ -5664,6 +5734,30 @@ export default function App() {
     updateOpenPathsAfterRename(oldPath, newPath, isDirectory);
     remapBookmarkPaths(oldPath, newPath, isDirectory);
 
+    if (
+      settings.autoUpdateInternalLinks &&
+      !isDirectory &&
+      oldPath.toLowerCase().endsWith(".md") &&
+      newPath.toLowerCase().endsWith(".md")
+    ) {
+      const oldName = getNoteName(oldPath);
+      const newName = getNoteName(newPath);
+      const escapedOldName = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const wikiLinkPattern = new RegExp(`\\[\\[${escapedOldName}([|#\\]])`, "g");
+      for (const note of allNoteNames) {
+        if (!note.path.toLowerCase().endsWith(".md")) continue;
+        try {
+          const text = await api.readFile(note.path);
+          const updated = text.replace(wikiLinkPattern, `[[${newName}$1`);
+          if (updated !== text) {
+            await api.writeFile(note.path, updated);
+          }
+        } catch {
+          // Keep rename successful even if one link update fails.
+        }
+      }
+    }
+
     await refreshFileTree();
   };
 
@@ -5734,6 +5828,126 @@ export default function App() {
     }
   }, [refreshFileTree, clearAutoSaveTimer, updateEmbeddingsAfterRename, updateOpenPathsAfterRename, remapBookmarkPaths]);
 
+  const getAbsoluteVaultPath = useCallback(
+    (relativePath: string): string | null => {
+      if (!vaultPath) return null;
+      const separator = vaultPath.includes("\\") ? "\\" : "/";
+      const normalizedVault = vaultPath.replace(/[\\/]+$/, "");
+      const normalizedRelative = relativePath.replace(/^[/\\]+/, "").replace(/[\\/]+/g, separator);
+      return `${normalizedVault}${separator}${normalizedRelative}`;
+    },
+    [vaultPath],
+  );
+
+  const handleNoteMenuToggleBacklinks = useCallback(() => {
+    setRightSidebarTab("backlinks");
+    setShowRightSidebar(true);
+  }, []);
+
+  const handleSplitNotePane = useCallback(
+    (leafId: string, tab: Tab, zone: "right" | "bottom") => {
+      if (!tab.path || tab.path === "__new_tab__") return;
+      const splitTab: Tab = {
+        ...tab,
+        id: generateId(),
+        isModified: false,
+      };
+      const nextTree = splitLeaf(paneTree, leafId, splitTab, zone);
+      const nextTabs = collectAllTabs(nextTree);
+      if (!nextTabs.some((candidate) => candidate.id === splitTab.id)) return;
+      const splitLeafTarget = findLeafWithTab(nextTree, splitTab.id);
+
+      skipTabSyncRef.current = true;
+      setPaneTree(nextTree);
+      setTabs(nextTabs);
+      setActiveTabId(splitTab.id);
+      if (splitLeafTarget) setFocusedLeafId(splitLeafTarget.id);
+    },
+    [paneTree],
+  );
+
+  const handleNoteMenuRename = useCallback(
+    async (path: string) => {
+      const currentName = path.split("/").pop() || getNoteName(path);
+      const nextName = await promptForInput("Rename file", "Enter a new file name:", currentName);
+      if (!nextName) return;
+      if (/[\\/]/.test(nextName)) {
+        showToast("File name cannot contain path separators.", "error");
+        return;
+      }
+      await handleRenameFile(path, nextName);
+    },
+    [handleRenameFile, promptForInput, showToast],
+  );
+
+  const handleNoteMenuMove = useCallback(
+    async (path: string) => {
+      const nextPathInput = await promptForInput("Move file to", "Enter a vault-relative destination path:", path);
+      if (!nextPathInput) return;
+
+      const trimmed = nextPathInput.replace(/^[/\\]+/, "").trim();
+      if (!trimmed || trimmed === path) return;
+
+      const oldExt = path.match(/\.[a-z0-9]+$/i)?.[0] || "";
+      const nextPath = /\.[a-z0-9]+$/i.test(trimmed) || !oldExt ? trimmed : `${trimmed}${oldExt}`;
+      await handleMoveFile(path, nextPath);
+    },
+    [handleMoveFile, promptForInput],
+  );
+
+  const handleCopyNoteRelativePath = useCallback(
+    (path: string) => {
+      void api.writeClipboardText(path);
+      showToast("Copied relative path", "success");
+    },
+    [showToast],
+  );
+
+  const handleCopyNoteAbsolutePath = useCallback(
+    (path: string) => {
+      const absolutePath = getAbsoluteVaultPath(path);
+      if (!absolutePath) {
+        showToast("No vault path is available.", "error");
+        return;
+      }
+      void api.writeClipboardText(absolutePath);
+      showToast("Copied absolute path", "success");
+    },
+    [getAbsoluteVaultPath, showToast],
+  );
+
+  const handleOpenNoteInDefaultApp = useCallback(
+    async (path: string) => {
+      const absolutePath = getAbsoluteVaultPath(path);
+      if (!absolutePath) {
+        showToast("No vault path is available.", "error");
+        return;
+      }
+      const error = await api.openPath(absolutePath);
+      if (error) showToast("Could not open file in default app.", "error");
+    },
+    [getAbsoluteVaultPath, showToast],
+  );
+
+  const handleShowNoteInSystemExplorer = useCallback(
+    (path: string) => {
+      const absolutePath = getAbsoluteVaultPath(path);
+      if (!absolutePath) {
+        showToast("No vault path is available.", "error");
+        return;
+      }
+      void api.showItemInFolder(absolutePath);
+    },
+    [getAbsoluteVaultPath, showToast],
+  );
+
+  const handleRevealNoteInNavigation = useCallback((path: string) => {
+    setShowSidebar(true);
+    setShowSearch(false);
+    setShowBookmarks(false);
+    void openFile(path);
+  }, []);
+
   const handleCreateFolder = async (parentPath: string) => {
     setModal({
       type: "prompt",
@@ -5749,9 +5963,41 @@ export default function App() {
     });
   };
 
+  const formatDailyNoteDate = (format: string) => {
+    const date = new Date();
+    const yyyy = String(date.getFullYear());
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return (format || "YYYY-MM-DD")
+      .replace(/YYYY/g, yyyy)
+      .replace(/MM/g, mm)
+      .replace(/DD/g, dd);
+  };
+
   const handleCreateDailyNote = async () => {
-    const filePath = await api.createDailyNote();
-    await refreshFileTree();
+    if (settings.coreDailyNotes === false) {
+      showToast("Daily notes plugin is disabled.", "info");
+      return;
+    }
+
+    const baseName = formatDailyNoteDate(settings.dailyNoteDateFormat);
+    const folder = settings.dailyNoteLocation.trim().replace(/^\/+|\/+$/g, "");
+    const filePath = `${folder ? `${folder}/` : ""}${baseName.endsWith(".md") ? baseName : `${baseName}.md`}`;
+
+    let content = `# ${baseName}\n\n`;
+    const templatePath = settings.dailyNoteTemplate.trim();
+    if (templatePath) {
+      try {
+        content = (await api.readFile(templatePath.endsWith(".md") ? templatePath : `${templatePath}.md`)) || content;
+      } catch {
+        showToast("Daily note template was not found. Created a blank daily note.", "info");
+      }
+    }
+
+    if (!(await api.fileExists(filePath))) {
+      await api.createFile(filePath, content);
+      await refreshFileTree();
+    }
     await openFile(filePath);
   };
 
@@ -5985,7 +6231,9 @@ export default function App() {
     {
       id: "backlinks",
       label: "Toggle Backlinks Panel",
-      action: handleToggleBacklinks,
+      action: () => {
+        if (settings.coreBacklinks !== false) handleToggleBacklinks();
+      },
       category: "View",
     },
     {
@@ -6021,7 +6269,9 @@ export default function App() {
     {
       id: "insert-template",
       label: "Insert Template",
-      action: () => setShowTemplateModal(true),
+      action: () => {
+        if (settings.coreTemplates !== false) setShowTemplateModal(true);
+      },
       category: "Notes",
     },
     {
@@ -6069,7 +6319,7 @@ export default function App() {
       label: "New Canvas",
       shortcut: "Ctrl+Shift+C",
       action: () => {
-        void handleToggleCanvas();
+        if (settings.coreCanvas !== false) void handleToggleCanvas();
       },
       category: "Canvas",
     },
@@ -6625,6 +6875,7 @@ export default function App() {
         leaf={leaf}
         activeTab={leafActiveTab}
         theme={theme}
+        settings={settings}
         allNoteNames={allNoteNames}
         editorSuggestions={leafSuggestions}
         editorNextStepSuggestions={leafNextStepSuggestions}
@@ -6647,6 +6898,21 @@ export default function App() {
         onViewStateChange={handleScrollAndCursorChange}
         onGenerateInsight={() => handleGenerateInsight(leafActiveTab.path, leafActiveTab.id)}
         isGeneratingInsight={generatingInsightPaths.has(leafActiveTab.path)}
+        onToggleBacklinks={handleNoteMenuToggleBacklinks}
+        onSplitRight={(leafId, tab) => handleSplitNotePane(leafId, tab, "right")}
+        onSplitDown={(leafId, tab) => handleSplitNotePane(leafId, tab, "bottom")}
+        onRenameFileMenu={(path) => void handleNoteMenuRename(path)}
+        onMoveFileMenu={(path) => void handleNoteMenuMove(path)}
+        onBookmarkFile={setBookmarkModalPath}
+        onCopyRelativePath={handleCopyNoteRelativePath}
+        onCopyAbsolutePath={handleCopyNoteAbsolutePath}
+        onOpenInDefaultApp={(path) => void handleOpenNoteInDefaultApp(path)}
+        onShowInSystemExplorer={handleShowNoteInSystemExplorer}
+        onRevealInNavigation={handleRevealNoteInNavigation}
+        onDeleteFile={(path) => handleDeleteFile(path, false)}
+        onPromptInput={promptForInput}
+        onShowToast={showToast}
+        canCopyAbsolutePath={!!vaultPath}
       />
     );
   }, [
@@ -6655,7 +6921,11 @@ export default function App() {
     activeTabId, tabs, inlineAnnotationByPath, showInlineInsightByTab,
     mainPluginViews, recentCanvasFiles, allNoteNames, handlePaneTabSelect, activeUsers,
     getViewState, handleScrollAndCursorChange, handleGenerateInsight,
-    generatingInsightPaths
+    generatingInsightPaths, handleNoteMenuToggleBacklinks, handleSplitNotePane,
+    handleNoteMenuRename, handleNoteMenuMove, handleCopyNoteRelativePath,
+    handleCopyNoteAbsolutePath, handleOpenNoteInDefaultApp,
+    handleShowNoteInSystemExplorer, handleRevealNoteInNavigation,
+    handleDeleteFile, promptForInput, showToast
   ]);
 
   const renderGraphShell = useCallback(
@@ -6816,7 +7086,7 @@ export default function App() {
           showSidebar={showSidebar}
           onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
           showRightSidebar={showRightSidebar}
-          leftWidth={44 + (showSidebar ? sidebarWidth : 0)}
+          leftWidth={(settings.showRibbon === false ? 0 : 44) + (showSidebar ? sidebarWidth : 0)}
           onSearch={() => {
             setShowSidebar(true);
             setSearchInitialMode("search");
@@ -6886,13 +7156,15 @@ export default function App() {
           "--right-sidebar-width": `${rightSidebarWidth}px`
         } as any}
       >
-        {vaultPath && !isFTUXZeroState && (
+        {vaultPath && !isFTUXZeroState && settings.showRibbon !== false && (
           <Ribbon
             onGraph={() => {
               openGraphAsTab();
             }}
             onSettings={() => setShowSettings(true)}
-            onDailyNote={handleCreateDailyNote}
+            onDailyNote={() => {
+              if (settings.coreDailyNotes !== false) void handleCreateDailyNote();
+            }}
             onToggleTags={() => setShowTags((t) => !t)}
             onThoughtModel={() => {
               setShowGraph(false);
@@ -6903,7 +7175,7 @@ export default function App() {
               openSpacesAsTab();
             }}
             onCanvas={() => {
-              void handleToggleCanvas();
+              if (settings.coreCanvas !== false) void handleToggleCanvas();
             }}
             pluginRibbonActions={pluginRibbonActions}
           />
@@ -6943,6 +7215,7 @@ export default function App() {
                 <Sidebar
                   visible={true}
                   fileTree={fileTree}
+                  showAllFileTypes={settings.showAllFileTypes}
                   activeFilePath={activeTab?.path || null}
                   starredNotes={starredNotes}
                   onFileSelect={openFile}
@@ -7210,6 +7483,7 @@ export default function App() {
                 openFile={openFile}
                 activeFilePath={activeTab?.path || null}
                 activeFileName={activeTab?.name || ""}
+                showUnlinkedMentions={settings.backlinksShowUnlinked !== false}
                 width={rightSidebarWidth}
                 rightPluginViews={rightPluginViews}
                 onClosePluginView={(viewType) => {
@@ -7234,6 +7508,7 @@ export default function App() {
           queueStatus={queueStatus}
           pluginStatusBarItems={pluginStatusBarItems}
           vimEnabled={settings.vimMode}
+          showEditingMode={settings.showEditingModeStatusBar !== false}
           backlinkCount={backlinks.length}
         />
       )}
@@ -7270,6 +7545,16 @@ export default function App() {
           onSettingsChange={setSettings}
           onClose={() => setShowSettings(false)}
           initialSection={settingsSection as any}
+          commands={[
+            ...commands,
+            ...pluginCommands.map(pc => ({
+              id: pc.id,
+              label: pc.name,
+              shortcut: pc.hotkeys?.map((hotkey: any) => hotkey.modifiers?.concat(hotkey.key).join("+")).join(", "),
+              action: () => {},
+              category: pc.pluginId,
+            })),
+          ]}
           plugins={pluginList}
           pluginSettingTabs={pluginSettingTabs}
           onEnablePlugin={async (id) => { await pluginManagerRef.current?.enablePlugin(id); }}
@@ -7354,6 +7639,9 @@ export default function App() {
           onClose={() => setShowTemplateModal(false)}
           onInsert={handleTemplateInsert}
           currentNoteName={activeTab?.name}
+          templatesFolder={settings.templatesFolder}
+          dateFormat={settings.templateDateFormat}
+          timeFormat={settings.templateTimeFormat}
         />
       )}
 

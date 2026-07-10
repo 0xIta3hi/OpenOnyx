@@ -2,8 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Editor } from "../editor/Editor";
 import { EditorHeader } from "../editor/EditorHeader";
 import { Tab, ViewMode, Theme, PaneLeaf } from "../../types";
+import type { AppSettings } from "../settings/SettingsPage";
 import { NewTabView } from "./NewTabView";
 import { getAPI } from "../../utils/api";
+import { updateFrontmatter } from "../../utils/frontmatter";
+import { buildMarkdownPdfHtml, getPdfDefaultPath } from "../../utils/pdfExport";
 import { type LinkType } from "../ai/SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 import { authManager } from "../../lib/auth";
@@ -26,6 +29,7 @@ interface LeafPaneEditorProps {
   leaf: PaneLeaf;
   activeTab: Tab;
   theme: string;
+  settings: AppSettings;
   allNoteNames: { name: string; path: string }[];
   editorSuggestions: EnrichedSuggestion[];
   editorNextStepSuggestions: EnrichedSuggestion[];
@@ -49,12 +53,28 @@ interface LeafPaneEditorProps {
   onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number; viewMode?: ViewMode }) => void;
   onGenerateInsight?: () => void;
   isGeneratingInsight?: boolean;
+  onToggleBacklinks?: () => void;
+  onSplitRight?: (leafId: string, tab: Tab) => void;
+  onSplitDown?: (leafId: string, tab: Tab) => void;
+  onRenameFileMenu?: (path: string) => void;
+  onMoveFileMenu?: (path: string) => void;
+  onBookmarkFile?: (path: string) => void;
+  onCopyRelativePath?: (path: string) => void;
+  onCopyAbsolutePath?: (path: string) => void;
+  onOpenInDefaultApp?: (path: string) => void;
+  onShowInSystemExplorer?: (path: string) => void;
+  onRevealInNavigation?: (path: string) => void;
+  onDeleteFile?: (path: string) => void;
+  onPromptInput?: (title: string, message: string, defaultValue?: string) => Promise<string | null>;
+  onShowToast?: (message: string, type?: "success" | "error" | "info") => void;
+  canCopyAbsolutePath?: boolean;
 }
 
 export function LeafPaneEditor({
   leaf,
   activeTab,
   theme,
+  settings,
   allNoteNames,
   editorSuggestions,
   editorNextStepSuggestions,
@@ -78,6 +98,21 @@ export function LeafPaneEditor({
   onViewStateChange,
   onGenerateInsight,
   isGeneratingInsight,
+  onToggleBacklinks,
+  onSplitRight,
+  onSplitDown,
+  onRenameFileMenu,
+  onMoveFileMenu,
+  onBookmarkFile,
+  onCopyRelativePath,
+  onCopyAbsolutePath,
+  onOpenInDefaultApp,
+  onShowInSystemExplorer,
+  onRevealInNavigation,
+  onDeleteFile,
+  onPromptInput,
+  onShowToast,
+  canCopyAbsolutePath,
 }: LeafPaneEditorProps) {
   const [content, setContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(activeTab.path !== "__new_tab__");
@@ -992,6 +1027,61 @@ export function LeafPaneEditor({
     }
   };
 
+  const promptForText = useCallback(
+    async (title: string, message: string, defaultValue = ""): Promise<string | null> => {
+      if (onPromptInput) return onPromptInput(title, message, defaultValue);
+      const result = window.prompt(message, defaultValue);
+      return result?.trim() || null;
+    },
+    [onPromptInput],
+  );
+
+  const handleAddFileProperty = useCallback(async () => {
+    if (!activeTab.path || activeTab.path === "__new_tab__") return;
+
+    const key = await promptForText("Add File Property", "Property name:");
+    if (!key) return;
+    const normalizedKey = key.trim().replace(/\s+/g, "-");
+    if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(normalizedKey)) {
+      onShowToast?.("Property names must start with a letter or underscore.", "error");
+      return;
+    }
+
+    const value = await promptForText("Add File Property", `Value for ${normalizedKey}:`);
+    if (value === null) return;
+
+    const current = latestContentRef.current || content;
+    const next = updateFrontmatter(current, { [normalizedKey]: value });
+    setContent(next);
+    handleContentChange(next, true);
+    onShowToast?.("File property added", "success");
+  }, [activeTab.path, content, handleContentChange, onShowToast, promptForText]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!activeTab.path || activeTab.path === "__new_tab__") return;
+
+    try {
+      const vaultPath = await api.getVaultPath();
+      const markdown = latestContentRef.current || content;
+      const html = buildMarkdownPdfHtml({
+        markdown,
+        title: activeTab.name || activeTab.path.replace(/\.md$/i, ""),
+        notePath: activeTab.path,
+        vaultPath: vaultPath || undefined,
+      });
+      const result = await api.exportMarkdownPdf({
+        html,
+        defaultPath: getPdfDefaultPath(vaultPath, activeTab.path),
+      });
+      if (!result.canceled && result.filePath) {
+        onShowToast?.("PDF exported", "success");
+      }
+    } catch (error) {
+      console.error("Failed to export PDF:", error);
+      onShowToast?.("Failed to export PDF.", "error");
+    }
+  }, [activeTab.name, activeTab.path, content, onShowToast]);
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const currentUser = authManager.getUser();
@@ -1053,6 +1143,23 @@ export function LeafPaneEditor({
         onViewModeChange={handleViewModeChange}
         onToggleInsight={() => onToggleInsight(!showInlineInsight)}
         activeEditors={activeEditors}
+        onToggleBacklinks={onToggleBacklinks}
+        onSplitRight={() => onSplitRight?.(leaf.id, activeTab)}
+        onSplitDown={() => onSplitDown?.(leaf.id, activeTab)}
+        onRename={() => onRenameFileMenu?.(activeTab.path)}
+        onMoveFile={() => onMoveFileMenu?.(activeTab.path)}
+        onBookmark={() => onBookmarkFile?.(activeTab.path)}
+        onAddProperty={handleAddFileProperty}
+        onExportPdf={() => void handleExportPdf()}
+        onFind={() => document.dispatchEvent(new CustomEvent("editor:open-search"))}
+        onReplace={() => document.dispatchEvent(new CustomEvent("editor:open-search"))}
+        onCopyRelativePath={() => onCopyRelativePath?.(activeTab.path)}
+        onCopyAbsolutePath={() => onCopyAbsolutePath?.(activeTab.path)}
+        onOpenInDefaultApp={() => onOpenInDefaultApp?.(activeTab.path)}
+        onShowInSystemExplorer={() => onShowInSystemExplorer?.(activeTab.path)}
+        onRevealInNavigation={() => onRevealInNavigation?.(activeTab.path)}
+        onDeleteFile={() => onDeleteFile?.(activeTab.path)}
+        canCopyAbsolutePath={canCopyAbsolutePath}
       />
       {isLoading ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -1104,6 +1211,7 @@ export function LeafPaneEditor({
           showInsight={showInlineInsight}
           onToggleInsight={onToggleInsight}
           theme={theme}
+          settings={settings}
           onCollabOperations={isCollabSpace ? handleCollabOperations : undefined}
           onCursorChange={isCollabSpace ? handleCursorChange : undefined}
           remoteCursors={isCollabSpace ? remoteCursors : undefined}

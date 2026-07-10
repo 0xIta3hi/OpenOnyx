@@ -13,6 +13,9 @@ interface TemplateModalProps {
   onClose: () => void;
   onInsert: (content: string) => void;
   currentNoteName?: string;
+  templatesFolder?: string;
+  dateFormat?: string;
+  timeFormat?: string;
 }
 
 interface Template {
@@ -22,12 +25,17 @@ interface Template {
 }
 
 // Template variable substitutions
-function processTemplateVariables(content: string, noteName?: string): string {
+function processTemplateVariables(
+  content: string,
+  noteName?: string,
+  dateFormat = "YYYY-MM-DD",
+  timeFormat = "HH:mm",
+): string {
   const now = new Date();
 
   const variables: Record<string, string> = {
     // Date variables
-    "{{date}}": now.toISOString().split("T")[0], // YYYY-MM-DD
+    "{{date}}": formatDate(now, dateFormat),
     "{{date:YYYY-MM-DD}}": now.toISOString().split("T")[0],
     "{{date:DD-MM-YYYY}}": `${String(now.getDate()).padStart(2, "0")}-${String(now.getMonth() + 1).padStart(2, "0")}-${now.getFullYear()}`,
     "{{date:MMMM D, YYYY}}": now.toLocaleDateString("en-US", {
@@ -37,7 +45,7 @@ function processTemplateVariables(content: string, noteName?: string): string {
     }),
 
     // Time variables
-    "{{time}}": now.toTimeString().split(" ")[0].slice(0, 5), // HH:MM
+    "{{time}}": formatDate(now, timeFormat),
     "{{time:HH:mm}}": now.toTimeString().split(" ")[0].slice(0, 5),
     "{{time:HH:mm:ss}}": now.toTimeString().split(" ")[0],
 
@@ -108,6 +116,9 @@ export function TemplateModal({
   onClose,
   onInsert,
   currentNoteName,
+  templatesFolder = "templates",
+  dateFormat = "YYYY-MM-DD",
+  timeFormat = "HH:mm",
 }: TemplateModalProps) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +138,7 @@ export function TemplateModal({
           const results: Template[] = [];
           for (const entry of entries) {
             if (entry.isDirectory) {
-              if (entry.name.toLowerCase() === "templates") {
+              if (entry.path.toLowerCase() === templatesFolder.trim().toLowerCase().replace(/^\/+|\/+$/g, "")) {
                 // Found templates folder, load all .md files
                 if (entry.children) {
                   for (const child of entry.children) {
@@ -158,13 +169,13 @@ export function TemplateModal({
     };
 
     loadTemplates();
-  }, []);
+  }, [templatesFolder]);
 
   const handleSelectTemplate = async (template: Template) => {
     try {
       const api = getAPI();
       const content = await api.readFile(template.path);
-      const processed = processTemplateVariables(content, currentNoteName);
+      const processed = processTemplateVariables(content, currentNoteName, dateFormat, timeFormat);
       setSelectedTemplate({ ...template, content });
       setPreview(processed);
     } catch (err) {

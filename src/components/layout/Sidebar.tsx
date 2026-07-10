@@ -40,6 +40,7 @@ import { LocalGroup } from "../../lib/localdb";
 interface SidebarProps {
   visible: boolean;
   fileTree: FileEntry[];
+  showAllFileTypes?: boolean;
   activeFilePath: string | null;
   starredNotes: string[];
   onFileSelect: (path: string) => void;
@@ -217,7 +218,7 @@ const fileExplorerDragClass =
 const fileTreeItemBaseClass =
   "file-tree-item group relative mb-0 flex min-h-[23px] w-full cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-6 pr-2 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.2] text-[var(--nav-item-color)] transition-[background-color,color,transform,opacity,filter,box-shadow] duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
 const fileTreeItemActiveClass =
-  "active !bg-[var(--bg-active)] font-medium text-[var(--text-primary)]";
+  "active !bg-[var(--nav-item-background-selected)]";
 const fileTreeItemDraggingClass =
   "dragging scale-[0.98] bg-[var(--bg-hover)] opacity-40 grayscale-[0.5] [&_.name]:text-[1.1em] [&_.name]:font-semibold [&_.name]:text-[var(--accent-primary)]";
 const fileTreeItemDragOverClass =
@@ -329,6 +330,7 @@ function clampMenuPosition(
 export function Sidebar({
   visible,
   fileTree,
+  showAllFileTypes = false,
   activeFilePath,
   starredNotes,
   onFileSelect,
@@ -425,9 +427,22 @@ export function Sidebar({
 
   // Process file tree: filter then sort
   const processedTree = useMemo(() => {
-    const filtered = filterTree(fileTree, filterQuery);
+    const filterSupportedTypes = (entries: FileEntry[]): FileEntry[] =>
+      entries.reduce<FileEntry[]>((acc, entry) => {
+        if (entry.isDirectory) {
+          const children = filterSupportedTypes(entry.children || []);
+          if (children.length > 0) acc.push({ ...entry, children });
+          return acc;
+        }
+        if (showAllFileTypes || entry.extension === ".md" || entry.extension === ".canvas") {
+          acc.push(entry);
+        }
+        return acc;
+      }, []);
+    const visibleTree = showAllFileTypes ? fileTree : filterSupportedTypes(fileTree);
+    const filtered = filterTree(visibleTree, filterQuery);
     return sortEntries(filtered, sortMode);
-  }, [fileTree, filterQuery, sortMode]);
+  }, [fileTree, filterQuery, sortMode, showAllFileTypes]);
 
   // When filtering, auto-expand all directories so matches are visible
   const effectiveExpanded = useMemo(() => {

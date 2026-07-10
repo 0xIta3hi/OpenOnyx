@@ -67,10 +67,10 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
 
   switch (theme) {
     case "light":
-      backgroundColor = "#fdfdfc";
-      nodeColor = "#262624";
-      connectedColor = "#171715";
-      edgeColor = "#777672";
+      backgroundColor = "#ffffff";
+      nodeColor = "#171717";
+      connectedColor = "#2563eb";
+      edgeColor = "#8a8a8a";
       textColor = "#171715";
       nodeSize = 8;
       break;
@@ -99,19 +99,11 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
       nodeSize = 6;
       break;
     case "night-light":
-      backgroundColor = "#f1f5f9";
-      nodeColor = "#4a4a4a";
-      connectedColor = "#3a3a3a";
-      edgeColor = "#cbd5e1";
-      textColor = "#334155";
-      nodeSize = 8;
-      break;
-    case "parchment":
-      backgroundColor = "#faf5d0";
-      nodeColor = "#7c5124";
-      connectedColor = "#a6692e";
-      edgeColor = "#c8ad72";
-      textColor = "#000000";
+      backgroundColor = "#fff8f0";
+      nodeColor = "#594536";
+      connectedColor = "#d97706";
+      edgeColor = "#c7a995";
+      textColor = "#2f2118";
       nodeSize = 8;
       break;
     case "custom":

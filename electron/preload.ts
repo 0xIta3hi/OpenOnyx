@@ -64,6 +64,9 @@ const electronAPI = {
   
   deleteFile: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('fs:deleteFile', filePath),
+
+  trashFile: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('fs:trashFile', filePath),
   
   renameFile: (oldPath: string, newPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:renameFile', oldPath, newPath),
@@ -160,6 +163,9 @@ const electronAPI = {
 
   readClipboardText: (): Promise<string> =>
     ipcRenderer.invoke('clipboard:readText'),
+
+  exportMarkdownPdf: (params: { html: string; defaultPath?: string }): Promise<{ canceled: boolean; filePath: string | null }> =>
+    ipcRenderer.invoke('pdf:exportMarkdown', params),
 
   networkRequest: (params: any): Promise<any> =>
     ipcRenderer.invoke('network:request', params),

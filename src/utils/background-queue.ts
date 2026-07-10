@@ -201,6 +201,13 @@ async function processBatch(api: any): Promise<void> {
         }
       }
 
+      if (typeof content !== "string") {
+        console.warn(`[Queue] ${job.path} returned no readable content, skipping`);
+        _processedCount++;
+        reportStatus();
+        continue;
+      }
+
       if (job.type === "embed") {
         await embedNote(store, job.path, content, job.modifiedAt, job.size);
       } else if (job.type === "annotate") {

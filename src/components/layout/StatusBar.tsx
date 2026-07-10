@@ -34,6 +34,7 @@ interface StatusBarProps {
   queueStatus?: QueueStatus | null;
   pluginStatusBarItems?: PluginStatusBarItem[];
   vimEnabled?: boolean;
+  showEditingMode?: boolean;
   backlinkCount?: number;
 }
 
@@ -44,6 +45,7 @@ export function StatusBar({
   queueStatus,
   pluginStatusBarItems = [],
   vimEnabled = false,
+  showEditingMode = true,
   backlinkCount = 0,
 }: StatusBarProps) {
   const wordCount = content ? countWords(content) : 0;
@@ -90,10 +92,14 @@ export function StatusBar({
                 {backlinkCount} backlinks
               </span>
             )}
-            <span className={statusIconItemClass} title={viewMode}>
-              {viewMode === "editor" ? <PencilLine size={14} /> : <Link2 size={14} />}
-            </span>
-            <VimModeIndicator vimEnabled={vimEnabled} />
+            {showEditingMode && (
+              <>
+                <span className={statusIconItemClass} title={viewMode}>
+                  {viewMode === "editor" ? <PencilLine size={14} /> : <Link2 size={14} />}
+                </span>
+                <VimModeIndicator vimEnabled={vimEnabled} />
+              </>
+            )}
             <span className={statusItemClass}>{wordCount} words</span>
             <span className={statusItemClass}>{charCount} characters</span>
           </>

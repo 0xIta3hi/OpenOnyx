@@ -1,56 +1,47 @@
-/**
- * Settings Page - Application Configuration
- *
- * Comprehensive settings interface styled like official Obsidian:
- * - Left-side grouped sidebar (Options / Core plugins)
- * - Right-side options panel with high-contrast inputs, selects, and pill toggles
- * - Rich features (General tab, Hotkey search, detailed Core Plugin options)
- */
-
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  X,
-  Palette,
-  Type,
-  FileText,
-  Keyboard,
-  Info,
-  FolderOpen,
-  RotateCcw,
-  Puzzle,
-  Users,
-  Calendar,
-  Layers,
-  Search,
-  Terminal,
-  HelpCircle,
-  Clock,
-  Settings,
-  ArrowLeftRight,
-  Shield,
-  FileCode,
-  Brain,
-  Database,
-  Check,
   AlertCircle,
-  ExternalLink,
+  Brain,
+  CalendarDays,
+  Check,
+  Command,
   Copy,
+  Database,
+  Eye,
+  ExternalLink,
+  FileText,
+  Grid2X2,
+  Info,
+  Keyboard,
+  KeyRound,
+  Link2,
+  Palette,
+  Puzzle,
+  RotateCcw,
+  Search,
+  Settings,
+  Terminal,
+  Type,
+  Users,
+  Wand2,
+  X,
 } from "lucide-react";
-import { PluginSettingsPanel } from '../plugins/PluginSettingsPanel';
-import { PluginMarketplace } from '../plugins/PluginMarketplace';
-import type { PluginRegistration, PluginSettingTabRegistration } from '../../types/plugin';
+import { PluginSettingsPanel } from "../plugins/PluginSettingsPanel";
+import { PluginMarketplace } from "../plugins/PluginMarketplace";
+import type { PluginRegistration, PluginSettingTabRegistration } from "../../types/plugin";
+import type { Command as AppCommand } from "../../types";
 import { isDarkTheme } from "../../utils/helpers";
 import type { LocalVaultCollaborator, LocalVaultInvite } from "../../lib/localdb";
-import { CollaborationPanel } from '../spaces/CollaborationPanel';
+import { CollaborationPanel } from "../spaces/CollaborationPanel";
 import { authManager } from "../../lib/auth";
 import { AuthModal } from "../modals/AuthModal";
 import {
-  loadSettings,
-  saveSettings,
-  getModelsForProvider,
   AI_PROVIDER_PRESETS,
   DEFAULT_MODEL_ID,
-  type AISettings
+  getModelsForProvider,
+  loadSettings,
+  saveSettings,
+  type AISettings,
 } from "../../utils/ai-settings";
 import { isModelLoaded, loadStore } from "../../utils/embeddings";
 import {
@@ -68,19 +59,24 @@ import { parseSupabaseEnv } from "../../lib/supabaseConfig";
 import databaseSchemaSql from "../../../supabase/schema.sql?raw";
 import { getAPI } from "../../utils/api";
 
+type ThemeSetting =
+  | "dark"
+  | "light"
+  | "oceanic"
+  | "dark-plus"
+  | "blue-night"
+  | "night-light"
+  | "system"
+  | "custom";
 
 export interface AppSettings {
-  // Appearance
-  theme: "dark" | "light" | "oceanic" | "dark-plus" | "blue-night" | "night-light" | "parchment" | "system" | "custom";
+  theme: ThemeSetting;
   customThemeType: "dark" | "light";
   accentColor: string;
   fontFamily: string;
-
-  // Custom Colors (used when theme === 'custom')
   customBgPrimary: string;
   customTextPrimary: string;
 
-  // Editor
   fontSize: number;
   editorFontSize: number;
   previewFontSize: number;
@@ -91,144 +87,88 @@ export interface AppSettings {
   wordWrap: boolean;
   spellcheck: boolean;
   vimMode: boolean;
-
-  // Files & Links
-  defaultNoteLocation: string;
-  attachmentLocation: string;
-  linkFormat: "shortest" | "relative" | "absolute";
   useWikiLinks: boolean;
-  autoCreateNotes: boolean;
 
-  // Daily Notes
-  dailyNoteFolder: string;
-  dailyNoteFormat: string;
+  autoUpdates: boolean;
+  language: "English";
+  alwaysFocusNewTabs: boolean;
+  defaultView: "editor" | "preview" | "split";
+  defaultEditingMode: "live-preview" | "source";
+  showEditingModeStatusBar: boolean;
+  readableLineLength: boolean;
+  strictLineBreaks: boolean;
+  propertiesInDocument: "visible" | "hidden" | "source";
+  foldHeading: boolean;
+  foldIndent: boolean;
+  indentationGuides: boolean;
+  rightToLeft: boolean;
+  autoPairBrackets: boolean;
+  autoPairMarkdown: boolean;
+  smartLists: boolean;
+  indentUsingTabs: boolean;
+  convertPastedHtml: boolean;
+
+  defaultFileToOpen: "last-opened" | "new-tab";
+  defaultNoteLocation: "vault" | "same-folder";
+  defaultAttachmentLocation: "vault" | "same-folder";
+  newLinkFormat: "shortest" | "relative" | "absolute";
+  autoUpdateInternalLinks: boolean;
+  showAllFileTypes: boolean;
+  confirmBeforeDelete: boolean;
+  deleteAttachmentsMode: "ask" | "always" | "never";
+  deletedFilesMode: "system-trash" | "app-trash" | "permanent";
+  excludedFiles: string;
+  overrideConfigFolder: string;
+  allowUrlCallbacks: boolean;
+
+  inlineTitle: boolean;
+  showTabTitleBar: boolean;
+  showRibbon: boolean;
+  quickFontSizeAdjustment: boolean;
+  zoomLevel: number;
+  nativeMenus: boolean;
+  windowFrameStyle: "hidden" | "native";
+  hardwareAcceleration: boolean;
+
+  coreBacklinks: boolean;
+  coreCanvas: boolean;
+  coreCommandPalette: boolean;
+  coreDailyNotes: boolean;
+  corePagePreview: boolean;
+  coreQuickSwitcher: boolean;
+  coreTemplates: boolean;
+  backlinksOpenByDefault: boolean;
+  backlinksShowUnlinked: boolean;
+  canvasDefaultLocation: "vault" | "same-folder";
+  canvasMouseWheelBehavior: "pan" | "zoom";
+  canvasCtrlDragBehavior: "menu" | "pan";
+  canvasShowCardNames: "always" | "hover" | "never";
+  canvasSnapToGrid: boolean;
+  canvasSnapToObjects: boolean;
+  canvasZoomThreshold: number;
+  dailyNoteDateFormat: string;
+  dailyNoteLocation: string;
   dailyNoteTemplate: string;
-
-  // Graph
-  nodeSize: number;
-  nodeSpacing: number;
-  showOrphans: boolean;
+  pagePreviewRequireCtrl: boolean;
+  pagePreviewSearchLinks: boolean;
+  pagePreviewReading: boolean;
+  pagePreviewEditing: boolean;
+  pagePreviewTabHeader: boolean;
+  pagePreviewFiles: boolean;
+  pagePreviewProperties: boolean;
+  pagePreviewBookmarks: boolean;
+  pagePreviewOutline: boolean;
+  pagePreviewGraph: boolean;
+  templatesFolder: string;
+  templateDateFormat: string;
+  templateTimeFormat: string;
+  pluginAutoUpdates: boolean;
 }
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
-
-const settingsOverlayClass =
-  "settings-overlay fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur";
-const settingsPageClass =
-  "settings-page relative flex h-[840px] max-h-[92vh] w-[1180px] max-w-[95vw] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-medium)] bg-[var(--bg-primary)] shadow-none";
-const settingsHeaderClass =
-  "settings-header absolute right-0 top-0 z-[999] h-0 w-0 overflow-visible !border-b-0 !p-0";
-const settingsTitleClass = "hidden";
-const settingsCloseClass =
-  "settings-close absolute right-5 top-4 flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1.5 text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
-const settingsBodyClass = "settings-body flex h-full flex-1 overflow-hidden";
-const settingsNavClass =
-  "settings-nav flex w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-4";
-const settingsNavSubheaderClass =
-  "settings-nav-subheader mt-3 select-none px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)] first:mt-0 first:pt-1";
-const settingsNavItemClass =
-  "settings-nav-item flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-3 py-1.5 text-left font-[inherit] text-[13px] font-normal text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
-const settingsNavItemActiveClass =
-  "active bg-[var(--bg-active)] font-medium text-[var(--text-primary)]";
-const settingsNavIconClass =
-  "nav-icon shrink-0 text-[var(--text-muted)] opacity-70";
-const settingsNavIconActiveClass =
-  "text-[var(--color-accent)] opacity-100";
-const settingsContentClass =
-  "settings-content relative flex-1 overflow-y-auto bg-[var(--bg-primary)] px-10 pb-10 pt-[30px]";
-const settingsSectionClass =
-  "settings-section animate-fade-in mx-auto max-w-[800px]";
-const settingCardClass =
-  "setting-card flex items-center justify-between gap-6 border-b border-[var(--divider-color)] py-4 last:border-b-0";
-const settingSubCardClass = `${settingCardClass} sub-card border-[var(--border-subtle)] py-3 pl-4`;
-const settingInfoClass = "setting-info flex min-w-0 flex-1 flex-col gap-1 pr-6";
-const settingTitleClass =
-  "setting-title text-sm font-medium text-[var(--text-primary)]";
-const settingTitleWithIconClass =
-  "setting-title-with-icon flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]";
-const settingTitleIconClass = "setting-title-icon shrink-0 text-[var(--text-muted)]";
-const settingDescriptionClass =
-  "setting-description mt-1 text-[12px] leading-[1.45] text-[var(--text-muted)]";
-const settingLinkClass =
-  "setting-link font-medium text-[var(--text-link)] no-underline hover:underline";
-const settingControlClass = "setting-control flex shrink-0 items-center gap-2";
-const buttonRowClass = `${settingControlClass} button-row`;
-const settingBtnPrimaryClass =
-  "setting-btn-primary cursor-pointer rounded border-0 bg-[var(--color-accent)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-on-accent)] transition-[background-color,transform] duration-150 hover:bg-[var(--color-accent-1)] active:scale-[0.98] active:bg-[var(--color-accent-2)]";
-const settingBtnSecondaryClass =
-  "setting-btn-secondary cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-[background-color,border-color,transform] duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] active:scale-[0.98] active:bg-[var(--bg-active)]";
-const settingIconBtnSecondaryClass =
-  `${settingBtnSecondaryClass} icon-btn flex shrink-0 items-center justify-center p-1.5`;
-const settingSelectClass =
-  "setting-select min-w-40 cursor-pointer rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 font-[inherit] text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 focus:border-[var(--color-accent)]";
-const settingInputClass =
-  "setting-input w-full max-w-60 rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
-const settingTextareaClass =
-  "setting-textarea min-h-24 w-full rounded border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-2 font-mono text-[12px] leading-[1.45] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
-const browseControlClass =
-  "setting-control browse-control flex w-full max-w-60 items-center gap-1.5 [&_.setting-input]:max-w-none [&_.setting-input]:flex-1";
-const settingGroupHeaderClass =
-  "setting-group-header mb-3 mt-8 select-none border-b border-[var(--border-subtle)] pb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]";
-const rangeControlClass =
-  "setting-control range-control flex w-full max-w-60 items-center gap-3";
-const settingRangeSliderClass =
-  "setting-range-slider h-1 flex-1 cursor-pointer appearance-none rounded-sm bg-[var(--bg-tertiary)] outline-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--color-accent)] [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.2)] [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-100 [&::-webkit-slider-thumb:hover]:scale-120";
-const rangeIndicatorClass =
-  "range-indicator min-w-8 text-right font-mono text-xs text-[var(--text-secondary)]";
-const customThemeSubpanelClass =
-  "custom-theme-subpanel my-2 mb-4 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-1";
-const toggleRowClass =
-  "setting-control toggle-row flex gap-1 rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] p-[3px]";
-const settingBtnTabClass =
-  "setting-btn-tab flex-1 cursor-pointer rounded border-0 bg-transparent px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)]";
-const settingBtnTabActiveClass =
-  "active bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-none";
-const settingColorPickerClass =
-  "setting-color-picker h-7 w-12 cursor-pointer appearance-none overflow-hidden rounded border border-[var(--border-medium)] bg-transparent p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[3px] [&::-webkit-color-swatch]:border-0";
-const hotkeySearchBoxClass =
-  "hotkey-search-box mt-2.5 flex items-center gap-2 rounded-md border border-[var(--border-medium)] bg-[var(--bg-input)] px-3 py-1.5 transition-colors duration-150 focus-within:border-[var(--color-accent)]";
-const hotkeysHeaderRowClass = "hotkeys-header-row mb-5";
-const hotkeySearchIconClass = "search-icon text-[var(--text-muted)]";
-const hotkeySearchInputClass =
-  "hotkey-search-input w-full border-0 bg-transparent text-[13px] text-[var(--text-primary)] outline-none";
-const hotkeyListClass =
-  "hotkey-list grid max-h-[480px] grid-cols-1 gap-2 overflow-y-auto pr-1";
-const hotkeyCardClass =
-  "hotkey-card flex items-center justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 transition-colors duration-150 hover:border-[var(--border-medium)] hover:bg-[var(--bg-hover)]";
-const hotkeyDescClass = "hotkey-desc text-[13px] text-[var(--text-primary)]";
-const hotkeyKbdClass =
-  "hotkey-kbd rounded border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-1.5 py-[3px] font-mono text-[11px] text-[var(--text-secondary)] shadow-none";
-const hotkeysEmptyClass =
-  "hotkeys-empty p-[30px] text-center text-[13px] text-[var(--text-muted)]";
-const aboutInfoClass =
-  "about-info flex flex-col items-center py-5 text-center";
-const aboutLogoWrapperClass = "about-logo-wrapper mb-5";
-const aboutLogoImgClass = "about-logo-img h-16 w-auto object-contain";
-const aboutVersionClass = "about-version mb-4 text-xs text-[var(--text-muted)]";
-const aboutDescriptionClass =
-  "about-description mb-6 max-w-[440px] text-[13px] leading-normal text-[var(--text-secondary)]";
-const aboutHeadingClass =
-  "m-0 mb-1.5 border-0 p-0 text-lg font-semibold text-[var(--text-primary)]";
-const aboutLinksClass = "about-links flex items-center gap-2 text-[13px]";
-const aboutLinkClass = "about-link text-[var(--text-link)] no-underline hover:underline";
-const linkDividerClass = "link-divider text-[var(--text-faint)]";
-const resetContainerClass =
-  "reset-container mt-10 flex justify-center border-t border-[var(--border-subtle)] pt-6";
-const settingResetBtnClass =
-  "setting-reset-btn flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-[var(--border-medium)] bg-transparent px-4 py-2.5 text-[13px] text-[var(--text-muted)] transition-colors duration-150 hover:border-[rgba(239,68,68,0.3)] hover:bg-[rgba(239,68,68,0.05)] hover:text-[var(--danger)]";
-const resetIconClass = "reset-icon shrink-0";
-const settingToggleClass = "relative inline-block h-5 w-[38px] shrink-0 cursor-pointer";
-const settingToggleInputClass = "peer absolute h-0 w-0 opacity-0";
-const toggleSliderClass =
-  "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:bottom-0.5 before:left-0.5 before:h-3.5 before:w-3.5 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   accentColor: "#3b82f6",
   fontFamily: "Inter, system-ui, sans-serif",
-
   customBgPrimary: "#151515",
   customTextPrimary: "#e6e6e6",
   customThemeType: "dark",
@@ -243,26 +183,110 @@ export const DEFAULT_SETTINGS: AppSettings = {
   wordWrap: true,
   spellcheck: false,
   vimMode: false,
-
-  defaultNoteLocation: "",
-  attachmentLocation: "attachments",
-  linkFormat: "shortest",
   useWikiLinks: true,
-  autoCreateNotes: true,
 
-  dailyNoteFolder: "Daily Notes",
-  dailyNoteFormat: "YYYY-MM-DD",
+  autoUpdates: true,
+  language: "English",
+  alwaysFocusNewTabs: true,
+  defaultView: "editor",
+  defaultEditingMode: "live-preview",
+  showEditingModeStatusBar: true,
+  readableLineLength: true,
+  strictLineBreaks: false,
+  propertiesInDocument: "visible",
+  foldHeading: true,
+  foldIndent: true,
+  indentationGuides: true,
+  rightToLeft: false,
+  autoPairBrackets: true,
+  autoPairMarkdown: true,
+  smartLists: true,
+  indentUsingTabs: true,
+  convertPastedHtml: true,
+
+  defaultFileToOpen: "last-opened",
+  defaultNoteLocation: "vault",
+  defaultAttachmentLocation: "vault",
+  newLinkFormat: "shortest",
+  autoUpdateInternalLinks: false,
+  showAllFileTypes: false,
+  confirmBeforeDelete: true,
+  deleteAttachmentsMode: "ask",
+  deletedFilesMode: "system-trash",
+  excludedFiles: "",
+  overrideConfigFolder: ".obsidian",
+  allowUrlCallbacks: false,
+
+  inlineTitle: true,
+  showTabTitleBar: true,
+  showRibbon: true,
+  quickFontSizeAdjustment: false,
+  zoomLevel: 100,
+  nativeMenus: false,
+  windowFrameStyle: "hidden",
+  hardwareAcceleration: true,
+
+  coreBacklinks: true,
+  coreCanvas: true,
+  coreCommandPalette: true,
+  coreDailyNotes: true,
+  corePagePreview: true,
+  coreQuickSwitcher: true,
+  coreTemplates: true,
+  backlinksOpenByDefault: false,
+  backlinksShowUnlinked: true,
+  canvasDefaultLocation: "vault",
+  canvasMouseWheelBehavior: "pan",
+  canvasCtrlDragBehavior: "menu",
+  canvasShowCardNames: "always",
+  canvasSnapToGrid: true,
+  canvasSnapToObjects: true,
+  canvasZoomThreshold: 60,
+  dailyNoteDateFormat: "YYYY-MM-DD",
+  dailyNoteLocation: "",
   dailyNoteTemplate: "",
-
-  nodeSize: 5,
-  nodeSpacing: 100,
-  showOrphans: true,
+  pagePreviewRequireCtrl: false,
+  pagePreviewSearchLinks: true,
+  pagePreviewReading: false,
+  pagePreviewEditing: true,
+  pagePreviewTabHeader: true,
+  pagePreviewFiles: true,
+  pagePreviewProperties: true,
+  pagePreviewBookmarks: true,
+  pagePreviewOutline: true,
+  pagePreviewGraph: true,
+  templatesFolder: "templates",
+  templateDateFormat: "YYYY-MM-DD",
+  templateTimeFormat: "HH:mm",
+  pluginAutoUpdates: false,
 };
+
+type SettingsSection =
+  | "general"
+  | "editor"
+  | "files"
+  | "appearance"
+  | "hotkeys"
+  | "keychain"
+  | "core-plugins"
+  | "plugins"
+  | "ai"
+  | "database"
+  | "backlinks"
+  | "canvas"
+  | "command-palette"
+  | "daily-notes"
+  | "page-preview"
+  | "quick-switcher"
+  | "templates"
+  | "collaboration"
+  | "about";
 
 interface SettingsPageProps {
   settings: AppSettings;
   onSettingsChange: (settings: AppSettings) => void;
   onClose: () => void;
+  commands?: AppCommand[];
   plugins?: PluginRegistration[];
   pluginSettingTabs?: PluginSettingTabRegistration[];
   onEnablePlugin?: (pluginId: string) => Promise<void>;
@@ -271,8 +295,6 @@ interface SettingsPageProps {
   onReloadPlugin?: (pluginId: string) => Promise<void>;
   onUninstallPlugin?: (pluginId: string) => Promise<boolean>;
   onInstallPlugin?: (repo: string, pluginId: string, version?: string) => Promise<boolean>;
-
-  // Collaboration props
   collaborators?: LocalVaultCollaborator[];
   invitesSent?: LocalVaultInvite[];
   invitesReceived?: LocalVaultInvite[];
@@ -286,27 +308,126 @@ interface SettingsPageProps {
   initialSection?: SettingsSection;
 }
 
-type SettingsSection = 
-  | "general" 
-  | "editor" 
-  | "files" 
-  | "appearance" 
-  | "hotkeys" 
-  | "ai"
-  | "database"
-  | "plugins"
-  // Core Plugins sub-items
-  | "backlinks"
-  | "canvas"
-  | "daily-notes"
-  | "collaboration"
-  | "templates"
-  | "about";
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const overlayClass = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm";
+const pageClass = "relative flex h-[min(92vh,920px)] w-[min(96vw,1100px)] overflow-hidden rounded-lg border border-[var(--border-medium)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-2xl";
+const sidebarClass = "w-[250px] shrink-0 overflow-y-auto border-r border-[var(--divider-color)] bg-[var(--bg-secondary)] px-5 py-7";
+const contentClass = "min-w-0 flex-1 overflow-y-auto bg-[var(--bg-primary)] px-10 pb-12 pt-8";
+const closeClass = "absolute right-4 top-4 z-10 rounded p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const navHeaderClass = "mb-2 mt-6 px-1 text-[11px] font-semibold text-[var(--text-muted)] first:mt-0";
+const navItemClass = "flex h-28px w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[15px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const navItemActiveClass = "bg-[var(--bg-active)] text-[var(--text-primary)]";
+const sectionClass = "mx-auto max-w-[740px]";
+const groupTitleClass = "mb-4 mt-7 text-[15px] font-semibold text-[var(--text-primary)] first:mt-0";
+const cardClass = "overflow-hidden rounded-xl bg-[var(--bg-elevated)] px-5";
+const rowClass = "flex min-h-[72px] items-center justify-between gap-6 border-b border-[var(--divider-color)] py-4 last:border-b-0";
+const rowInfoClass = "min-w-0 flex-1";
+const rowTitleClass = "text-[16px] font-normal leading-snug text-[var(--text-primary)]";
+const rowDescClass = "mt-1 text-[12.5px] leading-[1.35] text-[var(--text-muted)]";
+const controlClass = "flex shrink-0 items-center gap-2";
+const buttonClass = "rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]";
+const primaryButtonClass = "rounded-md border border-transparent bg-[var(--color-accent)] px-3 py-1.5 text-[13px] font-medium text-[var(--text-on-accent)] hover:bg-[var(--color-accent-1)]";
+const selectClass = "settings-select h-8 min-w-[130px] rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 pr-8 text-[13px] text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--border-strong)]";
+const inputClass = "h-8 min-w-[220px] rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--color-accent)]";
+const textareaClass = "min-h-24 w-full rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 py-2 font-mono text-[12px] text-[var(--text-primary)] outline-none";
+const toggleClass = "relative inline-flex h-[22px] w-10 cursor-pointer items-center rounded-full border transition-colors";
+const toggleThumbClass = "absolute left-[2px] h-[18px] w-[18px] rounded-full shadow transition-transform data-[checked=true]:translate-x-[18px]";
+const rangeClass = "h-1 w-28 accent-[var(--color-accent)]";
+const kbdClass = "rounded bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[12px] text-[var(--text-secondary)]";
+const settingsPageStyle = `
+  .settings-select {
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+      linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 15px) 50%,
+      calc(100% - 10px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .theme-dark .settings-select {
+    color-scheme: dark;
+  }
+  .theme-light .settings-select {
+    color-scheme: light;
+  }
+  .settings-select option {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+  .settings-select option:checked {
+    background-color: var(--bg-active);
+    color: var(--text-primary);
+  }
+`;
+
+function SettingGroup({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section>
+      {title && <h3 className={groupTitleClass}>{title}</h3>}
+      <div className={cardClass}>{children}</div>
+    </section>
+  );
+}
+
+function SettingRow({ title, description, children }: { title: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode }) {
+  return (
+    <div className={rowClass}>
+      <div className={rowInfoClass}>
+        <div className={rowTitleClass}>{title}</div>
+        {description && <div className={rowDescClass}>{description}</div>}
+      </div>
+      {children && <div className={controlClass}>{children}</div>}
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      className={cx(toggleClass, disabled && "cursor-not-allowed opacity-50")}
+      data-checked={checked}
+      style={{
+        backgroundColor: checked ? "var(--accent-primary, var(--color-accent, #3b82f6))" : "var(--bg-tertiary)",
+        borderColor: checked ? "var(--border-strong)" : "var(--border-medium)",
+        boxShadow: checked ? "inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 14%, transparent)" : "none",
+      }}
+      onClick={() => !disabled && onChange(!checked)}
+      aria-pressed={checked}
+      disabled={disabled}
+    >
+      <span
+        className={toggleThumbClass}
+        data-checked={checked}
+        style={{
+          backgroundColor: checked ? "var(--text-on-accent, #ffffff)" : "var(--text-primary)",
+        }}
+      />
+    </button>
+  );
+}
+
+function StatusLine({ type, message }: { type: "success" | "error" | "info" | "idle"; message: string }) {
+  if (!message) return null;
+  const color = type === "success" ? "text-[var(--success)]" : type === "error" ? "text-[var(--danger)]" : "text-[var(--text-muted)]";
+  return (
+    <div className={cx("mt-2 flex items-center gap-1.5 text-[12.5px]", color)}>
+      {type === "success" ? <Check size={14} /> : <AlertCircle size={14} />}
+      <span>{message}</span>
+    </div>
+  );
+}
 
 export function SettingsPage({
   settings,
   onSettingsChange,
   onClose,
+  commands = [],
   plugins = [],
   pluginSettingTabs = [],
   onEnablePlugin,
@@ -315,78 +436,22 @@ export function SettingsPage({
   onReloadPlugin,
   onUninstallPlugin,
   onInstallPlugin,
-  collaborators = [],
-  invitesSent = [],
-  invitesReceived = [],
-  onInviteUser,
-  onRemoveCollaborator,
-  onAcceptInvite,
-  onRejectInvite,
-  currentUserEmail,
   vaultPath,
   onVaultReconstructed,
   initialSection,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection || "general");
+  const [localSettings, setLocalSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS, ...settings });
   const [isBrowsingPlugins, setIsBrowsingPlugins] = useState(false);
-  const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [searchHotkey, setSearchHotkey] = useState("");
-  const pageRef = React.useRef<HTMLDivElement>(null);
-  const isDark = isDarkTheme(localSettings.theme);
-
   const [currentUser, setCurrentUser] = useState(authManager.getUser());
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
+  const [updateStatus, setUpdateStatus] = useState("");
 
-  useEffect(() => {
-    const unsub = authManager.subscribe((state) => {
-      setCurrentUser(state.user);
-    });
-    return unsub;
-  }, []);
-
-
-  // General tab local states to mock official settings interaction beautifully
-  const [autoUpdates, setAutoUpdates] = useState(true);
-  const [notifyStartup, setNotifyStartup] = useState(true);
-  const [cliEnabled, setCliEnabled] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("English");
-
-  // AI Settings local states
   const [aiSettings, setAiSettings] = useState<AISettings>(() => loadSettings());
   const [store, setStore] = useState(() => loadStore());
   const indexedCount = store.entries.size;
-
-  const updateAISettings = (patch: Partial<AISettings>) => {
-    setAiSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveSettings(next);
-      return next;
-    });
-    // Notify AIPage or other components immediately
-    window.dispatchEvent(new Event("ai-settings-changed"));
-  };
-
-  useEffect(() => {
-    if (activeSection !== "ai") return;
-    const interval = setInterval(() => {
-      setStore(loadStore());
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [activeSection]);
-
-  const models = getModelsForProvider(aiSettings.provider);
-  const matchedModel = models.find((m) => m.id === aiSettings.modelId);
-  const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
-  const currentModel = matchedModel || (isCustomModel ? {
-    id: aiSettings.modelId,
-    label: aiSettings.modelId,
-    shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
-    description: "Custom OpenRouter Model",
-    supportsGrounding: false
-  } : models[0]);
-
-  const hasApiKey = !!aiSettings.apiKey;
 
   const [databaseConfig, setDatabaseConfig] = useState<UserDatabaseConfig>(() => (
     loadSavedUserDatabaseConfig() ||
@@ -396,19 +461,55 @@ export function SettingsPage({
     }
   ));
   const [databaseEnvText, setDatabaseEnvText] = useState("");
-  const [databaseStatus, setDatabaseStatus] = useState<{
-    type: "idle" | "success" | "error" | "info";
-    message: string;
-  }>(() => (
+  const [databaseStatus, setDatabaseStatus] = useState<{ type: "idle" | "success" | "error" | "info"; message: string }>(() => (
     loadSavedUserDatabaseConfig()
       ? { type: "success", message: "Saved local Supabase credentials are active." }
       : { type: "idle", message: "" }
   ));
-  const [databaseSchemaCopyStatus, setDatabaseSchemaCopyStatus] = useState<{
-    type: "idle" | "success" | "error";
-    message: string;
-  }>({ type: "idle", message: "" });
+  const [databaseSchemaCopyStatus, setDatabaseSchemaCopyStatus] = useState<{ type: "idle" | "success" | "error"; message: string }>({ type: "idle", message: "" });
   const [isTestingDatabase, setIsTestingDatabase] = useState(false);
+
+  const isDark = isDarkTheme(localSettings.theme, localSettings);
+  const models = getModelsForProvider(aiSettings.provider);
+  const matchedModel = models.find((m) => m.id === aiSettings.modelId);
+  const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
+  const currentModel = matchedModel || (isCustomModel ? {
+    id: aiSettings.modelId,
+    label: aiSettings.modelId,
+    shortLabel: aiSettings.modelId.split("/").pop() || aiSettings.modelId,
+    description: "Custom OpenRouter Model",
+    supportsGrounding: false,
+  } : models[0]);
+
+  useEffect(() => {
+    const unsub = authManager.subscribe((state) => setCurrentUser(state.user));
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    setLocalSettings({ ...DEFAULT_SETTINGS, ...settings });
+  }, [settings]);
+
+  useEffect(() => {
+    if (activeSection !== "ai") return;
+    const interval = setInterval(() => setStore(loadStore()), 3000);
+    return () => clearInterval(interval);
+  }, [activeSection]);
+
+  const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    const updated = { ...localSettings, [key]: value };
+    setLocalSettings(updated);
+    onSettingsChange(updated);
+  };
+
+  const updateAISettings = (patch: Partial<AISettings>) => {
+    setAiSettings((prev) => {
+      const next = { ...prev, ...patch };
+      saveSettings(next);
+      return next;
+    });
+    window.dispatchEvent(new Event("ai-settings-changed"));
+  };
 
   const normalizedDatabaseConfig = (): UserDatabaseConfig => ({
     supabaseUrl: databaseConfig.supabaseUrl.trim(),
@@ -418,13 +519,9 @@ export function SettingsPage({
   const handleImportDatabaseEnv = () => {
     const parsed = parseSupabaseEnv(databaseEnvText);
     if (!parsed.supabaseUrl && !parsed.anonKey) {
-      setDatabaseStatus({
-        type: "error",
-        message: "Could not find VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in that text.",
-      });
+      setDatabaseStatus({ type: "error", message: "Could not find VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in that text." });
       return;
     }
-
     setDatabaseConfig((current) => ({
       supabaseUrl: parsed.supabaseUrl || current.supabaseUrl,
       anonKey: parsed.anonKey || current.anonKey,
@@ -438,16 +535,11 @@ export function SettingsPage({
       setDatabaseStatus({ type: "error", message: "Supabase URL and anon key are required." });
       return;
     }
-
     setIsTestingDatabase(true);
     setDatabaseStatus({ type: "info", message: "Testing Supabase connection..." });
     try {
       const result = await testConnection(config);
-      setDatabaseStatus(
-        result.ok
-          ? { type: "success", message: "Connection verified." }
-          : { type: "error", message: result.error || "Connection failed." },
-      );
+      setDatabaseStatus(result.ok ? { type: "success", message: "Connection verified." } : { type: "error", message: result.error || "Connection failed." });
     } finally {
       setIsTestingDatabase(false);
     }
@@ -459,7 +551,6 @@ export function SettingsPage({
       setDatabaseStatus({ type: "error", message: "Supabase URL and anon key are required." });
       return;
     }
-
     try {
       const saved = saveUserDatabaseConfig(config);
       connectUserDatabase(saved);
@@ -485,104 +576,74 @@ export function SettingsPage({
   const handleCopyDatabaseSchema = async () => {
     try {
       await getAPI().writeClipboardText(databaseSchemaSql);
-      setDatabaseSchemaCopyStatus({
-        type: "success",
-        message: "Copied schema.sql migration to clipboard.",
-      });
-    } catch (err) {
-      console.error("Failed to copy database schema:", err);
-      setDatabaseSchemaCopyStatus({
-        type: "error",
-        message: "Failed to copy migration SQL.",
-      });
+      setDatabaseSchemaCopyStatus({ type: "success", message: "Copied schema.sql migration to clipboard." });
+    } catch {
+      setDatabaseSchemaCopyStatus({ type: "error", message: "Failed to copy migration SQL." });
     }
   };
 
-  // Keep localSettings in sync if props change
-  useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
-
-  const updateSetting = <K extends keyof AppSettings>(
-    key: K,
-    value: AppSettings[K],
-  ) => {
-    const updated = { ...localSettings, [key]: value };
-    setLocalSettings(updated);
-    onSettingsChange(updated);
-  };
-
-  const resetSettings = () => {
-    setLocalSettings(DEFAULT_SETTINGS);
-    onSettingsChange(DEFAULT_SETTINGS);
-  };
-
-  const resetEditorSettings = () => {
-    const updated = {
-      ...localSettings,
-      fontSize: DEFAULT_SETTINGS.fontSize,
-      editorFontSize: DEFAULT_SETTINGS.editorFontSize,
-      previewFontSize: DEFAULT_SETTINGS.previewFontSize,
-      readingViewWidth: DEFAULT_SETTINGS.readingViewWidth,
-      lineHeight: DEFAULT_SETTINGS.lineHeight,
-      tabSize: DEFAULT_SETTINGS.tabSize,
-      showLineNumbers: DEFAULT_SETTINGS.showLineNumbers,
-      wordWrap: DEFAULT_SETTINGS.wordWrap,
-      spellcheck: DEFAULT_SETTINGS.spellcheck,
-      vimMode: DEFAULT_SETTINGS.vimMode,
-    };
-    setLocalSettings(updated);
-    onSettingsChange(updated);
-  };
-
-  // Sections definitions for grouped sidebar navigation
-  const optionSectionsList = [
+  const optionSections = [
     { id: "general" as const, label: "General", icon: Settings },
     { id: "editor" as const, label: "Editor", icon: Type },
     { id: "files" as const, label: "Files and links", icon: FileText },
     { id: "appearance" as const, label: "Appearance", icon: Palette },
     { id: "hotkeys" as const, label: "Hotkeys", icon: Keyboard },
-    { id: "ai" as const, label: "Configure AI", icon: Brain },
-    { id: "database" as const, label: "Database", icon: Database },
+    { id: "keychain" as const, label: "Keychain", icon: KeyRound },
+    { id: "core-plugins" as const, label: "Core plugins", icon: Puzzle },
     { id: "plugins" as const, label: "Community plugins", icon: Puzzle },
   ];
 
-  const corePluginsList = [
-    { id: "backlinks" as const, label: "Backlinks", icon: ArrowLeftRight },
-    { id: "canvas" as const, label: "Canvas", icon: Layers },
-    { id: "daily-notes" as const, label: "Daily notes", icon: Calendar },
+  const appSections = [
+    { id: "ai" as const, label: "Configure AI", icon: Brain },
+    { id: "database" as const, label: "Database", icon: Database },
+  ];
+
+  const coreSections = [
+    { id: "backlinks" as const, label: "Backlinks", icon: Link2 },
+    { id: "canvas" as const, label: "Canvas", icon: Grid2X2 },
+    { id: "command-palette" as const, label: "Command palette", icon: Terminal },
+    { id: "daily-notes" as const, label: "Daily notes", icon: CalendarDays },
+    { id: "page-preview" as const, label: "Page preview", icon: Eye },
+    { id: "quick-switcher" as const, label: "Quick switcher", icon: Search },
+    { id: "templates" as const, label: "Templates", icon: Copy },
     { id: "collaboration" as const, label: "Collaboration", icon: Users },
-    { id: "templates" as const, label: "Templates", icon: FolderOpen },
     { id: "about" as const, label: "About", icon: Info },
   ];
 
-  // Hotkeys data with description and shortcut keys
-  const hotkeysList = [
-    { description: "Create new note", keys: "Ctrl+N" },
-    { description: "Save current note", keys: "Ctrl+S" },
-    { description: "Find inside current note", keys: "Ctrl+F" },
-    { description: "Fuzzy search vault (Quick Switcher)", keys: "Ctrl+O" },
-    { description: "Search all notes in vault", keys: "Ctrl+Shift+F" },
-    { description: "Toggle Command Palette", keys: "Ctrl+P" },
-    { description: "Toggle graph view", keys: "Ctrl+G" },
-    { description: "Toggle sidebar panel layout", keys: "Ctrl+B" },
-    { description: "Close active editor tab", keys: "Ctrl+W" },
-    { description: "Zoom editor text size", keys: "Ctrl+Scroll" },
-    { description: "Split active editor pane", keys: "Ctrl+\\" },
-    { description: "Show local backlinks panel", keys: "Ctrl+Shift+B" },
-    { description: "Create daily journal note", keys: "Ctrl+Shift+D" },
-    { description: "Format text as bold", keys: "Ctrl+B (Selection)" },
-    { description: "Format text as italic", keys: "Ctrl+I (Selection)" },
-  ];
+  const commandRows = useMemo(() => {
+    const baseCommands = commands.length > 0 ? commands : [
+      { id: "new-note", label: "Create new note", shortcut: "Ctrl+N", action: () => {}, category: "Notes" },
+      { id: "save", label: "Save current note", shortcut: "Ctrl+S", action: () => {}, category: "Notes" },
+      { id: "search-file", label: "Find inside current note", shortcut: "Ctrl+F", action: () => {}, category: "Search" },
+      { id: "search-vault", label: "Search all notes in vault", shortcut: "Ctrl+Shift+F", action: () => {}, category: "Search" },
+      { id: "command-palette", label: "Open command palette", shortcut: "Ctrl+P", action: () => {}, category: "Command palette" },
+    ];
+    return baseCommands
+      .map((cmd) => ({
+        ...cmd,
+        searchable: `${cmd.label} ${cmd.shortcut || "Blank"} ${cmd.category || ""}`.toLowerCase(),
+      }))
+      .filter((cmd) => cmd.searchable.includes(searchHotkey.toLowerCase()))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [commands, searchHotkey]);
 
-  const filteredHotkeys = hotkeysList.filter((item) =>
-    item.description.toLowerCase().includes(searchHotkey.toLowerCase()) ||
-    item.keys.toLowerCase().includes(searchHotkey.toLowerCase())
+  const renderNavSection = (items: Array<{ id: SettingsSection; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }>) => (
+    items.map((item) => (
+      <button
+        key={item.id}
+        className={cx(navItemClass, activeSection === item.id && navItemActiveClass)}
+        onClick={() => setActiveSection(item.id)}
+      >
+        <item.icon size={16} />
+        <span>{item.label}</span>
+      </button>
+    ))
   );
 
   return (
-    <div className={settingsOverlayClass}>
-      <div className={settingsPageClass} ref={pageRef}>
+    <div className={overlayClass}>
+      <style>{settingsPageStyle}</style>
+      <div className={pageClass}>
         {isBrowsingPlugins ? (
           <PluginMarketplace
             onClose={() => setIsBrowsingPlugins(false)}
@@ -591,1321 +652,591 @@ export function SettingsPage({
           />
         ) : (
           <>
-            <div className={settingsHeaderClass}>
-              <h2 className={settingsTitleClass}>Settings</h2>
-              <button className={settingsCloseClass} onClick={onClose} aria-label="Close settings">
-                <X size={20} />
-              </button>
-            </div>
+            <button className={closeClass} onClick={onClose} aria-label="Close settings">
+              <X size={20} />
+            </button>
+            <aside className={sidebarClass}>
+              <div className={navHeaderClass}>Options</div>
+              {renderNavSection(optionSections)}
+              <div className={navHeaderClass}>OpenObsidian</div>
+              {renderNavSection(appSections)}
+              <div className={navHeaderClass}>Core plugins</div>
+              {renderNavSection(coreSections)}
+            </aside>
 
-            <div className={settingsBodyClass}>
-          <nav className={settingsNavClass}>
-            <div className={settingsNavSubheaderClass}>Options</div>
-            {optionSectionsList.map((section) => (
-              <button
-                key={section.id}
-                className={cx(settingsNavItemClass, activeSection === section.id && settingsNavItemActiveClass)}
-                onClick={() => setActiveSection(section.id)}
-              >
-                <section.icon size={16} className={cx(settingsNavIconClass, activeSection === section.id && settingsNavIconActiveClass)} />
-                <span>{section.label}</span>
-              </button>
-            ))}
-
-            <div className={settingsNavSubheaderClass}>Core plugins</div>
-            {corePluginsList.map((section) => (
-              <button
-                key={section.id}
-                className={cx(settingsNavItemClass, activeSection === section.id && settingsNavItemActiveClass)}
-                onClick={() => setActiveSection(section.id)}
-              >
-                <section.icon size={16} className={cx(settingsNavIconClass, activeSection === section.id && settingsNavIconActiveClass)} />
-                <span>{section.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          <div className={settingsContentClass}>
-            {/* ── GENERAL SECTION ─────────────────────────────────── */}
-            {activeSection === "general" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Version 1.0.0</div>
-                    <div className={settingDescriptionClass}>
-                      Installer version: 1.0.0. <a href="#" className={settingLinkClass}>Read the changelog</a>.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <button className={settingBtnPrimaryClass}>Check for updates</button>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Automatic updates</div>
-                    <div className={settingDescriptionClass}>
-                      Turn this off to prevent the app from checking for updates.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={autoUpdates}
-                        onChange={(e) => setAutoUpdates(e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Language</div>
-                    <div className={settingDescriptionClass}>
-                      Change the display language. <a href="#" className={settingLinkClass}>Learn how to add languages</a>.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <select
-                      value={selectedLanguage}
-                      onChange={(e) => setSelectedLanguage(e.target.value)}
-                      className={settingSelectClass}
-                    >
-                      <option value="English">English</option>
-                      <option value="Deutsch">Deutsch</option>
-                      <option value="Español">Español</option>
-                      <option value="Français">Français</option>
-                      <option value="日本語">日本語</option>
-                      <option value="简体中文">简体中文</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Help</div>
-                    <div className={settingDescriptionClass}>
-                      Learn how to use OpenObsidian and get help from the community.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <button className={settingBtnSecondaryClass}>Open</button>
-                  </div>
-                </div>
-
-                <h3 className={settingGroupHeaderClass}>Account</h3>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Your account</div>
-                    <div className={settingDescriptionClass}>
-                      {currentUser ? (
-                        <span>Logged in as <strong>{currentUser.email}</strong>. Your account is connected and ready for cloud sync and collaboration.</span>
-                      ) : (
-                        <span>You're not logged in right now. Log in or sign up to enable cloud spaces, secure sync, and collaboration.</span>
+            <main className={contentClass}>
+              {activeSection === "general" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow
+                      title="Version 1.0.0"
+                      description={(
+                        <>
+                          Installer version: 1.0.0{" "}
+                          <button className="text-[var(--text-link)] underline" onClick={() => setActiveSection("about")}>
+                            Read the changelog.
+                          </button>
+                          <StatusLine type="info" message={updateStatus} />
+                        </>
                       )}
-                    </div>
-                  </div>
-                  <div className={buttonRowClass}>
-                    {currentUser ? (
-                      <button
-                        className={settingBtnSecondaryClass}
-                        onClick={async () => {
-                          try {
-                            await authManager.signOut();
-                          } catch (err) {
-                            console.error("Sign out failed", err);
-                          }
-                        }}
-                      >
-                        Log out
+                    >
+                      <button className={buttonClass} onClick={() => setUpdateStatus("This local build is managed by the local app build.")}>
+                        Check for updates
                       </button>
-                    ) : (
+                    </SettingRow>
+                    <SettingRow title="Language" description="Change the display language.">
+                      <select className={selectClass} value={localSettings.language} onChange={(e) => updateSetting("language", e.target.value as AppSettings["language"])}>
+                        <option>English</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow title="Help" description="Learn how to use OpenObsidian and get help from the community.">
+                      <button className={buttonClass} onClick={() => window.open("https://github.com", "_blank", "noopener,noreferrer")}>Open</button>
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Account</h3>
+                  <SettingGroup>
+                    <SettingRow
+                      title="Your account"
+                      description={currentUser ? <>Logged in as <strong>{currentUser.email}</strong>.</> : "You're not logged in right now. Log in or sign up to enable cloud spaces and collaboration."}
+                    >
+                      {currentUser ? (
+                        <button className={buttonClass} onClick={() => void authManager.signOut()}>Log out</button>
+                      ) : (
+                        <>
+                          <button className={buttonClass} onClick={() => { setAuthModalMode("login"); setShowAuthModal(true); }}>Log in</button>
+                          <button className={buttonClass} onClick={() => { setAuthModalMode("signup"); setShowAuthModal(true); }}>Sign up</button>
+                        </>
+                      )}
+                    </SettingRow>
+                  </SettingGroup>
+                </div>
+              )}
+
+              {activeSection === "editor" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Always focus new tabs" description="When you open a link in a new tab, switch to it immediately.">
+                      <Toggle checked={localSettings.alwaysFocusNewTabs} onChange={(v) => updateSetting("alwaysFocusNewTabs", v)} />
+                    </SettingRow>
+                    <SettingRow title="Default view for new tabs" description="The default view that a new Markdown tab gets opened in.">
+                      <select className={selectClass} value={localSettings.defaultView} onChange={(e) => updateSetting("defaultView", e.target.value as AppSettings["defaultView"])}>
+                        <option value="editor">Editing view</option>
+                        <option value="preview">Reading view</option>
+                        <option value="split">Split view</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow title="Default editing mode" description="The default editing mode a new tab will start with.">
+                      <select className={selectClass} value={localSettings.defaultEditingMode} onChange={(e) => updateSetting("defaultEditingMode", e.target.value as AppSettings["defaultEditingMode"])}>
+                        <option value="live-preview">Live Preview</option>
+                        <option value="source">Source mode</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow title="Show editing mode in status bar" description="Show the editing mode toggle in the status bar.">
+                      <Toggle checked={localSettings.showEditingModeStatusBar} onChange={(v) => updateSetting("showEditingModeStatusBar", v)} />
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Display</h3>
+                  <SettingGroup>
+                    <SettingRow title="Readable line length" description="Limit maximum line length. Less content fits onscreen, but long blocks of text are more readable.">
+                      <Toggle checked={localSettings.readableLineLength} onChange={(v) => updateSetting("readableLineLength", v)} />
+                    </SettingRow>
+                    <SettingRow title="Line width" description="Width used when readable line length is enabled.">
+                      <input className={rangeClass} type="range" min={640} max={1180} step={20} value={localSettings.readingViewWidth} onChange={(e) => updateSetting("readingViewWidth", Number(e.target.value))} />
+                      <span className="w-14 text-right text-xs text-[var(--text-muted)]">{localSettings.readingViewWidth}px</span>
+                    </SettingRow>
+                    <SettingRow title="Strict line breaks" description="Markdown specs ignore single line breaks in reading view.">
+                      <Toggle checked={localSettings.strictLineBreaks} onChange={(v) => updateSetting("strictLineBreaks", v)} />
+                    </SettingRow>
+                    <SettingRow title="Properties in document" description="Choose how properties are displayed at the top of notes.">
+                      <select className={selectClass} value={localSettings.propertiesInDocument} onChange={(e) => updateSetting("propertiesInDocument", e.target.value as AppSettings["propertiesInDocument"])}>
+                        <option value="visible">Visible</option>
+                        <option value="hidden">Hidden</option>
+                        <option value="source">Source</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow title="Fold heading" description="Lets you fold all content under a heading.">
+                      <Toggle checked={localSettings.foldHeading} onChange={(v) => updateSetting("foldHeading", v)} />
+                    </SettingRow>
+                    <SettingRow title="Line numbers" description="Show line numbers in the gutter.">
+                      <Toggle checked={localSettings.showLineNumbers} onChange={(v) => updateSetting("showLineNumbers", v)} />
+                    </SettingRow>
+                    <SettingRow title="Indentation guides" description="Show vertical relationship lines between list items.">
+                      <Toggle checked={localSettings.indentationGuides} onChange={(v) => updateSetting("indentationGuides", v)} />
+                    </SettingRow>
+                    <SettingRow title="Right-to-left (RTL)" description="Sets the default text direction of notes to right-to-left.">
+                      <Toggle checked={localSettings.rightToLeft} onChange={(v) => updateSetting("rightToLeft", v)} />
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Behavior</h3>
+                  <SettingGroup>
+                    <SettingRow title="Spellcheck" description="Turn on the spellchecker.">
+                      <Toggle checked={localSettings.spellcheck} onChange={(v) => updateSetting("spellcheck", v)} />
+                    </SettingRow>
+                    <SettingRow title="Auto-pair brackets" description="Pair brackets and quotes automatically.">
+                      <Toggle checked={localSettings.autoPairBrackets} onChange={(v) => updateSetting("autoPairBrackets", v)} />
+                    </SettingRow>
+                    <SettingRow title="Auto-pair Markdown syntax" description="Pair symbols automatically for bold, italic, code, and more.">
+                      <Toggle checked={localSettings.autoPairMarkdown} onChange={(v) => updateSetting("autoPairMarkdown", v)} />
+                    </SettingRow>
+                    <SettingRow title="Indent using tabs" description="Use tabs to indent by pressing the Tab key.">
+                      <Toggle checked={localSettings.indentUsingTabs} onChange={(v) => updateSetting("indentUsingTabs", v)} />
+                    </SettingRow>
+                    <SettingRow title="Indent visual width" description="Number of spaces a tab character will render as.">
+                      <input className={rangeClass} type="range" min={2} max={8} step={1} value={localSettings.tabSize} onChange={(e) => updateSetting("tabSize", Number(e.target.value))} />
+                      <span className="w-8 text-right text-xs text-[var(--text-muted)]">{localSettings.tabSize}</span>
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Advanced</h3>
+                  <SettingGroup>
+                    <SettingRow title="Vim key bindings" description="Use Vim key bindings when editing.">
+                      <Toggle checked={localSettings.vimMode} onChange={(v) => updateSetting("vimMode", v)} />
+                    </SettingRow>
+                  </SettingGroup>
+                </div>
+              )}
+
+              {activeSection === "files" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Default file to open" description="Choose which file to open when the app starts.">
+                      <select className={selectClass} value={localSettings.defaultFileToOpen} onChange={(e) => updateSetting("defaultFileToOpen", e.target.value as AppSettings["defaultFileToOpen"])}>
+                        <option value="last-opened">Last opened</option>
+                        <option value="new-tab">New tab</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow title="Default location for new notes" description="Where newly created notes are placed.">
+                      <select className={selectClass} value={localSettings.defaultNoteLocation} onChange={(e) => updateSetting("defaultNoteLocation", e.target.value as AppSettings["defaultNoteLocation"])}>
+                        <option value="vault">Vault folder</option>
+                        <option value="same-folder">Same folder as active file</option>
+                      </select>
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Links</h3>
+                  <SettingGroup>
+                    <SettingRow title="Automatically update internal links" description="Prompt to update links after renaming a file.">
+                      <Toggle checked={localSettings.autoUpdateInternalLinks} onChange={(v) => updateSetting("autoUpdateInternalLinks", v)} />
+                    </SettingRow>
+                    <SettingRow title="Use [[Wikilinks]]" description="Auto-generate Wikilinks instead of Markdown links and images.">
+                      <Toggle checked={localSettings.useWikiLinks} onChange={(v) => updateSetting("useWikiLinks", v)} />
+                    </SettingRow>
+                    <SettingRow title="Show all file types" description="Show files with any extension in File Explorer and Quick Switcher.">
+                      <Toggle checked={localSettings.showAllFileTypes} onChange={(v) => updateSetting("showAllFileTypes", v)} />
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Trash</h3>
+                  <SettingGroup>
+                    <SettingRow title="Confirm before deleting files" description="Avoid accidentally deleting files.">
+                      <Toggle checked={localSettings.confirmBeforeDelete} onChange={(v) => updateSetting("confirmBeforeDelete", v)} />
+                    </SettingRow>
+                    <SettingRow title="Deleted files" description="What happens to a file after you delete it.">
+                      <select className={selectClass} value={localSettings.deletedFilesMode} onChange={(e) => updateSetting("deletedFilesMode", e.target.value as AppSettings["deletedFilesMode"])}>
+                        <option value="system-trash">Move to system trash</option>
+                        <option value="app-trash">Move to app trash</option>
+                        <option value="permanent">Delete permanently</option>
+                      </select>
+                    </SettingRow>
+                  </SettingGroup>
+
+                </div>
+              )}
+
+              {activeSection === "appearance" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Base color scheme" description="Choose OpenObsidian's default color scheme.">
+                      <select className={selectClass} value={localSettings.theme} onChange={(e) => updateSetting("theme", e.target.value as AppSettings["theme"])}>
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="system">Adapt to system</option>
+                        <option value="dark-plus">Dark+</option>
+                        <option value="blue-night">Blue Night</option>
+                        <option value="oceanic">Oceanic</option>
+                        <option value="night-light">Night Light</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </SettingRow>
+                    {localSettings.theme === "custom" && (
                       <>
-                        <button
-                          className={settingBtnSecondaryClass}
-                          onClick={() => {
-                            setAuthModalMode('login');
-                            setShowAuthModal(true);
-                          }}
-                        >
-                          Log in
-                        </button>
-                        <button
-                          className={settingBtnSecondaryClass}
-                          onClick={() => {
-                            setAuthModalMode('signup');
-                            setShowAuthModal(true);
-                          }}
-                        >
-                          Sign up
-                        </button>
+                        <SettingRow title="Accent color" description="Choose the accent color used throughout the app.">
+                          <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.accentColor} onChange={(e) => updateSetting("accentColor", e.target.value)} />
+                        </SettingRow>
+                        <SettingRow title="Custom background color">
+                          <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.customBgPrimary} onChange={(e) => updateSetting("customBgPrimary", e.target.value)} />
+                        </SettingRow>
+                        <SettingRow title="Custom text color">
+                          <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.customTextPrimary} onChange={(e) => updateSetting("customTextPrimary", e.target.value)} />
+                        </SettingRow>
                       </>
                     )}
-                  </div>
-                </div>
+                  </SettingGroup>
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Commercial license</div>
-                    <div className={settingDescriptionClass}>
-                      Help keep OpenObsidian 100% user-supported and independent. <a href="#" className={settingLinkClass}>Learn more</a>.
-                    </div>
-                  </div>
-                  <div className={buttonRowClass}>
-                    <button className={settingBtnPrimaryClass}>Activate</button>
-                    <button className={settingBtnSecondaryClass}>Purchase</button>
-                  </div>
-                </div>
+                  <h3 className={groupTitleClass}>Interface</h3>
+                  <SettingGroup>
+                    <SettingRow title="Show ribbon" description="Display vertical toolbar on the side of the window.">
+                      <Toggle checked={localSettings.showRibbon} onChange={(v) => updateSetting("showRibbon", v)} />
+                    </SettingRow>
+                    <SettingRow title="Ribbon menu configuration" description="Configure what commands appear in the ribbon menu.">
+                      <button className={buttonClass} onClick={() => setActiveSection("core-plugins")}>Manage</button>
+                    </SettingRow>
+                  </SettingGroup>
 
-                <h3 className={settingGroupHeaderClass}>Advanced</h3>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleWithIconClass}>
-                      <Clock size={16} className={settingTitleIconClass} />
-                      <span>Notify if startup takes longer than expected</span>
-                    </div>
-                    <div className={settingDescriptionClass}>
-                      Diagnose performance bugs with your vault by seeing what is causing notes and graph indexers to load slowly.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={notifyStartup}
-                        onChange={(e) => setNotifyStartup(e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Command line interface</div>
-                    <div className={settingDescriptionClass}>
-                      Allow advanced system interactions and shell execution with OpenObsidian vaults from your terminal.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={cliEnabled}
-                        onChange={(e) => setCliEnabled(e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── EDITOR SECTION ──────────────────────────────────── */}
-            {activeSection === "editor" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Font size</div>
-                    <div className={settingDescriptionClass}>
-                      Adjust the general font size across notes, sidebar, and panels.
-                    </div>
-                  </div>
-                  <div className={rangeControlClass}>
-                    <input
-                      type="range"
-                      min="12"
-                      max="24"
-                      value={localSettings.fontSize}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        const updated = {
-                          ...localSettings,
-                          fontSize: val,
-                          editorFontSize: val,
-                          previewFontSize: val,
-                        };
+                  <h3 className={groupTitleClass}>Font</h3>
+                  <SettingGroup>
+                    <SettingRow title="Interface font" description="Set base font for all of OpenObsidian.">
+                      <select className={selectClass} value={localSettings.fontFamily} onChange={(e) => updateSetting("fontFamily", e.target.value)}>
+                        <option value="Inter, system-ui, sans-serif">Inter</option>
+                        <option value="'SF Pro Display', system-ui, sans-serif">SF Pro</option>
+                        <option value="'Segoe UI', system-ui, sans-serif">Segoe UI</option>
+                        <option value="Georgia, serif">Georgia</option>
+                        <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                      </select>
+                    </SettingRow>
+                    <SettingRow title="Font size" description="Font size in pixels that affects editing and reading views.">
+                      <input className={rangeClass} type="range" min={12} max={24} value={localSettings.fontSize} onChange={(e) => {
+                        const value = Number(e.target.value);
+                        const updated = { ...localSettings, fontSize: value, editorFontSize: value, previewFontSize: value };
                         setLocalSettings(updated);
                         onSettingsChange(updated);
-                      }}
-                      className={settingRangeSliderClass}
-                    />
-                    <span className={rangeIndicatorClass}>{localSettings.fontSize}px</span>
-                  </div>
-                </div>
+                      }} />
+                      <span className="w-10 text-right text-xs text-[var(--text-muted)]">{localSettings.fontSize}px</span>
+                    </SettingRow>
+                    <SettingRow title="Quick font size adjustment" description="Adjust font size using Ctrl + Scroll or trackpad pinch-zoom.">
+                      <Toggle checked={localSettings.quickFontSizeAdjustment} onChange={(v) => updateSetting("quickFontSizeAdjustment", v)} />
+                    </SettingRow>
+                  </SettingGroup>
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Line height</div>
-                    <div className={settingDescriptionClass}>
-                      Define the vertical spacing between text lines in the editor view.
-                    </div>
-                  </div>
-                  <div className={rangeControlClass}>
-                    <input
-                      type="range"
-                      min="1.2"
-                      max="2.0"
-                      step="0.1"
-                      value={localSettings.lineHeight}
-                      onChange={(e) => updateSetting("lineHeight", parseFloat(e.target.value))}
-                      className={settingRangeSliderClass}
-                    />
-                    <span className={rangeIndicatorClass}>{localSettings.lineHeight}</span>
-                  </div>
+                  <h3 className={groupTitleClass}>Advanced</h3>
+                  <SettingGroup>
+                    <SettingRow title="Zoom level" description="Controls the overall zoom level of the app.">
+                      <input className={rangeClass} type="range" min={80} max={140} value={localSettings.zoomLevel} onChange={(e) => updateSetting("zoomLevel", Number(e.target.value))} />
+                      <span className="w-10 text-right text-xs text-[var(--text-muted)]">{localSettings.zoomLevel}%</span>
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Note content width</div>
-                    <div className={settingDescriptionClass}>
-                      Set the maximum note width used in both editing and reading views.
-                    </div>
-                  </div>
-                  <div className={rangeControlClass}>
-                    <input
-                      type="range"
-                      min="720"
-                      max="1280"
-                      step="20"
-                      value={localSettings.readingViewWidth}
-                      onChange={(e) => updateSetting("readingViewWidth", parseInt(e.target.value))}
-                      className={settingRangeSliderClass}
-                    />
-                    <span className={rangeIndicatorClass}>{localSettings.readingViewWidth}px</span>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Tab size</div>
-                    <div className={settingDescriptionClass}>
-                      Number of spaces that a tab represents when writing indentation inside notes.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <select
-                      value={localSettings.tabSize}
-                      onChange={(e) => updateSetting("tabSize", parseInt(e.target.value))}
-                      className={settingSelectClass}
-                    >
-                      <option value="2">2 spaces</option>
-                      <option value="4">4 spaces</option>
-                      <option value="8">8 spaces</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Word wrap</div>
-                    <div className={settingDescriptionClass}>
-                      Force long lines of text to wrap to the width of the editor screen automatically.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.wordWrap}
-                        onChange={(e) => updateSetting("wordWrap", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Spell check</div>
-                    <div className={settingDescriptionClass}>
-                      Enable system spell checking to highlight typos and grammatical errors inside note files.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.spellcheck}
-                        onChange={(e) => updateSetting("spellcheck", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Show line numbers</div>
-                    <div className={settingDescriptionClass}>
-                      Display line numbers along the left margin of the editor pane.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.showLineNumbers}
-                        onChange={(e) => updateSetting("showLineNumbers", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Vim Mode</div>
-                    <div className={settingDescriptionClass}>
-                      Neovim-style modal editing and : commands
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.vimMode}
-                        onChange={(e) => updateSetting("vimMode", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={resetContainerClass}>
-                  <button className={settingResetBtnClass} onClick={resetEditorSettings}>
-                    <RotateCcw size={14} className={resetIconClass} />
-                    Reset editor settings
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── FILES & LINKS SECTION ───────────────────────────── */}
-            {activeSection === "files" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Default location for new notes</div>
-                    <div className={settingDescriptionClass}>
-                      Specifies where newly created note files will be stored in your vault folder hierarchy.
-                    </div>
-                  </div>
-                  <div className={browseControlClass}>
-                    <input
-                      type="text"
-                      value={localSettings.defaultNoteLocation}
-                      onChange={(e) => updateSetting("defaultNoteLocation", e.target.value)}
-                      placeholder="Vault root"
-                      className={settingInputClass}
-                    />
-                    <button className={settingIconBtnSecondaryClass} aria-label="Browse notes directory">
-                      <FolderOpen size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Attachment folder</div>
-                    <div className={settingDescriptionClass}>
-                      Target subdirectory name for all pasted or dropped images, files, and media.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="text"
-                      value={localSettings.attachmentLocation}
-                      onChange={(e) => updateSetting("attachmentLocation", e.target.value)}
-                      placeholder="attachments"
-                      className={settingInputClass}
-                    />
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Use [[Wiki Links]]</div>
-                    <div className={settingDescriptionClass}>
-                      Create connections using [[WikiLink]] brackets. When off, regular markdown link syntax `[text](path)` is used.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.useWikiLinks}
-                        onChange={(e) => updateSetting("useWikiLinks", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Auto-Create Notes</div>
-                    <div className={settingDescriptionClass}>
-                      Automatically initialize a blank Markdown note when clicking on unresolved Wiki links.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.autoCreateNotes}
-                        onChange={(e) => updateSetting("autoCreateNotes", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>New link format</div>
-                    <div className={settingDescriptionClass}>
-                      Specify the format of note links constructed inside references (Relative paths, shortest names, or absolute).
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <select
-                      value={localSettings.linkFormat}
-                      onChange={(e) => updateSetting("linkFormat", e.target.value as AppSettings["linkFormat"])}
-                      className={settingSelectClass}
-                    >
-                      <option value="shortest">Shortest path when possible</option>
-                      <option value="relative">Relative path to file</option>
-                      <option value="absolute">Absolute path from vault root</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── APPEARANCE SECTION ──────────────────────────────── */}
-            {activeSection === "appearance" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Theme</div>
-                    <div className={settingDescriptionClass}>
-                      Select the application color theme. Custom settings will unlock advanced color tuning options.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <select
-                      value={localSettings.theme}
-                      onChange={(e) => updateSetting("theme", e.target.value as AppSettings["theme"])}
-                      className={settingSelectClass}
-                    >
-                      <option value="dark">Dark</option>
-                      <option value="dark-plus">Dark+</option>
-                      <option value="blue-night">Blue Night</option>
-                      <option value="oceanic">Oceanic</option>
-                      <option value="light">Calm White</option>
-                      <option value="night-light">Sunset Glow</option>
-                      <option value="parchment">Parchment</option>
-                      <option value="system">System match</option>
-                      <option value="custom">Custom properties</option>
-                    </select>
-                  </div>
-                </div>
-
-                {localSettings.theme === "custom" && (
-                  <div className={customThemeSubpanelClass}>
-                    <div className={settingSubCardClass}>
-                      <div className={settingInfoClass}>
-                        <div className={settingTitleClass}>Base Theme Type</div>
-                        <div className={settingDescriptionClass}>
-                          Sets the foundation defaults (light background base or dark background base) for text colors.
-                        </div>
+              {activeSection === "hotkeys" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Search hotkeys" description={`Showing ${commandRows.length} commands.`}>
+                      <div className="flex h-9 items-center gap-2 rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3">
+                        <Search size={16} className="text-[var(--text-muted)]" />
+                        <input className="w-52 bg-transparent text-sm outline-none placeholder:text-[var(--text-faint)]" value={searchHotkey} onChange={(e) => setSearchHotkey(e.target.value)} placeholder="Filter..." />
                       </div>
-                      <div className={toggleRowClass}>
-                        <button
-                          className={cx(settingBtnTabClass, localSettings.customThemeType === "light" && settingBtnTabActiveClass)}
-                          onClick={() => updateSetting("customThemeType", "light")}
-                        >
-                          Light base
-                        </button>
-                        <button
-                          className={cx(settingBtnTabClass, localSettings.customThemeType === "dark" && settingBtnTabActiveClass)}
-                          onClick={() => updateSetting("customThemeType", "dark")}
-                        >
-                          Dark base
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className={settingSubCardClass}>
-                      <div className={settingInfoClass}>
-                        <div className={settingTitleClass}>Custom Background Color</div>
-                        <div className={settingDescriptionClass}>Pick a background color for the general workspace.</div>
-                      </div>
-                      <div className={settingControlClass}>
-                        <input
-                          type="color"
-                          value={localSettings.customBgPrimary}
-                          onChange={(e) => updateSetting("customBgPrimary", e.target.value)}
-                          className={settingColorPickerClass}
-                        />
-                      </div>
-                    </div>
-
-                    <div className={settingSubCardClass}>
-                      <div className={settingInfoClass}>
-                        <div className={settingTitleClass}>Custom Text Color</div>
-                        <div className={settingDescriptionClass}>Pick the primary typography color.</div>
-                      </div>
-                      <div className={settingControlClass}>
-                        <input
-                          type="color"
-                          value={localSettings.customTextPrimary}
-                          onChange={(e) => updateSetting("customTextPrimary", e.target.value)}
-                          className={settingColorPickerClass}
-                        />
-                      </div>
-                    </div>
-
-                    <div className={settingSubCardClass}>
-                      <div className={settingInfoClass}>
-                        <div className={settingTitleClass}>Accent Color</div>
-                        <div className={settingDescriptionClass}>Pick a color for highlights, selected buttons, active toggles.</div>
-                      </div>
-                      <div className={settingControlClass}>
-                        <input
-                          type="color"
-                          value={localSettings.accentColor}
-                          onChange={(e) => updateSetting("accentColor", e.target.value)}
-                          className={settingColorPickerClass}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Font family</div>
-                    <div className={settingDescriptionClass}>
-                      Choose a typeface for notes rendering, markdown headers, and the UI elements.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <select
-                      value={localSettings.fontFamily}
-                      onChange={(e) => updateSetting("fontFamily", e.target.value)}
-                      className={settingSelectClass}
-                    >
-                      <option value="Inter, system-ui, sans-serif">Inter (Default)</option>
-                      <option value="'SF Pro Display', system-ui, sans-serif">SF Pro (Apple System)</option>
-                      <option value="'Segoe UI', system-ui, sans-serif">Segoe UI (Windows)</option>
-                      <option value="Georgia, serif">Georgia (Serif)</option>
-                      <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── HOTKEYS SECTION ─────────────────────────────────── */}
-            {activeSection === "hotkeys" && (
-              <div className={settingsSectionClass}>
-                <div className={hotkeysHeaderRowClass}>
-                  <p className={settingDescriptionClass}>
-                    Review and search global keyboard shortcuts programmed for common vault editing triggers.
-                  </p>
-                  <div className={hotkeySearchBoxClass}>
-                    <Search size={14} className={hotkeySearchIconClass} />
-                    <input
-                      type="text"
-                      placeholder="Search hotkeys..."
-                      value={searchHotkey}
-                      onChange={(e) => setSearchHotkey(e.target.value)}
-                      className={hotkeySearchInputClass}
-                    />
-                  </div>
-                </div>
-
-                <div className={hotkeyListClass}>
-                  {filteredHotkeys.length > 0 ? (
-                    filteredHotkeys.map((hotkey, idx) => (
-                      <div className={hotkeyCardClass} key={idx}>
-                        <span className={hotkeyDescClass}>{hotkey.description}</span>
-                        <kbd className={hotkeyKbdClass}>{hotkey.keys}</kbd>
-                      </div>
-                    ))
-                  ) : (
-                    <div className={hotkeysEmptyClass}>No hotkeys match your search query</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── AI SECTION ──────────────────────────────────────── */}
-            {activeSection === "ai" && (
-              <div className={settingsSectionClass}>
-                <div className="setting-description-box" style={{ marginBottom: "20px" }}>
-                  <p className={settingDescriptionClass} style={{ fontSize: "13px", lineHeight: "1.5" }}>
-                    Analysis and suggestions work locally. LLM is used for annotations, synthesis, and queries.
-                  </p>
-                </div>
-
-                {/* Provider Selector */}
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Provider</div>
-                    <div className={settingDescriptionClass}>
-                      Choose which AI provider you want to use for advanced reasoning.
-                    </div>
-                  </div>
-                  <div className={buttonRowClass}>
-                    {AI_PROVIDER_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        className={cx(settingBtnTabClass, aiSettings.provider === preset.id && settingBtnTabActiveClass)}
-                        onClick={() => {
-                          const nextKey = aiSettings.providerKeys?.[preset.id] || "";
-                          const nextModels = getModelsForProvider(preset.id);
-                          const nextModelId = nextModels[0]?.id || DEFAULT_MODEL_ID;
-                          updateAISettings({
-                            provider: preset.id,
-                            apiKey: nextKey,
-                            modelId: nextModelId,
-                            providerKeys: { ...aiSettings.providerKeys, [aiSettings.provider]: aiSettings.apiKey },
-                          });
-                        }}
-                      >
-                        {preset.label}
-                      </button>
+                    </SettingRow>
+                    {commandRows.map((cmd) => (
+                      <SettingRow key={cmd.id} title={cmd.category ? `${cmd.category}: ${cmd.label}` : cmd.label}>
+                        <span className={kbdClass}>{cmd.shortcut || "Blank"}</span>
+                      </SettingRow>
                     ))}
-                  </div>
+                  </SettingGroup>
                 </div>
+              )}
 
-                {/* API Key */}
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>
-                      API Key
-                    </div>
-                    <div className={settingDescriptionClass}>
-                      Enter credentials for your provider.{" "}
-                      <a
-                        className={`${settingLinkClass} inline-flex items-center gap-1`}
-                        href={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}
-                      >
-                        Get key <ExternalLink size={10} />
-                      </a>
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="password"
-                      className={settingInputClass}
-                      style={{ width: "240px" }}
-                      value={aiSettings.apiKey}
-                      onChange={(e) => updateAISettings({ apiKey: e.target.value })}
-                      placeholder={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyPlaceholder}
-                    />
-                  </div>
+              {activeSection === "keychain" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Stored AI credentials" description="Provider API keys are saved locally in this app profile.">
+                      <button className={buttonClass} onClick={() => setActiveSection("ai")}>Manage</button>
+                    </SettingRow>
+                    <SettingRow title="Stored database credentials" description="Supabase URL and anon key are saved locally when configured.">
+                      <button className={buttonClass} onClick={() => setActiveSection("database")}>Manage</button>
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                {/* Model list */}
-                <h3 className={settingGroupHeaderClass}>Available Models</h3>
-                <div className="flex flex-col gap-1" style={{ width: "100%", marginTop: "12px", border: "1px solid var(--border-medium)", borderRadius: "6px", overflow: "hidden" }}>
-                  {models.map((model) => (
-                    <button
-                      key={model.id}
-                      className={`transition-colors duration-150 hover:bg-(--bg-hover) ${aiSettings.modelId === model.id ? "bg-(--bg-active) border-(--border-subtle) text-(--text-primary)" : "text-(--text-secondary)"}`}
-                      onClick={() => updateAISettings({ modelId: model.id })}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "12px 16px",
-                        borderBottom: "1px solid var(--border-subtle)",
-                        background: aiSettings.modelId === model.id ? "var(--bg-active)" : "transparent",
-                        cursor: "pointer",
-                        borderLeft: "none",
-                        borderRight: "none",
-                        borderTop: "none",
-                        textAlign: "left",
-                        color: "inherit"
-                      }}
-                    >
-                      <div className={settingInfoClass}>
-                        <div className={settingTitleClass} style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>{model.label}</div>
-                        <div className={settingDescriptionClass} style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{model.description}</div>
-                      </div>
-                      {aiSettings.modelId === model.id && <Check size={16} style={{ color: "var(--color-accent)", marginRight: "8px" }} />}
-                    </button>
-                  ))}
-
-                  {aiSettings.provider === "openrouter" && (
-                    <button
-                      className={`transition-colors duration-150 hover:bg-(--bg-hover) ${isCustomModel ? "bg-(--bg-active) border-(--border-subtle) text-(--text-primary)" : "text-(--text-secondary)"}`}
-                      onClick={() => {
-                        const isPreset = models.some((m) => m.id === aiSettings.customModelId);
-                        const nextModelId = (!aiSettings.customModelId || isPreset)
-                          ? "deepseek/deepseek-v4-flash:free"
-                          : aiSettings.customModelId;
-                        updateAISettings({
-                          modelId: nextModelId,
-                          customModelId: nextModelId
-                        });
-                      }}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "12px 16px",
-                        background: isCustomModel ? "var(--bg-active)" : "transparent",
-                        cursor: "pointer",
-                        border: "none",
-                        textAlign: "left",
-                        color: "inherit"
-                      }}
-                    >
-                      <div className={settingInfoClass}>
-                        <div className={settingTitleClass} style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--text-primary)" }}>Custom Model</div>
-                        <div className={settingDescriptionClass} style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>Use any other OpenRouter model by entering its ID</div>
-                      </div>
-                      {isCustomModel && <Check size={16} style={{ color: "var(--color-accent)", marginRight: "8px" }} />}
-                    </button>
-                  )}
+              {activeSection === "core-plugins" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Backlinks" description="Show backlinks and mentions for the active note.">
+                      <Toggle checked={localSettings.coreBacklinks} onChange={(v) => updateSetting("coreBacklinks", v)} />
+                    </SettingRow>
+                    <SettingRow title="Canvas" description="Create visual boards with notes and media.">
+                      <Toggle checked={localSettings.coreCanvas} onChange={(v) => updateSetting("coreCanvas", v)} />
+                    </SettingRow>
+                    <SettingRow title="Command palette" description="Quick access to commands.">
+                      <Toggle checked={localSettings.coreCommandPalette} onChange={(v) => updateSetting("coreCommandPalette", v)} />
+                    </SettingRow>
+                    <SettingRow title="Daily notes" description="Create notes for today's date.">
+                      <Toggle checked={localSettings.coreDailyNotes} onChange={(v) => updateSetting("coreDailyNotes", v)} />
+                    </SettingRow>
+                    <SettingRow title="Page preview" description="Preview internal links and files.">
+                      <Toggle checked={localSettings.corePagePreview} onChange={(v) => updateSetting("corePagePreview", v)} />
+                    </SettingRow>
+                    <SettingRow title="Quick switcher" description="Jump to notes quickly.">
+                      <Toggle checked={localSettings.coreQuickSwitcher} onChange={(v) => updateSetting("coreQuickSwitcher", v)} />
+                    </SettingRow>
+                    <SettingRow title="Templates" description="Insert reusable note templates.">
+                      <Toggle checked={localSettings.coreTemplates} onChange={(v) => updateSetting("coreTemplates", v)} />
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                {/* Custom Model Input */}
-                {aiSettings.provider === "openrouter" && isCustomModel && (
-                  <div className={`${settingCardClass} animate-fade-in`} style={{ marginTop: "16px" }}>
-                    <div className={settingInfoClass}>
-                      <div className={settingTitleClass}>Custom Model ID</div>
-                      <div className={settingDescriptionClass}>
-                        Enter the exact model identifier from OpenRouter (e.g. poolside/laguna-m.1:free).
-                      </div>
-                    </div>
-                    <div className={settingControlClass}>
-                      <input
-                        type="text"
-                        className={settingInputClass}
-                        style={{ width: "240px" }}
-                        value={aiSettings.modelId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateAISettings({
-                            modelId: val,
-                            customModelId: val
-                          });
-                        }}
-                        placeholder="e.g. deepseek/deepseek-v4-flash:free"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Status indicators */}
-                <h3 className={settingGroupHeaderClass}>System Status</h3>
-                
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Analysis Engine</div>
-                    <div className={settingDescriptionClass}>
-                      State of the background note indexer and vector embeddings store.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <div className={`flex items-center gap-1.5 text-[12.5px] ${isModelLoaded() ? "text-(--text-secondary) [&_svg]:text-(--success)" : "text-(--text-muted) [&_svg]:text-(--warning)"}`} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
-                      {isModelLoaded() ? <Check size={14} style={{ color: "#22c55e" }} /> : <AlertCircle size={14} style={{ color: "#eab308" }} />}
-                      <span style={{ color: isModelLoaded() ? "var(--text-primary)" : "var(--text-muted)" }}>
-                        {isModelLoaded()
-                          ? `Running · ${indexedCount} notes indexed`
-                          : "Loads automatically on first note save"}
-                      </span>
-                    </div>
-                  </div>
+              {activeSection === "backlinks" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Show backlinks pane by default" description="Open the Backlinks panel when loading a note.">
+                      <Toggle checked={localSettings.backlinksOpenByDefault} onChange={(v) => updateSetting("backlinksOpenByDefault", v)} />
+                    </SettingRow>
+                    <SettingRow title="Include unlinked mentions" description="Search notes that mention the current file name without a link.">
+                      <Toggle checked={localSettings.backlinksShowUnlinked} onChange={(v) => updateSetting("backlinksShowUnlinked", v)} />
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>LLM Service Connection</div>
-                    <div className={settingDescriptionClass}>
-                      Verification of the active remote large language model connection.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <div className={`flex items-center gap-1.5 text-[12.5px] ${hasApiKey ? "text-(--text-secondary) [&_svg]:text-(--success)" : "text-(--text-muted) [&_svg]:text-(--warning)"}`} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
-                      {hasApiKey ? <Check size={14} style={{ color: "#22c55e" }} /> : <AlertCircle size={14} style={{ color: "#eab308" }} />}
-                      <span style={{ color: hasApiKey ? "var(--text-primary)" : "var(--text-muted)" }}>
-                        {hasApiKey ? `Connected: ${currentModel?.shortLabel || currentModel?.label}` : "No API key — local analysis still works"}
-                      </span>
-                    </div>
-                  </div>
+              {activeSection === "canvas" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Default location for new canvas files">
+                      <select className={selectClass} value={localSettings.canvasDefaultLocation} onChange={(e) => updateSetting("canvasDefaultLocation", e.target.value as AppSettings["canvasDefaultLocation"])}>
+                        <option value="vault">Vault folder</option>
+                        <option value="same-folder">Same folder as active file</option>
+                      </select>
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ── DATABASE SECTION ────────────────────────────────── */}
-            {activeSection === "database" && (
-              <div className={settingsSectionClass}>
-                <div className="setting-description-box" style={{ marginBottom: "20px" }}>
-                  <p className={settingDescriptionClass} style={{ fontSize: "13px", lineHeight: "1.5" }}>
-                    Store Supabase credentials locally for this app. These values replace the usual VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables at runtime.
-                  </p>
+              {activeSection === "command-palette" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Command palette" description="Open the command palette with Ctrl+P and search all app/plugin commands.">
+                      <Toggle checked={localSettings.coreCommandPalette} onChange={(v) => updateSetting("coreCommandPalette", v)} />
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Supabase URL</div>
-                    <div className={settingDescriptionClass}>
-                      Project URL from your Supabase API settings.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="text"
-                      className={settingInputClass}
-                      style={{ width: "280px", maxWidth: "280px" }}
-                      value={databaseConfig.supabaseUrl}
-                      onChange={(e) => setDatabaseConfig((current) => ({ ...current, supabaseUrl: e.target.value }))}
-                      placeholder="https://project.supabase.co"
-                    />
-                  </div>
+              {activeSection === "daily-notes" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Date format" description="Choose how daily notes are named in your vault.">
+                      <input className={inputClass} value={localSettings.dailyNoteDateFormat} onChange={(e) => updateSetting("dailyNoteDateFormat", e.target.value)} />
+                    </SettingRow>
+                    <SettingRow title="New file location" description="New daily notes will be placed here.">
+                      <input className={inputClass} value={localSettings.dailyNoteLocation} onChange={(e) => updateSetting("dailyNoteLocation", e.target.value)} placeholder="Example: folder 1/folder 2" />
+                    </SettingRow>
+                    <SettingRow title="Template file location" description="Choose the file to use as a template.">
+                      <input className={inputClass} value={localSettings.dailyNoteTemplate} onChange={(e) => updateSetting("dailyNoteTemplate", e.target.value)} placeholder="Example: folder/note" />
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Anon public key</div>
-                    <div className={settingDescriptionClass}>
-                      Use the anon public key. Do not paste a service role key into the app.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="password"
-                      className={settingInputClass}
-                      style={{ width: "280px", maxWidth: "280px" }}
-                      value={databaseConfig.anonKey}
-                      onChange={(e) => setDatabaseConfig((current) => ({ ...current, anonKey: e.target.value }))}
-                      placeholder="eyJhbGciOi..."
-                    />
-                  </div>
+              {activeSection === "page-preview" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Require Ctrl to trigger page preview on hover">
+                      <Toggle checked={localSettings.pagePreviewRequireCtrl} onChange={(v) => updateSetting("pagePreviewRequireCtrl", v)} />
+                    </SettingRow>
+                    <SettingRow title="Reading view">
+                      <Toggle checked={localSettings.pagePreviewReading} onChange={(v) => updateSetting("pagePreviewReading", v)} />
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                <h3 className={settingGroupHeaderClass}>Import from .env</h3>
-                <div className="mb-4">
-                  <textarea
-                    className={settingTextareaClass}
-                    value={databaseEnvText}
-                    onChange={(e) => setDatabaseEnvText(e.target.value)}
-                    placeholder={"VITE_SUPABASE_URL=https://project.supabase.co\nVITE_SUPABASE_ANON_KEY=eyJhbGciOi..."}
+              {activeSection === "quick-switcher" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Quick switcher" description="Use Ctrl+O to search and open notes quickly.">
+                      <Toggle checked={localSettings.coreQuickSwitcher} onChange={(v) => updateSetting("coreQuickSwitcher", v)} />
+                    </SettingRow>
+                  </SettingGroup>
+                </div>
+              )}
+
+              {activeSection === "templates" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Template folder location" description="Folder containing reusable Markdown templates.">
+                      <input className={inputClass} value={localSettings.templatesFolder} onChange={(e) => updateSetting("templatesFolder", e.target.value)} />
+                    </SettingRow>
+                    <SettingRow title="Date format" description="Format used for {{date}} replacement.">
+                      <input className={inputClass} value={localSettings.templateDateFormat} onChange={(e) => updateSetting("templateDateFormat", e.target.value)} />
+                    </SettingRow>
+                    <SettingRow title="Time format" description="Format used for {{time}} replacement.">
+                      <input className={inputClass} value={localSettings.templateTimeFormat} onChange={(e) => updateSetting("templateTimeFormat", e.target.value)} />
+                    </SettingRow>
+                  </SettingGroup>
+                </div>
+              )}
+
+              {activeSection === "plugins" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Community plugins" description="Browse and install community plugins.">
+                      <button className={primaryButtonClass} onClick={() => setIsBrowsingPlugins(true)}>Browse</button>
+                    </SettingRow>
+                    <SettingRow title="Current plugins" description={`You currently have ${plugins.length} plugin${plugins.length === 1 ? "" : "s"} installed.`} />
+                  </SettingGroup>
+                  <h3 className={groupTitleClass}>Installed plugins</h3>
+                  <PluginSettingsPanel
+                    plugins={plugins}
+                    settingTabs={pluginSettingTabs}
+                    onEnablePlugin={onEnablePlugin || (async () => {})}
+                    onDisablePlugin={onDisablePlugin || (async () => {})}
+                    onRefresh={onRefreshPlugins || (async () => {})}
+                    onReloadPlugin={onReloadPlugin}
+                    onUninstallPlugin={onUninstallPlugin}
+                    onInstallPlugin={onInstallPlugin}
+                    onBrowse={() => setIsBrowsingPlugins(true)}
                   />
-                  <div className={buttonRowClass} style={{ marginTop: "10px", justifyContent: "flex-end" }}>
-                    <button className={settingBtnSecondaryClass} onClick={handleImportDatabaseEnv}>
-                      Import values
-                    </button>
-                  </div>
                 </div>
+              )}
 
-                <h3 className={settingGroupHeaderClass}>Schema migration</h3>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Database creation SQL</div>
-                    <div className={settingDescriptionClass}>
-                      Copy the bundled schema.sql migration and run it in the Supabase SQL Editor for a personal database.
-                    </div>
-                    {databaseSchemaCopyStatus.message && (
-                      <div
-                        className={cx(
-                          "mt-2 flex items-center gap-1.5 text-[12.5px]",
-                          databaseSchemaCopyStatus.type === "success" && "text-(--success)",
-                          databaseSchemaCopyStatus.type === "error" && "text-(--danger)",
-                        )}
-                      >
-                        {databaseSchemaCopyStatus.type === "success" ? <Check size={14} /> : <AlertCircle size={14} />}
-                        <span>{databaseSchemaCopyStatus.message}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className={buttonRowClass}>
-                    <button className={`${settingBtnSecondaryClass} flex items-center gap-2`} onClick={handleCopyDatabaseSchema}>
-                      <Copy size={14} />
-                      Copy SQL
-                    </button>
-                  </div>
-                </div>
-
-                <h3 className={settingGroupHeaderClass}>Local Storage</h3>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Saved credentials</div>
-                    <div className={settingDescriptionClass}>
-                      Credentials are saved in this app's local browser storage and restored automatically on startup.
-                    </div>
-                    {databaseStatus.message && (
-                      <div
-                        className={cx(
-                          "mt-2 flex items-center gap-1.5 text-[12.5px]",
-                          databaseStatus.type === "success" && "text-(--success)",
-                          databaseStatus.type === "error" && "text-(--danger)",
-                          (databaseStatus.type === "info" || databaseStatus.type === "idle") && "text-(--text-muted)",
-                        )}
-                      >
-                        {databaseStatus.type === "success" ? <Check size={14} /> : <AlertCircle size={14} />}
-                        <span>{databaseStatus.message}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className={buttonRowClass}>
-                    <button
-                      className={settingBtnSecondaryClass}
-                      onClick={handleTestDatabaseConnection}
-                      disabled={isTestingDatabase}
+              {activeSection === "ai" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Provider" description="Choose which AI provider you want to use for advanced reasoning.">
+                      {AI_PROVIDER_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          className={cx(buttonClass, aiSettings.provider === preset.id && "border-[var(--color-accent)]")}
+                          onClick={() => {
+                            const nextKey = aiSettings.providerKeys?.[preset.id] || "";
+                            const nextModels = getModelsForProvider(preset.id);
+                            updateAISettings({
+                              provider: preset.id,
+                              apiKey: nextKey,
+                              modelId: nextModels[0]?.id || DEFAULT_MODEL_ID,
+                              providerKeys: { ...aiSettings.providerKeys, [aiSettings.provider]: aiSettings.apiKey },
+                            });
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </SettingRow>
+                    <SettingRow
+                      title="API Key"
+                      description={(
+                        <>
+                          Enter credentials for your provider.{" "}
+                          <a className="inline-flex items-center gap-1 text-[var(--text-link)] underline" href={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyUrl} target="_blank" rel="noopener noreferrer">
+                            Get key <ExternalLink size={12} />
+                          </a>
+                        </>
+                      )}
                     >
-                      {isTestingDatabase ? "Testing..." : "Test"}
-                    </button>
-                    <button className={settingBtnPrimaryClass} onClick={handleSaveDatabaseConfig}>
-                      Save
-                    </button>
-                    <button className={settingBtnSecondaryClass} onClick={handleClearDatabaseConfig}>
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+                      <input className={inputClass} type="password" value={aiSettings.apiKey} onChange={(e) => updateAISettings({ apiKey: e.target.value })} placeholder={AI_PROVIDER_PRESETS.find((p) => p.id === aiSettings.provider)?.keyPlaceholder} />
+                    </SettingRow>
+                  </SettingGroup>
 
-            {/* ── BACKLINKS SECTION ────────────────────────────────── */}
-            {activeSection === "backlinks" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Show Backlinks pane by default</div>
-                    <div className={settingDescriptionClass}>
-                      Always open the Backlinks panel on the right sidebar when loading a note file.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass} type="checkbox" defaultChecked={true} />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
+                  <h3 className={groupTitleClass}>Available Models</h3>
+                  <SettingGroup>
+                    {models.map((model) => (
+                      <SettingRow key={model.id} title={model.label} description={model.description}>
+                        <button className={cx(buttonClass, aiSettings.modelId === model.id && "border-[var(--color-accent)]")} onClick={() => updateAISettings({ modelId: model.id })}>
+                          {aiSettings.modelId === model.id ? "Selected" : "Select"}
+                        </button>
+                      </SettingRow>
+                    ))}
+                    {aiSettings.provider === "openrouter" && (
+                      <SettingRow title="Custom Model" description="Use any other OpenRouter model by entering its ID.">
+                        <input className={inputClass} value={isCustomModel ? aiSettings.modelId : aiSettings.customModelId || ""} onChange={(e) => updateAISettings({ modelId: e.target.value, customModelId: e.target.value })} placeholder="e.g. deepseek/deepseek-v4-flash:free" />
+                      </SettingRow>
+                    )}
+                  </SettingGroup>
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Integrate backlinks at the end of notes</div>
-                    <div className={settingDescriptionClass}>
-                      Inject a collapsible list of all referencing notes directly beneath your note contents.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass} type="checkbox" defaultChecked={false} />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
+                  <h3 className={groupTitleClass}>System Status</h3>
+                  <SettingGroup>
+                    <SettingRow title="Analysis Engine" description="State of the background note indexer and vector embeddings store.">
+                      <span className={cx("inline-flex items-center gap-1.5 text-[12.5px]", isModelLoaded() ? "text-[var(--success)]" : "text-[var(--text-muted)]")}>
+                        {isModelLoaded() ? <Check size={14} /> : <AlertCircle size={14} />}
+                        {isModelLoaded() ? `Running - ${indexedCount} notes indexed` : "Loads automatically on first note save"}
+                      </span>
+                    </SettingRow>
+                    <SettingRow title="LLM Service Connection" description="Verification of the active remote large language model connection.">
+                      <span className={cx("inline-flex items-center gap-1.5 text-[12.5px]", aiSettings.apiKey ? "text-[var(--success)]" : "text-[var(--text-muted)]")}>
+                        {aiSettings.apiKey ? <Check size={14} /> : <AlertCircle size={14} />}
+                        {aiSettings.apiKey ? `Connected: ${currentModel?.shortLabel || currentModel?.label}` : "No API key - local analysis still works"}
+                      </span>
+                    </SettingRow>
+                  </SettingGroup>
                 </div>
+              )}
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Include unlinked mentions</div>
-                    <div className={settingDescriptionClass}>
-                      Search and surface notes that write this note's name but do not wrap it inside brackets.
+              {activeSection === "database" && (
+                <div className={sectionClass}>
+                  <SettingGroup>
+                    <SettingRow title="Supabase URL" description="Project URL from your Supabase API settings.">
+                      <input className={inputClass} value={databaseConfig.supabaseUrl} onChange={(e) => setDatabaseConfig((current) => ({ ...current, supabaseUrl: e.target.value }))} placeholder="https://project.supabase.co" />
+                    </SettingRow>
+                    <SettingRow title="Anon public key" description="Use the anon public key. Do not paste a service role key into the app.">
+                      <input className={inputClass} type="password" value={databaseConfig.anonKey} onChange={(e) => setDatabaseConfig((current) => ({ ...current, anonKey: e.target.value }))} placeholder="eyJhbGciOi..." />
+                    </SettingRow>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Import from .env</h3>
+                  <textarea className={textareaClass} value={databaseEnvText} onChange={(e) => setDatabaseEnvText(e.target.value)} placeholder={"VITE_SUPABASE_URL=https://project.supabase.co\nVITE_SUPABASE_ANON_KEY=eyJhbGciOi..."} />
+                  <div className="mt-3 flex justify-end">
+                    <button className={buttonClass} onClick={handleImportDatabaseEnv}>Import values</button>
+                  </div>
+
+                  <h3 className={groupTitleClass}>Schema migration</h3>
+                  <SettingGroup>
+                    <SettingRow title="Database creation SQL" description="Copy the bundled schema.sql migration and run it in the Supabase SQL Editor for a personal database.">
+                      <button className={cx(buttonClass, "inline-flex items-center gap-2")} onClick={handleCopyDatabaseSchema}>
+                        <Copy size={14} /> Copy SQL
+                      </button>
+                    </SettingRow>
+                    <div className="px-0 pb-3">
+                      <StatusLine type={databaseSchemaCopyStatus.type === "idle" ? "info" : databaseSchemaCopyStatus.type} message={databaseSchemaCopyStatus.message} />
                     </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass} type="checkbox" defaultChecked={true} />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
+                  </SettingGroup>
+
+                  <h3 className={groupTitleClass}>Local Storage</h3>
+                  <SettingGroup>
+                    <SettingRow title="Saved credentials" description="Credentials are saved in this app's local browser storage and restored automatically on startup.">
+                      <button className={buttonClass} onClick={handleTestDatabaseConnection} disabled={isTestingDatabase}>{isTestingDatabase ? "Testing..." : "Test"}</button>
+                      <button className={primaryButtonClass} onClick={handleSaveDatabaseConfig}>Save</button>
+                      <button className={buttonClass} onClick={handleClearDatabaseConfig}>Clear</button>
+                    </SettingRow>
+                    <div className="px-0 pb-3">
+                      <StatusLine type={databaseStatus.type} message={databaseStatus.message} />
+                    </div>
+                  </SettingGroup>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ── CANVAS SECTION ──────────────────────────────────── */}
-            {activeSection === "canvas" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Graph node scale</div>
-                    <div className={settingDescriptionClass}>
-                      Specify the visual circumference diameter of note nodes on the d3 graph view.
-                    </div>
-                  </div>
-                  <div className={rangeControlClass}>
-                    <input
-                      type="range"
-                      min="2"
-                      max="12"
-                      value={localSettings.nodeSize}
-                      onChange={(e) => updateSetting("nodeSize", parseInt(e.target.value))}
-                      className={settingRangeSliderClass}
-                    />
-                    <span className={rangeIndicatorClass}>{localSettings.nodeSize}px</span>
-                  </div>
+              {activeSection === "collaboration" && (
+                <div className={sectionClass}>
+                  <CollaborationPanel
+                    vaultPath={vaultPath || null}
+                    isSettingsMode={true}
+                    onVaultReconstructed={onVaultReconstructed}
+                    onGoToAccount={() => setActiveSection("general")}
+                  />
                 </div>
+              )}
 
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Node separation constraint</div>
-                    <div className={settingDescriptionClass}>
-                      Force spacing distance threshold between d3 coordinates on the active layout.
-                    </div>
-                  </div>
-                  <div className={rangeControlClass}>
-                    <input
-                      type="range"
-                      min="50"
-                      max="200"
-                      value={localSettings.nodeSpacing}
-                      onChange={(e) => updateSetting("nodeSpacing", parseInt(e.target.value))}
-                      className={settingRangeSliderClass}
-                    />
-                    <span className={rangeIndicatorClass}>{localSettings.nodeSpacing}px</span>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Show orphans</div>
-                    <div className={settingDescriptionClass}>
-                      Render isolated note files on the knowledge graph that have no links connected to other notes.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <label className={settingToggleClass}>
-                      <input
-                        className={settingToggleInputClass}
-                        type="checkbox"
-                        checked={localSettings.showOrphans}
-                        onChange={(e) => updateSetting("showOrphans", e.target.checked)}
-                      />
-                      <span className={toggleSliderClass} />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── DAILY NOTES SECTION ─────────────────────────────── */}
-            {activeSection === "daily-notes" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Daily notes folder</div>
-                    <div className={settingDescriptionClass}>
-                      Subdirectory folder name where daily journal notes are created (defaults to root if empty).
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="text"
-                      value={localSettings.dailyNoteFolder}
-                      onChange={(e) => updateSetting("dailyNoteFolder", e.target.value)}
-                      placeholder="Daily Notes"
-                      className={settingInputClass}
-                    />
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Date format template</div>
-                    <div className={settingDescriptionClass}>
-                      Specify the filename date convention. Example: `YYYY-MM-DD` or `YYYY-MM-DD-dddd`.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="text"
-                      value={localSettings.dailyNoteFormat}
-                      onChange={(e) => updateSetting("dailyNoteFormat", e.target.value)}
-                      placeholder="YYYY-MM-DD"
-                      className={settingInputClass}
-                    />
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Daily note template</div>
-                    <div className={settingDescriptionClass}>
-                      Optionally specify a Markdown file path to pre-fill content when daily logs are auto-created.
-                    </div>
-                  </div>
-                  <div className={browseControlClass}>
-                    <input
-                      type="text"
-                      value={localSettings.dailyNoteTemplate}
-                      onChange={(e) => updateSetting("dailyNoteTemplate", e.target.value)}
-                      placeholder="No template selected"
-                      className={settingInputClass}
-                    />
-                    <button className={settingIconBtnSecondaryClass} aria-label="Browse daily template path">
-                      <FolderOpen size={16} />
+              {activeSection === "about" && (
+                <div className={sectionClass}>
+                  <div className="flex flex-col items-center py-10 text-center">
+                    <img src={isDark ? "public/logos/logo-dark.png" : "public/logos/image-light.png"} alt="OpenObsidian logo" className="mb-5 h-16 w-auto object-contain" />
+                    <h3 className="mb-2 text-lg font-semibold">OpenObsidian</h3>
+                    <p className="mb-6 text-xs text-[var(--text-muted)]">Version 1.0.0</p>
+                    <p className="max-w-md text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                      A local-first, offline-ready knowledge management tool for creating, linking, and mapping Markdown note networks.
+                    </p>
+                    <button className={cx(buttonClass, "mt-8 inline-flex items-center gap-2 border-dashed")} onClick={() => onSettingsChange(DEFAULT_SETTINGS)}>
+                      <RotateCcw size={14} /> Reset all settings to factory default
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* ── COLLABORATION SECTION ───────────────────────────── */}
-            {activeSection === "collaboration" && (
-              <div className={settingsSectionClass}>
-                <div className="setting-description-box">
-                  <p className={settingDescriptionClass}>
-                    Manage secure, local-first real-time vault sharing and collaborator panels for the currently loaded vault path.
-                  </p>
-                  {currentUser?.email && (
-                    <div className="signed-in-badge">
-                      Signed in as: <strong>{currentUser.email}</strong>
-                    </div>
-                  )}
-                </div>
-                <CollaborationPanel
-                  vaultPath={vaultPath || null}
-                  isSettingsMode={true}
-                  onVaultReconstructed={onVaultReconstructed}
-                  onGoToAccount={() => setActiveSection("general")}
-                />
-              </div>
-            )}
-
-            {/* ── TEMPLATES SECTION ───────────────────────────────── */}
-            {activeSection === "templates" && (
-              <div className={settingsSectionClass}>
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Templates folder</div>
-                    <div className={settingDescriptionClass}>
-                      The vault directory location where layout and boilerplate pre-fill markdown files reside.
-                    </div>
-                  </div>
-                  <div className={browseControlClass}>
-                    <input
-                      type="text"
-                      placeholder="templates"
-                      defaultValue="templates"
-                      className={settingInputClass}
-                    />
-                    <button className={settingIconBtnSecondaryClass} aria-label="Browse templates path">
-                      <FolderOpen size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Template date format</div>
-                    <div className={settingDescriptionClass}>
-                      Date structure format applied when replacing {"{{date}}"} tags.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="text"
-                      defaultValue="YYYY-MM-DD"
-                      className={settingInputClass}
-                    />
-                  </div>
-                </div>
-
-                <div className={settingCardClass}>
-                  <div className={settingInfoClass}>
-                    <div className={settingTitleClass}>Template time format</div>
-                    <div className={settingDescriptionClass}>
-                      Time structure format applied when replacing {"{{time}}"} tags.
-                    </div>
-                  </div>
-                  <div className={settingControlClass}>
-                    <input
-                      type="text"
-                      defaultValue="HH:mm"
-                      className={settingInputClass}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── COMMUNITY PLUGINS SECTION ───────────────────────── */}
-            {activeSection === "plugins" && (
-              <div className={settingsSectionClass}>
-                <PluginSettingsPanel
-                  plugins={plugins}
-                  settingTabs={pluginSettingTabs}
-                  onEnablePlugin={onEnablePlugin || (async () => {})}
-                  onDisablePlugin={onDisablePlugin || (async () => {})}
-                  onRefresh={onRefreshPlugins || (async () => {})}
-                  onReloadPlugin={onReloadPlugin}
-                  onUninstallPlugin={onUninstallPlugin}
-                  onInstallPlugin={onInstallPlugin}
-                  onBrowse={() => setIsBrowsingPlugins(true)}
-                />
-              </div>
-            )}
-
-            {/* ── ABOUT SECTION ───────────────────────────────────── */}
-            {activeSection === "about" && (
-              <div className={settingsSectionClass}>
-                <div className={aboutInfoClass}>
-                  <div className={aboutLogoWrapperClass}>
-                    <img
-                      src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
-                      alt="OpenObsidian logo"
-                      className={aboutLogoImgClass}
-                    />
-                  </div>
-                  <h4 className={aboutHeadingClass}>OpenObsidian</h4>
-                  <p className={aboutVersionClass}>Version 1.0.0 (Core Engine)</p>
-                  <p className={aboutDescriptionClass}>
-                    A local-first, offline-ready knowledge management tool for creating,
-                    linking, and mapping Markdown note networks. Powered by Electron, React, and TypeScript.
-                  </p>
-
-                  <div className={aboutLinksClass}>
-                    <a href="#" className={aboutLinkClass}>Documentation</a>
-                    <span className={linkDividerClass}>•</span>
-                    <a href="#" className={aboutLinkClass}>Release notes</a>
-                    <span className={linkDividerClass}>•</span>
-                    <a href="#" className={aboutLinkClass}>Report issues</a>
-                  </div>
-                </div>
-
-                <div className={resetContainerClass}>
-                  <button className={settingResetBtnClass} onClick={resetSettings}>
-                    <RotateCcw size={14} className={resetIconClass} />
-                    Reset all settings to factory default
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        </>
+              )}
+            </main>
+          </>
         )}
       </div>
       {showAuthModal && (

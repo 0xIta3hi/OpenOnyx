@@ -6,6 +6,8 @@
  */
 
 import { app, IpcMain, BrowserWindow, clipboard, dialog, shell } from 'electron';
+import * as fs from 'fs/promises';
+import * as nodePath from 'path';
 import { FileSystemManager } from './fileSystem';
 import { SearchEngine } from './search';
 
@@ -89,6 +91,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle('fs:deleteFile', async (_event, filePath: string) => {
     await fsManager.deleteFile(filePath);
+    searchEngine.buildIndex(fsManager).catch(console.error);
+  });
+
+  ipcMain.handle('fs:trashFile', async (_event, filePath: string) => {
+    await shell.trashItem(fsManager.getAbsolutePath(filePath));
     searchEngine.buildIndex(fsManager).catch(console.error);
   });
 
@@ -221,6 +228,71 @@ export function registerIpcHandlers(
 
   ipcMain.handle('clipboard:readText', async () => {
     return clipboard.readText();
+  });
+
+  ipcMain.handle('pdf:exportMarkdown', async (_event, params: { html: string; defaultPath?: string }) => {
+    if (!params?.html) throw new Error('No PDF HTML was provided.');
+
+    const owner = getMainWindow();
+    const saveResult = owner
+      ? await dialog.showSaveDialog(owner, {
+          title: 'Export to PDF',
+          defaultPath: params.defaultPath || 'Untitled.pdf',
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        })
+      : await dialog.showSaveDialog({
+          title: 'Export to PDF',
+          defaultPath: params.defaultPath || 'Untitled.pdf',
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { canceled: true as const, filePath: null };
+    }
+
+    const tempHtmlPath = nodePath.join(app.getPath('temp'), `openobsidian-export-${Date.now()}.html`);
+    let pdfWindow: BrowserWindow | null = null;
+
+    try {
+      await fs.writeFile(tempHtmlPath, params.html, 'utf8');
+      pdfWindow = new BrowserWindow({
+        show: false,
+        width: 816,
+        height: 1056,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: false,
+          webSecurity: false,
+        },
+      });
+
+      await pdfWindow.loadFile(tempHtmlPath);
+      await pdfWindow.webContents.executeJavaScript(`
+        Promise.all([
+          document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve(),
+          Promise.all(Array.from(document.images).map((img) => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve) => {
+              img.onload = resolve;
+              img.onerror = resolve;
+            });
+          }))
+        ])
+      `);
+
+      const pdfBuffer = await pdfWindow.webContents.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true,
+        pageSize: 'Letter',
+        margins: { marginType: 'default' },
+      });
+      await fs.writeFile(saveResult.filePath, pdfBuffer);
+      return { canceled: false as const, filePath: saveResult.filePath };
+    } finally {
+      if (pdfWindow && !pdfWindow.isDestroyed()) pdfWindow.destroy();
+      await fs.unlink(tempHtmlPath).catch(() => {});
+    }
   });
 
   ipcMain.handle('network:request', async (_event, params: any) => {

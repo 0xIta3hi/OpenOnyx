@@ -105,23 +105,27 @@ function stripMarkdown(text: string): string {
 
 // ── Hashing ──────────────────────────────────────────────────────────────────
 
-export function simpleHash(text: string): string {
+export function simpleHash(text: string | null | undefined): string {
+  const source = typeof text === "string" ? text : "";
   let h = 0;
-  for (let i = 0; i < text.length; i++) {
-    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  for (let i = 0; i < source.length; i++) {
+    h = ((h << 5) - h + source.charCodeAt(i)) | 0;
   }
   return h.toString(36);
 }
 
 // ── Embedding generation ─────────────────────────────────────────────────────
 
-export async function embedText(text: string): Promise<number[]> {
+export async function embedText(text: string | null | undefined): Promise<number[]> {
   const embedder = await getEmbedder();
-  const clean = stripMarkdown(text).substring(0, 1500);
+  const clean = stripMarkdown(typeof text === "string" ? text : "").substring(0, 1500);
   if (clean.length < 5) {
     return new Array(EMBEDDING_DIM).fill(0);
   }
   const output = await embedder(clean, { pooling: "mean", normalize: true });
+  if (!output?.data) {
+    return new Array(EMBEDDING_DIM).fill(0);
+  }
   return Array.from(output.data as Float32Array).slice(0, EMBEDDING_DIM);
 }
 
@@ -284,23 +288,24 @@ export function resetEmbeddingsStore(): void {
 export async function embedNote(
   store: EmbeddingStore,
   path: string,
-  content: string,
+  content: string | null | undefined,
   modifiedAt?: number,
   size?: number,
 ): Promise<boolean> {
-  const hash = simpleHash(content);
+  const source = typeof content === "string" ? content : "";
+  const hash = simpleHash(source);
   const existing = store.entries.get(path);
 
   if (existing && existing.hash === hash) return false;
 
-  const vector = await embedText(content);
+  const vector = await embedText(source);
   const entry: StoredEmbedding = {
     path,
     hash,
     vector,
     updatedAt: Date.now(),
     modifiedAt: modifiedAt ?? Date.now(),
-    size: size ?? content.length,
+    size: size ?? source.length,
   };
   store.entries.set(path, entry);
   _memoryStore.entries.set(path, entry);

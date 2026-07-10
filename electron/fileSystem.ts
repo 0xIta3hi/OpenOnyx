@@ -46,6 +46,10 @@ export class FileSystemManager {
     return this.vaultPath;
   }
 
+  getAbsolutePath(relativePath: string): string {
+    return this.resolvePath(relativePath);
+  }
+
   /** Resolve a relative path to an absolute path within the vault */
   private resolvePath(relativePath: string): string {
     if (!this.vaultPath) throw new Error('No vault path set');

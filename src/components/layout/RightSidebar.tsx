@@ -60,6 +60,7 @@ interface RightSidebarProps {
   openFile: (path: string, mode?: any) => void | Promise<void>;
   activeFilePath: string | null;
   activeFileName: string;
+  showUnlinkedMentions?: boolean;
   width: number;
   rightPluginViews?: Array<{
     viewType: string;
@@ -81,6 +82,7 @@ export function RightSidebar({
   openFile,
   activeFilePath,
   activeFileName,
+  showUnlinkedMentions = true,
   width,
   rightPluginViews = [],
   onClosePluginView,
@@ -135,24 +137,25 @@ export function RightSidebar({
                 }}
               />
             </div>
-            {/* Unlinked Mentions */}
-            <div className="flex-1 border-t border-(--border-subtle)">
-              <UnlinkedMentionsPanel
-                currentNotePath={activeFilePath}
-                currentNoteName={activeFileName}
-                visible={true}
-                onNavigate={async (path, line) => {
-                  await openFile(path);
-                  if (line) {
-                    setTimeout(() => {
-                      document.dispatchEvent(
-                        new CustomEvent("editor:goto-line", { detail: line })
-                      );
-                    }, 150);
-                  }
-                }}
-              />
-            </div>
+            {showUnlinkedMentions && (
+              <div className="flex-1 border-t border-(--border-subtle)">
+                <UnlinkedMentionsPanel
+                  currentNotePath={activeFilePath}
+                  currentNoteName={activeFileName}
+                  visible={true}
+                  onNavigate={async (path, line) => {
+                    await openFile(path);
+                    if (line) {
+                      setTimeout(() => {
+                        document.dispatchEvent(
+                          new CustomEvent("editor:goto-line", { detail: line })
+                        );
+                      }, 150);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 

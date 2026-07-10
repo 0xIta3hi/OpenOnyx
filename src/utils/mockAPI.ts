@@ -314,6 +314,10 @@ export function createMockAPI(): ElectronAPI {
       delete mockFiles[filePath];
     },
 
+    trashFile: async (filePath: string) => {
+      delete mockFiles[filePath];
+    },
+
     renameFile: async (oldPath: string, newPath: string) => {
       if (mockFiles[oldPath] !== undefined) {
         // Renaming a file
@@ -557,6 +561,17 @@ export function createMockAPI(): ElectronAPI {
         return navigator.clipboard.readText();
       }
       return "";
+    },
+
+    exportMarkdownPdf: async (params: { html: string; defaultPath?: string }) => {
+      const preview = window.open("", "_blank");
+      if (preview) {
+        preview.document.open();
+        preview.document.write(params.html);
+        preview.document.close();
+        setTimeout(() => preview.print(), 100);
+      }
+      return { canceled: false, filePath: params.defaultPath || null };
     },
 
     networkRequest: async (params: any): Promise<any> => {

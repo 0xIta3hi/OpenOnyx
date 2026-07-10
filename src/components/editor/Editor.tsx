@@ -17,6 +17,7 @@ import { Compartment, EditorState, Transaction, StateField } from "@codemirror/s
 import {
   EditorView,
   keymap,
+  lineNumbers,
   ViewUpdate,
   Decoration,
   DecorationSet,
@@ -30,6 +31,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { closeBrackets } from "@codemirror/autocomplete";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
@@ -64,6 +66,7 @@ import { extractOperations } from "../../utils/collabOperations";
 import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { authManager } from "../../lib/auth";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
+import type { AppSettings } from "../settings/SettingsPage";
 
 const validPluginEditorExtensionCache = new WeakMap<object, boolean>();
 const invalidPluginEditorExtensions = new Set<any>();
@@ -254,6 +257,7 @@ interface EditorProps {
   showInsight?: boolean;
   onToggleInsight?: (show: boolean) => void;
   theme?: string;
+  settings?: AppSettings;
   // Collaboration: operation-based sync
   onCollabOperations?: (ops: CollabOperation[]) => void;
   onCursorChange?: (cursor: { from: number; to: number }) => void;
@@ -267,6 +271,46 @@ interface EditorProps {
   readOnly?: boolean;
   onGenerateInsight?: () => void;
   isGeneratingInsight?: boolean;
+}
+
+function getEditorSettingsExtensions(settings?: AppSettings) {
+  return [
+    settings?.showLineNumbers ? lineNumbers() : [],
+    settings?.wordWrap !== false ? EditorView.lineWrapping : [],
+    EditorState.tabSize.of(settings?.tabSize ?? 2),
+    EditorView.contentAttributes.of({
+      dir: settings?.rightToLeft ? "rtl" : "ltr",
+    }),
+    EditorView.theme({
+      ".cm-scroller": {
+        overflowX: settings?.wordWrap === false ? "auto" : "hidden",
+      },
+      ".cm-line": {
+        borderLeft:
+          settings?.indentationGuides === false
+            ? "none"
+            : "1px solid var(--indentation-guide-color, var(--border-subtle))",
+      },
+    }),
+  ];
+}
+
+function getEditorKeymapExtensions(settings?: AppSettings) {
+  return keymap.of([
+    ...defaultKeymap,
+    ...historyKeymap,
+    ...(settings?.indentUsingTabs === false ? [] : [indentWithTab]),
+  ]);
+}
+
+function getEditorBehaviorExtensions(settings?: AppSettings) {
+  return [
+    settings?.autoPairBrackets === false && settings?.autoPairMarkdown === false
+      ? []
+      : closeBrackets(),
+    settings?.foldHeading === false ? [] : [headingFold(), foldTheme],
+    settings?.defaultEditingMode === "source" ? [] : markdownLivePreviewPlugin(),
+  ];
 }
 
 /**
@@ -2452,6 +2496,7 @@ export function Editor({
   showInsight,
   onToggleInsight,
   theme,
+  settings,
   onCollabOperations,
   onCursorChange,
   remoteCursors,
@@ -2502,6 +2547,9 @@ export function Editor({
   const suggestionContentCompartmentRef = useRef(new Compartment());
   const pluginExtensionsCompartmentRef = useRef(new Compartment());
   const spellcheckCompartmentRef = useRef(new Compartment());
+  const editorSettingsCompartmentRef = useRef(new Compartment());
+  const editorKeymapCompartmentRef = useRef(new Compartment());
+  const editorBehaviorCompartmentRef = useRef(new Compartment());
   const typingPauseTimerRef = useRef<number | null>(null);
   const flowTriggerDelayTimerRef = useRef<number | null>(null);
   const flowTriggerWindowTimerRef = useRef<number | null>(null);
@@ -3111,6 +3159,7 @@ export function Editor({
   // Ctrl/Cmd + wheel to zoom editor/preview text size
   const handleZoomWheel = useCallback(
     (e: WheelEvent) => {
+      if (settings?.quickFontSizeAdjustment === false) return;
       if (!(e.ctrlKey || e.metaKey)) return;
 
       const targetNode = e.target as Node | null;
@@ -3147,7 +3196,7 @@ export function Editor({
       wheelRemainderRef.current -=
         Math.sign(wheelRemainderRef.current) * steps * threshold;
     },
-    [onAdjustFontSize, isSpecialTab],
+    [onAdjustFontSize, isSpecialTab, settings?.quickFontSizeAdjustment],
   );
 
   useEffect(() => {
@@ -3277,18 +3326,16 @@ export function Editor({
         history(),
         search(),
         highlightSelectionMatches(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        editorKeymapCompartmentRef.current.of(getEditorKeymapExtensions(settings)),
         markdown(),
-        EditorView.lineWrapping,
+        editorSettingsCompartmentRef.current.of(getEditorSettingsExtensions(settings)),
         syntaxHighlighting(markdownHighlightStyle),
         linkAutocomplete(),
         linkAutocompleteTheme,
-        headingFold(),
-        foldTheme,
+        editorBehaviorCompartmentRef.current.of(getEditorBehaviorExtensions(settings)),
         wikiLinkPlugin(onLinkClick),
         tagPlugin(),
         imageWidgetPlugin(handleOpenImageLightbox),
-        markdownLivePreviewPlugin(),
         // These fields are part of Obsidian's CM6 contract. Community editor
         // extensions (Advanced Canvas, Icon Folder, and others) read them
         // directly through state.field(...).
@@ -3771,6 +3818,45 @@ export function Editor({
       );
     };
   }, [isSpecialTab, readSpellcheckSetting]);
+
+  useEffect(() => {
+    if (isSpecialTab || !viewRef.current) return;
+
+    viewRef.current.dispatch({
+      effects: editorSettingsCompartmentRef.current.reconfigure(
+        getEditorSettingsExtensions(settings),
+      ),
+    });
+  }, [
+    isSpecialTab,
+    settings?.showLineNumbers,
+    settings?.wordWrap,
+    settings?.tabSize,
+    settings?.rightToLeft,
+    settings?.indentationGuides,
+  ]);
+
+  useEffect(() => {
+    if (isSpecialTab || !viewRef.current) return;
+
+    viewRef.current.dispatch({
+      effects: [
+        editorKeymapCompartmentRef.current.reconfigure(
+          getEditorKeymapExtensions(settings),
+        ),
+        editorBehaviorCompartmentRef.current.reconfigure(
+          getEditorBehaviorExtensions(settings),
+        ),
+      ],
+    });
+  }, [
+    isSpecialTab,
+    settings?.indentUsingTabs,
+    settings?.autoPairBrackets,
+    settings?.autoPairMarkdown,
+    settings?.foldHeading,
+    settings?.defaultEditingMode,
+  ]);
 
   useEffect(() => {
     if (isSpecialTab || !viewRef.current) return;
@@ -4571,6 +4657,7 @@ export function Editor({
                   onGetLinkPreview={onGetNoteContent}
                   onImageClick={handleOpenImageLightbox}
                   theme={theme}
+                  settings={settings}
                   onContentChange={onContentChange}
                 />
               </div>
