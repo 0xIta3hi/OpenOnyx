@@ -91,7 +91,18 @@ export interface Command {
 }
 
 export type ViewMode = "editor" | "preview" | "split";
-export type Theme = "dark" | "light" | "oceanic" | "dark-plus" | "blue-night" | "night-light" | "custom";
+export type Theme =
+  | "dark"
+  | "light"
+  | "oceanic"
+  | "dark-plus"
+  | "blue-night"
+  | "night-light"
+  | "ember-night"
+  | "aurora-grove"
+  | "paper-sage"
+  | "rose-quartz"
+  | "custom";
 
 // ── Thought Model Types ──────────────────────────────
 

@@ -66,6 +66,10 @@ type ThemeSetting =
   | "dark-plus"
   | "blue-night"
   | "night-light"
+  | "ember-night"
+  | "aurora-grove"
+  | "paper-sage"
+  | "rose-quartz"
   | "system"
   | "custom";
 
@@ -858,6 +862,10 @@ export function SettingsPage({
                         <option value="blue-night">Blue Night</option>
                         <option value="oceanic">Oceanic</option>
                         <option value="night-light">Night Light</option>
+                        <option value="ember-night">Ember Night</option>
+                        <option value="aurora-grove">Aurora Grove</option>
+                        <option value="paper-sage">Paper Sage</option>
+                        <option value="rose-quartz">Rose Quartz</option>
                         <option value="custom">Custom</option>
                       </select>
                     </SettingRow>

@@ -84,6 +84,6 @@ export function isDarkTheme(theme: string | Theme, settings?: any): boolean {
     return settings?.customThemeType === "dark";
   }
 
-  const darkThemes = ["dark", "dark-plus", "blue-night", "oceanic"];
+  const darkThemes = ["dark", "dark-plus", "blue-night", "oceanic", "ember-night", "aurora-grove"];
   return darkThemes.includes(theme as string);
 }

@@ -52,7 +52,7 @@ const settingGroupHeaderClass =
 const settingToggleClass = "relative inline-block h-5 w-[38px] shrink-0 cursor-pointer";
 const settingToggleInputClass = "peer absolute h-0 w-0 opacity-0";
 const toggleSliderClass =
-  "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:bottom-0.5 before:left-0.5 before:h-3.5 before:w-3.5 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
+  "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:left-0.5 before:top-1/2 before:h-3.5 before:w-3.5 before:-translate-y-1/2 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
 
 export function CollaborationPanel({
   vaultPath,

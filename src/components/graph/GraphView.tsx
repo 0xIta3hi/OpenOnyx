@@ -106,6 +106,38 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
       textColor = "#2f2118";
       nodeSize = 8;
       break;
+    case "ember-night":
+      backgroundColor = "#0f1110";
+      nodeColor = "#f4d7a1";
+      connectedColor = "#f97316";
+      edgeColor = "#6b5a45";
+      textColor = "#f7efe2";
+      nodeSize = 6;
+      break;
+    case "aurora-grove":
+      backgroundColor = "#07120f";
+      nodeColor = "#b7f7d4";
+      connectedColor = "#34d399";
+      edgeColor = "#4f7c6a";
+      textColor = "#e8fff3";
+      nodeSize = 6;
+      break;
+    case "paper-sage":
+      backgroundColor = "#fbfcf7";
+      nodeColor = "#314238";
+      connectedColor = "#4d7c5b";
+      edgeColor = "#aab7a4";
+      textColor = "#26332b";
+      nodeSize = 8;
+      break;
+    case "rose-quartz":
+      backgroundColor = "#fffafa";
+      nodeColor = "#49343b";
+      connectedColor = "#be3455";
+      edgeColor = "#d6b6bf";
+      textColor = "#2f2428";
+      nodeSize = 8;
+      break;
     case "custom":
     case "dark":
     default:
@@ -351,7 +383,13 @@ export function GraphView({
   const [loading, setLoading] = useState(true);
   const [reinitCounter, setReinitCounter] = useState(0); // Force re-init on filter/theme change
 
-  const isDark = theme === "dark" || theme === "oceanic" || theme === "dark-plus" || theme === "blue-night";
+  const isDark =
+    theme === "dark" ||
+    theme === "oceanic" ||
+    theme === "dark-plus" ||
+    theme === "blue-night" ||
+    theme === "ember-night" ||
+    theme === "aurora-grove";
   const vaultHash = useMemo(
     () => getVaultHash(vaultPath || "default"),
     [vaultPath],

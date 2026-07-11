@@ -421,8 +421,9 @@ export function PluginSettingsPanel({
                         borderRadius: '50%',
                         background: isEnabled ? 'var(--text-on-accent, #ffffff)' : 'var(--text-muted, #888)',
                         position: 'absolute',
-                        top: '3px',
+                        top: '50%',
                         left: isEnabled ? '21px' : '3px',
+                        transform: 'translateY(-50%)',
                         transition: 'all 0.2s',
                       }} />
                     </div>
