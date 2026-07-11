@@ -19,6 +19,7 @@ import * as cmLanguage from '@codemirror/language';
 import * as cmSearch from '@codemirror/search';
 import { NodeProp } from '@lezer/common';
 import * as lezerHighlight from '@lezer/highlight';
+import * as lezerLr from '@lezer/lr';
 import JSZip from 'jszip';
 import type { IPlugin } from './obsidian-api/plugin';
 import { injectPluginStyles, removePluginStyles, injectPluginBaseCss, getPluginScopeClass } from './pluginStyles';
@@ -52,6 +53,16 @@ const cmLanguageExports = cmLanguage as Record<string, unknown>;
 const cmLanguageCompat = {
   ...cmLanguage,
   tokenClassNodeProp: cmLanguageExports["tokenClassNodeProp"] ?? new NodeProp<string>({ deserialize: (value) => value }),
+};
+
+const frontendPluginModules: Record<string, any> = {
+  '@codemirror/state': cmState,
+  '@codemirror/view': cmView,
+  '@codemirror/commands': cmCommands,
+  '@codemirror/language': cmLanguageCompat,
+  '@codemirror/search': cmSearch,
+  '@lezer/highlight': lezerHighlight,
+  '@lezer/lr': lezerLr,
 };
 
 const APP_VERSION = '1.13.1';
@@ -192,6 +203,7 @@ export class PluginManager {
     win.require = (id: string) => {
       if (id === 'electron') return electronCompat;
       if (id === 'obsidian') return obsidianApi;
+      if (frontendPluginModules[id]) return frontendPluginModules[id];
       if (previousRequire) return previousRequire(id);
       throw new Error(`Cannot require module '${id}' in this renderer`);
     };
@@ -411,12 +423,7 @@ export class PluginManager {
       }
       
       // Provide built-in frontend modules
-      if (id === '@codemirror/state') return cmState;
-      if (id === '@codemirror/view') return cmView;
-      if (id === '@codemirror/commands') return cmCommands;
-      if (id === '@codemirror/language') return cmLanguageCompat;
-      if (id === '@codemirror/search') return cmSearch;
-      if (id === '@lezer/highlight') return lezerHighlight;
+      if (frontendPluginModules[id]) return frontendPluginModules[id];
 
       if (id === 'electron') {
         let electron: any = {};

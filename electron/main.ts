@@ -49,6 +49,11 @@ function configureLinuxFontConfig(): void {
 function configureChromiumRuntime(): void {
   configureLinuxFontConfig();
 
+  const debugPort = process.env.OPENOBSIDIAN_DEBUG_PORT;
+  if (debugPort && /^\d+$/.test(debugPort)) {
+    app.commandLine.appendSwitch('remote-debugging-port', debugPort);
+  }
+
   if (!isDevMode) return;
   if (process.env.OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS === '1') return;
 

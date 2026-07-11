@@ -94,6 +94,7 @@ import {
 } from "./components/layout/SplitPaneContainer";
 import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
 import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers";
+import { getUngroupedTabsToPreserve, isUngroupedTab } from "./utils/tabGroups";
 import { getAPI } from "./utils/api";
 import { PluginManager } from "./lib/pluginManager";
 import { OOApp } from "./lib/obsidian-api/app";
@@ -1649,7 +1650,7 @@ export default function App() {
 
       setActiveGroupId(null);
 
-      const ungroupedTabs = tabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+      const ungroupedTabs = getUngroupedTabsToPreserve(tabs, collectAllTabs(paneTree), groups);
 
       const newTab: Tab = {
         id: generateId(),
@@ -1689,7 +1690,7 @@ export default function App() {
     setActiveTabId(newTab.id);
     setCurrentContent("");
     setBacklinks([]);
-  }, [generateId, activeGroupId, groups, paneTree, activeTabId, focusedLeafId]);
+  }, [generateId, activeGroupId, groups, paneTree, activeTabId, focusedLeafId, tabs]);
 
   // Position and mode cache per file path
   const scrollCursorCacheRef = useRef<Record<string, { scroll?: number, cursor?: number, viewMode?: ViewMode }>>({});
@@ -1842,7 +1843,7 @@ export default function App() {
     if (activeGroupId) {
       addedTabs = addedTabs.filter((t) => t.groupId === activeGroupId);
     } else {
-      addedTabs = addedTabs.filter((t) => !t.groupId || !groups.some(g => g.id === t.groupId));
+      addedTabs = addedTabs.filter((t) => isUngroupedTab(t, groups));
     }
 
     // Find tabs that were removed
@@ -2076,6 +2077,7 @@ export default function App() {
   // ── Workspace State Persistence ─────────────────────
   useEffect(() => {
     if (!vaultPath) return;
+    if (activeGroupId) return;
 
     const saveTimer = setTimeout(() => {
       writeData("workspace.json", {
@@ -2086,7 +2088,7 @@ export default function App() {
     }, 1000);
 
     return () => clearTimeout(saveTimer);
-  }, [paneTree, activeTabId, focusedLeafId, vaultPath]);
+  }, [paneTree, activeTabId, focusedLeafId, vaultPath, activeGroupId]);
 
   // Derive theme from settings (handles 'system' preference)
   const theme: Theme =
@@ -3448,7 +3450,7 @@ export default function App() {
     }
   };
 
-  const handleRestoreGroup = useCallback(async (groupId: string, groupOverride?: LocalGroup) => {
+  const handleRestoreGroup = useCallback(async (groupId: string, groupOverride?: LocalGroup, preferredTabId?: string) => {
     const group = groupOverride || groups.find((g) => g.id === groupId);
     if (!group) return;
 
@@ -3469,7 +3471,7 @@ export default function App() {
     }
 
     // Capture any currently open ungrouped tabs in the active workspace before restoring
-    const ungroupedTabsToPreserve = tabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+    const ungroupedTabsToPreserve = getUngroupedTabsToPreserve(tabs, collectAllTabs(paneTree), groups);
 
     // Clone restored paneTree
     let tree = JSON.parse(JSON.stringify(layout_state.paneTree)) as PaneNode;
@@ -3493,11 +3495,14 @@ export default function App() {
     setTabs([...allRestoredTabs, ...filteredUngroupedTabs]);
 
     // Focus on the first tab of the restored group
-    let targetTabId = layout_state.activeTabId;
     const groupTabs = allRestoredTabs.filter((t) => t.groupId === groupId);
-    if (groupTabs.length > 0) {
-      targetTabId = groupTabs[0].id;
-    }
+    const preferredTab = preferredTabId
+      ? groupTabs.find((tab) => tab.id === preferredTabId)
+      : null;
+    const savedActiveTab = layout_state.activeTabId
+      ? groupTabs.find((tab) => tab.id === layout_state.activeTabId)
+      : null;
+    const targetTabId = preferredTab?.id || savedActiveTab?.id || groupTabs[0]?.id || null;
 
     if (targetTabId) {
       setActiveTabId(targetTabId);
@@ -3545,7 +3550,7 @@ export default function App() {
 
     setActiveGroupId(groupId);
     setHasUnsavedChanges(false);
-  }, [groups, tabs, showToast, api]);
+  }, [groups, tabs, paneTree, showToast, api]);
 
   const handleCreateGroupFromPaths = useCallback(async (name: string, color: string, paths: string[]) => {
     if (!vaultPath) return null;
@@ -3807,8 +3812,12 @@ export default function App() {
             }
           } else {
             setActiveGroupId(null);
-            const ungroupedTabs = tabs.map(t => t.id === tabId ? { ...t, groupId: null } : t)
-              .filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+            const updatedFlatTabs = tabs.map(t => t.id === tabId ? { ...t, groupId: null } : t);
+            const ungroupedTabs = getUngroupedTabsToPreserve(
+              updatedFlatTabs,
+              collectAllTabs(updatedTree),
+              groups,
+            );
 
             const newTree: PaneLeaf = {
               type: 'leaf',
@@ -4212,29 +4221,33 @@ export default function App() {
     if (activeGroupId && !isGroupTab) {
       setActiveGroupId(null);
 
-      const ungroupedTabs = baseTabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
-
-      const newTabId = generateId();
-      const newTab: Tab = {
-        id: newTabId,
+      const ungroupedTabs = getUngroupedTabsToPreserve(baseTabs, collectAllTabs(paneTree), groups);
+      const existingUngroupedTab = existingBaseTab && isUngroupedTab(existingBaseTab, groups)
+        ? existingBaseTab
+        : null;
+      const targetTab = existingUngroupedTab || {
+        id: generateId(),
         path: filePath,
         name: getNoteName(filePath),
         isModified: false,
+        groupId: null,
       };
 
-      ungroupedTabs.push(newTab);
+      if (!ungroupedTabs.some((tab) => tab.id === targetTab.id)) {
+        ungroupedTabs.push(targetTab);
+      }
 
       const newTree: PaneLeaf = {
         type: 'leaf',
         id: generateId(),
         tabs: ungroupedTabs,
-        activeTabId: newTabId,
+        activeTabId: targetTab.id,
       };
 
       skipTabSyncRef.current = true;
       setPaneTree(newTree);
       setTabs(ungroupedTabs);
-      setActiveTabId(newTabId);
+      setActiveTabId(targetTab.id);
       setFocusedLeafId(newTree.id);
 
       if (isCanvasFile(filePath)) {
@@ -5141,6 +5154,12 @@ export default function App() {
   const handleTabSelect = async (id: string) => {
     const selectedTab = tabs.find((t) => t.id === id);
     const targetGroupId = selectedTab ? selectedTab.groupId : null;
+    const isKnownGroupTab = !!targetGroupId && groups.some((group) => group.id === targetGroupId);
+
+    if (!activeGroupId && isKnownGroupTab) {
+      await handleRestoreGroup(targetGroupId, undefined, id);
+      return;
+    }
 
     if (activeGroupId && targetGroupId !== activeGroupId) {
       // Auto-save the current layout state to the database before exiting the group
@@ -5183,10 +5202,15 @@ export default function App() {
           .catch((err) => console.error("Auto-save group failed before switching to ungrouped tab:", err));
       }
 
+      if (isKnownGroupTab) {
+        await handleRestoreGroup(targetGroupId, undefined, id);
+        return;
+      }
+
       setActiveGroupId(null);
 
       if (selectedTab) {
-        const ungroupedTabs = tabs.filter(t => !t.groupId || !groups.some(g => g.id === t.groupId));
+        const ungroupedTabs = getUngroupedTabsToPreserve(tabs, collectAllTabs(paneTree), groups);
         if (!ungroupedTabs.some(t => t.id === selectedTab.id)) {
           ungroupedTabs.push(selectedTab);
         }

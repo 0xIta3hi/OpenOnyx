@@ -166,9 +166,9 @@ const titlebarTabDropLeftClass =
 const titlebarTabDropRightClass =
   "drop-target-right !shadow-[inset_-2px_0_0_var(--accent-color,#7c6ef6)]";
 const titlebarGroupedTabClass =
-  "grouped-tab !rounded-t-[var(--radius-sm,4px)] border-t-[3px] border-solid opacity-75 transition-[background-color,border-top-color,opacity] hover:opacity-95 before:!hidden after:!hidden";
+  "grouped-tab !rounded-t-[var(--radius-sm,4px)] !border-t-2 border-solid opacity-75 transition-[background-color,border-top-color,opacity] hover:opacity-95 before:!hidden after:!hidden";
 const titlebarGroupedActiveTabClass =
-  "!bg-[var(--tab-background-active)] !shadow-none opacity-100";
+  "!border-t-2 !border-t-[var(--tab-group-color)] !bg-[var(--tab-background-active)] !shadow-none opacity-100";
 const titlebarTabInnerClass =
   "tab-inner flex h-full w-full items-center gap-1 overflow-hidden rounded-[var(--tab-radius)] px-1.5 group-hover:bg-[var(--bg-hover)] group-[.active]:relative group-[.active]:overflow-visible group-[.active]:bg-transparent";
 const titlebarTabDotClass = "shrink-0 text-[8px] text-[var(--text-muted)]";
@@ -214,7 +214,7 @@ const groupEditorCheckClass =
 const contextMenuBackdropClass =
   "context-menu-backdrop fixed inset-0 z-[3300] bg-transparent pointer-events-auto";
 const contextMenuClass =
-  "context-menu fixed z-[3301] flex min-w-[180px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] flex-col overflow-y-auto rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl pointer-events-auto";
+  "context-menu fixed z-[3301] flex min-w-[180px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl pointer-events-auto";
 const contextMenuItemClass =
   "context-menu-item flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-sans text-[13px] text-[var(--text-secondary,#b0b0bc)] transition-colors duration-150 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
 const contextSubmenuContainerClass = "context-menu-submenu-container group relative";
@@ -679,8 +679,9 @@ export function TitleBar({
                       tabGroup && tab.id === activeTabId && titlebarGroupedActiveTabClass,
                     )}
                     style={{
-                      borderTop: tabGroup ? `3px solid ${tabGroup.color}` : undefined,
-                    }}
+                      borderTop: tabGroup ? `2px solid ${tabGroup.color}` : undefined,
+                      "--tab-group-color": tabGroup?.color,
+                    } as React.CSSProperties}
                     onClick={() => handleTabClick(tab.id)}
                     draggable
                     onDragStart={(e) => handleDragStart(e, tab.id)}

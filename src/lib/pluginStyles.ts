@@ -509,6 +509,16 @@ export function injectPluginBaseCss(): void {
   overscroll-behavior: contain;
 }
 
+.oo-input-suggest.oo-modal-input-suggest {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  background: var(--bg-secondary, #16171a);
+}
+
 .suggestion-container::-webkit-scrollbar {
   width: 6px;
 }
@@ -530,6 +540,7 @@ export function injectPluginBaseCss(): void {
 .suggestion-item {
   display: flex;
   align-items: center;
+  min-width: 0;
   padding: 6px 14px;
   cursor: pointer;
   font-size: 14px;
@@ -538,6 +549,31 @@ export function injectPluginBaseCss(): void {
   line-height: 1.4;
   min-height: 32px;
   gap: 8px;
+}
+
+.suggestion-item > * {
+  min-width: 0;
+}
+
+.suggestion-item,
+.suggestion-item .suggestion-title,
+.suggestion-item .suggestion-note,
+.suggestion-item .suggestion-content,
+.suggestion-item .suggestion-aux,
+.suggestion-item span,
+.suggestion-item div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestion-item .suggestion-title,
+.suggestion-item .suggestion-note,
+.suggestion-item .suggestion-aux {
+  white-space: nowrap;
+}
+
+.suggestion-item .suggestion-content {
+  flex: 1 1 auto;
 }
 
 .suggestion-item:hover {

@@ -355,6 +355,7 @@ export interface Setting {
   setClass(cls: string): this;
   setHeading(): this;
   setDisabled(disabled: boolean): this;
+  setVisibility(visible: boolean): this;
   setTooltip(tooltip: string): this;
   addText(cb: (component: TextComponent) => any): this;
   addTextArea(cb: (component: TextAreaComponent) => any): this;
@@ -443,6 +444,11 @@ Setting.prototype.setDesc = function(desc: string | DocumentFragment) {
 Setting.prototype.setClass = function(cls: string) { this.settingEl.classList.add(cls); return this; };
 Setting.prototype.setHeading = function() { this.settingEl.classList.add('setting-item-heading'); return this; };
 Setting.prototype.setDisabled = function(disabled: boolean) { this.settingEl.classList.toggle('is-disabled', disabled); return this; };
+Setting.prototype.setVisibility = function(visible: boolean) {
+  this.settingEl.classList.toggle('is-hidden', !visible);
+  this.settingEl.toggleAttribute('hidden', !visible);
+  return this;
+};
 Setting.prototype.setTooltip = function(tooltip: string) { this.settingEl.dataset.tooltip = tooltip; this.settingEl.removeAttribute("title"); return this; };
 
 Setting.prototype.addText = function(cb: (component: TextComponent) => any) {
@@ -1245,7 +1251,18 @@ function _AbstractInputSuggest(this: any, app: any, inputEl: HTMLInputElement) {
   this.suggestEl = document.createElement('div');
   this.suggestEl.className = 'suggestion-container oo-input-suggest';
   this.suggestEl.style.cssText = 'display:none;position:absolute;z-index:9999;max-height:300px;overflow-y:auto;';
-  document.body.appendChild(this.suggestEl);
+  const modalContentEl = inputEl.closest('.modal-content') as HTMLElement | null;
+  if (modalContentEl) {
+    this.suggestEl.classList.add('oo-modal-input-suggest');
+    const anchor = inputEl.closest('.setting-item, .prompt-input-container') || inputEl.parentElement || inputEl;
+    if (anchor === modalContentEl) {
+      modalContentEl.appendChild(this.suggestEl);
+    } else {
+      anchor.insertAdjacentElement('afterend', this.suggestEl);
+    }
+  } else {
+    document.body.appendChild(this.suggestEl);
+  }
 
   // Create a wrapper for the whole thing
   this.containerEl = document.createElement('div');
@@ -1338,6 +1355,16 @@ _AbstractInputSuggest.prototype._highlightSelected = function() {
 
 _AbstractInputSuggest.prototype.open = function() {
   if (!this.inputEl) return;
+  if (this.suggestEl.classList.contains('oo-modal-input-suggest')) {
+    this.suggestEl.style.display = 'block';
+    this.suggestEl.style.position = 'static';
+    this.suggestEl.style.top = '';
+    this.suggestEl.style.left = '';
+    this.suggestEl.style.width = '100%';
+    this.suggestEl.style.maxHeight = 'min(42vh, 360px)';
+    return;
+  }
+
   const rect = this.inputEl.getBoundingClientRect();
   this.suggestEl.style.display = 'block';
   this.suggestEl.style.top = `${rect.bottom + 2}px`;

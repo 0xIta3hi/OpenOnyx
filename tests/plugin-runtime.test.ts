@@ -12,6 +12,7 @@ import {
   Modal,
   Notice,
   Plugin,
+  Setting,
   SettingGroup,
   TextComponent,
   TextFileView,
@@ -160,6 +161,21 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     expect((window as any).electronAPI.openPath).toHaveBeenCalledWith('/vault/Folder/Note.md');
   });
 
+  it('exposes Lezer LR parser APIs required by Excalidraw', () => {
+    const app = new OOApp();
+    new PluginManager(app, {
+      onCommandsChanged: vi.fn(),
+      onRibbonChanged: vi.fn(),
+      onStatusBarChanged: vi.fn(),
+      onSettingTabsChanged: vi.fn(),
+      onPluginsChanged: vi.fn(),
+    });
+
+    const lezerLr = (window as any).require('@lezer/lr');
+    expect(lezerLr.LRParser).toBeTypeOf('function');
+    expect(lezerLr.LRParser.deserialize).toBeTypeOf('function');
+  });
+
   it('implements the suggestion methods proxied by Iconic', () => {
     const input = document.createElement('input');
     const suggest = new (AbstractInputSuggest as any)(new OOApp(), input);
@@ -170,11 +186,38 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     suggest._cleanup();
   });
 
+  it('keeps modal input suggestions attached to the modal content', () => {
+    const modal = new (Modal as any)(new OOApp());
+    const input = document.createElement('input');
+    modal.contentEl.appendChild(input);
+    const suggest = new (AbstractInputSuggest as any)(new OOApp(), input);
+
+    suggest.showSuggestions(['vault/file.md']);
+
+    expect(suggest.suggestEl.parentElement).toBe(modal.contentEl);
+    expect(suggest.suggestEl.classList.contains('oo-modal-input-suggest')).toBe(true);
+    expect(suggest.suggestEl.style.position).toBe('static');
+    expect(suggest.suggestEl.style.width).toBe('100%');
+    suggest._cleanup();
+  });
+
   it('notifies plugin text components when their value is committed programmatically', () => {
     const input = new TextComponent(document.body);
     const changed = vi.fn();
     input.onChange(changed).setValue('vault-file.png').onChanged();
     expect(changed).toHaveBeenCalledWith('vault-file.png');
+  });
+
+  it('supports Setting visibility toggles used by Excalidraw export controls', () => {
+    const item = new (Setting as any)(document.body).setName('Export');
+
+    item.setVisibility(false);
+    expect(item.settingEl.hasAttribute('hidden')).toBe(true);
+    expect(item.settingEl.classList.contains('is-hidden')).toBe(true);
+
+    item.setVisibility(true);
+    expect(item.settingEl.hasAttribute('hidden')).toBe(false);
+    expect(item.settingEl.classList.contains('is-hidden')).toBe(false);
   });
 
   it('deduplicates plugin notices and dismisses them on schedule', () => {

@@ -23,8 +23,12 @@ env.allowRemoteModels = true;
 // Electron/Browser compatibility fixes for @xenova/transformers v2.
 // Force the WASM backend and disable Node.js-specific backends.
 if (env.backends?.onnx?.wasm) {
-  // @ts-ignore
-  env.backends.onnx.wasm.proxy = false;
+  const wasm = env.backends.onnx.wasm as {
+    proxy?: boolean;
+    wasmPaths?: string;
+  };
+  wasm.proxy = false;
+  wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/@xenova/transformers@${env.version}/dist/`;
 }
 
 // ── Model singleton ──────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { env } from '@xenova/transformers';
 import {
   refreshEmbeddingMetadataIfUnchanged,
   resetEmbeddingsStore,
@@ -19,6 +20,11 @@ beforeEach(() => {
 });
 
 describe('embedding cache metadata refresh', () => {
+  it('uses a browser-reachable ONNX WASM runtime path', () => {
+    expect(env.backends.onnx.wasm.proxy).toBe(false);
+    expect(env.backends.onnx.wasm.wasmPaths).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@xenova\/transformers@/);
+  });
+
   it('updates cached file metadata without re-embedding unchanged content', () => {
     const content = '# Cached note\n\nSame content.';
     const store: EmbeddingStore = {
