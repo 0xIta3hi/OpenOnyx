@@ -13,6 +13,7 @@
  */
 
 import {
+  areEmbeddingsAvailable,
   loadStoreAsync,
   embedNote,
   refreshEmbeddingMetadataIfUnchanged,
@@ -181,6 +182,14 @@ const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 100;
 
 async function processBatch(api: any): Promise<void> {
+  if (!areEmbeddingsAvailable()) {
+    _queue = [];
+    _processedCount = _totalCount;
+    reportStatus("Analysis engine unavailable");
+    await persistQueue();
+    return;
+  }
+
   const batch = _queue.splice(0, BATCH_SIZE);
   if (batch.length === 0) return;
 
@@ -297,6 +306,10 @@ export async function initializeVault(
   recentPaths: string[] = [],
   api?: any,
 ): Promise<{ enqueued: number; alreadyIndexed: number }> {
+  if (!areEmbeddingsAvailable()) {
+    return { enqueued: 0, alreadyIndexed: allNotes.length };
+  }
+
   // Load any persisted queue state first
   await loadPersistedQueue();
 

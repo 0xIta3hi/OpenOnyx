@@ -35,6 +35,7 @@ const EMBEDDING_DIM = 384;
 let _pipeline: FeatureExtractionPipeline | null = null;
 let _loadingPromise: Promise<FeatureExtractionPipeline> | null = null;
 let _loadProgress = 0;
+let _disabledReason: string | null = null;
 
 type ProgressCallback = (progress: number, status: string) => void;
 let _onProgress: ProgressCallback | null = null;
@@ -47,7 +48,18 @@ export function getLoadProgress(): number {
   return _loadProgress;
 }
 
+export function getEmbeddingDisabledReason(): string | null {
+  return _disabledReason;
+}
+
+export function areEmbeddingsAvailable(): boolean {
+  return _disabledReason === null;
+}
+
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
+  if (_disabledReason) {
+    throw new Error(_disabledReason);
+  }
   if (_pipeline) return _pipeline;
   if (_loadingPromise) return _loadingPromise;
 
@@ -58,7 +70,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       
       // Explicitly catch pipeline errors
       const p = await pipeline("feature-extraction", MODEL_ID).catch(err => {
-        console.error("[Embeddings] Pipeline creation failed:", err);
+        console.warn("[Embeddings] Pipeline creation failed; semantic analysis disabled for this session:", err);
         throw err;
       });
 
@@ -72,7 +84,8 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
     } catch (err) {
       _loadingPromise = null;
       _loadProgress = 0;
-      _onProgress?.(0, "Analysis engine failed to load");
+      _disabledReason = err instanceof Error ? err.message : "Analysis engine failed to load";
+      _onProgress?.(0, "Analysis engine unavailable");
       throw err;
     }
   })();
@@ -117,6 +130,9 @@ export function simpleHash(text: string | null | undefined): string {
 // ── Embedding generation ─────────────────────────────────────────────────────
 
 export async function embedText(text: string | null | undefined): Promise<number[]> {
+  if (_disabledReason) {
+    return new Array(EMBEDDING_DIM).fill(0);
+  }
   const embedder = await getEmbedder();
   const clean = stripMarkdown(typeof text === "string" ? text : "").substring(0, 1500);
   if (clean.length < 5) {
@@ -280,6 +296,7 @@ export function resetEmbeddingsStore(): void {
   _isLoaded = false;
   _isLoading = false;
   _loadPromise = null;
+  _disabledReason = null;
 }
 
 /**
@@ -292,6 +309,7 @@ export async function embedNote(
   modifiedAt?: number,
   size?: number,
 ): Promise<boolean> {
+  if (_disabledReason) return false;
   const source = typeof content === "string" ? content : "";
   const hash = simpleHash(source);
   const existing = store.entries.get(path);

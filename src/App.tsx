@@ -68,6 +68,7 @@ import {
   getTransitionBoost,
   recordTransition,
   resetEmbeddingsStore,
+  areEmbeddingsAvailable,
   type EmbeddingStore,
 } from "./utils/embeddings";
 import { getAnnotation, getCachedAnnotation, generateFirstThoughtExpansion } from "./utils/ai-core";
@@ -4935,6 +4936,7 @@ export default function App() {
   // Auto-embed a note after save (background, non-blocking)
   const autoEmbedNote = useCallback(async (path: string, content: string) => {
     if (!path.toLowerCase().endsWith(".md")) return;
+    if (!areEmbeddingsAvailable()) return;
     try {
       const store = loadStore();
       const changed = await embedNote(store, path, content);
