@@ -2655,7 +2655,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                 <div className={spaceChatWelcomeContentClass}>
                   <h2 className={spaceChatWelcomeTitleClass}>
                     <img
-                      src="/logos/logo-dark.png"
+                      src="logos/logo-dark.png"
                       alt="OpenObsidian"
                       className={spaceChatWelcomeLogoClass}
                     />

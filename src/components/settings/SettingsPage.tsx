@@ -863,6 +863,12 @@ export function SettingsPage({
                     </SettingRow>
                     {localSettings.theme === "custom" && (
                       <>
+                        <SettingRow title="Custom theme type" description="Choose whether the custom theme is treated as dark or light for image assets.">
+                          <select className={selectClass} value={localSettings.customThemeType || "dark"} onChange={(e) => updateSetting("customThemeType", e.target.value as "dark" | "light")}>
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                          </select>
+                        </SettingRow>
                         <SettingRow title="Accent color" description="Choose the accent color used throughout the app.">
                           <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.accentColor} onChange={(e) => updateSetting("accentColor", e.target.value)} />
                         </SettingRow>
@@ -1223,7 +1229,7 @@ export function SettingsPage({
               {activeSection === "about" && (
                 <div className={sectionClass}>
                   <div className="flex flex-col items-center py-10 text-center">
-                    <img src={isDark ? "public/logos/logo-dark.png" : "public/logos/image-light.png"} alt="OpenObsidian logo" className="mb-5 h-16 w-auto object-contain" />
+                    <img src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"} alt="OpenObsidian logo" className="mb-5 h-16 w-auto object-contain" />
                     <h3 className="mb-2 text-lg font-semibold">OpenObsidian</h3>
                     <p className="mb-6 text-xs text-[var(--text-muted)]">Version 1.0.0</p>
                     <p className="max-w-md text-[13px] leading-relaxed text-[var(--text-secondary)]">

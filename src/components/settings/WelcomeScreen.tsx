@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { FolderOpen, Plus, Network } from "lucide-react";
 import { Theme } from "../../types";
 import { isDarkTheme } from "../../utils/helpers";
+import type { AppSettings } from "./SettingsPage";
 
 export type VaultEntryAction = "open" | "create";
 export type VaultEntryTransitionPhase = "idle" | "transitioning" | "entered";
@@ -17,17 +18,19 @@ interface WelcomeScreenProps {
   onOpenVault: (action: VaultEntryAction) => void;
   transitionPhase?: VaultEntryTransitionPhase;
   theme?: Theme;
+  settings?: AppSettings;
 }
 
 export function WelcomeScreen({
   onOpenVault,
   transitionPhase = "idle",
   theme = "dark",
+  settings,
 }: WelcomeScreenProps) {
   const [pressedAction, setPressedAction] = useState<VaultEntryAction | null>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenRef = useRef<HTMLDivElement>(null);
-  const isDark = isDarkTheme(theme);
+  const isDark = isDarkTheme(theme, settings);
 
   useEffect(() => {
     return () => {
@@ -58,7 +61,7 @@ export function WelcomeScreen({
     <div className="flex flex-col items-center justify-center h-full w-full bg-(--bg-primary) text-(--text-primary) select-none" ref={screenRef} data-transition-phase={transitionPhase}>
       <div className="mb-6">
         <img
-          src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
+          src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"}
           alt="OpenObsidian Logo"
           className="w-20 h-20 object-contain"
         />

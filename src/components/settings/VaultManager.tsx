@@ -12,11 +12,13 @@ import {
 } from "lucide-react";
 import { Theme } from "../../types";
 import { isDarkTheme } from "../../utils/helpers";
+import type { AppSettings } from "./SettingsPage";
 
 interface VaultManagerProps {
   currentVaultPath: string | null;
   previouslyOpenedVaults: string[];
   theme: Theme;
+  settings?: AppSettings;
   onCreateVault: () => Promise<boolean>;
   onOpenVault: () => Promise<boolean>;
   onSwitchVault: (path: string) => Promise<boolean>;
@@ -47,6 +49,7 @@ export function VaultManager({
   currentVaultPath,
   previouslyOpenedVaults,
   theme,
+  settings,
   onCreateVault,
   onOpenVault,
   onSwitchVault,
@@ -61,7 +64,7 @@ export function VaultManager({
     null,
   );
   const [menuPath, setMenuPath] = useState<string | null>(null);
-  const isDark = isDarkTheme(theme);
+  const isDark = isDarkTheme(theme, settings);
   const vaults = useMemo(
     () => uniqueVaults([currentVaultPath, ...previouslyOpenedVaults]),
     [currentVaultPath, previouslyOpenedVaults],
@@ -247,7 +250,7 @@ export function VaultManager({
 
           <div className="flex flex-1 flex-col items-center justify-center px-9 pb-12 pt-16">
             <img
-              src={isDark ? "/logos/logo-dark.png" : "/logos/logo-light.png"}
+              src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"}
               alt=""
               className="mb-5 h-[86px] w-[86px] object-contain"
             />

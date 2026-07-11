@@ -7298,6 +7298,7 @@ export default function App() {
                   onOpenVault={handleWelcomeVaultAction}
                   transitionPhase={vaultEntryTransitionPhase}
                   theme={theme}
+                  settings={settings}
                 />
               </div>
 
@@ -7312,6 +7313,7 @@ export default function App() {
               onOpenVault={handleWelcomeVaultAction}
               transitionPhase="idle"
               theme={theme}
+              settings={settings}
             />
           ) : isFTUXZeroState ? (
             renderFTUXZeroState()
@@ -7762,6 +7764,7 @@ export default function App() {
           currentVaultPath={vaultPath}
           previouslyOpenedVaults={previouslyOpenedVaults}
           theme={theme}
+          settings={settings}
           onCreateVault={handleCreateVault}
           onOpenVault={handleOpenVault}
           onSwitchVault={handleSwitchVault}
