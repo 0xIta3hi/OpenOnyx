@@ -1251,7 +1251,7 @@ function _AbstractInputSuggest(this: any, app: any, inputEl: HTMLInputElement) {
   this.suggestEl = document.createElement('div');
   this.suggestEl.className = 'suggestion-container oo-input-suggest';
   this.suggestEl.style.cssText = 'display:none;position:absolute;z-index:9999;max-height:300px;overflow-y:auto;';
-  const modalContentEl = inputEl.closest('.modal-content') as HTMLElement | null;
+  const modalContentEl = inputEl.closest('.modal-content, .modal, .excalidraw-modal') as HTMLElement | null;
   if (modalContentEl) {
     this.suggestEl.classList.add('oo-modal-input-suggest');
     const anchor = inputEl.closest('.setting-item, .prompt-input-container') || inputEl.parentElement || inputEl;

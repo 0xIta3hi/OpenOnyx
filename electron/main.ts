@@ -18,6 +18,97 @@ let fsManager: FileSystemManager | null = null;
 let searchEngine: SearchEngine | null = null;
 
 const isDevMode = !app.isPackaged;
+const MAX_RECENT_VAULTS = 20;
+
+type VaultHistoryState = {
+  currentVaultPath: string | null;
+  previousVaultPaths: string[];
+};
+
+function getVaultHistoryFilePath(): string {
+  return path.join(app.getPath('userData'), 'vault-history.json');
+}
+
+function normalizeVaultPath(vaultPath: string): string {
+  return path.resolve(vaultPath);
+}
+
+function readVaultHistoryState(): VaultHistoryState {
+  try {
+    const raw = fs.readFileSync(getVaultHistoryFilePath(), 'utf8');
+    const parsed = JSON.parse(raw) as Partial<VaultHistoryState>;
+    return {
+      currentVaultPath: typeof parsed.currentVaultPath === 'string'
+        ? normalizeVaultPath(parsed.currentVaultPath)
+        : null,
+      previousVaultPaths: Array.isArray(parsed.previousVaultPaths)
+        ? parsed.previousVaultPaths
+            .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+            .map(normalizeVaultPath)
+        : [],
+    };
+  } catch {
+    return { currentVaultPath: null, previousVaultPaths: [] };
+  }
+}
+
+function writeVaultHistoryState(state: VaultHistoryState): void {
+  const uniquePaths = Array.from(new Set(state.previousVaultPaths.map(normalizeVaultPath)));
+  const normalizedState: VaultHistoryState = {
+    currentVaultPath: state.currentVaultPath ? normalizeVaultPath(state.currentVaultPath) : null,
+    previousVaultPaths: uniquePaths.slice(0, MAX_RECENT_VAULTS),
+  };
+
+  const filePath = getVaultHistoryFilePath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(normalizedState, null, 2), 'utf8');
+}
+
+function rememberVaultPath(vaultPath: string): void {
+  const normalizedPath = normalizeVaultPath(vaultPath);
+  const state = readVaultHistoryState();
+  writeVaultHistoryState({
+    currentVaultPath: normalizedPath,
+    previousVaultPaths: [
+      normalizedPath,
+      ...state.previousVaultPaths.filter((entry) => entry !== normalizedPath),
+    ],
+  });
+}
+
+function getPreviousVaultPaths(): string[] {
+  return readVaultHistoryState().previousVaultPaths;
+}
+
+function removePreviousVaultPath(vaultPath: string): string[] {
+  const normalizedPath = normalizeVaultPath(vaultPath);
+  const state = readVaultHistoryState();
+  const previousVaultPaths = state.previousVaultPaths.filter((entry) => entry !== normalizedPath);
+  writeVaultHistoryState({
+    currentVaultPath: state.currentVaultPath === normalizedPath ? null : state.currentVaultPath,
+    previousVaultPaths,
+  });
+  return previousVaultPaths;
+}
+
+function restoreLastVault(fsManager: FileSystemManager): void {
+  const state = readVaultHistoryState();
+  const lastVaultPath = state.currentVaultPath;
+  if (!lastVaultPath) return;
+
+  try {
+    if (!fs.existsSync(lastVaultPath) || !fs.statSync(lastVaultPath).isDirectory()) return;
+    if (!fsManager.setVaultPath(lastVaultPath)) return;
+    try {
+      process.chdir(lastVaultPath);
+      console.log(`[Startup] Restored vault CWD to: ${lastVaultPath}`);
+    } catch (err) {
+      console.warn(`[Startup] Failed to change CWD to ${lastVaultPath}:`, err);
+    }
+  } catch (err) {
+    console.warn(`[Startup] Failed to restore last vault ${lastVaultPath}:`, err);
+  }
+}
 
 function addDisableFeatures(features: string[]): void {
   const existing = app.commandLine.getSwitchValue('disable-features');
@@ -259,9 +350,18 @@ function buildMenu(): void {
 app.whenReady().then(() => {
   fsManager = new FileSystemManager();
   searchEngine = new SearchEngine();
+  restoreLastVault(fsManager);
 
   // Register all IPC handlers for renderer communication
-  registerIpcHandlers(ipcMain, fsManager, searchEngine, () => mainWindow);
+  registerIpcHandlers(
+    ipcMain,
+    fsManager,
+    searchEngine,
+    () => mainWindow,
+    rememberVaultPath,
+    getPreviousVaultPaths,
+    removePreviousVaultPath,
+  );
 
   // Handle vault directory selection dialog
   ipcMain.handle('dialog:openDirectory', async () => {

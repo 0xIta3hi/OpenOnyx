@@ -158,7 +158,7 @@ function collectAllActiveTabPaths(node: PaneNode): string[] {
     ];
   } else if ('tabs' in node && Array.isArray(node.tabs)) {
     const activeTab = node.tabs.find((t) => t.id === node.activeTabId);
-    return activeTab && activeTab.path.endsWith('.md') ? [activeTab.path] : [];
+    return isHostEditableMarkdownPath(activeTab?.path) ? [activeTab.path] : [];
   }
   return [];
 }
@@ -328,6 +328,17 @@ const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
 const isExcalidrawFile = (path: string) => {
   const normalized = path.toLowerCase();
   return normalized.endsWith(".excalidraw") || normalized.endsWith(".excalidraw.md");
+};
+const isStandaloneExcalidrawFile = (path: string) => {
+  const normalized = path.toLowerCase();
+  return normalized.endsWith(".excalidraw") && !normalized.endsWith(".excalidraw.md");
+};
+const isHostEditableMarkdownPath = (path: string | null | undefined): path is string => {
+  if (!path) return false;
+  if (path === "__new_tab__" || path === GRAPH_TAB_PATH || path === SPACES_TAB_PATH) return false;
+  if (path.startsWith("__")) return false;
+  if (isCanvasFile(path) || isExcalidrawFile(path)) return false;
+  return path.toLowerCase().endsWith(".md");
 };
 const isKanbanBoard = (frontmatter: Record<string, unknown> | undefined) =>
   typeof frontmatter?.['kanban-plugin'] === 'string'
@@ -1544,9 +1555,7 @@ export default function App() {
       setCurrentContent(content);
 
       if (
-        !isCanvasFile(path) &&
-        path !== GRAPH_TAB_PATH &&
-        path.toLowerCase().endsWith(".md")
+        isHostEditableMarkdownPath(path)
       ) {
         window.dispatchEvent(
           new CustomEvent("openobsidian:note-content-changed", {
@@ -4158,7 +4167,7 @@ export default function App() {
     if (file?.extension === 'md') {
       await app?.metadataCache.updateFileCache(file);
     }
-    const isExcalidrawDrawing = isExcalidrawFile(filePath)
+    const isExcalidrawDrawing = isStandaloneExcalidrawFile(filePath)
       || Boolean(file && app?.metadataCache.getFileCache(file)?.frontmatter?.['excalidraw-plugin']);
     if (isExcalidrawDrawing) {
       const workspace = app?.workspace as any;
@@ -5001,17 +5010,15 @@ export default function App() {
     if (!activeTabId) return;
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab) return;
-    if (isCanvasFile(tab.path) || tab.path === GRAPH_TAB_PATH || tab.path === SPACES_TAB_PATH) return;
+    if (!isHostEditableMarkdownPath(tab.path)) return;
 
     const saveContent = currentContentRef.current;
     await api.writeFile(tab.path, saveContent);
-    if (tab.path.toLowerCase().endsWith(".md")) {
-      window.dispatchEvent(
-        new CustomEvent("openobsidian:note-content-changed", {
-          detail: { path: tab.path, content: saveContent },
-        }),
-      );
-    }
+    window.dispatchEvent(
+      new CustomEvent("openobsidian:note-content-changed", {
+        detail: { path: tab.path, content: saveContent },
+      }),
+    );
     // Auto-embed in background
     autoEmbedNote(tab.path, saveContent);
 
@@ -5023,6 +5030,8 @@ export default function App() {
 
   const handleContentChangeGlobal = useCallback(
     (path: string, content: string) => {
+      if (!isHostEditableMarkdownPath(path)) return;
+
       // Keep currentContentRef updated synchronously
       if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
         currentContentRef.current = content;
@@ -5066,9 +5075,7 @@ export default function App() {
       const activeTab = tabs.find((t) => t.id === activeTabId);
       if (
         activeTab &&
-        !isCanvasFile(activeTab.path) &&
-        activeTab.path !== GRAPH_TAB_PATH &&
-        activeTab.path.toLowerCase().endsWith(".md")
+        isHostEditableMarkdownPath(activeTab.path)
       ) {
         window.dispatchEvent(
           new CustomEvent("openobsidian:note-content-changed", {
@@ -5091,15 +5098,13 @@ export default function App() {
       autoSaveTimer.current = setTimeout(async () => {
         autoSaveTimer.current = null;
         const tab = tabs.find((t) => t.id === activeTabId);
-        if (tab) {
+        if (tab && isHostEditableMarkdownPath(tab.path)) {
           await api.writeFile(tab.path, content);
-          if (tab.path.toLowerCase().endsWith(".md")) {
-            window.dispatchEvent(
-              new CustomEvent("openobsidian:note-content-changed", {
-                detail: { path: tab.path, content },
-              }),
-            );
-          }
+          window.dispatchEvent(
+            new CustomEvent("openobsidian:note-content-changed", {
+              detail: { path: tab.path, content },
+            }),
+          );
           // Auto-embed on auto-save (background)
           autoEmbedNote(tab.path, content);
 
@@ -5308,8 +5313,7 @@ export default function App() {
     if (
       tab.isModified &&
       tab.id === activeTabId &&
-      !isCanvasFile(tab.path) &&
-      tab.path !== GRAPH_TAB_PATH
+      isHostEditableMarkdownPath(tab.path)
     ) {
       await api.writeFile(tab.path, currentContent);
     }

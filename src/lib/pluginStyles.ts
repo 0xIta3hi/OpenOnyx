@@ -519,6 +519,132 @@ export function injectPluginBaseCss(): void {
   background: var(--bg-secondary, #16171a);
 }
 
+.excalidraw-modal .modal.oo-plugin-modal,
+.modal.oo-plugin-modal.excalidraw-modal {
+  width: min(640px, calc(100vw - 48px));
+  min-width: min(640px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 64px));
+  overflow: hidden;
+  padding: 22px;
+}
+
+.excalidraw-modal .modal.oo-plugin-modal .modal-content,
+.modal.oo-plugin-modal.excalidraw-modal .modal-content {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.excalidraw-modal .modal.oo-plugin-modal .setting-item,
+.modal.oo-plugin-modal.excalidraw-modal .setting-item {
+  display: block;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+}
+
+.excalidraw-modal .modal.oo-plugin-modal .setting-item-info,
+.modal.oo-plugin-modal.excalidraw-modal .setting-item-info {
+  display: none;
+}
+
+.excalidraw-modal .modal.oo-plugin-modal .setting-item-control,
+.modal.oo-plugin-modal.excalidraw-modal .setting-item-control {
+  width: 100%;
+}
+
+.excalidraw-modal .modal.oo-plugin-modal input,
+.excalidraw-modal .modal.oo-plugin-modal .text-input,
+.excalidraw-modal .modal.oo-plugin-modal .search-input,
+.modal.oo-plugin-modal.excalidraw-modal input,
+.modal.oo-plugin-modal.excalidraw-modal .text-input,
+.modal.oo-plugin-modal.excalidraw-modal .search-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.excalidraw-modal .suggestion-container,
+.modal.oo-plugin-modal.excalidraw-modal .oo-input-suggest.oo-modal-input-suggest {
+  width: min(596px, calc(100vw - 92px)) !important;
+  max-width: min(596px, calc(100vw - 92px));
+  box-sizing: border-box;
+  margin-top: 0;
+  margin-right: auto;
+  margin-left: auto;
+  max-height: min(440px, calc(100vh - 280px));
+  border-color: var(--border-medium, rgba(255,255,255,0.12));
+  background: var(--bg-primary, #111316);
+}
+
+body > .suggestion-container:not(.editor-suggest):not(.oo-input-suggest) {
+  width: min(596px, calc(100vw - 92px)) !important;
+  max-width: min(596px, calc(100vw - 92px));
+  box-sizing: border-box;
+  border: 1px solid var(--border-medium, rgba(255,255,255,0.12));
+  border-radius: 8px;
+  background: var(--bg-primary, #111316);
+}
+
+.excalidraw-modal .suggestion-item,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 10px 8px 14px;
+  gap: 10px;
+}
+
+.excalidraw-modal .suggestion-item .suggestion-content,
+.excalidraw-modal .suggestion-item > :first-child,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-content,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item > :first-child {
+  display: block;
+  min-width: 0;
+}
+
+.excalidraw-modal .suggestion-item .suggestion-title,
+.excalidraw-modal .suggestion-item .suggestion-note,
+.excalidraw-modal .suggestion-item .suggestion-flair,
+.excalidraw-modal .suggestion-item .suggestion-aux,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-title,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-note,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-flair,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-aux {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excalidraw-modal .suggestion-item .suggestion-title,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-title {
+  color: var(--text-primary, #e6e6e6);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.excalidraw-modal .suggestion-item .suggestion-note,
+.excalidraw-modal .suggestion-item .suggestion-aux,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-note,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .suggestion-aux {
+  color: var(--text-muted, #8b8f98);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.excalidraw-modal .suggestion-item .clickable-icon,
+.excalidraw-modal .suggestion-item .obsidian-icon,
+.excalidraw-modal .suggestion-item svg,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .clickable-icon,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item .obsidian-icon,
+.modal.oo-plugin-modal.excalidraw-modal .suggestion-item svg {
+  justify-self: end;
+  flex: 0 0 auto;
+}
+
 .suggestion-container::-webkit-scrollbar {
   width: 6px;
 }

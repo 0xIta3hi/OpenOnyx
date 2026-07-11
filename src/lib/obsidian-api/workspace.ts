@@ -772,8 +772,16 @@ export class OOWorkspace extends Events {
     try {
       const previousViewType = leaf.view?.getViewType?.();
       if (leaf.view?.getViewType?.() !== viewType) {
-        await leaf.view?.onClose?.();
-        leaf.view?.unload?.();
+        try {
+          await leaf.view?.onClose?.();
+        } catch (cleanupError) {
+          console.warn(`[Workspace] Previous view onClose failed before switching to ${viewType}:`, cleanupError);
+        }
+        try {
+          leaf.view?.unload?.();
+        } catch (cleanupError) {
+          console.warn(`[Workspace] Previous view unload failed before switching to ${viewType}:`, cleanupError);
+        }
         if (previousViewType && this._activePluginViews.get(previousViewType) === leaf) {
           this._activePluginViews.delete(previousViewType);
         }

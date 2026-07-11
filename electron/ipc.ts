@@ -17,7 +17,8 @@ export function registerIpcHandlers(
   searchEngine: SearchEngine,
   getMainWindow: () => BrowserWindow | null,
   onVaultPathChange?: (vaultPath: string) => void,
-  getPreviousPaths?: () => string[]
+  getPreviousPaths?: () => string[],
+  removePreviousPath?: (vaultPath: string) => string[],
 ): void {
 
   // ── Vault Operations ──────────────────────────────
@@ -45,6 +46,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle('vault:getPreviousPaths', () => {
     if (getPreviousPaths) return getPreviousPaths();
+    return [];
+  });
+
+  ipcMain.handle('vault:removePreviousPath', (_event, vaultPath: string) => {
+    if (removePreviousPath) return removePreviousPath(vaultPath);
     return [];
   });
 

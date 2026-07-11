@@ -245,6 +245,19 @@ async function main() {
         const insertFileSuggestionText = Array.from(document.querySelectorAll('.suggestion-container'))
           .map((element) => element.textContent || '')
           .join('\\n');
+        const insertFileModal = document.querySelector('.excalidraw-modal .modal, .excalidraw-modal.oo-plugin-modal, .modal.oo-plugin-modal.excalidraw-modal');
+        const insertFileSuggest = Array.from(document.querySelectorAll('.excalidraw-modal .suggestion-container, .excalidraw-modal .oo-modal-input-suggest, body > .suggestion-container'))
+          .find((element) => {
+            const rect = element.getBoundingClientRect?.();
+            return rect && rect.width > 0 && rect.height > 0;
+          });
+        const insertFileModalRect = insertFileModal?.getBoundingClientRect?.();
+        const insertFileSuggestRect = insertFileSuggest?.getBoundingClientRect?.();
+        const insertFileSuggestWidthMatches = Boolean(
+          insertFileModalRect &&
+          insertFileSuggestRect &&
+          insertFileSuggestRect.width >= insertFileModalRect.width - 80
+        );
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
         const result = {
           createdPath,
@@ -265,6 +278,9 @@ async function main() {
           insertFileSuggestions,
           insertFileSuggestionText,
           hasInsertFileInput: !!insertFileInput,
+          insertFileSuggestWidthMatches,
+          insertFileModalWidth: insertFileModalRect?.width || 0,
+          insertFileSuggestWidth: insertFileSuggestRect?.width || 0,
           themeVariables,
           registeredExtensions: app.workspace?._extensionViews
             ? Array.from(app.workspace._extensionViews.entries())
@@ -305,6 +321,7 @@ async function main() {
     !result.activeViewMatches && 'plugin did not mark the drawing as active',
     !result.insertFileCommandExecuted && 'Excalidraw add-file command did not execute',
     !result.hasInsertFileInput && 'Excalidraw add-file dialog did not open',
+    !result.insertFileSuggestWidthMatches && `Excalidraw add-file suggestions are too narrow (${result.insertFileSuggestWidth}/${result.insertFileModalWidth})`,
     result.errors.length > 0 && `renderer errors: ${result.errors.join('; ')}`,
   ].filter(Boolean);
   if (failures.length > 0) {
