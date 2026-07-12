@@ -1,328 +1,343 @@
-<img width="1600" height="878" alt="WhatsApp Image 2026-06-17 at 12 09 30 PM" src="https://github.com/user-attachments/assets/ae1ca16c-6621-4948-8e30-bb9743abf895" />
-
-
 # OpenObsidian
 
-A local-first knowledge management tool for creating, editing, and linking Markdown notes stored locally as files. OpenObsidian forms a graph-based knowledge system inspired by Obsidian, built with Electron, React, and TypeScript.
+<p align="center">
+  <img width="1600" height="878" alt="OpenObsidian desktop screenshot" src="https://github.com/user-attachments/assets/ae1ca16c-6621-4948-8e30-bb9743abf895" />
+</p>
 
-## Table of Contents
+<p align="center">
+  <strong>A local-first, AI-assisted knowledge workspace for Markdown vaults.</strong>
+</p>
 
-1. [Overview](#overview)
-2. [Core Features](#core-features)
-3. [AI & Intelligence Features](#ai--intelligence-features)
-4. [Getting Started](#getting-started)
-5. [Project Structure](#project-structure)
-6. [Architecture](#architecture)
-7. [Keyboard Shortcuts](#keyboard-shortcuts)
-8. [Extending OpenObsidian](#extending-openobsidian)
-9. [Privacy and Security](#privacy-and-security)
-10. [Technology Stack](#technology-stack)
-11. [Contributing](#contributing)
-12. [License](#license)
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-111827?style=flat-square"></a>
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-41-47848F?style=flat-square&logo=electron&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="Local first" src="https://img.shields.io/badge/local--first-yes-10B981?style=flat-square">
+</p>
 
-## Overview
+OpenObsidian is a professional desktop knowledge management app built around plain Markdown files, local graph navigation, Obsidian-style workflows, and an optional AI thinking layer. It keeps the core writing and retrieval experience local by default, while allowing users to opt into Supabase-backed sync, collaboration, public Spaces, and remote LLM providers when those features are useful.
 
-OpenObsidian implements a secure, offline-first multi-process architecture combining a local Markdown-based knowledge graph with a hybrid AI architecture. It leverages local semantic embeddings using Transformers.js directly in the browser and integrates remote LLM capabilities (via OpenRouter or OpenAI) to power an intelligent "Thinking Layer" RAG Engine.
+It is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
 
-## Core Features
+## Contents
 
-- **Markdown Editor**: CodeMirror 6 with syntax highlighting, line wrapping, and keyboard shortcuts
-- **Wiki Links**: Connect notes using `[[note-name]]` syntax with automatic creation of missing notes
-- **Graph View**: Interactive D3.js force-directed visualization of note connections
-- **File Explorer**: Sidebar with tree view, drag-and-drop support, and context menus
-- **Full-Text Search**: Fuzzy search across all notes powered by Fuse.js
-- **Auto-Save**: Automatic saving after 2 seconds of inactivity
-- **Tags & Daily Notes**: Organize using `#tag` syntax and create daily note entries
-- **Command Palette**: VS Code-style command launcher (Ctrl+P)
-- **Backlinks Panel**: View all notes that link to the current note
-- **Theme Toggle**: Multiple themes including dark, light, oceanic, and more
-- **Tabs & Split View**: Work with multiple notes simultaneously and preview markdown side-by-side
-- **Canvas**: Visual canvas for spatial note arrangement and freeform drawing
-- **Plugin System**: Obsidian-compatible plugin API for extensibility
+- [Why OpenObsidian](#why-openobsidian)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Testing](#testing)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Plugin Compatibility](#plugin-compatibility)
+- [Privacy and Security](#privacy-and-security)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
-## AI & Intelligence Features
+## Why OpenObsidian
 
-### Knowledge Spaces & RAG Engine
-- **Automated Vault Indexing**: A background pipeline automatically scans your entire vault, chunks markdown files, and builds a semantic vector index directly on your machine.
-- **"Thinking Layer" RAG Engine**: A custom Retrieval-Augmented Generation pipeline. The AI acts as a distilled version of your vault's thinking, prioritizing context from your notes and citing sources.
-- **Spaces Marketplace**: Manage your knowledge systems -- create, delete, or remix spaces to explore different thematic views of your vault.
-- **Streaming Chat Interface**: High-fidelity chat experience with real-time response streaming, markdown rendering, and intelligent source citation.
+OpenObsidian is designed for people who want ownership of their notes without giving up modern knowledge tooling.
 
-### Local Semantic Embeddings
-- **Model**: `Xenova/all-MiniLM-L6-v2` running locally in the browser via Transformers.js
-- **Automatic Note Embedding**: Notes are automatically embedded when saved with debounced disk writes and hash-based change detection.
-- **Semantic Similarity Search**: Find related notes instantly, both via note-to-note and query-to-note search, without needing an internet connection.
+- **Your notes stay portable.** Vaults are normal folders of `.md`, `.canvas`, and related files.
+- **The app works offline.** Editing, search, links, graph navigation, local Spaces, and embeddings do not require cloud infrastructure.
+- **AI is contextual.** Retrieval is grounded in your vault, with citations back to source notes.
+- **Cloud is optional.** Accounts, sync, collaboration, and public Spaces are available through Supabase but are not required for local use.
+- **Plugins are a first-class goal.** OpenObsidian includes an Obsidian API compatibility layer and tests real community plugin bundles.
 
-### AI-Powered Annotation & Suggestion System
-- **Auto-Annotation**: Generates a single-sentence summary (max 20 words) for each note using LLMs.
-- **Context-Aware Suggestions**: When viewing a note, see strong matches and broader connections categorized as Related, Expands, Contradicts, or Example.
-- **Suggestion History**: The system learns from your interactions (accepting, rejecting, or ignoring suggestions) using temporal weighting and boosts.
+## Features
 
-### Graph Intelligence & Synthesis
-- **Cluster Detection**: Finds groups of semantically similar notes.
-- **Missing Link Detection**: Discover hidden knowledge gaps between semantically close but unlinked notes.
-- **Synthesis Generation**: Generates high-level insights connecting multiple note excerpts when clusters have meaningful variation.
+### Writing and Navigation
 
-### AI Settings & Configuration
-- Supports **OpenRouter** and **OpenAI**.
-- Select from various models including Claude Sonnet 4.5, GPT-4o, Gemini 2.5 Pro, etc.
-- Works offline-first; core AI features like embeddings operate without any API keys.
+- Markdown editor powered by CodeMirror 6
+- Live preview, split editor/preview mode, KaTeX rendering, and sanitized Markdown output
+- Wiki links with `[[note-name]]` syntax
+- Backlinks, outgoing links, unlinked mentions, tags, outline, and properties panels
+- Fuzzy vault search and in-note search
+- Daily notes, bookmarks, file explorer, context menus, and recent vault history
+- Multi-tab workspace with split panes and tab groups
+- Multiple visual themes plus custom theme support
 
-## Getting Started
+### Graph and Canvas
+
+- Interactive graph view for note relationships
+- D3-powered graph exploration and a canvas renderer path for larger graphs
+- AI knowledge graph view for semantic connections
+- Obsidian-style `.canvas` document support
+- Canvas nodes, edges, toolbar controls, duplicate/save-as flows, and recent canvas tracking
+
+### Spaces and AI
+
+- Local Spaces that index a vault into a queryable semantic layer
+- Browser-native embeddings through `@xenova/transformers`
+- RAG chat over your notes with streamed responses and source citations
+- Public, private, and local Space visibility modes
+- Space remixing/forking workflow for public knowledge systems
+- AI-powered note annotations, related-note suggestions, contradiction/expansion hints, and synthesis flows
+- Configurable OpenAI and OpenRouter model providers
+
+### Sync, Collaboration, and Cloud
+
+- Optional Supabase authentication
+- Optional cloud sync for Spaces and collaboration features
+- Offline-first sync queue with deduplication, retry handling, and last-write-wins conflict resolution
+- Supabase `pgvector` schema for semantic matching
+- Local IndexedDB cache for durable offline state
+
+### Plugin System
+
+- Obsidian-compatible runtime API
+- Plugin marketplace and local plugin management UI
+- Commands, ribbon actions, status bar items, settings tabs, custom views, sidebars, Markdown processors, editor extensions, and lifecycle cleanup
+- Secure plugin runtime with permissions, crash isolation, manifest caching, and compatibility checks
+- Regression tests against real compiled community plugins
+
+## Quick Start
 
 ### Prerequisites
-- Node.js >= 24.x
-- npm >= 9.x
 
-### Setup
+- Node.js 24.x or newer
+- npm 9.x or newer
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/OpenObsidian/OpenObsidian.git
-   cd OpenObsidian
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Optional — configure cloud features:**
-   ```bash
-   cp .env.example .env.local
-   ```
-   This step is not required for local notes or local Spaces. Add Supabase credentials only if you need accounts, cloud sync, collaboration, or the public Spaces marketplace (see [Supabase Setup](#supabase-setup) below).
-
-4. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
-
-### Supabase Setup
-
-OpenObsidian uses [Supabase](https://supabase.com) for cloud sync, collaboration, and the public Spaces marketplace. The app works fully offline without Supabase, but cloud features require it.
-
-1. Create a free project at [supabase.com](https://supabase.com)
-2. In your project dashboard, go to **Database > Extensions** and enable `vector` (pgvector)
-3. Go to **SQL Editor**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**
-4. Go to **Project Settings > API** and copy your **Project URL** and **anon (public) key**
-5. Paste them into your `.env.local`:
-   ```env
-   VITE_SUPABASE_URL=https://your-project-id.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key-here
-   ```
-
-### Production Build
+### Run Locally
 
 ```bash
-npm run build
+git clone https://github.com/OpenObsidian/OpenObsidian.git
+cd OpenObsidian
+npm install
+npm run dev
+```
+
+`npm run dev` builds the Electron main process, starts Vite on port `5173`, and launches the Electron app against the local dev server.
+
+### Build a Desktop Package
+
+```bash
 npm run package
 ```
 
-## Project Structure
+Electron Builder writes distributable artifacts to `release/`. The current package targets include:
 
+- Windows: NSIS installer
+- Linux: AppImage and Debian package
+
+## Configuration
+
+OpenObsidian runs without environment variables for local vault editing, local search, local embeddings, and local Spaces.
+
+Cloud-backed features require Supabase:
+
+```bash
+cp .env.example .env.local
 ```
-openobsidian/
-├── electron/                   # Electron main process
-│   ├── main.ts                 # Application entry, window creation
-│   ├── preload.ts              # Secure IPC bridge (contextBridge)
-│   ├── fileSystem.ts           # Vault filesystem operations
-│   ├── search.ts               # Fuse.js search engine
-│   └── ipc.ts                  # IPC handler registration
-│
-├── src/                        # React renderer process
-│   ├── main.tsx                # React entry point
-│   ├── App.tsx                 # Root component and state management
-│   ├── types/                  # TypeScript type definitions
-│   ├── context/                # React context providers
-│   ├── keybindings/            # Keyboard shortcut handlers
-│   ├── editor/                 # CodeMirror editor extensions
-│   ├── utils/
-│   │   ├── ai-core.ts          # AI annotation & synthesis engine
-│   │   ├── ai-settings.ts      # AI provider configuration
-│   │   ├── ai-enrichment.ts    # Suggestion & enrichment pipeline
-│   │   ├── spaces-store.ts     # CRUD for knowledge spaces
-│   │   ├── spaces-processing.ts # Vault indexing pipeline
-│   │   ├── spaces-rag.ts       # Retrieval-Augmented Generation
-│   │   ├── collabOperations.ts # Real-time collaboration ops
-│   │   └── embeddings.ts       # Local vector embeddings
-│   │
-│   ├── lib/
-│   │   ├── supabase.ts         # Supabase client initialization
-│   │   ├── auth.ts             # Authentication manager
-│   │   ├── syncEngine.ts       # Offline-first sync engine
-│   │   ├── collaborationEngine.ts # Real-time collaboration
-│   │   ├── pluginManager.ts    # Plugin system
-│   │   ├── localdb.ts          # IndexedDB local database
-│   │   ├── obsidian-api/       # Obsidian API compatibility layer
-│   │   └── database.types.ts   # Supabase generated types
-│   │
-│   ├── styles/
-│   │   ├── index.css           # Tailwind entrypoint
-│   │   └── documentTailwindClasses.ts # Generated-DOM and theme utilities
-│   │
-│   └── components/
-│       ├── SpacesPage.tsx      # Knowledge Spaces entry point
-│       ├── SettingsPage.tsx    # Application settings
-│       ├── TitleBar.tsx        # Window title bar & tabs
-│       ├── Sidebar.tsx         # File explorer sidebar
-│       ├── CollaborationPanel.tsx # Real-time collaboration
-│       ├── PluginMarketplace.tsx  # Plugin browser
-│       ├── editor/
-│       │   ├── Editor.tsx      # CodeMirror editor wrapper
-│       │   └── MarkdownPreview.tsx
-│       ├── graph/
-│       │   ├── GraphView.tsx   # Graph visualization
-│       │   └── GraphRenderer.ts # Canvas2D renderer
-│       └── canvas/             # Visual canvas components
-│
-├── supabase/
-│   ├── schema.sql              # Database schema (run in SQL Editor)
-│   └── functions/              # Edge functions
-│
-├── docs/                       # Documentation
-├── scripts/                    # Build & dev scripts
-├── public/                     # Static assets
-├── .env.example                # Environment variable template
-├── vite.config.ts              # Vite + Tailwind configuration
-├── tsconfig.json               # TypeScript configuration
-└── package.json
+
+Then set:
+
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
+
+### Supabase Setup
+
+1. Create a Supabase project.
+2. Enable the `vector` extension in **Database > Extensions**.
+3. Open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql).
+4. Copy the project URL and anon key from **Project Settings > API**.
+5. Add those values to `.env.local` or paste them into the in-app database settings.
+
+Optional OAuth redirect configuration:
+
+```env
+VITE_SUPABASE_REDIRECT_URL=https://your-project-id.supabase.co/auth/v1/callback
+```
+
+### AI Provider Setup
+
+Local embeddings do not require an API key. Remote generation features use provider credentials configured in the app settings for OpenAI or OpenRouter.
+
+## Development
+
+Common commands:
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Build Electron, start Vite, and launch the desktop app |
+| `npm run build` | Type-check, build the renderer, and build Electron |
+| `npm run build:electron` | Compile the Electron main/preload process |
+| `npm run package` | Build and package desktop installers |
+| `npm run lint` | Run TypeScript with `--noEmit` |
+
+The Vite dev server uses a strict port:
+
+```text
+http://localhost:5173
+```
+
+Useful development environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_DEV_SERVER_URL` | Override the renderer URL loaded by Electron |
+| `OPENOBSIDIAN_DEBUG_PORT` | Enable Chromium remote debugging for Electron |
+| `OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS=1` | Keep verbose Chromium logs in development |
+| `OPENOBSIDIAN_PANDOC_DIR` | Override the managed Pandoc backend directory |
+| `OPENOBSIDIAN_PANDOC_ARCHIVE` | Install Pandoc backend from a local archive |
+| `OPENOBSIDIAN_PANDOC_WASM` | Override the Pandoc WASM path used by the runner |
+
+## Testing
+
+```bash
+npm run lint
+npm run test:canvas-compat
+npm run test:obsidian-api
+npm run test:plugin-runtime
+npm run test:plugin-compat
+```
+
+Plugin compatibility tests can fetch real plugin fixtures:
+
+```bash
+npm run fetch:plugin-fixtures
+npm run test:plugin-bundles
+```
+
+Pandoc-backed export compatibility:
+
+```bash
+npm run install:pandoc-backend
+npm run test:pandoc-backend
+```
+
+Live plugin tests are available for selected plugins:
+
+```bash
+npm run test:kanban-live
+npm run test:excalidraw-live
+npm run test:notebook-navigator-live
+```
+
+Some live tests expect a vault path through environment variables such as `OO_KANBAN_VAULT`, `OO_EXCALIDRAW_VAULT`, or `OO_NOTEBOOK_NAVIGATOR_VAULT`.
 
 ## Architecture
 
-### System Design
+OpenObsidian uses Electron's multi-process model with a strict boundary between the renderer and local system access.
 
-The application follows a secure multi-process architecture:
-
-```
-┌─────────────────────────────────────────┐
-│         Renderer Process (React)        │
-│  ┌──────────────────────────────────┐   │
-│  │  UI Components                   │   │
-│  │   - Editor (CodeMirror)          │   │
-│  │   - GraphView (D3.js)           │   │
-│  │   - Sidebar (File Explorer)      │   │
-│  │   - Search / CommandPalette      │   │
-│  │   - AI Chat & Suggestions        │   │
-│  └──────────┬───────────────────────┘   │
-│             │ window.electronAPI         │
-│  ┌──────────▼───────────────────────┐   │
-│  │  Preload Script                  │   │
-│  │   - contextBridge                │   │
-│  │   - Secure IPC proxy             │   │
-│  └──────────┬───────────────────────┘   │
-├─────────────┼───────────────────────────┤
-│  ┌──────────▼───────────────────────┐   │
-│  │  Main Process (Node.js)          │   │
-│  │   - FileSystemManager            │   │
-│  │   - SearchEngine (Fuse.js)       │   │
-│  │   - IPC Handlers                 │   │
-│  └──────────────────────────────────┘   │
-│         Main Process (Electron)         │
-└─────────────────────────────────────────┘
-              │
-              ▼
-      Local Filesystem (.md files) & AI Cache (.openobsidian)
+```text
+Renderer Process
+React, CodeMirror, D3, Spaces UI, plugin UI, local AI workers
+        |
+        | window.electronAPI
+        v
+Preload Process
+contextBridge IPC surface
+        |
+        | ipcRenderer / ipcMain
+        v
+Main Process
+window lifecycle, vault filesystem, search index, dialogs, shell integration
+        |
+        v
+Local Vault
+Markdown files, canvas files, assets, .openobsidian cache
 ```
 
-### Key Design Principles
+### Core Principles
 
-- **Context Isolation**: The renderer process has no direct access to Node.js APIs. All operations are routed through the preload script's contextBridge.
-- **Asynchronous Operations**: All filesystem operations are asynchronous to prevent blocking the main thread.
-- **In-Memory Search Index**: Fuse.js maintains an in-memory search index that is rebuilt when files change, providing fast search results.
-- **File-Based Storage**: All notes are stored as plain Markdown (.md) files. AI embeddings, syntheses, and caches are persisted to disk in the `.openobsidian/` folder.
-- **Local AI Processing**: Transformer models run in-browser through Web Workers to maintain responsiveness and ensure privacy.
-- **Offline-First Sync**: The sync engine uses a queue-based approach with deduplication, retry mechanics, and last-write-wins conflict resolution.
+- **Local-first storage.** Notes are normal files. Local AI caches and indexes live on the user's machine.
+- **Context isolation.** Renderer code cannot directly access Node.js APIs.
+- **Async filesystem access.** Vault operations are routed through IPC handlers to avoid blocking the UI.
+- **Durable local state.** IndexedDB stores Spaces, note chunks, vector indexes, sync metadata, and pending mutations.
+- **Optional remote services.** Supabase and LLM providers are used only for features that need them.
+- **Plugin compatibility.** The runtime exposes Obsidian-like APIs while keeping plugin execution contained.
+
+## Project Structure
+
+```text
+.
+|-- electron/                    # Electron main, preload, IPC, filesystem, search
+|-- src/
+|   |-- components/              # React UI: editor, graph, canvas, settings, plugins, spaces
+|   |-- context/                 # Shared React context
+|   |-- editor/                  # CodeMirror extensions
+|   |-- keybindings/             # Global keyboard behavior
+|   |-- lib/                     # Supabase, sync, local DB, plugin manager, Obsidian API
+|   |-- styles/                  # Theme and generated-document style helpers
+|   |-- types/                   # TypeScript domain types
+|   `-- utils/                   # AI, embeddings, RAG, filesystem helpers, app utilities
+|-- supabase/
+|   |-- schema.sql               # Tables, RLS, pgvector functions, sync schema
+|   `-- functions/               # Edge functions for chat and embeddings
+|-- docs/                        # Architecture and feature documentation
+|-- scripts/                     # Dev, compatibility, fixture, and Pandoc scripts
+|-- tests/                       # Vitest and runtime compatibility tests
+|-- public/                      # Logos, icons, and static assets
+|-- vite.config.ts               # Vite, React, Tailwind, and WASM runtime aliases
+`-- package.json                 # Scripts, dependencies, and Electron Builder config
+```
+
+## Plugin Compatibility
+
+OpenObsidian targets the public Obsidian plugin API using the official `obsidian` npm package as its baseline.
+
+Current compatibility coverage includes:
+
+- Runtime export audit against `obsidian@1.13.1`
+- CodeMirror 6 and legacy CodeMirror 5 access patterns
+- Commands, ribbon icons, status bars, modals, settings tabs, sidebars, custom views, workspace leaves, Markdown processors, and cleanup lifecycles
+- Node/Electron compatibility shims for plugins that expect desktop APIs
+- Managed Pandoc 3.10 WASM backend for export plugins
+- Regression tests for real plugin bundles including Dataview, Templater, Tasks, Calendar, Kanban, Style Settings, Advanced Tables, QuickAdd, Obsidian Git, Excalidraw, Better Export PDF, Enhancing Export, and Reading Time
+
+See [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) for the full compatibility matrix and verification flow.
+
+## Privacy and Security
+
+- Core note editing, search, graph navigation, local embeddings, and local Spaces work offline.
+- Notes are stored as local files in the selected vault.
+- Local indexes, embeddings, and caches stay on device unless the user enables cloud-backed features.
+- The renderer runs with context isolation and talks to the filesystem through a preload IPC bridge.
+- Supabase is optional and used for authentication, sync, collaboration, public Spaces, and vector search.
+- Remote LLM providers are optional and receive only the prompts/context needed for the selected AI workflow.
+- Private Spaces are designed around client-side encryption and key wrapping.
+- The project does not include product analytics or telemetry.
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
-|----------|--------|
-| Ctrl+N | New Note |
-| Ctrl+S | Save Current Note |
-| Ctrl+F | Open Search |
-| Ctrl+G | Toggle Graph View |
-| Ctrl+P | Open Command Palette |
-| Ctrl+B | Toggle Sidebar |
-| Ctrl+W | Close Active Tab |
-| Ctrl+O | Open Vault |
-| Escape | Close Modals |
+| --- | --- |
+| `Ctrl+N` / `Cmd+N` | Create note |
+| `Ctrl+S` / `Cmd+S` | Save current note |
+| `Ctrl+F` / `Cmd+F` | Search inside current note |
+| `Ctrl+Shift+F` / `Cmd+Shift+F` | Search vault |
+| `Ctrl+O` / `Cmd+O` | Quick switcher |
+| `Ctrl+P` / `Cmd+P` | Command palette |
+| `Ctrl+G` / `Cmd+G` | Open graph |
+| `Ctrl+Shift+C` / `Cmd+Shift+C` | Create/open canvas |
+| `Ctrl+B` / `Cmd+B` | Toggle sidebar |
+| `Ctrl+Tab` | Next tab |
+| `Ctrl+Shift+Tab` | Previous tab |
+| `Ctrl+W` / `Cmd+W` | Close active tab |
+| `Escape` | Close modal or transient panel |
 
-## Extending OpenObsidian
+## Documentation
 
-### Adding New Commands
-
-Commands are defined in `App.tsx`:
-
-```typescript
-{
-  id: 'custom-command',
-  label: 'Custom Command',
-  shortcut: 'Ctrl+Shift+C',
-  action: () => { /* implementation */ },
-  category: 'Custom'
-}
-```
-
-### Adding IPC Channels
-
-1. Register handler in `electron/ipc.ts`:
-```typescript
-ipcMain.handle('custom:action', async (_event, arg) => {
-  return result;
-});
-```
-
-2. Expose in `electron/preload.ts`:
-```typescript
-customAction: (arg: string) => ipcRenderer.invoke('custom:action', arg)
-```
-
-3. Call from renderer:
-```typescript
-await window.electronAPI.customAction(arg);
-```
-
-### Styling
-
-The project uses **Tailwind CSS v4** for application styling. Theme tokens and generated-DOM selectors are expressed as Tailwind arbitrary utilities in `src/styles/documentTailwindClasses.ts`.
-
-## Privacy and Security
-
-- **Fully Offline Core**: Core application functionality and local semantic embeddings require no internet connection.
-- **Local Storage**: All data, including notes and AI generated embeddings/caches, remain on your device.
-- **No Telemetry**: Zero data collection or analytics.
-- **Context Isolation**: Renderer process runs in a sandboxed environment.
-- **API Keys**: Stored locally in localStorage and sent securely only to configured providers.
-- **Zero-Knowledge Encryption**: Private spaces use client-side encryption with key wrapping.
-
-## Technology Stack
-
-- **Electron**: Cross-platform desktop framework
-- **React 19**: UI framework
-- **TypeScript**: Type-safe development
-- **CodeMirror 6**: Advanced text editor
-- **D3.js**: Graph visualization
-- **Fuse.js**: Fuzzy search engine
-- **Transformers.js**: Local machine learning models
-- **Vite**: Build tool and development server
-- **Tailwind CSS v4**: Utility-first CSS framework
-- **Supabase**: Backend (auth, database, realtime, vector search)
+- [`docs/spaces.md`](docs/spaces.md) explains the Spaces architecture, indexing pipeline, RAG lifecycle, storage model, and sync behavior.
+- [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) documents plugin API coverage and the real-plugin regression matrix.
+- [`changelog.md`](changelog.md) tracks project changes.
 
 ## Contributing
 
-Contributions are welcome. Here is how to get started:
+1. Fork the repository.
+2. Create a focused feature branch.
+3. Install dependencies with `npm install`.
+4. Make the change using the existing architecture and style.
+5. Run the relevant checks, at minimum `npm run lint`.
+6. Open a pull request with a clear description of the behavior changed and the verification performed.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Follow the [Getting Started](#getting-started) guide to set up your development environment
-4. Make your changes
-5. Run `npm run lint` to verify TypeScript compilation
-6. Commit your changes (`git commit -m 'Add my feature'`)
-7. Push to the branch (`git push origin feature/my-feature`)
-8. Open a Pull Request
+For changes that touch plugins, Spaces, sync, AI retrieval, filesystem behavior, or Electron IPC, include the matching compatibility or integration tests where practical.
 
 ## License
 
-MIT
+OpenObsidian is released under the [MIT License](LICENSE).

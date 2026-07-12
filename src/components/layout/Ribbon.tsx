@@ -4,6 +4,7 @@ import {
   Calendar,
   Sparkles,
   Layout,
+  Settings,
 } from "lucide-react";
 import type { PluginRibbonAction } from '../../types/plugin';
 import { setIcon } from '../../lib/obsidian-api/utils';
@@ -24,6 +25,7 @@ interface RibbonProps {
   onSpaces?: () => void;
   onCanvas?: () => void;
   pluginRibbonActions?: PluginRibbonAction[];
+  showSettingsButton?: boolean;
 }
 
 export function Ribbon({
@@ -36,6 +38,7 @@ export function Ribbon({
   onSpaces,
   onCanvas,
   pluginRibbonActions = [],
+  showSettingsButton = false,
 }: RibbonProps) {
   const ribbonRootRef = useRef<HTMLDivElement | null>(null);
   const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
@@ -133,6 +136,18 @@ export function Ribbon({
           </button>
         ))}
       </div>
+      {showSettingsButton && (
+        <div className={ribbonGroupClass}>
+          <button
+            className={ribbonBtnClass}
+            onClick={onSettings}
+            data-tooltip="Settings"
+            aria-label="Settings"
+          >
+            <Settings size={20} strokeWidth={1.5} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

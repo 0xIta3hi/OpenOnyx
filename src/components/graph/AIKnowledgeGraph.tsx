@@ -170,6 +170,10 @@ function getDefaultSettings(theme: Theme): AIGraphSettings {
   };
 }
 
+function getManualGraphSettingsKey(theme: Theme, vaultHash: string): string {
+  return `openobsidian-graph-settings-v8-${theme}-${vaultHash}`;
+}
+
 function buildStrongAdjacency(
   nodes: AIGraphNode[],
   edges: AIGraphEdge[],
@@ -1063,7 +1067,7 @@ export function AIKnowledgeGraph({
       return () => resizeObserver.disconnect();
     }
 
-    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
     let manualSettings = getManualDefaultSettings(theme);
     try {
       const saved = localStorage.getItem(manualSettingsKey);
@@ -1259,7 +1263,7 @@ export function AIKnowledgeGraph({
 
     renderer.setData(nodesWithPositions, filteredData.edges);
 
-    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
     let manualSettings = getManualDefaultSettings(theme);
     try {
       const saved = localStorage.getItem(manualSettingsKey);
@@ -1318,7 +1322,7 @@ export function AIKnowledgeGraph({
     const renderer = rendererRef.current;
     if (!renderer || !renderer.isInitialized()) return;
 
-    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
     let manualSettings = getManualDefaultSettings(theme);
     try {
       const saved = localStorage.getItem(manualSettingsKey);
@@ -1354,7 +1358,7 @@ export function AIKnowledgeGraph({
     const worker = workerRef.current;
     if (!worker) return;
 
-    const manualSettingsKey = `openobsidian-graph-settings-v7-${theme === "oceanic" ? "oceanic" : theme === "light" ? "light" : "dark"}-${vaultHash}`;
+    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
     let manualSettings = getManualDefaultSettings(theme);
     try {
       const saved = localStorage.getItem(manualSettingsKey);

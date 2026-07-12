@@ -22,6 +22,10 @@ import type { SpaceChunk, SpaceChatMessage } from "../types/spaces";
 
 const TOP_K = 6;
 const MIN_SIMILARITY = 0.15;
+const OVERVIEW_MIN_SIMILARITY = -1;
+const OVERVIEW_TOP_K = 160;
+const OVERVIEW_MAX_CHUNKS_PER_NOTE = 1;
+const OVERVIEW_MAX_CHUNKS_PER_FOLDER = 12;
 
 // ── Space Metadata (passed from UI) ──────────────────────────────────────────
 
@@ -329,10 +333,112 @@ export interface RetrievedChunk {
   similarity: number;
 }
 
+function isComprehensiveSpaceQuery(query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return false;
+
+  const overviewQuery = /\b(what'?s|what is|tell me|summari[sz]e|overview|about|inside|contain|contents?|vault|space|knowledge base|notes?)\b/.test(normalized) &&
+    /\b(vault|space|knowledge base|notes?|contents?|about|overview)\b/.test(normalized);
+
+  const wholeVaultTask = /\b(all|entire|whole|every|everything|full|complete|comprehensive|vault-wide|space-wide|huge|large)\b/.test(normalized) &&
+    /\b(vault|space|knowledge base|notes?|files?|folders?|index|organize|summari[sz]e|analy[sz]e|find|review|map|connect|link|merge|cluster)\b/.test(normalized);
+
+  return overviewQuery || wholeVaultTask;
+}
+
+function getTopLevelFolder(notePath: string): string {
+  const normalized = notePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const firstSegment = normalized.split("/")[0]?.trim();
+  if (!firstSegment || firstSegment === normalized) return "(root)";
+  return firstSegment;
+}
+
+function getChunkBucketKey(chunk: SpaceChunk): string {
+  return chunk.notePath || chunk.noteTitle || chunk.id;
+}
+
+function diversifyRetrievedChunks(
+  ranked: RetrievedChunk[],
+  limit: number,
+): RetrievedChunk[] {
+  const selected: RetrievedChunk[] = [];
+  const usedChunkIds = new Set<string>();
+  const noteCounts = new Map<string, number>();
+  const folderCounts = new Map<string, number>();
+
+  const tryAdd = (
+    item: RetrievedChunk,
+    maxPerNote: number,
+    maxPerFolder: number,
+  ) => {
+    if (selected.length >= limit || usedChunkIds.has(item.chunk.id)) return;
+    const noteKey = getChunkBucketKey(item.chunk);
+    const folderKey = getTopLevelFolder(item.chunk.notePath);
+    if ((noteCounts.get(noteKey) || 0) >= maxPerNote) return;
+    if ((folderCounts.get(folderKey) || 0) >= maxPerFolder) return;
+
+    selected.push(item);
+    usedChunkIds.add(item.chunk.id);
+    noteCounts.set(noteKey, (noteCounts.get(noteKey) || 0) + 1);
+    folderCounts.set(folderKey, (folderCounts.get(folderKey) || 0) + 1);
+  };
+
+  for (const item of ranked) {
+    tryAdd(item, OVERVIEW_MAX_CHUNKS_PER_NOTE, OVERVIEW_MAX_CHUNKS_PER_FOLDER);
+  }
+
+  for (const item of ranked) {
+    tryAdd(item, 2, Math.max(OVERVIEW_MAX_CHUNKS_PER_FOLDER, Math.ceil(limit / 3)));
+  }
+
+  for (const item of ranked) {
+    if (selected.length >= limit || usedChunkIds.has(item.chunk.id)) continue;
+    selected.push(item);
+    usedChunkIds.add(item.chunk.id);
+  }
+
+  return selected;
+}
+
+function buildVaultCoverageMap(chunks: RetrievedChunk[]): string {
+  const notesByPath = new Map<string, { title: string; folder: string }>();
+
+  for (const { chunk } of chunks) {
+    const noteKey = getChunkBucketKey(chunk);
+    if (notesByPath.has(noteKey)) continue;
+    notesByPath.set(noteKey, {
+      title: chunk.noteTitle || noteKey,
+      folder: getTopLevelFolder(chunk.notePath),
+    });
+  }
+
+  if (notesByPath.size === 0) return "";
+
+  const folders = new Map<string, string[]>();
+  for (const note of notesByPath.values()) {
+    if (!folders.has(note.folder)) folders.set(note.folder, []);
+    folders.get(note.folder)!.push(note.title);
+  }
+
+  const folderLines = Array.from(folders.entries())
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .slice(0, 16)
+    .map(([folder, titles]) => {
+      const samples = titles.slice(0, 5).join(", ");
+      const remaining = titles.length > 5 ? `, +${titles.length - 5} more` : "";
+      return `- ${folder}: ${titles.length} retrieved notes (${samples}${remaining})`;
+    })
+    .join("\n");
+
+  return `\n\nVAULT COVERAGE MAP:\nRetrieved context was intentionally diversified across ${notesByPath.size} notes and ${folders.size} top-level folders.\n${folderLines}`;
+}
+
 export async function retrieveChunks(
   spaceId: string,
   query: string,
   topK: number = TOP_K,
+  minSimilarity: number = MIN_SIMILARITY,
+  options?: { diversify?: boolean },
 ): Promise<RetrievedChunk[]> {
   const queryVector = await embedText(query);
   const results: RetrievedChunk[] = [];
@@ -343,7 +449,7 @@ export async function retrieveChunks(
       const { data: cloudChunks, error } = await supabase.rpc("match_note_chunks", {
         filter_space_id: spaceId,
         query_embedding: `[${queryVector.join(",")}]`,
-        match_threshold: MIN_SIMILARITY,
+        match_threshold: Math.max(0, minSimilarity),
         match_count: topK,
       });
 
@@ -366,7 +472,11 @@ export async function retrieveChunks(
           });
         }
         // If we got cloud results, we return them (they are more authoritative for shared spaces)
-        if (results.length > 0) return results;
+        if (results.length > 0) {
+          return options?.diversify
+            ? diversifyRetrievedChunks(results, topK)
+            : results;
+        }
       }
     } catch (err) {
       console.warn("[SpacesRAG] Cloud retrieval failed, falling back to local:", err);
@@ -379,13 +489,16 @@ export async function retrieveChunks(
     for (const chunk of index.chunks) {
       if (chunk.vector.length !== queryVector.length) continue;
       const sim = cosineSimilarity(queryVector, chunk.vector);
-      if (sim > MIN_SIMILARITY) {
+      if (sim > minSimilarity) {
         results.push({ chunk, similarity: sim });
       }
     }
   }
 
-  return results.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
+  const ranked = results.sort((a, b) => b.similarity - a.similarity);
+  return options?.diversify
+    ? diversifyRetrievedChunks(ranked, topK)
+    : ranked.slice(0, topK);
 }
 
 // ── Prompt Construction ──────────────────────────────────────────────────────
@@ -394,6 +507,7 @@ function buildUserPrompt(
   query: string,
   chunks: RetrievedChunk[],
   explicitNotes?: { path: string; title: string; content: string }[],
+  options?: { broadOverview?: boolean },
 ): string {
   const contextBlock = chunks
     .map(
@@ -412,7 +526,11 @@ function buildUserPrompt(
       .join("\n\n---\n\n");
   }
 
-  return `USER INPUT:\n${query}\n\nCONTEXT:\n${contextBlock}${explicitBlock}`;
+  const overviewInstruction = options?.broadOverview
+    ? `\n\nCOMPREHENSIVE VAULT MODE:\nThe user is asking about a whole-space or large vault task. Do not summarize only the first or most repeated folder. Synthesize across the retrieved folders, mention major topic clusters, and explicitly account for cross-folder coverage. Treat the context as a broad working set, not a narrow top-hit answer.${buildVaultCoverageMap(chunks)}`
+    : "";
+
+  return `USER INPUT:\n${query}\n\nCONTEXT:\n${contextBlock}${overviewInstruction}${explicitBlock}`;
 }
 
 // ── Query Result ─────────────────────────────────────────────────────────────
@@ -439,7 +557,14 @@ export async function querySpace(
   }
 
   const cleanQuery = query.split("\n\n--- VAULT STRUCTURE")[0].trim();
-  const retrieved = await retrieveChunks(spaceId, cleanQuery);
+  const isBroadOverview = isComprehensiveSpaceQuery(cleanQuery);
+  const retrieved = await retrieveChunks(
+    spaceId,
+    cleanQuery,
+    isBroadOverview ? OVERVIEW_TOP_K : TOP_K,
+    isBroadOverview ? OVERVIEW_MIN_SIMILARITY : MIN_SIMILARITY,
+    { diversify: isBroadOverview },
+  );
 
   if (retrieved.length === 0 && (!meta.explicitNotes || meta.explicitNotes.length === 0)) {
     return {
@@ -449,7 +574,7 @@ export async function querySpace(
   }
 
   const systemPrompt = buildSystemPrompt(meta);
-  const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
+  const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes, { broadOverview: isBroadOverview });
 
 
   // Map conversation history to LLM message format, stripping action blocks
@@ -516,7 +641,14 @@ export async function querySpaceStreaming(
   }
 
   const cleanQuery = query.split("\n\n--- VAULT STRUCTURE")[0].trim();
-  const retrieved = await retrieveChunks(spaceId, cleanQuery);
+  const isBroadOverview = isComprehensiveSpaceQuery(cleanQuery);
+  const retrieved = await retrieveChunks(
+    spaceId,
+    cleanQuery,
+    isBroadOverview ? OVERVIEW_TOP_K : TOP_K,
+    isBroadOverview ? OVERVIEW_MIN_SIMILARITY : MIN_SIMILARITY,
+    { diversify: isBroadOverview },
+  );
 
   if (retrieved.length === 0 && (!meta.explicitNotes || meta.explicitNotes.length === 0)) {
     const msg = "No relevant content found in this space. Try rephrasing or adding more notes to your vault.";
@@ -525,7 +657,7 @@ export async function querySpaceStreaming(
   }
 
   const systemPrompt = buildSystemPrompt(meta);
-  const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes);
+  const userPrompt = buildUserPrompt(query, retrieved, meta.explicitNotes, { broadOverview: isBroadOverview });
 
 
   // Map conversation history to LLM message format, stripping action blocks

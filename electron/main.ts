@@ -6,7 +6,7 @@
  * exposed to the renderer via secure IPC channels.
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { FileSystemManager } from './fileSystem';
@@ -137,8 +137,53 @@ function configureLinuxFontConfig(): void {
   }
 }
 
+function registerWidevineCDM(): void {
+  if (process.platform !== 'linux') return;
+
+  const candidateDirs = [
+    '/opt/google/chrome/WidevineCdm',
+    '/opt/microsoft/msedge/WidevineCdm',
+  ];
+
+  try {
+    const homeDir = process.env.HOME || path.join('/home', process.env.USER || 'varshith');
+    const chromeUserCdmDir = path.join(homeDir, '.config/google-chrome/WidevineCdm');
+    if (fs.existsSync(chromeUserCdmDir)) {
+      const subdirs = fs.readdirSync(chromeUserCdmDir);
+      for (const subdir of subdirs) {
+        candidateDirs.push(path.join(chromeUserCdmDir, subdir));
+      }
+    }
+  } catch (err) {
+    // Ignore errors reading user home
+  }
+
+  for (const cdmDir of candidateDirs) {
+    const cdmPath = path.join(cdmDir, '_platform_specific/linux_x64/libwidevinecdm.so');
+    const manifestPath = path.join(cdmDir, 'manifest.json');
+
+    if (fs.existsSync(cdmPath) && fs.existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const version = manifest.version;
+        if (typeof version === 'string') {
+          app.commandLine.appendSwitch('widevine-cdm-path', cdmPath);
+          app.commandLine.appendSwitch('widevine-cdm-version', version);
+          console.log(`[DRM] Successfully registered Widevine CDM version ${version} from ${cdmPath}`);
+          return;
+        }
+      } catch (err) {
+        console.warn(`[DRM] Failed to read manifest at ${manifestPath}:`, err);
+      }
+    }
+  }
+
+  console.warn('[DRM] No Widevine CDM library could be located on this Linux system.');
+}
+
 function configureChromiumRuntime(): void {
   configureLinuxFontConfig();
+  registerWidevineCDM();
 
   const debugPort = process.env.OPENOBSIDIAN_DEBUG_PORT;
   if (debugPort && /^\d+$/.test(debugPort)) {
@@ -214,6 +259,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      plugins: true,
     },
   });
 
@@ -348,6 +394,143 @@ function buildMenu(): void {
 }
 
 app.whenReady().then(() => {
+  // Set a clean User Agent for the session to bypass login blocks on services like Apple and Spotify
+  const originalUserAgent = session.defaultSession.getUserAgent();
+  const cleanUserAgent = originalUserAgent
+    .replace(/Electron\/[0-9.]+\s?/g, '')
+    .replace(/OpenObsidian\/[0-9.]+\s?/g, '');
+  session.defaultSession.setUserAgent(cleanUserAgent);
+
+  const requestInfo = new Map<number, { origin?: string; requestHeadersList?: string }>();
+
+  // Track request Origin and Request Headers to accurately mock CORS response headers later
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const requestHeaders = details.requestHeaders || {};
+    const origin = requestHeaders['Origin'] || requestHeaders['origin'] || requestHeaders['Referer'] || requestHeaders['referer'];
+    const requestHeadersList = requestHeaders['Access-Control-Request-Headers'] || requestHeaders['access-control-request-headers'];
+    if (origin || requestHeadersList) {
+      requestInfo.set(details.id, { origin, requestHeadersList });
+    }
+    callback({ requestHeaders });
+  });
+
+  const cleanUpRequest = (details: { id: number }) => {
+    requestInfo.delete(details.id);
+  };
+  session.defaultSession.webRequest.onCompleted(cleanUpRequest);
+  session.defaultSession.webRequest.onErrorOccurred(cleanUpRequest);
+
+  // Intercept response headers to bypass CSP (Content Security Policy), X-Frame-Options, and CORS
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    const isIframe = details.resourceType === 'subFrame';
+
+    // Remove X-Frame-Options to allow framing
+    for (const key of Object.keys(responseHeaders)) {
+      if (key.toLowerCase() === 'x-frame-options') {
+        delete responseHeaders[key];
+      }
+    }
+
+    // Strip CSP for iframe documents
+    if (isIframe) {
+      for (const key of Object.keys(responseHeaders)) {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
+          delete responseHeaders[key];
+        }
+      }
+    } else {
+      // For other resource types (e.g. main frame, scripts), keep CSP but strip frame-ancestors
+      for (const key of Object.keys(responseHeaders)) {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
+          const values = responseHeaders[key];
+          if (Array.isArray(values)) {
+            responseHeaders[key] = values.map((policy) => {
+              return policy
+                .split(';')
+                .map((directive) => {
+                  const trimmed = directive.trim();
+                  if (trimmed.toLowerCase().startsWith('frame-ancestors')) {
+                    return '';
+                  }
+                  return directive;
+                })
+                .filter(Boolean)
+                .join('; ');
+            });
+          }
+        }
+      }
+    }
+
+    // Fix CORS for target domains (Apple and Spotify)
+    const url = details.url.toLowerCase();
+    const isTargetDomain = url.includes('.apple.com') || url.includes('.spotify.com') || url.includes('.spotify.net');
+    if (isTargetDomain) {
+      const info = requestInfo.get(details.id);
+      if (info) {
+        requestInfo.delete(details.id);
+      }
+
+      // Remove existing CORS headers
+      for (const key of Object.keys(responseHeaders)) {
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey === 'access-control-allow-origin' ||
+          lowerKey === 'access-control-allow-credentials' ||
+          lowerKey === 'access-control-allow-methods' ||
+          lowerKey === 'access-control-allow-headers'
+        ) {
+          delete responseHeaders[key];
+        }
+      }
+
+      // Inject permissive CORS headers reflecting the actual request origin
+      const origin = info?.origin;
+      if (origin) {
+        const cleanOrigin = origin.replace(/\/$/, '');
+        responseHeaders['access-control-allow-origin'] = [cleanOrigin];
+        responseHeaders['access-control-allow-credentials'] = ['true'];
+      } else {
+        responseHeaders['access-control-allow-origin'] = ['*'];
+      }
+
+      responseHeaders['access-control-allow-methods'] = ['GET, POST, OPTIONS, PUT, DELETE, PATCH'];
+      
+      const requestedHeaders = info?.requestHeadersList;
+      if (requestedHeaders) {
+        responseHeaders['access-control-allow-headers'] = [requestedHeaders];
+      } else {
+        responseHeaders['access-control-allow-headers'] = ['Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Requested-With, Keep-Alive, If-Modified-Since, X-Apple-Store-Front, X-Apple-Music-Device-Id'];
+      }
+    } else {
+      // Fix CORS for fonts and static assets in other cross-origin frames
+      try {
+        const pathname = new URL(details.url).pathname.toLowerCase();
+        const isFontOrAsset = pathname.endsWith('.woff') || 
+                              pathname.endsWith('.woff2') || 
+                              pathname.endsWith('.ttf') || 
+                              pathname.endsWith('.otf') || 
+                              pathname.endsWith('.eot') ||
+                              pathname.endsWith('.svg');
+        if (isFontOrAsset) {
+          for (const key of Object.keys(responseHeaders)) {
+            if (key.toLowerCase() === 'access-control-allow-origin') {
+              delete responseHeaders[key];
+            }
+          }
+          responseHeaders['access-control-allow-origin'] = ['*'];
+        }
+      } catch {
+        // Ignore URL parsing errors
+      }
+    }
+
+    callback({ cancel: false, responseHeaders });
+  });
+
   fsManager = new FileSystemManager();
   searchEngine = new SearchEngine();
   restoreLastVault(fsManager);

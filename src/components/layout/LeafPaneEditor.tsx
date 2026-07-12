@@ -47,7 +47,7 @@ interface LeafPaneEditorProps {
   onRejectSuggestion: (path: string) => void;
   onOpenNote: (path: string) => void;
   onToggleInsight: (show: boolean) => void;
-  onContentChangeGlobal: (path: string, content: string) => void;
+  onContentChangeGlobal: (path: string, content: string, markModified?: boolean) => void;
   activeUsers?: any[];
   getViewState?: (path: string) => { scroll?: number; cursor?: number; viewMode?: ViewMode } | undefined;
   onViewStateChange?: (path: string, state: { scroll?: number; cursor?: number; viewMode?: ViewMode }) => void;
@@ -115,9 +115,19 @@ export function LeafPaneEditor({
   canCopyAbsolutePath,
 }: LeafPaneEditorProps) {
   const [content, setContent] = useState<string>("");
+  const [contentPath, setContentPath] = useState<string>(activeTab.path);
   const [isLoading, setIsLoading] = useState<boolean>(activeTab.path !== "__new_tab__");
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [fileExists, setFileExists] = useState<boolean>(true);
+  const contentCacheRef = useRef<Map<string, string>>(new Map());
+  const activeTabPathRef = useRef(activeTab.path);
+  useEffect(() => {
+    activeTabPathRef.current = activeTab.path;
+  }, [activeTab.path]);
+  const onContentChangeGlobalRef = useRef(onContentChangeGlobal);
+  useEffect(() => {
+    onContentChangeGlobalRef.current = onContentChangeGlobal;
+  }, [onContentChangeGlobal]);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const dbSyncTimer = useRef<NodeJS.Timeout | null>(null);
   const [isSelfTyping, setIsSelfTyping] = useState<boolean>(false);
@@ -145,16 +155,21 @@ export function LeafPaneEditor({
 
   // Refs for debouncing typing content updates to prevent react lags
   const latestContentRef = useRef<string>("");
+  const latestContentPathRef = useRef<string>(activeTab.path);
   const contentDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const flushContentDebounce = useCallback(() => {
     if (contentDebounceTimeoutRef.current) {
       clearTimeout(contentDebounceTimeoutRef.current);
       contentDebounceTimeoutRef.current = null;
-      setContent(latestContentRef.current);
-      onContentChangeGlobal(activeTab.path, latestContentRef.current);
+      const path = latestContentPathRef.current;
+      contentCacheRef.current.set(path, latestContentRef.current);
+      if (activeTabPathRef.current === path) {
+        setContent(latestContentRef.current);
+      }
+      onContentChangeGlobal(path, latestContentRef.current);
     }
-  }, [activeTab.path, onContentChangeGlobal]);
+  }, [onContentChangeGlobal]);
 
   // Stable ref for auto-save and sync tracking to prevent tab-switch race conditions
   const pendingSaveRef = useRef<{
@@ -233,15 +248,27 @@ export function LeafPaneEditor({
 
     let isActive = true;
     
-    // Set loading state to prevent Editor from mounting with old content
-    setIsLoading(true); 
+    const cachedContent = contentCacheRef.current.get(activeTab.path);
+    setIsLoading(cachedContent === undefined);
     setFileExists(true);
 
     if (activeTab.path === "__new_tab__") {
+      setContentPath(activeTab.path);
       setContent("");
       latestContentRef.current = "";
+      latestContentPathRef.current = activeTab.path;
       setIsLoading(false);
       return;
+    } else if (cachedContent !== undefined) {
+      setContentPath(activeTab.path);
+      setContent(cachedContent);
+      latestContentRef.current = cachedContent;
+      latestContentPathRef.current = activeTab.path;
+    } else {
+      setContentPath(activeTab.path);
+      setContent("");
+      latestContentRef.current = "";
+      latestContentPathRef.current = activeTab.path;
     }
     
     const loadContent = async () => {
@@ -265,14 +292,20 @@ export function LeafPaneEditor({
           docVersionRef.current = 0;
           docHashRef.current = await sha256Hex(c);
         }
+        contentCacheRef.current.set(activeTab.path, c);
+        setContentPath(activeTab.path);
         setContent(c);
         latestContentRef.current = c;
+        latestContentPathRef.current = activeTab.path;
+        onContentChangeGlobalRef.current(activeTab.path, c, false);
         setIsLoading(false);
       } catch (err) {
         if (isActive) {
           setFileExists(false);
+          setContentPath(activeTab.path);
           setContent("");
           latestContentRef.current = "";
+          latestContentPathRef.current = activeTab.path;
           setIsLoading(false);
           console.error("Failed to load note content:", err);
         }
@@ -288,16 +321,21 @@ export function LeafPaneEditor({
 
   // ── Content Change Handler ──────────────────────────────────────────────────
 
-  const handleContentChange = useCallback((newContent: string, isUserEdit?: boolean) => {
+  const handleContentChange = useCallback((newContent: string, isUserEdit?: boolean, sourcePath = activeTab.path) => {
+    if (!sourcePath || sourcePath === "__new_tab__") return;
     latestContentRef.current = newContent;
+    latestContentPathRef.current = sourcePath;
 
     if (!isUserEdit) {
       if (contentDebounceTimeoutRef.current) {
         clearTimeout(contentDebounceTimeoutRef.current);
         contentDebounceTimeoutRef.current = null;
       }
-      setContent(newContent);
-      onContentChangeGlobal(activeTab.path, newContent);
+      if (activeTabPathRef.current === sourcePath) {
+        setContent(newContent);
+      }
+      contentCacheRef.current.set(sourcePath, newContent);
+      onContentChangeGlobal(sourcePath, newContent, false);
       return;
     }
 
@@ -306,8 +344,11 @@ export function LeafPaneEditor({
     }
     contentDebounceTimeoutRef.current = setTimeout(() => {
       contentDebounceTimeoutRef.current = null;
-      setContent(newContent);
-      onContentChangeGlobal(activeTab.path, newContent);
+      if (activeTabPathRef.current === sourcePath) {
+        setContent(newContent);
+      }
+      contentCacheRef.current.set(sourcePath, newContent);
+      onContentChangeGlobal(sourcePath, newContent);
     }, 250);
 
     // Presence: mark as typing
@@ -333,7 +374,7 @@ export function LeafPaneEditor({
 
     // Set the stable pendingSaveRef values to prevent any race condition on tab switch
     pendingSaveRef.current = {
-      path: activeTab.path,
+      path: sourcePath,
       content: newContent,
       collabMeta: localEditMeta ? {
         version: localEditMeta.version,
@@ -342,16 +383,16 @@ export function LeafPaneEditor({
       } : null,
     };
 
-    if (isCollabSpace && activeTab.path && activeTab.path !== "__new_tab__") {
+    if (isCollabSpace && sourcePath && sourcePath !== "__new_tab__") {
       setIsSelfTyping(true);
-      collaborationEngine.updatePresenceNote(activeTab.path, true);
+      collaborationEngine.updatePresenceNote(sourcePath, true);
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
       typingTimeoutRef.current = setTimeout(() => {
         typingTimeoutRef.current = null;
-        collaborationEngine.updatePresenceNote(activeTab.path, false);
+        collaborationEngine.updatePresenceNote(sourcePath, false);
         setIsSelfTyping(false);
       }, 2500);
     }
@@ -384,7 +425,7 @@ export function LeafPaneEditor({
 
     // Persist to IndexedDB + enqueue for sync to Supabase (debounced).
     // Lower debounce than disk save so cloud sync starts sooner.
-    if (isCollabSpace && !collabFailSafe && activeTab.path && activeTab.path !== "__new_tab__") {
+    if (isCollabSpace && !collabFailSafe && sourcePath && sourcePath !== "__new_tab__") {
       if (dbSyncTimer.current) {
         clearTimeout(dbSyncTimer.current);
       }
@@ -651,6 +692,8 @@ export function LeafPaneEditor({
         }
         setContent(nextContent);
         latestContentRef.current = nextContent;
+        latestContentPathRef.current = activeTab.path;
+        contentCacheRef.current.set(activeTab.path, nextContent);
         onContentChangeGlobal(activeTab.path, nextContent);
         scheduleRemoteContentPersist(activeTab.path, nextContent, {
           version: docVersionRef.current,
@@ -819,6 +862,8 @@ export function LeafPaneEditor({
       } else {
         setContent(remoteContent);
         latestContentRef.current = remoteContent;
+        latestContentPathRef.current = activeTab.path;
+        contentCacheRef.current.set(activeTab.path, remoteContent);
         onContentChangeGlobal(activeTab.path, remoteContent);
       }
 
@@ -924,6 +969,8 @@ export function LeafPaneEditor({
             } else {
               setContent(remote.content);
               latestContentRef.current = remote.content;
+              latestContentPathRef.current = activeTab.path;
+              contentCacheRef.current.set(activeTab.path, remote.content);
               onContentChangeGlobal(activeTab.path, remote.content);
             }
           }
@@ -1015,10 +1062,10 @@ export function LeafPaneEditor({
       if (cached?.viewMode) {
         setViewMode(cached.viewMode);
       } else {
-        setViewMode("editor");
+        setViewMode(settings.defaultView ?? "editor");
       }
     }
-  }, [activeTab.path, getViewState]);
+  }, [activeTab.path, getViewState, settings.defaultView]);
 
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
@@ -1089,6 +1136,10 @@ export function LeafPaneEditor({
   const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused && !collabFailSafe;
 
   const activeEditors = [...(activeUsers || []).filter(u => u.activeNoteId === activeTab.path && u.isEditing)];
+  const editorContent =
+    contentPath === activeTab.path
+      ? content
+      : contentCacheRef.current.get(activeTab.path) ?? "";
   
   if (isCollabSpace && currentUser && activeTab.path !== "__new_tab__" && isSelfTyping) {
     const hasSelf = activeEditors.some(u => u.id === currentUserId);
@@ -1136,7 +1187,7 @@ export function LeafPaneEditor({
   }
 
   return (
-    <div className="leaf-editor-host">
+    <div className="leaf-editor-host relative flex h-full min-h-0 flex-col">
       <EditorHeader
         filePath={activeTab.path}
         viewMode={viewMode}
@@ -1161,11 +1212,7 @@ export function LeafPaneEditor({
         onDeleteFile={() => onDeleteFile?.(activeTab.path)}
         canCopyAbsolutePath={canCopyAbsolutePath}
       />
-      {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-          Loading...
-        </div>
-      ) : activeTab.path === "__new_tab__" ? (
+      {activeTab.path === "__new_tab__" ? (
         <NewTabView
           onNewNote={() => {
             document.dispatchEvent(new CustomEvent("menu:new-note"));
@@ -1191,7 +1238,7 @@ export function LeafPaneEditor({
         <Editor
           tabs={leaf.tabs}
           activeTabId={activeTab.id}
-          content={content}
+          content={editorContent}
           viewMode={viewMode}
           availableNotes={allNoteNames}
           onAdjustFontSize={onAdjustFontSize}
@@ -1223,6 +1270,12 @@ export function LeafPaneEditor({
           onGenerateInsight={onGenerateInsight}
           isGeneratingInsight={isGeneratingInsight}
         />
+        {isLoading && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 top-[38px] bg-[color-mix(in_srgb,var(--bg-primary)_78%,transparent)]"
+          />
+        )}
         </>
       )}
     </div>

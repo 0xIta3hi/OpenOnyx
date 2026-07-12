@@ -18,6 +18,8 @@ import {
   Search,
   Bookmark,
   Plus,
+  Minus,
+  Square,
   FolderOpen,
   X,
   Trash2,
@@ -158,15 +160,15 @@ const titlebarGroupSlotClass =
 const titlebarTabsRemainderClass =
   "h-full min-w-0 flex-1 shrink-0 border-b border-[var(--border-subtle)] pointer-events-none";
 const titlebarTabClass =
-  "titlebar-tab group relative z-[2] flex h-[30px] w-full min-w-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[var(--transition-fast)] [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:absolute [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bottom-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:right-0 [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:top-[7px] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:w-px [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:bg-[var(--border-strong,rgba(255,255,255,0.15))] [&:not(.active):has(+_.titlebar-tab:not(.active))::after]:content-['']";
+  "titlebar-tab group relative z-[2] flex h-[30px] w-full min-w-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[background-color,border-color,color,box-shadow,opacity] duration-75 [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing";
 const titlebarTabActiveClass =
-  "active z-[4] h-[31px] !border-x !border-t !border-b-0 !border-[var(--border-subtle)] bg-[var(--tab-background-active)] text-[var(--tab-text-color-focused-active-current)] shadow-[inset_0_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_calc(var(--tab-outline-width)*-1)_0_0_var(--tab-outline-color)]";
+  "active z-[4] !border-x !border-t !border-b-0 !border-[var(--border-subtle)] bg-[var(--tab-background-active)] text-[var(--tab-text-color-focused-active-current)] shadow-[inset_0_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_calc(var(--tab-outline-width)*-1)_0_0_var(--tab-outline-color)]";
 const titlebarTabDropLeftClass =
   "drop-target-left !shadow-[inset_2px_0_0_var(--accent-color,#7c6ef6)]";
 const titlebarTabDropRightClass =
   "drop-target-right !shadow-[inset_-2px_0_0_var(--accent-color,#7c6ef6)]";
 const titlebarGroupedTabClass =
-  "grouped-tab !rounded-t-[var(--radius-sm,4px)] !border-t-2 border-solid opacity-75 transition-[background-color,border-top-color,opacity] hover:opacity-95 before:!hidden after:!hidden";
+  "grouped-tab !rounded-t-[var(--radius-sm,4px)] !border-t-2 border-solid opacity-75 transition-[background-color,border-top-color,opacity] duration-75 hover:opacity-95 before:!hidden after:!hidden";
 const titlebarGroupedActiveTabClass =
   "!border-t-2 !border-t-[var(--tab-group-color)] !bg-[var(--tab-background-active)] !shadow-none opacity-100";
 const titlebarTabInnerClass =
@@ -183,10 +185,95 @@ const titlebarNewTabSlotClass =
 const titlebarRightControlsClass =
   "relative z-[2] flex shrink-0 items-center pl-3 pr-4 pointer-events-auto [-webkit-app-region:no-drag]";
 const titlebarControlsClass =
-  "titlebar-controls relative z-[2] flex shrink-0 gap-0 pointer-events-auto [-webkit-app-region:no-drag]";
+  "titlebar-controls relative z-[2] flex h-full shrink-0 items-center gap-1 px-1.5 pointer-events-auto [-webkit-app-region:no-drag]";
 const titlebarBtnClass =
-  "titlebar-btn flex h-[var(--titlebar-height)] w-[46px] cursor-pointer items-center justify-center rounded-none border-0 bg-transparent text-[length:var(--font-ui-small)] text-[var(--text-secondary)] transition-colors duration-100 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
-const titlebarCloseBtnClass = "close hover:bg-[#e81123] hover:text-white";
+  "titlebar-btn flex h-7 w-9 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent text-[var(--text-muted)] transition-[background-color,border-color,color,transform] duration-100 pointer-events-auto [-webkit-app-region:no-drag] hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] active:scale-[0.96]";
+const titlebarCloseBtnClass = "close hover:border-[#ef4444] hover:bg-[#ef4444] hover:text-white";
+
+interface TitlebarTabItemProps {
+  tab: Tab;
+  tabGroup: LocalGroup | null;
+  isActive: boolean;
+  isDropLeft: boolean;
+  isDropRight: boolean;
+  onClick: (tabId: string) => void;
+  onClose: (tabId: string) => void;
+  onDragStart: (event: React.DragEvent, tabId: string) => void;
+  onDragOver: (event: React.DragEvent, tabId: string) => void;
+  onDragLeave: () => void;
+  onDragEnd: () => void;
+  onDrop: (event: React.DragEvent, tabId: string) => void;
+  onContextMenu: (event: React.MouseEvent, tab: Tab) => void;
+}
+
+const TitlebarTabItem = React.memo(function TitlebarTabItem({
+  tab,
+  tabGroup,
+  isActive,
+  isDropLeft,
+  isDropRight,
+  onClick,
+  onClose,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDragEnd,
+  onDrop,
+  onContextMenu,
+}: TitlebarTabItemProps) {
+  return (
+    <div
+      className={cx(
+        titlebarTabSlotClass,
+        isActive
+          ? titlebarActiveTabSlotClass
+          : titlebarInactiveTabSlotClass,
+      )}
+    >
+      <div
+        data-tab-id={tab.id}
+        data-tooltip={tab.name}
+        className={cx(
+          titlebarTabClass,
+          isActive && titlebarTabActiveClass,
+          isDropLeft && titlebarTabDropLeftClass,
+          isDropRight && titlebarTabDropRightClass,
+          tabGroup && titlebarGroupedTabClass,
+          tabGroup && isActive && titlebarGroupedActiveTabClass,
+        )}
+        style={{
+          borderTop: tabGroup ? `2px solid ${tabGroup.color}` : undefined,
+          "--tab-group-color": tabGroup?.color,
+        } as React.CSSProperties}
+        onClick={() => onClick(tab.id)}
+        draggable
+        onDragStart={(event) => onDragStart(event, tab.id)}
+        onDragOver={(event) => onDragOver(event, tab.id)}
+        onDragLeave={onDragLeave}
+        onDragEnd={onDragEnd}
+        onDrop={(event) => onDrop(event, tab.id)}
+        onContextMenu={(event) => onContextMenu(event, tab)}
+      >
+        <div className={titlebarTabInnerClass}>
+          {tab.isModified && (
+            <span className={titlebarTabDotClass}>{"\u25CF"}</span>
+          )}
+          <span className={titlebarTabTitleClass}>{tab.name}</span>
+          <button
+            className={titlebarTabCloseClass}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose(tab.id);
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const titlebarGroupPillClass =
   "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-none transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97]";
 const titlebarGroupActiveClass =
@@ -450,11 +537,12 @@ export function TitleBar({
   const activeLeftPluginView = leftPluginViews.find((view) => view.viewType === activeLeftViewType);
   const activeRightPluginView = rightPluginViews.find((view) => view.viewType === activeRightTab);
 
-  const handleTabClick = (tabId: string) => {
+  const handleTabClick = React.useCallback((tabId: string) => {
+    if (tabId === activeTabId) return;
     onTabSelect?.(tabId);
-  };
+  }, [activeTabId, onTabSelect]);
 
-  const handleDragStart = (e: React.DragEvent, tabId: string) => {
+  const handleDragStart = React.useCallback((e: React.DragEvent, tabId: string) => {
     e.dataTransfer.setData("text/plain", tabId);
     e.dataTransfer.effectAllowed = "move";
     const tabObj = tabs.find(t => t.id === tabId);
@@ -465,30 +553,31 @@ export function TitleBar({
         tab: tabObj
       });
     }
-  };
+  }, [setDragCtx, tabs]);
 
-  const handleDragEnd = () => {
+  const handleDragEnd = React.useCallback(() => {
     setDragCtx(null);
-  };
+  }, [setDragCtx]);
 
-  const handleDragOver = (e: React.DragEvent, tabId: string) => {
+  const handleDragOver = React.useCallback((e: React.DragEvent, tabId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const isRightHalf = x > rect.width / 2;
+    const nextDirection = isRightHalf ? 'right' : 'left';
     
-    setDragOverTabId(tabId);
-    setDragDirection(isRightHalf ? 'right' : 'left');
-  };
+    setDragOverTabId((current) => current === tabId ? current : tabId);
+    setDragDirection((current) => current === nextDirection ? current : nextDirection);
+  }, []);
 
-  const handleDragLeave = () => {
+  const handleDragLeave = React.useCallback(() => {
     setDragOverTabId(null);
     setDragDirection(null);
-  };
+  }, []);
 
-  const handleDrop = (e: React.DragEvent, targetTabId: string) => {
+  const handleDrop = React.useCallback((e: React.DragEvent, targetTabId: string) => {
     e.preventDefault();
     const draggedTabId = e.dataTransfer.getData("text/plain");
     
@@ -499,7 +588,21 @@ export function TitleBar({
       const isRightHalf = dragDirection === 'right';
       onTabReorder?.(draggedTabId, targetTabId, !isRightHalf);
     }
-  };
+  }, [dragDirection, onTabReorder]);
+
+  const handleTabClose = React.useCallback((tabId: string) => {
+    onTabClose?.(tabId);
+  }, [onTabClose]);
+
+  const handleTabContextMenu = React.useCallback((e: React.MouseEvent, tab: Tab) => {
+    e.preventDefault();
+    const position = clampMenuPosition(e.clientX, e.clientY, 220, 180);
+    setTabContextMenu({
+      x: position.x,
+      y: position.y,
+      tab,
+    });
+  }, []);
 
   React.useEffect(() => {
     const el = tabScrollRef?.current;
@@ -657,65 +760,24 @@ export function TitleBar({
               );
             } else {
               const { tab, tabGroup } = item;
+              const isActive = tab.id === activeTabId;
               return (
-                <div
+                <TitlebarTabItem
                   key={item.key}
-                  className={cx(
-                    titlebarTabSlotClass,
-                    tab.id === activeTabId
-                      ? titlebarActiveTabSlotClass
-                      : titlebarInactiveTabSlotClass,
-                  )}
-                >
-                  <div
-                    data-tab-id={tab.id}
-                    data-tooltip={tab.name}
-                    className={cx(
-                      titlebarTabClass,
-                      tab.id === activeTabId && titlebarTabActiveClass,
-                      dragOverTabId === tab.id && dragDirection === "left" && titlebarTabDropLeftClass,
-                      dragOverTabId === tab.id && dragDirection === "right" && titlebarTabDropRightClass,
-                      tabGroup && titlebarGroupedTabClass,
-                      tabGroup && tab.id === activeTabId && titlebarGroupedActiveTabClass,
-                    )}
-                    style={{
-                      borderTop: tabGroup ? `2px solid ${tabGroup.color}` : undefined,
-                      "--tab-group-color": tabGroup?.color,
-                    } as React.CSSProperties}
-                    onClick={() => handleTabClick(tab.id)}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, tab.id)}
-                    onDragOver={(e) => handleDragOver(e, tab.id)}
-                    onDragLeave={handleDragLeave}
-                    onDragEnd={handleDragEnd}
-                    onDrop={(e) => handleDrop(e, tab.id)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      const position = clampMenuPosition(e.clientX, e.clientY, 220, 180);
-                      setTabContextMenu({
-                        x: position.x,
-                        y: position.y,
-                        tab,
-                      });
-                    }}
-                  >
-                    <div className={titlebarTabInnerClass}>
-                      {tab.isModified && (
-                        <span className={titlebarTabDotClass}>{"\u25CF"}</span>
-                      )}
-                      <span className={titlebarTabTitleClass}>{tab.name}</span>
-                      <button
-                        className={titlebarTabCloseClass}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onTabClose?.(tab.id);
-                        }}
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  tab={tab}
+                  tabGroup={tabGroup}
+                  isActive={isActive}
+                  isDropLeft={dragOverTabId === tab.id && dragDirection === "left"}
+                  isDropRight={dragOverTabId === tab.id && dragDirection === "right"}
+                  onClick={handleTabClick}
+                  onClose={handleTabClose}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDragEnd={handleDragEnd}
+                  onDrop={handleDrop}
+                  onContextMenu={handleTabContextMenu}
+                />
               );
             }
           })}
@@ -890,21 +952,21 @@ export function TitleBar({
                   onClick={() => api.minimizeWindow()}
                   aria-label="Minimize"
                 >
-                  &#x2500;
+                  <Minus size={14} strokeWidth={1.8} />
                 </button>
                 <button
                   className={titlebarBtnClass}
                   onClick={() => api.maximizeWindow()}
                   aria-label="Maximize"
                 >
-                  &#x25A1;
+                  <Square size={12} strokeWidth={1.7} />
                 </button>
                 <button
                   className={`${titlebarBtnClass} ${titlebarCloseBtnClass}`}
                   onClick={() => api.closeWindow()}
                   aria-label="Close"
                 >
-                  &#x2715;
+                  <X size={14} strokeWidth={1.8} />
                 </button>
               </div>
             )}

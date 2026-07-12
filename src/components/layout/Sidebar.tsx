@@ -65,6 +65,7 @@ interface SidebarProps {
   activeGroupId?: string | null;
   onCreateGroup?: () => void;
   onCreateGroupFromFile?: (path: string) => void;
+  onCreateGroupFromFolder?: (folderName: string, paths: string[]) => void | Promise<void>;
   onBookmarkFile?: (path: string) => void;
   onRestoreGroup?: (id: string) => void;
   onRenameGroup?: (id: string, name: string) => void;
@@ -150,6 +151,37 @@ function filterTree(entries: FileEntry[], query: string): FileEntry[] {
     }
     return acc;
   }, []);
+}
+
+function collectGroupableFilePaths(entries: FileEntry[]): string[] {
+  const paths: string[] = [];
+
+  const walk = (items: FileEntry[]) => {
+    for (const entry of items) {
+      if (entry.isDirectory) {
+        walk(entry.children || []);
+        continue;
+      }
+
+      if (entry.extension === ".md" || entry.extension === ".canvas") {
+        paths.push(entry.path);
+      }
+    }
+  };
+
+  walk(entries);
+  return paths;
+}
+
+function findNodeByPath(entries: FileEntry[], path: string): FileEntry | undefined {
+  for (const entry of entries) {
+    if (entry.path === path) return entry;
+    if (entry.isDirectory && entry.children) {
+      const found = findNodeByPath(entry.children, path);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -310,7 +342,7 @@ const contextSubmenuClass =
 const MENU_VIEWPORT_MARGIN = 8;
 const SIDEBAR_CONTEXT_MENU_WIDTH = 220;
 const FILE_CONTEXT_MENU_HEIGHT = 190;
-const FOLDER_CONTEXT_MENU_HEIGHT = 120;
+const FOLDER_CONTEXT_MENU_HEIGHT = 148;
 const GROUP_CONTEXT_MENU_HEIGHT = 280;
 
 function clampMenuPosition(
@@ -354,6 +386,7 @@ export function Sidebar({
   activeGroupId = null,
   onCreateGroup = () => {},
   onCreateGroupFromFile = () => {},
+  onCreateGroupFromFolder = () => {},
   onBookmarkFile = () => {},
   onRestoreGroup = () => {},
   onRenameGroup = () => {},
@@ -1081,6 +1114,20 @@ export function Sidebar({
                 }}
               >
                 New Subfolder
+              </button>
+            )}
+            {contextMenu.isDir && (
+              <button
+                className={contextMenuItemClass}
+                onClick={() => {
+                  const folder = findNodeByPath(fileTree, contextMenu.path);
+                  const paths = folder?.children ? collectGroupableFilePaths(folder.children) : [];
+                  const folderName = folder?.name || contextMenu.path.split("/").filter(Boolean).pop() || "Folder";
+                  closeContextMenu();
+                  void onCreateGroupFromFolder(folderName, paths);
+                }}
+              >
+                Create group from folder
               </button>
             )}
             <div className={contextMenuSeparatorClass} />

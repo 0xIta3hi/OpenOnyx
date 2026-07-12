@@ -169,6 +169,8 @@ export interface AppSettings {
   pluginAutoUpdates: boolean;
 }
 
+type CustomThemeColorKey = "accentColor" | "customBgPrimary" | "customTextPrimary";
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   accentColor: "#3b82f6",
@@ -339,7 +341,7 @@ const inputClass = "h-8 min-w-[220px] rounded-md border border-[var(--border-med
 const textareaClass = "min-h-24 w-full rounded-md border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-3 py-2 font-mono text-[12px] text-[var(--text-primary)] outline-none";
 const toggleClass = "relative inline-flex h-[22px] w-10 cursor-pointer items-center rounded-full border transition-colors";
 const toggleThumbClass = "absolute left-[2px] h-[18px] w-[18px] rounded-full shadow transition-transform data-[checked=true]:translate-x-[18px]";
-const rangeClass = "h-1 w-28 accent-[var(--color-accent)]";
+const rangeClass = "settings-range w-28";
 const kbdClass = "rounded bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[12px] text-[var(--text-secondary)]";
 const settingsPageStyle = `
   .settings-select {
@@ -367,6 +369,73 @@ const settingsPageStyle = `
     background-color: var(--bg-active);
     color: var(--text-primary);
   }
+  .settings-range {
+    height: 18px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+    outline: none;
+    touch-action: none;
+  }
+  .settings-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-accent) 72%, var(--text-primary)) 0%,
+      color-mix(in srgb, var(--color-accent) 72%, var(--text-primary)) var(--range-progress, 0%),
+      var(--border-medium) var(--range-progress, 0%),
+      var(--border-medium) 100%
+    );
+    transition: background-color 120ms ease;
+  }
+  .settings-range::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border: 1px solid color-mix(in srgb, var(--text-primary) 32%, transparent);
+    border-radius: 999px;
+    background: var(--text-primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+    cursor: grab;
+    transition: transform 80ms ease, border-color 120ms ease, background-color 120ms ease;
+  }
+  .settings-range:hover::-webkit-slider-thumb,
+  .settings-range:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.08);
+    border-color: color-mix(in srgb, var(--color-accent) 70%, var(--text-primary));
+  }
+  .settings-range:active::-webkit-slider-thumb {
+    cursor: grabbing;
+    transform: scale(1.14);
+  }
+  .settings-range::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border-medium);
+  }
+  .settings-range::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent) 72%, var(--text-primary));
+  }
+  .settings-range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 1px solid color-mix(in srgb, var(--text-primary) 32%, transparent);
+    border-radius: 999px;
+    background: var(--text-primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+    cursor: grab;
+    transition: transform 80ms ease, border-color 120ms ease, background-color 120ms ease;
+  }
+  .settings-range:active::-moz-range-thumb {
+    cursor: grabbing;
+    transform: scale(1.14);
+  }
 `;
 
 function SettingGroup({ title, children }: { title?: string; children: React.ReactNode }) {
@@ -388,6 +457,13 @@ function SettingRow({ title, description, children }: { title: React.ReactNode; 
       {children && <div className={controlClass}>{children}</div>}
     </div>
   );
+}
+
+function rangeProgressStyle(value: number, min: number, max: number): React.CSSProperties {
+  const progress = max <= min ? 0 : ((value - min) / (max - min)) * 100;
+  return {
+    "--range-progress": `${Math.max(0, Math.min(100, progress))}%`,
+  } as React.CSSProperties;
 }
 
 function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
@@ -446,6 +522,11 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection || "general");
   const [localSettings, setLocalSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS, ...settings });
+  const [customThemeDraft, setCustomThemeDraft] = useState(() => ({
+    accentColor: settings.accentColor,
+    customBgPrimary: settings.customBgPrimary,
+    customTextPrimary: settings.customTextPrimary,
+  }));
   const [isBrowsingPlugins, setIsBrowsingPlugins] = useState(false);
   const [searchHotkey, setSearchHotkey] = useState("");
   const [currentUser, setCurrentUser] = useState(authManager.getUser());
@@ -477,6 +558,16 @@ export function SettingsPage({
   const models = getModelsForProvider(aiSettings.provider);
   const matchedModel = models.find((m) => m.id === aiSettings.modelId);
   const isCustomModel = !matchedModel && aiSettings.provider === "openrouter";
+  const customModelInputValue = aiSettings.provider === "openrouter"
+    ? (isCustomModel ? aiSettings.modelId : aiSettings.customModelId || "")
+    : "";
+  const trimmedCustomModelInput = customModelInputValue.trim();
+  const isCustomModelSelected = isCustomModel && !!trimmedCustomModelInput && aiSettings.modelId === trimmedCustomModelInput;
+  const customModelDescription = isCustomModelSelected
+    ? "Active custom OpenRouter model."
+    : trimmedCustomModelInput
+      ? "Saved custom model. Select it to make it active."
+      : "Use any other OpenRouter model by entering its ID.";
   const currentModel = matchedModel || (isCustomModel ? {
     id: aiSettings.modelId,
     label: aiSettings.modelId,
@@ -495,12 +586,31 @@ export function SettingsPage({
   }, [settings]);
 
   useEffect(() => {
+    setCustomThemeDraft({
+      accentColor: localSettings.accentColor,
+      customBgPrimary: localSettings.customBgPrimary,
+      customTextPrimary: localSettings.customTextPrimary,
+    });
+  }, [localSettings.accentColor, localSettings.customBgPrimary, localSettings.customTextPrimary]);
+
+  useEffect(() => {
     if (activeSection !== "ai") return;
     const interval = setInterval(() => setStore(loadStore()), 3000);
     return () => clearInterval(interval);
   }, [activeSection]);
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    const updated = { ...localSettings, [key]: value };
+    setLocalSettings(updated);
+    onSettingsChange(updated);
+  };
+
+  const updateCustomThemeDraft = (key: CustomThemeColorKey, value: string) => {
+    setCustomThemeDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const commitCustomThemeColor = (key: CustomThemeColorKey, value: string) => {
+    if (!value || localSettings[key] === value) return;
     const updated = { ...localSettings, [key]: value };
     setLocalSettings(updated);
     onSettingsChange(updated);
@@ -747,7 +857,7 @@ export function SettingsPage({
                       <Toggle checked={localSettings.readableLineLength} onChange={(v) => updateSetting("readableLineLength", v)} />
                     </SettingRow>
                     <SettingRow title="Line width" description="Width used when readable line length is enabled.">
-                      <input className={rangeClass} type="range" min={640} max={1180} step={20} value={localSettings.readingViewWidth} onChange={(e) => updateSetting("readingViewWidth", Number(e.target.value))} />
+                      <input className={rangeClass} type="range" min={640} max={1180} step={1} value={localSettings.readingViewWidth} style={rangeProgressStyle(localSettings.readingViewWidth, 640, 1180)} onChange={(e) => updateSetting("readingViewWidth", Number(e.target.value))} />
                       <span className="w-14 text-right text-xs text-[var(--text-muted)]">{localSettings.readingViewWidth}px</span>
                     </SettingRow>
                     <SettingRow title="Strict line breaks" description="Markdown specs ignore single line breaks in reading view.">
@@ -789,7 +899,7 @@ export function SettingsPage({
                       <Toggle checked={localSettings.indentUsingTabs} onChange={(v) => updateSetting("indentUsingTabs", v)} />
                     </SettingRow>
                     <SettingRow title="Indent visual width" description="Number of spaces a tab character will render as.">
-                      <input className={rangeClass} type="range" min={2} max={8} step={1} value={localSettings.tabSize} onChange={(e) => updateSetting("tabSize", Number(e.target.value))} />
+                      <input className={rangeClass} type="range" min={2} max={8} step={1} value={localSettings.tabSize} style={rangeProgressStyle(localSettings.tabSize, 2, 8)} onChange={(e) => updateSetting("tabSize", Number(e.target.value))} />
                       <span className="w-8 text-right text-xs text-[var(--text-muted)]">{localSettings.tabSize}</span>
                     </SettingRow>
                   </SettingGroup>
@@ -878,13 +988,43 @@ export function SettingsPage({
                           </select>
                         </SettingRow>
                         <SettingRow title="Accent color" description="Choose the accent color used throughout the app.">
-                          <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.accentColor} onChange={(e) => updateSetting("accentColor", e.target.value)} />
+                          <input
+                            type="color"
+                            className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent"
+                            value={customThemeDraft.accentColor}
+                            onInput={(e) => updateCustomThemeDraft("accentColor", e.currentTarget.value)}
+                            onBlur={(e) => commitCustomThemeColor("accentColor", e.currentTarget.value)}
+                            onPointerUp={(e) => commitCustomThemeColor("accentColor", e.currentTarget.value)}
+                            onKeyUp={(e) => {
+                              if (e.key === "Enter") commitCustomThemeColor("accentColor", e.currentTarget.value);
+                            }}
+                          />
                         </SettingRow>
                         <SettingRow title="Custom background color">
-                          <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.customBgPrimary} onChange={(e) => updateSetting("customBgPrimary", e.target.value)} />
+                          <input
+                            type="color"
+                            className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent"
+                            value={customThemeDraft.customBgPrimary}
+                            onInput={(e) => updateCustomThemeDraft("customBgPrimary", e.currentTarget.value)}
+                            onBlur={(e) => commitCustomThemeColor("customBgPrimary", e.currentTarget.value)}
+                            onPointerUp={(e) => commitCustomThemeColor("customBgPrimary", e.currentTarget.value)}
+                            onKeyUp={(e) => {
+                              if (e.key === "Enter") commitCustomThemeColor("customBgPrimary", e.currentTarget.value);
+                            }}
+                          />
                         </SettingRow>
                         <SettingRow title="Custom text color">
-                          <input type="color" className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent" value={localSettings.customTextPrimary} onChange={(e) => updateSetting("customTextPrimary", e.target.value)} />
+                          <input
+                            type="color"
+                            className="h-8 w-10 rounded border border-[var(--border-medium)] bg-transparent"
+                            value={customThemeDraft.customTextPrimary}
+                            onInput={(e) => updateCustomThemeDraft("customTextPrimary", e.currentTarget.value)}
+                            onBlur={(e) => commitCustomThemeColor("customTextPrimary", e.currentTarget.value)}
+                            onPointerUp={(e) => commitCustomThemeColor("customTextPrimary", e.currentTarget.value)}
+                            onKeyUp={(e) => {
+                              if (e.key === "Enter") commitCustomThemeColor("customTextPrimary", e.currentTarget.value);
+                            }}
+                          />
                         </SettingRow>
                       </>
                     )}
@@ -912,7 +1052,7 @@ export function SettingsPage({
                       </select>
                     </SettingRow>
                     <SettingRow title="Font size" description="Font size in pixels that affects editing and reading views.">
-                      <input className={rangeClass} type="range" min={12} max={24} value={localSettings.fontSize} onChange={(e) => {
+                      <input className={rangeClass} type="range" min={12} max={24} value={localSettings.fontSize} style={rangeProgressStyle(localSettings.fontSize, 12, 24)} onChange={(e) => {
                         const value = Number(e.target.value);
                         const updated = { ...localSettings, fontSize: value, editorFontSize: value, previewFontSize: value };
                         setLocalSettings(updated);
@@ -928,7 +1068,7 @@ export function SettingsPage({
                   <h3 className={groupTitleClass}>Advanced</h3>
                   <SettingGroup>
                     <SettingRow title="Zoom level" description="Controls the overall zoom level of the app.">
-                      <input className={rangeClass} type="range" min={80} max={140} value={localSettings.zoomLevel} onChange={(e) => updateSetting("zoomLevel", Number(e.target.value))} />
+                      <input className={rangeClass} type="range" min={80} max={140} value={localSettings.zoomLevel} style={rangeProgressStyle(localSettings.zoomLevel, 80, 140)} onChange={(e) => updateSetting("zoomLevel", Number(e.target.value))} />
                       <span className="w-10 text-right text-xs text-[var(--text-muted)]">{localSettings.zoomLevel}%</span>
                     </SettingRow>
                   </SettingGroup>
@@ -1156,8 +1296,25 @@ export function SettingsPage({
                       </SettingRow>
                     ))}
                     {aiSettings.provider === "openrouter" && (
-                      <SettingRow title="Custom Model" description="Use any other OpenRouter model by entering its ID.">
-                        <input className={inputClass} value={isCustomModel ? aiSettings.modelId : aiSettings.customModelId || ""} onChange={(e) => updateAISettings({ modelId: e.target.value, customModelId: e.target.value })} placeholder="e.g. deepseek/deepseek-v4-flash:free" />
+                      <SettingRow title="Custom Model" description={customModelDescription}>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <input
+                            className={inputClass}
+                            value={customModelInputValue}
+                            onChange={(e) => {
+                              const nextValue = e.target.value;
+                              updateAISettings(isCustomModel ? { modelId: nextValue, customModelId: nextValue } : { customModelId: nextValue });
+                            }}
+                            placeholder="e.g. deepseek/deepseek-v4-flash:free"
+                          />
+                          <button
+                            className={cx(buttonClass, isCustomModelSelected && "border-[var(--color-accent)]")}
+                            disabled={!trimmedCustomModelInput}
+                            onClick={() => updateAISettings({ modelId: trimmedCustomModelInput, customModelId: trimmedCustomModelInput })}
+                          >
+                            {isCustomModelSelected ? "Selected" : "Select"}
+                          </button>
+                        </div>
                       </SettingRow>
                     )}
                   </SettingGroup>

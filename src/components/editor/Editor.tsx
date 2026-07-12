@@ -13,7 +13,7 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { X, Lightbulb, BookOpen, Pen, RefreshCw, Sparkles } from "lucide-react";
-import { Compartment, EditorState, Transaction, StateField } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, StateEffect, StateField } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -198,6 +198,12 @@ const inlineAiExplanationCloseClass =
   "flex cursor-pointer rounded border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-all duration-150 hover:bg-[var(--bg-active)] hover:text-[var(--text-primary)]";
 const inlineAiExplanationBodyClass =
   "max-h-[200px] overflow-y-auto p-3 text-[11px] leading-normal text-[var(--text-secondary)]";
+const inlineAiDecisionFooterClass =
+  "absolute bottom-4 right-4 z-[5100] flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-secondary)] px-2.5 py-2 shadow-none";
+const inlineAiDecisionButtonClass =
+  "cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-transparent px-3 py-1.5 text-[12px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const inlineAiDecisionAcceptClass =
+  "border-transparent bg-[var(--accent-primary)] text-[var(--text-on-accent)] hover:bg-[var(--accent-secondary)] hover:text-[var(--text-on-accent)]";
 const editorAnnotationClass =
   "mx-[clamp(24px,5vw,72px)] my-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-5 py-4 shadow-none";
 const editorAnnotationHeaderClass =
@@ -241,7 +247,7 @@ interface EditorProps {
   ) => void;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
-  onContentChange: (content: string, isUserEdit?: boolean) => void;
+  onContentChange: (content: string, isUserEdit?: boolean, path?: string) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onLinkClick: (linkName: string, heading?: string) => void;
   onGetNoteContent?: (noteName: string) => string | null;
@@ -1036,17 +1042,24 @@ class CheckboxWidget extends WidgetType {
 }
 
 class MarkdownTableWidget extends WidgetType {
-  constructor(private readonly rows: string[]) {
+  constructor(private readonly rows: string[], private readonly startLine: number) {
     super();
   }
 
   eq(other: MarkdownTableWidget): boolean {
-    return this.rows.join("\n") === other.rows.join("\n");
+    return this.rows.join("\n") === other.rows.join("\n") && this.startLine === other.startLine;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement("div");
     wrapper.className = "cm-live-table-wrapper";
+    wrapper.title = "Click to edit table";
+    wrapper.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const line = view.state.doc.line(this.startLine);
+      view.dispatch({ selection: { anchor: line.from } });
+      view.focus();
+    });
     const table = document.createElement("table");
     table.className = "cm-live-table";
     wrapper.appendChild(table);
@@ -1055,8 +1068,17 @@ class MarkdownTableWidget extends WidgetType {
     const separatorIndex = parsedRows.findIndex((cells) =>
       cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim())),
     );
-    const headerRows = separatorIndex > 0 ? parsedRows.slice(0, separatorIndex) : [];
-    const bodyRows = separatorIndex >= 0 ? parsedRows.slice(separatorIndex + 1) : parsedRows;
+    const rawHeaderRows = separatorIndex > 0 ? parsedRows.slice(0, separatorIndex) : [];
+    const columnCount = Math.max(1, rawHeaderRows[0]?.length || parsedRows[0]?.length || 1);
+    const normalizeCells = (cells: string[], fill = "") => {
+      const normalized = cells.slice(0, columnCount);
+      while (normalized.length < columnCount) normalized.push(fill);
+      return normalized;
+    };
+    const headerRows = rawHeaderRows.map((row) => normalizeCells(row));
+    const bodyRows = (separatorIndex >= 0 ? parsedRows.slice(separatorIndex + 1) : parsedRows)
+      .filter((row) => !row.every((cell) => /^:?-{3,}:?$/.test(cell.trim())))
+      .map((row) => normalizeCells(row));
 
     if (headerRows.length > 0) {
       const thead = document.createElement("thead");
@@ -1066,7 +1088,7 @@ class MarkdownTableWidget extends WidgetType {
         thead.appendChild(tr);
         for (const cell of row) {
           const th = document.createElement("th");
-          th.textContent = cell;
+          renderTableCellMarkdown(th, cell);
           tr.appendChild(th);
         }
       }
@@ -1079,12 +1101,64 @@ class MarkdownTableWidget extends WidgetType {
       tbody.appendChild(tr);
       for (const cell of row) {
         const td = document.createElement("td");
-        td.textContent = cell;
+        renderTableCellMarkdown(td, cell);
         tr.appendChild(td);
       }
     }
 
     return wrapper;
+  }
+}
+
+function escapeTableHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderTableCellMarkdown(cell: HTMLElement, source: string) {
+  let html = escapeTableHtml(source);
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  html = html.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  html = html.replace(/(^|[^\w*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  html = html.replace(/(^|[^\w_])_([^_]+)_/g, "$1<em>$2</em>");
+  cell.innerHTML = html;
+}
+
+type TableAction = "add-row-below" | "add-column-right";
+
+class MarkdownTableControlsWidget extends WidgetType {
+  constructor(private readonly lineNumber: number) {
+    super();
+  }
+
+  eq(other: MarkdownTableControlsWidget): boolean {
+    return this.lineNumber === other.lineNumber;
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement("div");
+    root.className = "cm-live-table-controls";
+    root.setAttribute("contenteditable", "false");
+
+    const addButton = (action: TableAction, label: string, title: string) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "cm-live-table-control";
+      button.dataset.tableAction = action;
+      button.dataset.tableLine = String(this.lineNumber);
+      button.title = title;
+      button.textContent = label;
+      root.appendChild(button);
+    };
+
+    addButton("add-row-below", "+ Row", "Add row below");
+    addButton("add-column-right", "+ Column", "Add column to the right");
+
+    return root;
   }
 }
 
@@ -1103,6 +1177,76 @@ function isTableRow(text: string): boolean {
 function isTableSeparator(text: string): boolean {
   if (!isTableRow(text)) return false;
   return parseTableCells(text).every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+
+function formatTableRow(cells: string[]): string {
+  return `| ${cells.join(" | ")} |`;
+}
+
+function getTableRange(doc: EditorState["doc"], lineNumber: number): { start: number; end: number } | null {
+  if (lineNumber < 1 || lineNumber > doc.lines || !isTableRow(doc.line(lineNumber).text)) return null;
+
+  let start = lineNumber;
+  while (start > 1 && isTableRow(doc.line(start - 1).text)) start--;
+
+  let end = lineNumber;
+  while (end < doc.lines && isTableRow(doc.line(end + 1).text)) end++;
+
+  if (end - start < 1) return null;
+  const hasSeparator = Array.from({ length: end - start + 1 }, (_, index) => start + index)
+    .some((line) => isTableSeparator(doc.line(line).text));
+  return hasSeparator ? { start, end } : null;
+}
+
+function normalizeTableRows(rows: string[]): string[] {
+  const maxColumns = Math.max(1, ...rows.map((row) => parseTableCells(row).length));
+  return rows.map((row) => {
+    const cells = parseTableCells(row);
+    while (cells.length < maxColumns) {
+      cells.push(isTableSeparator(row) ? "---" : "");
+    }
+    return formatTableRow(cells);
+  });
+}
+
+function applyTableAction(view: EditorView, action: TableAction, lineNumber: number) {
+  const tableRange = getTableRange(view.state.doc, lineNumber);
+  if (!tableRange) return;
+
+  const rows = Array.from({ length: tableRange.end - tableRange.start + 1 }, (_, index) =>
+    view.state.doc.line(tableRange.start + index).text,
+  );
+  const normalizedRows = normalizeTableRows(rows);
+  const activeRowIndex = Math.max(0, Math.min(lineNumber - tableRange.start, normalizedRows.length - 1));
+  const columnCount = Math.max(1, ...normalizedRows.map((row) => parseTableCells(row).length));
+
+  let nextRows = normalizedRows;
+  if (action === "add-row-below") {
+    const insertIndex = activeRowIndex + 1;
+    const nextRow = formatTableRow(Array.from({ length: columnCount }, () => ""));
+    nextRows = [
+      ...normalizedRows.slice(0, insertIndex),
+      nextRow,
+      ...normalizedRows.slice(insertIndex),
+    ];
+  } else if (action === "add-column-right") {
+    nextRows = normalizedRows.map((row) => {
+      const cells = parseTableCells(row);
+      const insertAt = Math.max(1, cells.length);
+      cells.splice(insertAt, 0, isTableSeparator(row) ? "---" : "");
+      return formatTableRow(cells);
+    });
+  }
+
+  const startLine = view.state.doc.line(tableRange.start);
+  const endLine = view.state.doc.line(tableRange.end);
+  const nextText = nextRows.join("\n");
+  view.dispatch({
+    changes: { from: startLine.from, to: endLine.to, insert: nextText },
+    selection: { anchor: startLine.from },
+    userEvent: "input",
+  });
+  view.focus();
 }
 
 function hideMarkdownSyntax(decorations: any[], from: number, to: number) {
@@ -1356,7 +1500,7 @@ function markdownLivePreviewPlugin() {
         if (!tableHasActiveLine) {
           decorations.push(
             Decoration.replace({
-              widget: new MarkdownTableWidget(tableRows),
+              widget: new MarkdownTableWidget(tableRows, tableStart),
               block: true,
             }).range(line.from, doc.line(tableEnd).to),
           );
@@ -1375,7 +1519,23 @@ function markdownLivePreviewPlugin() {
               },
             }).range(targetLine.from),
           );
+          if (tableLine !== tableStart + 1 && !activeLinesSet.has(tableLine)) {
+            addInactiveInlinePreviewDecorations(decorations, targetLine.from, targetLine.text);
+          }
         }
+
+        if (tableHasActiveLine) {
+          decorations.push(
+            Decoration.widget({
+              widget: new MarkdownTableControlsWidget(selection.main.head === doc.line(tableEnd).to ? tableEnd : doc.lineAt(selection.main.head).number),
+              side: 1,
+              block: true,
+            }).range(doc.line(tableEnd).to),
+          );
+        }
+
+        i = tableEnd;
+        continue;
       }
 
       if (match) {
@@ -2358,6 +2518,31 @@ function cleanInlineAIResponse(text: string): string {
   if (!text) return "";
   let cleaned = text.trim();
 
+  cleaned = cleaned
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+    .replace(/```(?:analysis|reasoning|thinking)[\s\S]*?```/gi, "")
+    .trim();
+
+  const finalTagMatch = cleaned.match(/<openobsidian_final>([\s\S]*?)<\/openobsidian_final>/i);
+  if (finalTagMatch?.[1]) {
+    cleaned = finalTagMatch[1].trim();
+  } else {
+    const finalMarkers = [
+      /(?:^|\n)\s*(?:final answer|final output|final result|final|answer|result|rewritten markdown|modified text|expanded text|simplified text)\s*:\s*/gi,
+      /(?:^|\n)\s*now produce final answer\s*:\s*/gi,
+    ];
+    for (const marker of finalMarkers) {
+      const matches = Array.from(cleaned.matchAll(marker));
+      const lastMatch = matches[matches.length - 1];
+      if (lastMatch?.index !== undefined) {
+        cleaned = cleaned.slice(lastMatch.index + lastMatch[0].length).trim();
+      }
+    }
+    cleaned = cleaned.replace(/^(?:just\s+)?(?:the\s+)?(?:rewritten|modified|expanded|simplified)?\s*(?:markdown|text)?\s*:?\s*/i, "").trim();
+  }
+
   // Strip leading/trailing markdown code block markers if the model wrapped the response
   if (cleaned.startsWith("```")) {
     const firstNewline = cleaned.indexOf("\n");
@@ -2382,6 +2567,163 @@ function cleanInlineAIResponse(text: string): string {
 
   return cleaned.trim();
 }
+
+type InlineAIPreviewSpec = {
+  from: number;
+  to: number;
+  before: string;
+  after: string;
+};
+
+const setInlineAIPreviewEffect = StateEffect.define<InlineAIPreviewSpec | null>();
+
+class InlineAIInsertWidget extends WidgetType {
+  constructor(private readonly text: string) {
+    super();
+  }
+
+  eq(other: InlineAIInsertWidget): boolean {
+    return this.text === other.text;
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement("span");
+    root.className = "cm-inline-ai-insert";
+    root.textContent = this.text || " ";
+    return root;
+  }
+}
+
+type InlineDiffToken = {
+  text: string;
+  start: number;
+  end: number;
+  isSpace: boolean;
+};
+
+function tokenizeInlineDiff(text: string): InlineDiffToken[] {
+  const tokens: InlineDiffToken[] = [];
+  const regex = /(\s+|[^\s]+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    tokens.push({
+      text: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+      isSpace: /^\s+$/.test(match[0]),
+    });
+  }
+
+  return tokens;
+}
+
+function buildInlineAIPreviewDecorations(spec: InlineAIPreviewSpec | null): DecorationSet {
+  if (!spec) return Decoration.none;
+  const from = Math.max(0, spec.from);
+  const to = Math.max(from, spec.to);
+  const beforeTokens = tokenizeInlineDiff(spec.before);
+  const afterTokens = tokenizeInlineDiff(spec.after);
+  const decorations: any[] = [];
+
+  const dp = Array.from(
+    { length: beforeTokens.length + 1 },
+    () => Array<number>(afterTokens.length + 1).fill(0),
+  );
+
+  for (let i = beforeTokens.length - 1; i >= 0; i--) {
+    for (let j = afterTokens.length - 1; j >= 0; j--) {
+      dp[i][j] = beforeTokens[i].text === afterTokens[j].text
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const addRemoved = (token: InlineDiffToken) => {
+    if (token.isSpace) return;
+    decorations.push(
+      Decoration.mark({ class: "cm-inline-ai-removed" }).range(
+        from + token.start,
+        from + token.end,
+      ),
+    );
+  };
+
+  const addInsert = (pos: number, text: string) => {
+    if (!text) return;
+    decorations.push(
+      Decoration.widget({
+        widget: new InlineAIInsertWidget(text),
+        side: -1,
+      }).range(pos),
+    );
+  };
+
+  let i = 0;
+  let j = 0;
+  let pendingInsertPos: number | null = null;
+  let pendingInsertText = "";
+  const flushInsert = () => {
+    if (pendingInsertPos !== null && pendingInsertText) {
+      addInsert(pendingInsertPos, pendingInsertText);
+    }
+    pendingInsertPos = null;
+    pendingInsertText = "";
+  };
+
+  while (i < beforeTokens.length || j < afterTokens.length) {
+    if (
+      i < beforeTokens.length &&
+      j < afterTokens.length &&
+      beforeTokens[i].text === afterTokens[j].text
+    ) {
+      flushInsert();
+      i++;
+      j++;
+      continue;
+    }
+
+    const shouldInsert =
+      j < afterTokens.length &&
+      (i >= beforeTokens.length || dp[i][j + 1] > dp[i + 1][j]);
+
+    if (shouldInsert) {
+      const insertPos = i < beforeTokens.length ? from + beforeTokens[i].start : to;
+      if (pendingInsertPos === null) pendingInsertPos = insertPos;
+      if (pendingInsertPos === insertPos) {
+        pendingInsertText += afterTokens[j].text;
+      } else {
+        flushInsert();
+        pendingInsertPos = insertPos;
+        pendingInsertText = afterTokens[j].text;
+      }
+      j++;
+    } else if (i < beforeTokens.length) {
+      flushInsert();
+      addRemoved(beforeTokens[i]);
+      i++;
+    }
+  }
+  flushInsert();
+
+  return Decoration.set(decorations, true);
+}
+
+const inlineAIPreviewField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(decorations, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setInlineAIPreviewEffect)) {
+        return buildInlineAIPreviewDecorations(effect.value);
+      }
+    }
+    if (tr.docChanged) return Decoration.none;
+    return decorations.map(tr.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 async function executeInlineAIOperation(
   text: string,
@@ -2446,18 +2788,30 @@ INSTRUCTIONS:
   }
 
   const baseUrl = getBaseUrl(config);
+  const finalOnlyPrompt = `${prompt}
+
+Return the final replacement only inside these exact tags:
+<openobsidian_final>
+...
+</openobsidian_final>
+Do not include analysis, reasoning, planning, explanations, labels, or commentary outside those tags.`;
+  const requestBody: Record<string, unknown> = {
+    model: config.modelId,
+    max_tokens: 4096,
+    temperature: 0.3,
+    messages: [
+      { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. Never reveal reasoning, analysis, chain-of-thought, planning, or explanations. Respond only with the final requested replacement text inside <openobsidian_final> tags, preserving list styles, indentation, headings, tables, and markdown markup exactly." },
+      { role: "user", content: finalOnlyPrompt },
+    ],
+  };
+  if (config.provider === "openrouter") {
+    requestBody.include_reasoning = false;
+    requestBody.reasoning = { exclude: true };
+  }
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: getProviderHeaders(config),
-    body: JSON.stringify({
-      model: config.modelId,
-      max_tokens: 4096,
-      temperature: 0.3,
-      messages: [
-        { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. You respond strictly with the requested text in the exact same format (preserving list styles, indentation, headings, and markdown markup). Do not use emojis, no intro, no wrap, no filler." },
-        { role: "user", content: prompt },
-      ],
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -2522,8 +2876,13 @@ export function Editor({
   }, [getViewState]);
 
   const activePathRef = useRef(activePath);
+  const pendingViewStateRestorePathRef = useRef<string | null>(null);
   useEffect(() => {
     activePathRef.current = activePath;
+  }, [activePath]);
+
+  useEffect(() => {
+    pendingViewStateRestorePathRef.current = activePath || null;
   }, [activePath]);
 
   const editorRef = useRef<HTMLDivElement>(null);
@@ -2531,6 +2890,7 @@ export function Editor({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const viewRef = useRef<EditorView | null>(null);
+  const obsidianEditorRef = useRef<ObsidianEditor | null>(null);
   const contentRef = useRef(content);
 
   // Tracks the timestamp of the last local (user) edit. Used by the content
@@ -2576,6 +2936,7 @@ export function Editor({
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [editorMountTick, setEditorMountTick] = useState(0);
+
   // isActivelyTyping is stored as a ref to avoid re-rendering the entire
   // Editor component on every single keystroke. We only promote to state
   // when the value *changes* (true->false or false->true) so that derived
@@ -2608,6 +2969,50 @@ export function Editor({
 
   const isSpecialTab = !!specialContent;
 
+  const syncObsidianEditorContext = useCallback(() => {
+    const view = viewRef.current;
+    const obsidianEditor = obsidianEditorRef.current;
+    if (!view || !obsidianEditor) return;
+
+    const obsidianApp = (window as any).__oo_app;
+    const currentPath = activePathRef.current || (window as any).__oo_active_file || '';
+    const currentFile = obsidianApp?.vault?.getFileByPath?.(currentPath) || null;
+
+    view.dispatch({
+      effects: [
+        setEditorInfoEffect.of({
+          file: currentFile,
+          editor: obsidianEditor,
+          node: view.dom,
+          view,
+        }),
+        setEditorEditorEffect.of(obsidianEditor),
+        setEditorLivePreviewEffect.of(true),
+      ],
+    });
+
+    const activeLeaf = obsidianApp?.workspace?.activeLeaf;
+    // Some custom file views inherit MarkdownView for its file lifecycle but
+    // own their editor and expose file as a getter (for example Kanban).
+    // Only bind the host CodeMirror editor to the actual Markdown view.
+    if (activeLeaf?.view instanceof (MarkdownView as any) && activeLeaf.view.getViewType?.() === 'markdown') {
+      activeLeaf.view.editor = obsidianEditor;
+      activeLeaf.view.sourceMode = { cmEditor: obsidianEditor };
+      setWritableViewProperty(activeLeaf.view, 'file', currentFile);
+    }
+    if (obsidianApp?.workspace) {
+      obsidianApp.workspace.activeEditor = {
+        editor: obsidianEditor,
+        file: currentFile,
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isSpecialTab) return;
+    syncObsidianEditorContext();
+  }, [activePath, editorMountTick, isSpecialTab, syncObsidianEditorContext]);
+
   const readVimModeSetting = useCallback((): boolean => {
     try {
       const saved = localStorage.getItem("openobsidian-settings");
@@ -2637,11 +3042,27 @@ export function Editor({
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [customPromptText, setCustomPromptText] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [pendingInlineEdit, setPendingInlineEdit] = useState<{
+    operation: "rewrite" | "expand" | "simplify" | "custom";
+    before: string;
+    after: string;
+    from: number;
+    to: number;
+    rect: DOMRect;
+  } | null>(null);
+
+  useEffect(() => {
+    setPendingInlineEdit(null);
+    viewRef.current?.dispatch({
+      effects: setInlineAIPreviewEffect.of(null),
+    });
+  }, [activePath]);
 
   const handleSelectionChange = useCallback(() => {
     if (isSpecialTab) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      if (pendingInlineEdit) return;
       if (isInputFocused) return;
       const activeEl = document.activeElement;
       if (activeEl && (activeEl.closest(".inline-ai-toolbar") || activeEl.classList.contains("inline-ai-prompt-input"))) {
@@ -2721,7 +3142,48 @@ export function Editor({
     } catch (e) {
       // Ignore transient selection range errors
     }
-  }, [isSpecialTab, isInputFocused]);
+  }, [isSpecialTab, isInputFocused, pendingInlineEdit]);
+
+  const applyPendingInlineEdit = useCallback(() => {
+    if (!pendingInlineEdit) return;
+    const view = viewRef.current;
+    if (!view) return;
+
+    const doc = view.state.doc.toString();
+    let from = pendingInlineEdit.from;
+    let to = pendingInlineEdit.to;
+    if (doc.slice(from, to) !== pendingInlineEdit.before) {
+      const fallbackIndex = doc.indexOf(pendingInlineEdit.before);
+      if (fallbackIndex === -1) {
+        alert("The selected text changed before this AI edit was applied. Run the edit again.");
+        setPendingInlineEdit(null);
+        return;
+      }
+      from = fallbackIndex;
+      to = fallbackIndex + pendingInlineEdit.before.length;
+    }
+
+    view.dispatch({
+      changes: { from, to, insert: pendingInlineEdit.after },
+      selection: { anchor: from + pendingInlineEdit.after.length },
+      effects: setInlineAIPreviewEffect.of(null),
+    });
+    view.focus();
+    window.getSelection()?.removeAllRanges();
+    setPendingInlineEdit(null);
+    setSelectionRange(null);
+    setShowPromptInput(false);
+    setCustomPromptText("");
+  }, [pendingInlineEdit]);
+
+  const discardPendingInlineEdit = useCallback(() => {
+    viewRef.current?.dispatch({
+      effects: setInlineAIPreviewEffect.of(null),
+    });
+    setPendingInlineEdit(null);
+    setShowPromptInput(false);
+    setCustomPromptText("");
+  }, []);
 
   useEffect(() => {
     document.addEventListener("selectionchange", handleSelectionChange);
@@ -2761,16 +3223,26 @@ export function Editor({
         const view = viewRef.current;
         if (view) {
           view.dispatch({
-            changes: { from: selectionRange.from, to: selectionRange.to, insert: result },
-            selection: { anchor: selectionRange.from + result.length }
+            effects: setInlineAIPreviewEffect.of({
+              from: selectionRange.from,
+              to: selectionRange.to,
+              before: text,
+              after: result,
+            }),
+          });
+          setPendingInlineEdit({
+            operation,
+            before: text,
+            after: result,
+            from: selectionRange.from,
+            to: selectionRange.to,
+            rect: selectionRange.rect,
           });
         } else {
           // If in preview or fallback mode, copy rewritten text to clipboard
           await navigator.clipboard.writeText(result);
           alert("Rewritten text copied to clipboard (editor view not focused).");
         }
-        window.getSelection()?.removeAllRanges();
-        setSelectionRange(null);
         setShowPromptInput(false);
         setCustomPromptText("");
       }
@@ -3097,7 +3569,7 @@ export function Editor({
               /^(\s*[-*+]\s+)\[([ xX])\]/,
               `$1[${checked ? "x" : " "}]`,
             );
-            onContentChange(lines.join("\n"));
+            onContentChange(lines.join("\n"), true, activePathRef.current || undefined);
             return;
           }
           currentCheckbox++;
@@ -3293,6 +3765,7 @@ export function Editor({
       if (viewRef.current) {
         viewRef.current.destroy();
         viewRef.current = null;
+        obsidianEditorRef.current = null;
       }
       return;
     }
@@ -3308,6 +3781,10 @@ export function Editor({
             to: currentDoc.length,
             insert: content,
           },
+          annotations: [
+            Transaction.userEvent.of("setContent"),
+            Transaction.addToHistory.of(false),
+          ],
         });
       }
       return;
@@ -3365,6 +3842,7 @@ export function Editor({
             setIntentShiftUntil: (val) => { intentShiftUntilRef.current = val; },
           }),
         ),
+        inlineAIPreviewField,
         EditorView.updateListener.of((update) => {
           if (update.selectionSet && activePathRef.current) {
             onViewStateChangeRef.current?.(activePathRef.current, {
@@ -3397,7 +3875,7 @@ export function Editor({
             // Read from refs to avoid stale closures -- the CM view is
             // created once per tab and these callbacks change when the
             // collab space becomes active asynchronously.
-            onContentChangeRef.current(update.state.doc.toString(), isUserEdit);
+            onContentChangeRef.current(update.state.doc.toString(), isUserEdit, activePathRef.current || undefined);
             if (isUserEdit) {
               // Record that a local edit just happened, so the content-sync
               // effect knows not to overwrite the CM doc with stale content.
@@ -3443,6 +3921,22 @@ export function Editor({
             const sel = update.state.selection.main;
             cursorCb({ from: sel.from, to: sel.to });
           }
+        }),
+        EditorView.domEventHandlers({
+          click(event, view) {
+            const target = event.target as HTMLElement | null;
+            const button = target?.closest<HTMLButtonElement>("[data-table-action][data-table-line]");
+            if (!button) return false;
+            event.preventDefault();
+            event.stopPropagation();
+            const action = button.dataset.tableAction as TableAction | undefined;
+            const lineNumber = Number(button.dataset.tableLine);
+            if ((action === "add-row-below" || action === "add-column-right") && Number.isFinite(lineNumber)) {
+              applyTableAction(view, action, lineNumber);
+              return true;
+            }
+            return false;
+          },
         }),
         // Remote collaborator cursor decorations
         remoteCursorsExtension(),
@@ -3571,7 +4065,9 @@ export function Editor({
           },
           ".cm-live-table-wrapper": {
             width: "100%",
-            padding: "6px 0",
+            overflowX: "auto",
+            padding: "0",
+            margin: "1.5rem 0",
           },
           ".cm-live-table": {
             width: "100%",
@@ -3579,18 +4075,20 @@ export function Editor({
             fontFamily: "var(--font-family)",
             fontSize: "var(--editor-pane-font-size)",
             color: "var(--text-primary)",
+            border: "var(--table-border-width, 1px) solid var(--table-border-color, var(--border-medium))",
           },
           ".cm-live-table th, .cm-live-table td": {
-            border: "1px solid var(--border-subtle)",
-            padding: "6px 10px",
+            border: "var(--table-border-width, 1px) solid var(--table-border-color, var(--border-medium))",
+            padding: "0.6rem 1rem",
             verticalAlign: "top",
           },
           ".cm-live-table th": {
-            backgroundColor: "var(--bg-secondary)",
-            fontWeight: "700",
+            backgroundColor: "var(--table-header-background, var(--bg-tertiary))",
+            color: "var(--table-header-color, var(--text-primary))",
+            fontWeight: "600",
           },
           ".cm-live-table tr:nth-child(even) td": {
-            backgroundColor: "color-mix(in_srgb,var(--bg-secondary)_45%,transparent)",
+            backgroundColor: "var(--table-row-alt-background, var(--bg-secondary))",
           },
           ".cm-live-table-source-row": {
             backgroundColor: "color-mix(in_srgb,var(--bg-secondary)_30%,transparent)",
@@ -3598,6 +4096,28 @@ export function Editor({
           ".cm-live-table-source-separator": {
             color: "var(--editor-muted-token)",
             backgroundColor: "color-mix(in_srgb,var(--bg-secondary)_45%,transparent)",
+          },
+          ".cm-live-table-controls": {
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "6px",
+            padding: "4px 0 8px",
+          },
+          ".cm-live-table-control": {
+            cursor: "pointer",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "4px",
+            backgroundColor: "var(--bg-secondary)",
+            color: "var(--text-secondary)",
+            padding: "3px 7px",
+            fontFamily: "var(--font-family)",
+            fontSize: "11px",
+            lineHeight: "1.2",
+          },
+          ".cm-live-table-control:hover": {
+            backgroundColor: "var(--bg-hover)",
+            color: "var(--text-primary)",
+            borderColor: "var(--border-medium)",
           },
           ".cm-live-list-marker": {
             display: "inline-block",
@@ -3672,6 +4192,25 @@ export function Editor({
             border: "1px solid var(--editor-search-active-border)",
             borderRadius: "1px",
           },
+          ".cm-inline-ai-removed": {
+            backgroundColor: "color-mix(in srgb, var(--danger, #ef4444) 24%, transparent)",
+            borderBottom: "1px solid color-mix(in srgb, var(--danger, #ef4444) 65%, transparent)",
+            color: "var(--text-primary)",
+            textDecoration: "line-through",
+            textDecorationColor: "color-mix(in srgb, var(--danger, #ef4444) 75%, transparent)",
+            borderRadius: "2px",
+          },
+          ".cm-inline-ai-insert": {
+            display: "inline",
+            padding: "0 2px",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            borderRadius: "2px",
+            backgroundColor: "rgba(34, 197, 94, 0.24)",
+            color: "#bbf7d0",
+            fontFamily: "var(--font-family)",
+            lineHeight: "var(--editor-line-height)",
+          },
         }),
       ],
     });
@@ -3683,40 +4222,8 @@ export function Editor({
 
     viewRef.current = view;
     const obsidianEditor = new ObsidianEditor(view);
-    const obsidianApp = (window as any).__oo_app;
-    const currentPath = activePathRef.current || (window as any).__oo_active_file || '';
-    const currentFile = obsidianApp?.vault?.getFileByPath?.(currentPath) || null;
-    view.dispatch({
-      effects: [
-        setEditorInfoEffect.of({
-          file: currentFile,
-          editor: obsidianEditor,
-          node: view.dom,
-          view,
-        }),
-        setEditorEditorEffect.of(obsidianEditor),
-        setEditorLivePreviewEffect.of(true),
-      ],
-    });
-    const activeLeaf = obsidianApp?.workspace?.activeLeaf;
-    // Some custom file views inherit MarkdownView for its file lifecycle but
-    // own their editor and expose file as a getter (for example Kanban).
-    // Only bind the host CodeMirror editor to the actual Markdown view.
-    if (activeLeaf?.view instanceof (MarkdownView as any) && activeLeaf.view.getViewType?.() === 'markdown') {
-      activeLeaf.view.editor = obsidianEditor;
-      activeLeaf.view.sourceMode = { cmEditor: obsidianEditor };
-      setWritableViewProperty(
-        activeLeaf.view,
-        'file',
-        currentFile,
-      );
-    }
-    if (obsidianApp?.workspace) {
-      obsidianApp.workspace.activeEditor = {
-        editor: obsidianEditor,
-        file: currentFile,
-      };
-    }
+    obsidianEditorRef.current = obsidianEditor;
+    syncObsidianEditorContext();
     if (initialScroll > 0) {
       setTimeout(() => {
         if (view.scrollDOM) {
@@ -3737,14 +4244,16 @@ export function Editor({
     }
 
     return () => {
+      const obsidianApp = (window as any).__oo_app;
       if (obsidianApp?.workspace?.activeEditor?.editor === obsidianEditor) {
         obsidianApp.workspace.activeEditor = null;
       }
       view.destroy();
       viewRef.current = null;
+      obsidianEditorRef.current = null;
       onEditorViewReady?.(null);
     };
-  }, [activeTabId, isSpecialTab, readOnly]); // Re-create when tab changes or read-only mode flips
+  }, [activePath, isSpecialTab, readOnly, syncObsidianEditorContext]); // Recreate on file switches so undo history stays file-local.
 
   useEffect(() => {
     const applyPluginExtensions = () => {
@@ -3917,10 +4426,37 @@ export function Editor({
       viewRef.current.dispatch({
          changes: { from: 0, to: currentDoc.length, insert: newContent },
          selection: { anchor: clampedAnchor, head: clampedHead },
-         annotations: Transaction.remote.of(true),
+         annotations: [
+           Transaction.remote.of(true),
+           Transaction.userEvent.of("setContent"),
+           Transaction.addToHistory.of(false),
+         ],
        });
     }
   }, [content, isSpecialTab]);
+
+  useEffect(() => {
+    if (isSpecialTab || !activePath || pendingViewStateRestorePathRef.current !== activePath) return;
+    const view = viewRef.current;
+    if (!view) return;
+    if (content.length === 0 && view.state.doc.length === 0) return;
+
+    const cachedState = getViewStateRef.current?.(activePath);
+    const cursor = Math.min(cachedState?.cursor ?? 0, view.state.doc.length);
+    view.dispatch({
+      selection: { anchor: cursor },
+    });
+
+    const restoreScroll = cachedState?.scroll ?? 0;
+    const rafId = window.requestAnimationFrame(() => {
+      if (activePathRef.current === activePath && view.scrollDOM) {
+        view.scrollDOM.scrollTop = restoreScroll;
+      }
+    });
+    pendingViewStateRestorePathRef.current = null;
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activePath, content, isSpecialTab]);
 
   // Push remote cursor presence data into CodeMirror state
   useEffect(() => {
@@ -4430,7 +4966,19 @@ export function Editor({
 
   return (
     <>
-      {selectionRange && !isInlineQuerying && !explanation && createPortal(
+      {pendingInlineEdit && createPortal(
+        <div className={inlineAiDecisionFooterClass}>
+          <button className={inlineAiDecisionButtonClass} onClick={discardPendingInlineEdit}>
+            Deny
+          </button>
+          <button className={`${inlineAiDecisionButtonClass} ${inlineAiDecisionAcceptClass}`} onClick={applyPendingInlineEdit}>
+            Accept
+          </button>
+        </div>,
+        containerRef.current || document.body
+      )}
+
+      {selectionRange && !pendingInlineEdit && !isInlineQuerying && !explanation && createPortal(
         <div
           className={inlineAiToolbarClass}
           style={{
@@ -4658,7 +5206,7 @@ export function Editor({
                   onImageClick={handleOpenImageLightbox}
                   theme={theme}
                   settings={settings}
-                  onContentChange={onContentChange}
+                  onContentChange={(nextContent) => onContentChange(nextContent, true, activePathRef.current || undefined)}
                 />
               </div>
             )}

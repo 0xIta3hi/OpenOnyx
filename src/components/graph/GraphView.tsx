@@ -55,6 +55,38 @@ interface GraphSettings {
   linkDistance: number;
 }
 
+function normalizeHexColor(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  const hexMatch = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (hexMatch) {
+    const raw = hexMatch[1];
+    if (raw.length === 3) {
+      return `#${raw.split("").map((char) => char + char).join("")}`;
+    }
+    return `#${raw.slice(0, 6)}`;
+  }
+
+  const rgbMatch = trimmed.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgbMatch) {
+    const channels = rgbMatch[1]
+      .split(",")
+      .slice(0, 3)
+      .map((part) => Number(part.trim().replace("%", "")));
+    if (channels.length === 3 && channels.every(Number.isFinite)) {
+      const toHex = (channel: number) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, "0");
+      return `#${toHex(channels[0])}${toHex(channels[1])}${toHex(channels[2])}`;
+    }
+  }
+
+  return fallback;
+}
+
+function resolveThemeHexColor(variableName: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
+  return resolved ? normalizeHexColor(resolved, fallback) : fallback;
+}
+
 // Default colors matching app theme
 export const getDefaultSettings = (theme: Theme): GraphSettings => {
   // Determine standard theme parameters based on Obsidian-aligned color palettes
@@ -139,6 +171,13 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
       nodeSize = 8;
       break;
     case "custom":
+      backgroundColor = resolveThemeHexColor("--bg-primary", "#121212");
+      nodeColor = resolveThemeHexColor("--graph-node-color", "#d5d1d1");
+      connectedColor = resolveThemeHexColor("--accent-primary", "#c0c0c0");
+      edgeColor = resolveThemeHexColor("--graph-edge-color", "#5d5d5d");
+      textColor = resolveThemeHexColor("--text-primary", "#e5e5e5");
+      nodeSize = 6;
+      break;
     case "dark":
     default:
       backgroundColor = "#121212";
@@ -172,7 +211,7 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
 };
 
 function hexToNumber(hex: string): number {
-  return parseInt(hex.replace("#", ""), 16);
+  return parseInt(normalizeHexColor(hex, "#000000").replace("#", ""), 16);
 }
 
 // UI Components
@@ -444,6 +483,25 @@ export function GraphView({
       window.dispatchEvent(new Event("manual-graph-settings-changed"));
     } catch {}
   }, [settings, settingsKey]);
+
+  useEffect(() => {
+    if (theme !== "custom") return;
+
+    const syncCustomThemeBackground = () => {
+      const nextBackground = getDefaultSettings(theme).backgroundColor;
+      setSettings((current) => (
+        current.backgroundColor.toLowerCase() === nextBackground.toLowerCase()
+          ? current
+          : { ...current, backgroundColor: nextBackground }
+      ));
+    };
+
+    syncCustomThemeBackground();
+    window.addEventListener("oo:theme-settings-changed", syncCustomThemeBackground);
+    return () => {
+      window.removeEventListener("oo:theme-settings-changed", syncCustomThemeBackground);
+    };
+  }, [theme]);
 
   // Load graph data from API
   useEffect(() => {

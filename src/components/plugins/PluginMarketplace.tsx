@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useDeferredValue, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Download, ExternalLink, ArrowLeft, Loader2, ShieldAlert, Check } from 'lucide-react';
 import type { PluginRegistryEntry } from '../../types/plugin';
@@ -16,10 +16,18 @@ const compactToggleClass = "relative inline-block h-[18px] w-[34px] shrink-0 cur
 const compactToggleInputClass = "peer absolute h-0 w-0 opacity-0";
 const compactToggleSliderClass =
   "absolute inset-0 rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] before:absolute before:left-0.5 before:top-1/2 before:h-3.5 before:w-3.5 before:-translate-y-1/2 before:rounded-full before:bg-white before:shadow-[0_1px_3px_rgba(0,0,0,0.15)] before:transition-transform before:duration-[250ms] peer-checked:border-[var(--color-accent-1)] peer-checked:bg-[var(--color-accent)] peer-checked:before:translate-x-[18px] peer-checked:before:bg-[var(--text-on-accent)]";
+const REGISTRY_CACHE_PATH = 'plugin-marketplace/community-plugins-cache.json';
+const REGISTRY_URL = 'https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json';
+const LIST_ITEM_HEIGHT = 104;
+const LIST_OVERSCAN = 6;
+
+let registryMemoryCache: PluginRegistryEntry[] | null = null;
+const readmeMemoryCache = new Map<string, string>();
 
 export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: PluginMarketplaceProps) {
   const [plugins, setPlugins] = useState<PluginRegistryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshingRegistry, setRefreshingRegistry] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showInstalledOnly, setShowInstalledOnly] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
@@ -32,48 +40,102 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
   const [selectedPlugin, setSelectedPlugin] = useState<PluginRegistryEntry | null>(null);
   const [readme, setReadme] = useState<string>('');
   const [readmeLoading, setReadmeLoading] = useState<boolean>(false);
+  const [listScrollTop, setListScrollTop] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   // Fetch plugin registry
   useEffect(() => {
+    let isCancelled = false;
+
     async function fetchPlugins() {
-      try {
-        const text = await getAPI().dataFetch('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json');
-        const data = JSON.parse(text);
-        setPlugins(data);
-      } catch (e: any) {
-        setError(e.message || 'Failed to load plugin registry');
-      } finally {
+      const api = getAPI();
+
+      if (registryMemoryCache) {
+        setPlugins(registryMemoryCache);
         setLoading(false);
+        setRefreshingRegistry(true);
+      } else {
+        try {
+          const cached = await api.dataRead(REGISTRY_CACHE_PATH);
+          if (cached && !isCancelled) {
+            const parsed = JSON.parse(cached) as PluginRegistryEntry[];
+            registryMemoryCache = parsed;
+            setPlugins(parsed);
+            setLoading(false);
+            setRefreshingRegistry(true);
+          }
+        } catch (e) {
+          console.warn('[PluginMarketplace] Failed to read registry cache:', e);
+        }
+      }
+
+      try {
+        const text = await api.dataFetch(REGISTRY_URL);
+        const data = JSON.parse(text) as PluginRegistryEntry[];
+        registryMemoryCache = data;
+        await api.dataWrite(REGISTRY_CACHE_PATH, JSON.stringify(data));
+        if (isCancelled) return;
+        setPlugins(data);
+        setError(null);
+      } catch (e: any) {
+        if (!isCancelled && plugins.length === 0 && !registryMemoryCache) {
+          setError(e.message || 'Failed to load plugin registry');
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+          setRefreshingRegistry(false);
+        }
       }
     }
+
     fetchPlugins();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // Filter plugins based on search query and "show installed only" toggle
-  const filteredPlugins = plugins.filter(p => {
-    const matchesSearch = 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.author.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (!matchesSearch) return false;
-    if (showInstalledOnly) {
-      return installedPluginIds.includes(p.id) || justInstalled.has(p.id);
-    }
-    return true;
-  });
+  const filteredPlugins = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
+    const installedSet = new Set(installedPluginIds);
 
-  // Auto-select the first plugin in the list when list changes and current selection is no longer valid
-  useEffect(() => {
-    if (filteredPlugins.length > 0) {
-      const isStillInList = selectedPlugin && filteredPlugins.some(p => p.id === selectedPlugin.id);
-      if (!isStillInList) {
-        setSelectedPlugin(filteredPlugins[0]);
+    return plugins.filter(p => {
+      const matchesSearch = !normalizedQuery ||
+        p.name.toLowerCase().includes(normalizedQuery) ||
+        p.description.toLowerCase().includes(normalizedQuery) ||
+        p.author.toLowerCase().includes(normalizedQuery);
+
+      if (!matchesSearch) return false;
+      if (showInstalledOnly) {
+        return installedSet.has(p.id) || justInstalled.has(p.id);
       }
-    } else {
+      return true;
+    });
+  }, [deferredSearchQuery, installedPluginIds, justInstalled, plugins, showInstalledOnly]);
+
+  const listViewportHeight = listRef.current?.clientHeight || 640;
+  const visibleStart = Math.max(0, Math.floor(listScrollTop / LIST_ITEM_HEIGHT) - LIST_OVERSCAN);
+  const visibleEnd = Math.min(
+    filteredPlugins.length,
+    Math.ceil((listScrollTop + listViewportHeight) / LIST_ITEM_HEIGHT) + LIST_OVERSCAN,
+  );
+  const visiblePlugins = filteredPlugins.slice(visibleStart, visibleEnd);
+  const topSpacerHeight = visibleStart * LIST_ITEM_HEIGHT;
+  const bottomSpacerHeight = Math.max(0, (filteredPlugins.length - visibleEnd) * LIST_ITEM_HEIGHT);
+
+  useEffect(() => {
+    setListScrollTop(0);
+    listRef.current?.scrollTo({ top: 0 });
+  }, [deferredSearchQuery, showInstalledOnly]);
+
+  // Keep current selection only while it remains visible in the filtered result set.
+  useEffect(() => {
+    if (selectedPlugin && !filteredPlugins.some(p => p.id === selectedPlugin.id)) {
       setSelectedPlugin(null);
     }
-  }, [searchQuery, showInstalledOnly, plugins]);
+  }, [filteredPlugins, selectedPlugin]);
 
   // Fetch raw README contents from GitHub raw content API
   useEffect(() => {
@@ -95,6 +157,13 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
           return;
         }
 
+        const cachedReadme = readmeMemoryCache.get(repo);
+        if (cachedReadme) {
+          setReadme(cachedReadme);
+          setReadmeLoading(false);
+          return;
+        }
+
         let text = '';
         try {
           text = await getAPI().dataFetch(`https://raw.githubusercontent.com/${repo}/master/README.md`);
@@ -104,6 +173,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
         }
 
         if (!isCancelled) {
+          readmeMemoryCache.set(repo, text);
           setReadme(text);
         }
       } catch (e: any) {
@@ -153,7 +223,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
   };
 
   // Convert raw README markdown string to safe sanitized HTML
-  const getReadmeHtml = () => {
+  const readmeHtml = useMemo(() => {
     if (!readme) return '';
     try {
       const rawHtml = marked.parse(readme, { async: false }) as string;
@@ -162,7 +232,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
       console.error('Failed to parse Markdown:', e);
       return readme;
     }
-  };
+  }, [readme]);
 
   const isSelectedInstalled = selectedPlugin ? (installedPluginIds.includes(selectedPlugin.id) || justInstalled.has(selectedPlugin.id)) : false;
   const isSelectedInstalling = selectedPlugin ? installing === selectedPlugin.id : false;
@@ -274,13 +344,18 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
               </div>
 
               <span style={{ color: 'var(--text-muted)' }}>
-                {filteredPlugins.length} found
+                {refreshingRegistry ? 'Refreshing...' : `${filteredPlugins.length} found`}
               </span>
             </div>
           </div>
 
           {/* Scrollable vertical list of plugin cards */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '6px' }} className="plugin-scrollable-list">
+          <div
+            ref={listRef}
+            style={{ flex: 1, overflowY: 'auto', padding: '6px' }}
+            className="plugin-scrollable-list"
+            onScroll={(event) => setListScrollTop(event.currentTarget.scrollTop)}
+          >
             {loading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '12px' }}>
                 <Loader2 className="spin" size={16} style={{ marginRight: '6px' }} /> Loading registry...
@@ -290,65 +365,71 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
             ) : filteredPlugins.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 10px', fontSize: '12px' }}>No plugins match your filters</div>
             ) : (
-              filteredPlugins.map(plugin => {
-                const isInstalled = installedPluginIds.includes(plugin.id) || justInstalled.has(plugin.id);
-                const isSelected = selectedPlugin?.id === plugin.id;
+              <>
+                {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
+                {visiblePlugins.map(plugin => {
+                  const isInstalled = installedPluginIds.includes(plugin.id) || justInstalled.has(plugin.id);
+                  const isSelected = selectedPlugin?.id === plugin.id;
 
-                return (
-                  <div
-                    key={plugin.id}
-                    onClick={() => setSelectedPlugin(plugin)}
-                    style={{
-                      background: isSelected ? 'var(--bg-active, rgba(255,255,255,0.08))' : 'transparent',
-                      border: isSelected ? '1px solid var(--interactive-accent, var(--color-accent))' : '1px solid transparent',
-                      borderRadius: '6px',
-                      padding: '10px 12px',
-                      marginBottom: '4px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      transition: 'background-color 0.15s ease'
-                    }}
-                    className={`plugin-list-item-card ${isSelected ? 'active' : ''}`}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                        {plugin.name}
-                      </span>
-                      {isInstalled && (
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#22c55e',
-                          flexShrink: 0
-                        }} title="Installed">
-                          <Check size={12} strokeWidth={3} />
+                  return (
+                    <div
+                      key={plugin.id}
+                      onClick={() => setSelectedPlugin(plugin)}
+                      style={{
+                        height: LIST_ITEM_HEIGHT - 4,
+                        background: isSelected ? 'var(--bg-active, rgba(255,255,255,0.08))' : 'transparent',
+                        border: isSelected ? '1px solid var(--interactive-accent, var(--color-accent))' : '1px solid transparent',
+                        borderRadius: '6px',
+                        padding: '10px 12px',
+                        marginBottom: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        transition: 'background-color 0.15s ease',
+                        overflow: 'hidden'
+                      }}
+                      className={`plugin-list-item-card ${isSelected ? 'active' : ''}`}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          {plugin.name}
                         </span>
-                      )}
+                        {isInstalled && (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#22c55e',
+                            flexShrink: 0
+                          }} title="Installed">
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>by {plugin.author}</div>
+                      <p style={{
+                        margin: 0,
+                        fontSize: '11px',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.3,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {plugin.description}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        <Download size={10} />
+                        <span>{getStableDownloads(plugin.id)}</span>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>by {plugin.author}</div>
-                    <p style={{
-                      margin: 0,
-                      fontSize: '11px',
-                      color: 'var(--text-secondary)',
-                      lineHeight: 1.3,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}>
-                      {plugin.description}
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      <Download size={10} />
-                      <span>{getStableDownloads(plugin.id)}</span>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+                {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
+              </>
             )}
           </div>
         </div>
@@ -479,7 +560,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                 ) : readme ? (
                   <div
                     className="readme-content markdown-rendered"
-                    dangerouslySetInnerHTML={{ __html: getReadmeHtml() }}
+                    dangerouslySetInnerHTML={{ __html: readmeHtml }}
                   />
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px', color: 'var(--text-muted)', fontSize: '13px' }}>

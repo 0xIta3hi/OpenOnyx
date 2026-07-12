@@ -11,7 +11,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   AlertTriangle,
-  RefreshCw,
   ExternalLink,
   ChevronDown,
   ChevronRight,
@@ -21,15 +20,43 @@ import {
   ShieldAlert,
   AlertCircle,
   Terminal,
-  Download,
   Trash2,
 } from 'lucide-react';
 import type { PluginRegistration, PluginSettingTabRegistration } from '../../types/plugin';
 import { pluginLogStore, pluginErrorTracker, isVersionCompatible } from '../../lib/pluginDevTools';
 import type { PluginLogEntry, PluginErrorRecord } from '../../lib/pluginDevTools';
-import { PluginMarketplace } from './PluginMarketplace';
 
 const APP_VERSION = '1.13.1';
+
+const panelClass = 'plugin-settings-panel';
+const settingCardClass =
+  'flex items-center justify-between gap-6 border-b border-[var(--divider-color)] py-4 last:border-b-0';
+const settingInfoClass = 'flex min-w-0 flex-1 flex-col gap-1 pr-6';
+const settingTitleClass = 'text-sm font-medium text-[var(--text-primary)]';
+const settingDescriptionClass = 'mt-1 text-[12px] leading-[1.45] text-[var(--text-muted)]';
+const iconButtonClass =
+  'flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-35';
+const iconButtonActiveClass = 'bg-[var(--bg-active)] text-[var(--color-accent)]';
+const iconButtonDangerClass = 'text-[#ef4444] hover:bg-[rgba(239,68,68,0.08)] hover:text-[#f87171]';
+const pluginListClass = 'flex flex-col';
+const pluginRowClass = 'border-b border-[var(--divider-color)] last:border-b-0';
+const pluginMainRowClass = 'grid grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-2.5 py-3.5';
+const pluginExpandButtonClass =
+  'flex h-6 w-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-default disabled:hover:bg-transparent';
+const pluginNameLineClass = 'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1';
+const pluginMetaLineClass =
+  'mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-[1.35] text-[var(--text-faint,var(--text-muted))]';
+const pluginBadgeClass =
+  'inline-flex items-center gap-1 rounded-full px-1.5 py-[1px] text-[10px] font-medium leading-4';
+const pluginToggleClass =
+  'relative h-5 w-[38px] shrink-0 cursor-pointer rounded-full border border-[var(--border-medium)] bg-[var(--bg-tertiary)] transition-colors duration-[250ms] disabled:cursor-not-allowed disabled:opacity-40';
+const pluginToggleEnabledClass = 'border-[var(--color-accent-1)] bg-[var(--color-accent)]';
+const pluginToggleKnobClass =
+  'absolute bottom-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.15)] transition-transform duration-[250ms]';
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
 
 interface PluginSettingsPanelProps {
   plugins: PluginRegistration[];
@@ -48,13 +75,9 @@ export function PluginSettingsPanel({
   settingTabs,
   onEnablePlugin,
   onDisablePlugin,
-  onRefresh,
   onReloadPlugin,
   onUninstallPlugin,
-  onInstallPlugin,
-  onBrowse,
 }: PluginSettingsPanelProps) {
-  const [showMarketplace, setShowMarketplace] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
   const [expandedPlugin, setExpandedPlugin] = useState<string | null>(null);
   const [debugPlugin, setDebugPlugin] = useState<string | null>(null);
@@ -144,83 +167,21 @@ export function PluginSettingsPanel({
   }, [debugPlugin]);
 
   return (
-    <div className="plugin-settings-panel">
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Community Plugins
-          </h3>
-          <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-            {plugins.length} plugin{plugins.length !== 1 ? 's' : ''} installed
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={onBrowse || (() => setShowMarketplace(true))}
-            title="Browse and install community plugins"
-            style={{
-              background: 'var(--accent-primary, var(--color-accent, #3b82f6))',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '6px 12px',
-              color: 'var(--text-on-accent, #ffffff)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              fontWeight: 500,
-            }}
-          >
-            <Download size={14} /> Browse
-          </button>
-          <button
-            onClick={onRefresh}
-            title="Refresh plugin list"
-            style={{
-              background: 'var(--bg-hover)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '6px',
-              padding: '6px 10px',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-            }}
-          >
-            <RefreshCw size={14} /> Refresh
-          </button>
-        </div>
-      </div>
-
-      {showMarketplace && onInstallPlugin && !onBrowse && (
-        <PluginMarketplace
-          onClose={() => setShowMarketplace(false)}
-          onInstall={onInstallPlugin}
-          installedPluginIds={plugins.map(p => p.manifest.id)}
-        />
-      )}
-
+    <div className={panelClass}>
       {plugins.length === 0 ? (
-        <div style={{
-          textAlign: 'center',
-          padding: '40px 20px',
-          color: 'var(--text-muted)',
-          fontSize: '13px',
-        }}>
-          <p>No plugins installed.</p>
-          <p style={{ fontSize: '12px', marginTop: '8px', opacity: 0.7 }}>
-            Place plugin folders (containing manifest.json + main.js) in<br />
-            <code style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: '4px' }}>
-              .openobsidian/plugins/
-            </code>
-          </p>
+        <div className={settingCardClass}>
+          <div className={settingInfoClass}>
+            <div className={settingTitleClass}>No plugins installed</div>
+            <div className={settingDescriptionClass}>
+              Install plugins from the marketplace or place plugin folders containing manifest.json and main.js in{' '}
+              <code className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">
+                .openobsidian/plugins/
+              </code>
+            </div>
+          </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <div className={pluginListClass}>
           {plugins.map((plugin) => {
             const isEnabled = plugin.state === 'enabled';
             const isErrored = plugin.state === 'errored';
@@ -235,147 +196,97 @@ export function PluginSettingsPanel({
               isVersionCompatible(plugin.manifest.minAppVersion, APP_VERSION);
 
             return (
-              <div key={plugin.manifest.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                {/* Main row */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '12px 0',
-                  gap: '12px',
-                }}>
-                  {/* Expand arrow */}
-                  <div
-                    style={{ width: '16px', cursor: 'pointer', opacity: isExpanded ? 1 : 0.4 }}
+              <div key={plugin.manifest.id} className={pluginRowClass}>
+                <div className={pluginMainRowClass}>
+                  <button
+                    className={pluginExpandButtonClass}
                     onClick={() => handleExpand(plugin.manifest.id)}
+                    disabled={!hasSettings}
+                    title={hasSettings ? 'Show plugin settings' : 'No settings available'}
+                    aria-label={hasSettings ? `${plugin.manifest.name} settings` : `${plugin.manifest.name} has no settings`}
+                    aria-expanded={isExpanded}
                   >
-                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </div>
+                    {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  </button>
 
-                  {/* Plugin info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <div className="min-w-0">
+                    <div className={pluginNameLineClass}>
+                      <span className="truncate text-[13.5px] font-medium text-[var(--text-primary)]">
                         {plugin.manifest.name}
                       </span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', opacity: 0.6 }}>
+                      <span className="text-[11px] text-[var(--text-muted)] opacity-70">
                         v{plugin.manifest.version}
                       </span>
 
-                      {/* Load time badge */}
                       {isEnabled && plugin.loadTimeMs != null && (
-                        <span style={{
-                          fontSize: '10px',
-                          color: plugin.loadTimeMs > 2000 ? '#f59e0b' : 'var(--text-muted)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          opacity: 0.7,
-                        }}>
+                        <span
+                          className={cx(
+                            pluginBadgeClass,
+                            plugin.loadTimeMs > 2000
+                              ? 'bg-[rgba(245,158,11,0.12)] text-[#f59e0b]'
+                              : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]',
+                          )}
+                        >
                           <Clock size={10} /> {plugin.loadTimeMs}ms
                         </span>
                       )}
 
-                      {/* Error count badge */}
                       {errorCount > 0 && (
-                        <span style={{
-                          fontSize: '10px',
-                          background: 'rgba(239,68,68,0.15)',
-                          color: '#ef4444',
-                          padding: '1px 6px',
-                          borderRadius: '8px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontWeight: 600,
-                        }}>
+                        <span className={cx(pluginBadgeClass, 'bg-[rgba(239,68,68,0.14)] text-[#ef4444]')}>
                           <AlertCircle size={10} /> {errorCount}
                         </span>
                       )}
 
-                      {/* Version warning */}
                       {!versionOk && (
-                        <span style={{
-                          fontSize: '10px',
-                          background: 'rgba(245,158,11,0.15)',
-                          color: '#f59e0b',
-                          padding: '1px 6px',
-                          borderRadius: '8px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontWeight: 600,
-                        }}>
+                        <span className={cx(pluginBadgeClass, 'bg-[rgba(245,158,11,0.14)] text-[#f59e0b]')}>
                           <ShieldAlert size={10} /> Incompatible
                         </span>
                       )}
                     </div>
 
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    <div className="mt-1 text-[12px] leading-[1.45] text-[var(--text-muted)]">
                       {plugin.manifest.description}
                     </div>
-                    <div style={{
-                      fontSize: '11px',
-                      color: 'var(--text-faint, var(--text-muted))',
-                      marginTop: '2px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                    }}>
+                    <div className={pluginMetaLineClass}>
                       <span>by {plugin.manifest.author}</span>
                       {plugin.manifest.authorUrl && (
-                        <a href={plugin.manifest.authorUrl} target="_blank" rel="noopener noreferrer"
-                          style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+                        <a
+                          href={plugin.manifest.authorUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-[var(--text-link)]"
+                          title="Open author website"
+                        >
                           <ExternalLink size={10} />
                         </a>
                       )}
                     </div>
 
                     {isErrored && (
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                        fontSize: '11px', color: '#ef4444', marginTop: '4px',
-                      }}>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] text-[#ef4444]">
                         <AlertTriangle size={12} />
                         {plugin.error || 'Failed to load'}
                       </div>
                     )}
                   </div>
 
-                  {/* Action buttons */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    {/* Debug button */}
+                  <div className="flex shrink-0 items-center gap-1.5">
                     <button
+                      className={cx(iconButtonClass, isDebugging && iconButtonActiveClass)}
                       onClick={() => handleDebugToggle(plugin.manifest.id)}
                       title="Debug"
-                      style={{
-                        background: isDebugging ? 'color-mix(in srgb, var(--accent-primary, var(--color-accent, #3b82f6)) 15%, transparent)' : 'transparent',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '4px',
-                        color: isDebugging ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--text-muted)',
-                        cursor: 'pointer',
-                        opacity: 0.7,
-                        transition: 'opacity 0.15s',
-                      }}
+                      aria-label={`Debug ${plugin.manifest.name}`}
                     >
                       <Bug size={14} />
                     </button>
 
-                    {/* Reload button */}
                     {isEnabled && onReloadPlugin && (
                       <button
+                        className={iconButtonClass}
                         onClick={() => handleReload(plugin.manifest.id)}
                         title="Reload plugin"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          padding: '4px',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.15s',
-                        }}
+                        disabled={isLoading}
+                        aria-label={`Reload ${plugin.manifest.name}`}
                       >
                         <RotateCw size={14} />
                       </button>
@@ -383,87 +294,44 @@ export function PluginSettingsPanel({
 
                     {onUninstallPlugin && (
                       <button
+                        className={cx(iconButtonClass, iconButtonDangerClass)}
                         onClick={() => void handleUninstall(plugin.manifest.id, plugin.manifest.name)}
                         title="Remove plugin"
                         disabled={isLoading}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          padding: '4px',
-                          color: '#ef4444',
-                          cursor: isLoading ? 'not-allowed' : 'pointer',
-                          opacity: isLoading ? 0.4 : 0.8,
-                        }}
+                        aria-label={`Remove ${plugin.manifest.name}`}
                       >
                         <Trash2 size={14} />
                       </button>
                     )}
 
-                    {/* Toggle */}
-                    <div
+                    <button
+                      className={cx(pluginToggleClass, isEnabled && pluginToggleEnabledClass)}
                       onClick={() => !isLoading && versionOk && handleToggle(plugin.manifest.id, plugin.state)}
-                      style={{
-                        width: '40px',
-                        height: '22px',
-                        borderRadius: '11px',
-                        background: isEnabled ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--bg-hover, rgba(255,255,255,0.1))',
-                        border: `1px solid ${isEnabled ? 'var(--accent-primary, var(--color-accent, #3b82f6))' : 'var(--border-medium, rgba(255,255,255,0.1))'}`,
-                        cursor: isLoading || !versionOk ? 'not-allowed' : 'pointer',
-                        position: 'relative',
-                        transition: 'background 0.2s',
-                        opacity: isLoading ? 0.5 : !versionOk ? 0.3 : 1,
-                      }}
+                      disabled={isLoading || !versionOk}
+                      role="switch"
+                      aria-checked={isEnabled}
+                      aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${plugin.manifest.name}`}
                     >
-                      <div style={{
-                        width: '16px',
-                        height: '16px',
-                        borderRadius: '50%',
-                        background: isEnabled ? 'var(--text-on-accent, #ffffff)' : 'var(--text-muted, #888)',
-                        position: 'absolute',
-                        top: '50%',
-                        left: isEnabled ? '21px' : '3px',
-                        transform: 'translateY(-50%)',
-                        transition: 'all 0.2s',
-                      }} />
-                    </div>
+                      <span className={cx(pluginToggleKnobClass, isEnabled && 'translate-x-[18px]')} />
+                    </button>
                   </div>
                 </div>
 
-                {/* Expanded settings */}
                 {isExpanded && hasSettings && isEnabled && (
                   <div
                     ref={(el) => {
                       if (el) settingsContainerRef.current.set(plugin.manifest.id, el);
                     }}
-                    style={{
-                      padding: '0 0 16px 28px',
-                      borderTop: '1px solid var(--border-subtle)',
-                    }}
+                    className="border-t border-[var(--border-subtle)] pb-4 pl-7 pt-3"
                   />
                 )}
 
-                {/* Debug panel */}
                 {isDebugging && (
-                  <div style={{
-                    padding: '12px 28px 16px',
-                    borderTop: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-hover, rgba(255,255,255,0.02))',
-                    borderRadius: '0 0 8px 8px',
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginBottom: '10px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                    }}>
+                  <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-7 py-4">
+                    <div className="mb-2.5 flex items-center gap-1.5 text-[12px] font-semibold text-[var(--text-secondary)]">
                       <Terminal size={12} /> Debug Console
                     </div>
 
-                    {/* Error history */}
                     {debugErrors.length > 0 && (
                       <div style={{ marginBottom: '10px' }}>
                         <div style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>

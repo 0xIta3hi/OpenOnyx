@@ -44,6 +44,62 @@ marked.use({
   }
 });
 
+function isPreviewTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.includes("|");
+}
+
+function parsePreviewTableCells(line: string): string[] {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+}
+
+function isPreviewTableSeparator(line: string): boolean {
+  return isPreviewTableRow(line) && parsePreviewTableCells(line).every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function formatPreviewTableRow(cells: string[]): string {
+  return `| ${cells.join(" | ")} |`;
+}
+
+function normalizeMarkdownTables(markdown: string): string {
+  const lines = markdown.split("\n");
+  const normalized: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!isPreviewTableRow(lines[i]) || i + 1 >= lines.length || !isPreviewTableSeparator(lines[i + 1])) {
+      normalized.push(lines[i]);
+      continue;
+    }
+
+    const headerCells = parsePreviewTableCells(lines[i]);
+    const columnCount = Math.max(1, headerCells.length);
+    const tableLines = [lines[i], lines[i + 1]];
+    i += 2;
+
+    while (i < lines.length && isPreviewTableRow(lines[i])) {
+      tableLines.push(lines[i]);
+      i++;
+    }
+    i--;
+
+    normalized.push(formatPreviewTableRow(normalizeTableCells(headerCells, columnCount, "")));
+    normalized.push(formatPreviewTableRow(normalizeTableCells(parsePreviewTableCells(tableLines[1]), columnCount, "---")));
+
+    for (const row of tableLines.slice(2)) {
+      if (isPreviewTableSeparator(row)) continue;
+      normalized.push(formatPreviewTableRow(normalizeTableCells(parsePreviewTableCells(row), columnCount, "")));
+    }
+  }
+
+  return normalized.join("\n");
+}
+
+function normalizeTableCells(cells: string[], columnCount: number, fill: string): string[] {
+  const normalized = cells.slice(0, columnCount);
+  while (normalized.length < columnCount) normalized.push(fill);
+  return normalized;
+}
+
 // Keep iframe allow and sandbox attributes unchanged during DOMPurify sanitization
 DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
   if (node.tagName === "IFRAME" && (data.attrName === "allow" || data.attrName === "sandbox")) {
@@ -117,6 +173,31 @@ const linkPreviewTitleClass = "font-semibold text-[var(--text-sm)] text-(--text-
 const linkPreviewContentClass = "p-3 overflow-auto text-[var(--text-sm)] leading-normal text-(--text-secondary) [&_p]:mt-0 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_.preview-empty]:text-(--text-muted) [&_.preview-empty]:italic [&_h1]:text-[var(--text-base)] [&_h1]:mt-0 [&_h1]:mb-2 [&_h2]:text-[var(--text-base)] [&_h2]:mt-0 [&_h2]:mb-2 [&_h3]:text-[var(--text-base)] [&_h3]:mt-0 [&_h3]:mb-2 [&_code]:bg-(--bg-code) [&_code]:px-1 [&_code]:py-px [&_code]:rounded-[3px] [&_code]:text-[0.9em] markdown-rendered";
 const markdownPreviewClass =
   "markdown-preview [&_.embed-container]:my-[var(--space-4)] [&_.embed-container]:overflow-hidden [&_.embed-container]:rounded-[var(--radius-md)] [&_.embed-container]:border [&_.embed-container]:border-[var(--border-medium)] [&_.embed-container]:bg-[var(--bg-secondary)] [&_.embed-content]:p-[var(--space-3)] [&_.embed-content]:text-[length:var(--text-sm)] [&_.embed-content]:text-[var(--text-secondary)] [&_.embed-icon]:opacity-60 [&_.embed-missing]:bg-[var(--bg-secondary)] [&_.embed-missing]:p-[var(--space-3)] [&_.embed-missing]:italic [&_.embed-missing]:text-[var(--text-muted)] [&_.embed-title]:flex [&_.embed-title]:items-center [&_.embed-title]:gap-[var(--space-2)] [&_.embed-title]:border-b [&_.embed-title]:border-[var(--border-subtle)] [&_.embed-title]:bg-[var(--bg-tertiary)] [&_.embed-title]:px-[var(--space-3)] [&_.embed-title]:py-[var(--space-2)] [&_.embed-title]:text-[length:var(--text-sm)] [&_.embed-title]:font-medium [&_.embed-title]:text-[var(--text-link)]";
+
+function schedulePreviewIdleWork(callback: () => void, timeout = 500): () => void {
+  let cancelled = false;
+  const run = () => {
+    if (!cancelled) callback();
+  };
+  const idleWindow = window as typeof window & {
+    requestIdleCallback?: (cb: () => void, options?: { timeout?: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+
+  if (idleWindow.requestIdleCallback) {
+    const id = idleWindow.requestIdleCallback(run, { timeout });
+    return () => {
+      cancelled = true;
+      idleWindow.cancelIdleCallback?.(id);
+    };
+  }
+
+  const id = window.setTimeout(run, 0);
+  return () => {
+    cancelled = true;
+    window.clearTimeout(id);
+  };
+}
 
 function headingLevel(el: Element): number {
   const match = el.tagName.match(/^H([1-6])$/);
@@ -393,7 +474,7 @@ export function MarkdownPreview({
   constrainWidth = true,
 }: MarkdownPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
-  const [debouncedContent, setDebouncedContent] = useState(content);
+  const [debouncedContent, setDebouncedContent] = useState("");
   const contentRef = useRef(content);
   contentRef.current = content;
   const [processorVersion, setProcessorVersion] = useState(0);
@@ -405,12 +486,16 @@ export function MarkdownPreview({
   }, []);
 
   useEffect(() => {
+    let cancelIdle: (() => void) | null = null;
     const handler = setTimeout(() => {
-      setDebouncedContent(content);
-    }, 200);
+      cancelIdle = schedulePreviewIdleWork(() => {
+        setDebouncedContent(content);
+      }, 500);
+    }, content.length > 8000 ? 80 : 0);
 
     return () => {
       clearTimeout(handler);
+      cancelIdle?.();
     };
   }, [content]);
 
@@ -578,6 +663,7 @@ export function MarkdownPreview({
     let processed = debouncedContent;
     const protectedCode = protectFencedCodeBlocks(processed);
     processed = protectedCode.text;
+    processed = normalizeMarkdownTables(processed);
 
     // Convert url to preview (iframe) - standalone URLs or markdown links to ANY URL
     processed = processed.replace(
@@ -873,41 +959,12 @@ export function MarkdownPreview({
     if (!previewRef.current) return;
     let processorCleanup: (() => void) | undefined;
     let cancelled = false;
+    let observer: MutationObserver | null = null;
 
     if (lastHtmlRef.current !== renderedHtml || processorVersion > 0) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
-      installHeadingFoldControls(previewRef.current);
-
-      // Handle Twitter embeds: if twit-blockquote exists, ensure widgets script is loaded and triggered
-      if (renderedHtml.includes("twitter-tweet")) {
-        // Apply theme to blockquotes before Twitter script processes them
-        const tweets = previewRef.current.querySelectorAll("blockquote.twitter-tweet");
-        tweets.forEach(tweet => {
-          tweet.setAttribute("data-theme", document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light"));
-        });
-
-        const injectTwitter = () => {
-          if (!(window as any).twttr) {
-            const script = document.createElement("script");
-            script.src = "https://platform.twitter.com/widgets.js";
-            script.async = true;
-            document.head.appendChild(script);
-          } else if ((window as any).twttr.widgets) {
-            (window as any).twttr.widgets.load(previewRef.current);
-          }
-        };
-        injectTwitter();
-      }
     }
-
-    void runMarkdownPostProcessors(
-      previewRef.current,
-      (window as any).__oo_active_file || '',
-    ).then((cleanup) => {
-      if (cancelled) cleanup();
-      else processorCleanup = cleanup;
-    });
 
     // Function to upgrade YouTube iframes into HD Posters
     const upgradeYouTubeIframe = (iframe: HTMLIFrameElement) => {
@@ -946,28 +1003,64 @@ export function MarkdownPreview({
       }
     };
 
-    // Upgrade existing iframes
-    previewRef.current.querySelectorAll("iframe").forEach((el) => upgradeYouTubeIframe(el as HTMLIFrameElement));
+    const cancelIdle = schedulePreviewIdleWork(() => {
+      if (cancelled || !previewRef.current) return;
 
-    // Watch for iframes injected asynchronously by plugins (like obsidian-convert-url-to-iframe)
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === 1) { // ELEMENT_NODE
-            const el = node as HTMLElement;
-            const iframes = el.tagName === "IFRAME" ? [el as HTMLIFrameElement] : Array.from(el.querySelectorAll("iframe"));
-            iframes.forEach(upgradeYouTubeIframe);
+      installHeadingFoldControls(previewRef.current);
+
+      // Handle Twitter embeds: if twit-blockquote exists, ensure widgets script is loaded and triggered
+      if (renderedHtml.includes("twitter-tweet")) {
+        // Apply theme to blockquotes before Twitter script processes them
+        const tweets = previewRef.current.querySelectorAll("blockquote.twitter-tweet");
+        tweets.forEach(tweet => {
+          tweet.setAttribute("data-theme", document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light"));
+        });
+
+        const injectTwitter = () => {
+          if (!(window as any).twttr) {
+            const script = document.createElement("script");
+            script.src = "https://platform.twitter.com/widgets.js";
+            script.async = true;
+            document.head.appendChild(script);
+          } else if ((window as any).twttr.widgets) {
+            (window as any).twttr.widgets.load(previewRef.current);
           }
+        };
+        injectTwitter();
+      }
+
+      void runMarkdownPostProcessors(
+        previewRef.current,
+        (window as any).__oo_active_file || '',
+      ).then((cleanup) => {
+        if (cancelled) cleanup();
+        else processorCleanup = cleanup;
+      });
+
+      // Upgrade existing iframes
+      previewRef.current.querySelectorAll("iframe").forEach((el) => upgradeYouTubeIframe(el as HTMLIFrameElement));
+
+      // Watch for iframes injected asynchronously by plugins (like obsidian-convert-url-to-iframe)
+      observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) { // ELEMENT_NODE
+              const el = node as HTMLElement;
+              const iframes = el.tagName === "IFRAME" ? [el as HTMLIFrameElement] : Array.from(el.querySelectorAll("iframe"));
+              iframes.forEach(upgradeYouTubeIframe);
+            }
+          });
         });
       });
-    });
 
-    observer.observe(previewRef.current, { childList: true, subtree: true });
+      observer.observe(previewRef.current, { childList: true, subtree: true });
+    }, 700);
 
     return () => {
       cancelled = true;
+      cancelIdle();
       processorCleanup?.();
-      observer.disconnect();
+      observer?.disconnect();
     };
   }, [renderedHtml, theme, processorVersion]);
 

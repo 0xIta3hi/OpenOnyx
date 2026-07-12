@@ -1538,9 +1538,11 @@ export default function App() {
 
   const [showInlineInsightByTab, setShowInlineInsightByTab] = useState<Record<string, boolean>>({});
   const tabScrollRef = useRef<HTMLDivElement>(null);
+  const activeTabScrollFrameRef = useRef<number | null>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [currentContent, setCurrentContent] = useState<string>("");
   const currentContentRef = useRef<string>("");
+  const currentContentPathRef = useRef<string | null>(null);
   const pendingContentUpdateRef = useRef<{ path: string; content: string } | null>(null);
   const contentUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -1553,6 +1555,7 @@ export default function App() {
       const { path, content } = pendingContentUpdateRef.current;
       pendingContentUpdateRef.current = null;
       setCurrentContent(content);
+      currentContentPathRef.current = path;
 
       if (
         isHostEditableMarkdownPath(path)
@@ -1569,6 +1572,14 @@ export default function App() {
   useEffect(() => {
     currentContentRef.current = currentContent;
   }, [currentContent]);
+
+  useEffect(() => {
+    const activePath = tabs.find((tab) => tab.id === activeTabId)?.path || null;
+    if (activePath && currentContentPathRef.current !== activePath) {
+      currentContentPathRef.current = null;
+      currentContentRef.current = "";
+    }
+  }, [activeTabId, tabs]);
 
   const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [backlinks, setBacklinks] = useState<string[]>([]);
@@ -1944,15 +1955,10 @@ export default function App() {
         setBacklinks([]);
         return;
       }
-      try {
-        const content = (await api.readFile(tab.path)) || "";
-        setCurrentContent(content);
-        loadBacklinks(tab.path);
-      } catch {
-        // File may not exist
-      }
+      setCurrentContent("");
+      setBacklinks([]);
     }
-  }, [tabs, api]);
+  }, [tabs]);
 
   // Handle focus change to a leaf pane
   const handleFocusLeaf = useCallback((leafId: string) => {
@@ -2265,6 +2271,11 @@ export default function App() {
     }
 
     (window as any).__oo_sync_theme_variables_to_body?.();
+    window.dispatchEvent(
+      new CustomEvent("oo:theme-settings-changed", {
+        detail: { theme },
+      }),
+    );
 
     // Save settings to localStorage
     localStorage.setItem("openobsidian-settings", JSON.stringify(settings));
@@ -2428,25 +2439,38 @@ export default function App() {
     const scroller = tabScrollRef.current;
     if (!scroller || !activeTabId) return;
 
-    const activeEl = Array.from(
-      scroller.querySelectorAll<HTMLElement>(".titlebar-tab"),
-    ).find((el) => el.dataset.tabId === activeTabId);
-
-    if (!activeEl) return;
-
-    const scrollerRect = scroller.getBoundingClientRect();
-    const tabRect = activeEl.getBoundingClientRect();
-    const isOutOfView =
-      tabRect.left < scrollerRect.left || tabRect.right > scrollerRect.right;
-
-    if (isOutOfView) {
-      activeEl.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "center",
-      });
+    if (activeTabScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(activeTabScrollFrameRef.current);
     }
-  }, [activeTabId, tabs]);
+
+    activeTabScrollFrameRef.current = window.requestAnimationFrame(() => {
+      activeTabScrollFrameRef.current = null;
+      const activeEl = Array.from(
+        scroller.querySelectorAll<HTMLElement>(".titlebar-tab"),
+      ).find((el) => el.dataset.tabId === activeTabId);
+
+      if (!activeEl) return;
+
+      const padding = 8;
+      const tabLeft = activeEl.offsetLeft;
+      const tabRight = tabLeft + activeEl.offsetWidth;
+      const viewLeft = scroller.scrollLeft;
+      const viewRight = viewLeft + scroller.clientWidth;
+
+      if (tabLeft < viewLeft + padding) {
+        scroller.scrollLeft = Math.max(0, tabLeft - padding);
+      } else if (tabRight > viewRight - padding) {
+        scroller.scrollLeft = tabRight - scroller.clientWidth + padding;
+      }
+    });
+
+    return () => {
+      if (activeTabScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(activeTabScrollFrameRef.current);
+        activeTabScrollFrameRef.current = null;
+      }
+    };
+  }, [activeTabId]);
 
 
 
@@ -3523,13 +3547,8 @@ export default function App() {
             setCurrentContent("");
             setBacklinks([]);
           } else {
-            try {
-              const content = (await api.readFile(tabObj.path)) || "";
-              setCurrentContent(content);
-              loadBacklinks(tabObj.path);
-            } catch (err) {
-              console.error("Failed to load active tab content on restore:", err);
-            }
+            setCurrentContent("");
+            setBacklinks([]);
           }
         } else {
           setCurrentContent("");
@@ -3620,6 +3639,18 @@ export default function App() {
       await handleRestoreGroup(newGroupId);
     }
   }, [handleCreateGroupFromPaths, handleRestoreGroup]);
+
+  const handleCreateGroupFromFolder = useCallback(async (folderName: string, paths: string[]) => {
+    if (paths.length === 0) {
+      showToast(`No notes found in ${folderName}.`, "error");
+      return;
+    }
+
+    const newGroupId = await handleCreateGroupFromPaths(folderName, "#3b82f6", paths);
+    if (newGroupId) {
+      await handleRestoreGroup(newGroupId);
+    }
+  }, [handleCreateGroupFromPaths, handleRestoreGroup, showToast]);
 
 
   const handleUpdateActiveGroup = async (groupId?: string) => {
@@ -4076,14 +4107,14 @@ export default function App() {
   };
 
   // ── Backlinks ───────────────────────────────────────
-  const loadBacklinks = async (filePath: string) => {
+  const loadBacklinks = useCallback(async (filePath: string) => {
     try {
       const links = await api.getBacklinks(filePath);
       setBacklinks(links);
     } catch {
       setBacklinks([]);
     }
-  };
+  }, [api]);
 
   const rememberRenameRedirect = useCallback((oldPath: string, newPath: string) => {
     const redirects = renameRedirectsRef.current;
@@ -4157,6 +4188,13 @@ export default function App() {
   const openFile = async (filePath: string, mode?: ViewMode) => {
     filePath = resolveRenamedPath(filePath);
     const targetMode = mode ?? settings.defaultView ?? "editor";
+    const cachedViewState = scrollCursorCacheRef.current[filePath] || {};
+    if (mode || !cachedViewState.viewMode) {
+      scrollCursorCacheRef.current[filePath] = {
+        ...cachedViewState,
+        viewMode: targetMode,
+      };
+    }
     // Excalidraw drawings are Markdown-backed but must be opened in the
     // registered Excalidraw view, not the host Markdown editor.
     const app = ooAppRef.current;
@@ -5011,6 +5049,14 @@ export default function App() {
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab) return;
     if (!isHostEditableMarkdownPath(tab.path)) return;
+    if (currentContentPathRef.current !== tab.path) {
+      console.warn("[Editor] Refusing to save content for mismatched path", {
+        targetPath: tab.path,
+        contentPath: currentContentPathRef.current,
+      });
+      showToast("Save skipped because editor content is still loading. Try again in a moment.", "error");
+      return;
+    }
 
     const saveContent = currentContentRef.current;
     await api.writeFile(tab.path, saveContent);
@@ -5029,12 +5075,24 @@ export default function App() {
   };
 
   const handleContentChangeGlobal = useCallback(
-    (path: string, content: string) => {
+    (path: string, content: string, markModified = true) => {
       if (!isHostEditableMarkdownPath(path)) return;
 
       // Keep currentContentRef updated synchronously
       if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
         currentContentRef.current = content;
+        currentContentPathRef.current = path;
+
+        if (!markModified) {
+          if (contentUpdateTimeoutRef.current) {
+            clearTimeout(contentUpdateTimeoutRef.current);
+            contentUpdateTimeoutRef.current = null;
+          }
+          pendingContentUpdateRef.current = null;
+          setCurrentContent(content);
+          loadBacklinks(path);
+          return;
+        }
 
         // Debounce setCurrentContent and CustomEvent dispatch
         pendingContentUpdateRef.current = { path, content };
@@ -5046,6 +5104,8 @@ export default function App() {
           flushContentUpdate();
         }, 250);
       }
+
+      if (!markModified) return;
 
       // Mark tab as modified
       setTabs((prev) => {
@@ -5063,16 +5123,17 @@ export default function App() {
         autoEmbedNote(path, content);
       }, 2000);
     },
-    [activeTabId, tabs, flushContentUpdate],
+    [activeTabId, tabs, flushContentUpdate, loadBacklinks],
   );
 
   // Auto-save with debounce
   const handleContentChange = useCallback(
     (content: string) => {
       currentContentRef.current = content;
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      currentContentPathRef.current = activeTab?.path || null;
       setCurrentContent(content);
 
-      const activeTab = tabs.find((t) => t.id === activeTabId);
       if (
         activeTab &&
         isHostEditableMarkdownPath(activeTab.path)
@@ -5246,13 +5307,8 @@ export default function App() {
           setCurrentContent("");
           setBacklinks([]);
         } else if (selectedTab.path !== "__new_tab__" && selectedTab.path !== GRAPH_TAB_PATH && selectedTab.path !== SPACES_TAB_PATH && !selectedTab.path.startsWith('__plugin__.')) {
-          try {
-            const content = (await api.readFile(selectedTab.path)) || "";
-            setCurrentContent(content);
-            loadBacklinks(selectedTab.path);
-          } catch (err) {
-            console.error("Failed to load active tab content:", err);
-          }
+          setCurrentContent("");
+          setBacklinks([]);
         } else {
           setCurrentContent("");
           setBacklinks([]);
@@ -5295,13 +5351,8 @@ export default function App() {
         setBacklinks([]);
         return;
       }
-      try {
-        const content = (await api.readFile(tab.path)) || "";
-        setCurrentContent(content);
-        loadBacklinks(tab.path);
-      } catch (e) {
-        console.error("Failed to read file for tab:", e);
-      }
+      setCurrentContent("");
+      setBacklinks([]);
     }
   };
 
@@ -5313,9 +5364,20 @@ export default function App() {
     if (
       tab.isModified &&
       tab.id === activeTabId &&
-      isHostEditableMarkdownPath(tab.path)
+      isHostEditableMarkdownPath(tab.path) &&
+      currentContentPathRef.current === tab.path
     ) {
       await api.writeFile(tab.path, currentContent);
+    } else if (
+      tab.isModified &&
+      tab.id === activeTabId &&
+      isHostEditableMarkdownPath(tab.path) &&
+      currentContentPathRef.current !== tab.path
+    ) {
+      console.warn("[Editor] Skipped close-tab write for mismatched content path", {
+        targetPath: tab.path,
+        contentPath: currentContentPathRef.current,
+      });
     }
 
     const newTabs = tabs.filter((t) => t.id !== tabId);
@@ -5335,13 +5397,8 @@ export default function App() {
           setCurrentContent("");
           setBacklinks([]);
         } else {
-          try {
-            const content = (await api.readFile(lastTab.path)) || "";
-            setCurrentContent(content);
-            loadBacklinks(lastTab.path);
-          } catch {
-            setCurrentContent("");
-          }
+          setCurrentContent("");
+          setBacklinks([]);
         }
       } else {
         // Automatically open a new tab if everything is closed
@@ -7208,6 +7265,7 @@ export default function App() {
               if (settings.coreCanvas !== false) void handleToggleCanvas();
             }}
             pluginRibbonActions={pluginRibbonActions}
+            showSettingsButton={!showSidebar || showSearch || showBookmarks || activeLeftPluginViews.length > 0}
           />
         )}
         {vaultPath && !isFTUXZeroState && (
@@ -7280,6 +7338,7 @@ export default function App() {
                   activeGroupId={activeGroupId}
                   onCreateGroup={handleOpenCreateGroupModal}
                   onCreateGroupFromFile={handleCreateGroupFromFile}
+                  onCreateGroupFromFolder={handleCreateGroupFromFolder}
                   onBookmarkFile={setBookmarkModalPath}
                   onRestoreGroup={handleRestoreGroup}
                   onRenameGroup={handleRenameGroup}
