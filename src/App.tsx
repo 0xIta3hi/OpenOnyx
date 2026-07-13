@@ -94,7 +94,11 @@ import {
 } from "./components/layout/SplitPaneContainer";
 import type { PluginCommand, PluginRibbonAction, PluginStatusBarItem, PluginRegistration, PluginSettingTabRegistration } from "./types/plugin";
 import { getNoteName, generateId, debounce, isDarkTheme } from "./utils/helpers";
-import { getUngroupedTabsToPreserve, isUngroupedTab } from "./utils/tabGroups";
+import {
+  getUngroupedTabsToPreserve,
+  isUngroupedTab,
+  mergePaneTabsWithPreservedUngrouped,
+} from "./utils/tabGroups";
 import { getAPI } from "./utils/api";
 import { PluginManager } from "./lib/pluginManager";
 import { OOApp } from "./lib/obsidian-api/app";
@@ -323,6 +327,20 @@ const CUSTOM_THEME_VARIABLES = [
   "--link-color",
   "--link-color-hover",
 ] as const;
+
+const APP_THEME_VALUES = new Set<AppSettings["theme"]>([
+  "dark",
+  "light",
+  "oceanic",
+  "dark-plus",
+  "blue-night",
+  "ember-night",
+  "aurora-grove",
+  "paper-sage",
+  "rose-quartz",
+  "system",
+  "custom",
+]);
 
 const isCanvasFile = (path: string) => path.toLowerCase().endsWith(".canvas");
 const isExcalidrawFile = (path: string) => {
@@ -1190,6 +1208,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (parsed.theme === "peach-white") parsed.theme = "light";
         if (parsed.theme === "parchment") parsed.theme = "light";
+        if (!APP_THEME_VALUES.has(parsed.theme)) parsed.theme = DEFAULT_SETTINGS.theme;
         if (parsed.accentColor === "#8b5cf6") parsed.accentColor = DEFAULT_SETTINGS.accentColor;
         return { ...DEFAULT_SETTINGS, ...parsed };
       }
@@ -1915,7 +1934,11 @@ export default function App() {
     setPaneTree(newTree);
     // Sync the flat tabs list from the pane tree
     const allTabs = collectAllTabs(newTree);
-    setTabs(allTabs);
+    setTabs((prev) =>
+      activeGroupId
+        ? mergePaneTabsWithPreservedUngrouped(allTabs, prev, groups)
+        : allTabs,
+    );
 
     // Sync plugin sides — if a plugin is now in the main pane tree, set its side to 'main'
     const app = ooAppRef.current;
@@ -1935,7 +1958,7 @@ export default function App() {
       });
       if (changed) app.workspace.trigger('plugin-views-changed');
     }
-  }, []);
+  }, [activeGroupId, groups]);
 
   // Handle tab selection within a specific leaf pane
   const handlePaneTabSelect = useCallback(async (leafId: string, tabId: string) => {
@@ -5212,10 +5235,14 @@ export default function App() {
       const newTree = moveTabInTree(updatedTree, draggedId, targetId, insertBefore);
       // Synchronize flat tabs state
       const allTabs = collectAllTabs(newTree);
-      setTabs(allTabs);
+      setTabs((previousTabs) =>
+        activeGroupId
+          ? mergePaneTabsWithPreservedUngrouped(allTabs, previousTabs, groups)
+          : allTabs,
+      );
       return newTree;
     });
-  }, [tabs]);
+  }, [activeGroupId, groups, tabs]);
 
   const handleTabSelect = async (id: string) => {
     const selectedTab = tabs.find((t) => t.id === id);
@@ -5946,11 +5973,15 @@ export default function App() {
 
       skipTabSyncRef.current = true;
       setPaneTree(nextTree);
-      setTabs(nextTabs);
+      setTabs((previousTabs) =>
+        activeGroupId
+          ? mergePaneTabsWithPreservedUngrouped(nextTabs, previousTabs, groups)
+          : nextTabs,
+      );
       setActiveTabId(splitTab.id);
       if (splitLeafTarget) setFocusedLeafId(splitLeafTarget.id);
     },
-    [paneTree],
+    [activeGroupId, groups, paneTree],
   );
 
   const handleNoteMenuRename = useCallback(

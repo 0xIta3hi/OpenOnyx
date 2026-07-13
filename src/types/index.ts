@@ -97,7 +97,6 @@ export type Theme =
   | "oceanic"
   | "dark-plus"
   | "blue-night"
-  | "night-light"
   | "ember-night"
   | "aurora-grove"
   | "paper-sage"

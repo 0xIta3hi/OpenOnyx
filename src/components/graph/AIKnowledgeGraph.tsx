@@ -174,6 +174,30 @@ function getManualGraphSettingsKey(theme: Theme, vaultHash: string): string {
   return `openobsidian-graph-settings-v8-${theme}-${vaultHash}`;
 }
 
+function getManualGraphSettings(
+  theme: Theme,
+  vaultHash: string,
+): ReturnType<typeof getManualDefaultSettings> {
+  const defaults = getManualDefaultSettings(theme);
+  let manualSettings = defaults;
+
+  try {
+    const saved = localStorage.getItem(getManualGraphSettingsKey(theme, vaultHash));
+    if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
+  } catch {
+    // Ignore invalid or inaccessible persisted graph settings.
+  }
+
+  if (theme === "custom") {
+    return {
+      ...manualSettings,
+      backgroundColor: defaults.backgroundColor,
+    };
+  }
+
+  return manualSettings;
+}
+
 function buildStrongAdjacency(
   nodes: AIGraphNode[],
   edges: AIGraphEdge[],
@@ -443,8 +467,10 @@ export function AIKnowledgeGraph({
       setManualSettingsTick((tick) => tick + 1);
     };
     window.addEventListener("manual-graph-settings-changed", handleManualSettingsChange);
+    window.addEventListener("oo:theme-settings-changed", handleManualSettingsChange);
     return () => {
       window.removeEventListener("manual-graph-settings-changed", handleManualSettingsChange);
+      window.removeEventListener("oo:theme-settings-changed", handleManualSettingsChange);
     };
   }, []);
 
@@ -1067,12 +1093,7 @@ export function AIKnowledgeGraph({
       return () => resizeObserver.disconnect();
     }
 
-    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
-    let manualSettings = getManualDefaultSettings(theme);
-    try {
-      const saved = localStorage.getItem(manualSettingsKey);
-      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
-    } catch {}
+    const manualSettings = getManualGraphSettings(theme, vaultHash);
 
     const renderer = new GraphRenderer(canvas, {
       width: rect.width,
@@ -1263,12 +1284,7 @@ export function AIKnowledgeGraph({
 
     renderer.setData(nodesWithPositions, filteredData.edges);
 
-    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
-    let manualSettings = getManualDefaultSettings(theme);
-    try {
-      const saved = localStorage.getItem(manualSettingsKey);
-      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
-    } catch {}
+    const manualSettings = getManualGraphSettings(theme, vaultHash);
 
     worker.postMessage({
       type: "init",
@@ -1322,12 +1338,7 @@ export function AIKnowledgeGraph({
     const renderer = rendererRef.current;
     if (!renderer || !renderer.isInitialized()) return;
 
-    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
-    let manualSettings = getManualDefaultSettings(theme);
-    try {
-      const saved = localStorage.getItem(manualSettingsKey);
-      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
-    } catch {}
+    const manualSettings = getManualGraphSettings(theme, vaultHash);
 
     const selectedClusterColor = selectedNode
       ? CLUSTER_COLORS[selectedNode.clusterId % CLUSTER_COLORS.length]
@@ -1358,12 +1369,7 @@ export function AIKnowledgeGraph({
     const worker = workerRef.current;
     if (!worker) return;
 
-    const manualSettingsKey = getManualGraphSettingsKey(theme, vaultHash);
-    let manualSettings = getManualDefaultSettings(theme);
-    try {
-      const saved = localStorage.getItem(manualSettingsKey);
-      if (saved) manualSettings = { ...manualSettings, ...JSON.parse(saved) };
-    } catch {}
+    const manualSettings = getManualGraphSettings(theme, vaultHash);
 
     setSimulating(true);
     worker.postMessage({

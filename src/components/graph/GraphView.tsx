@@ -130,14 +130,6 @@ export const getDefaultSettings = (theme: Theme): GraphSettings => {
       textColor = "#e2e8f0";
       nodeSize = 6;
       break;
-    case "night-light":
-      backgroundColor = "#fff8f0";
-      nodeColor = "#594536";
-      connectedColor = "#d97706";
-      edgeColor = "#c7a995";
-      textColor = "#2f2118";
-      nodeSize = 8;
-      break;
     case "ember-night":
       backgroundColor = "#0f1110";
       nodeColor = "#f4d7a1";

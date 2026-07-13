@@ -65,7 +65,6 @@ type ThemeSetting =
   | "oceanic"
   | "dark-plus"
   | "blue-night"
-  | "night-light"
   | "ember-night"
   | "aurora-grove"
   | "paper-sage"
@@ -607,6 +606,13 @@ export function SettingsPage({
 
   const updateCustomThemeDraft = (key: CustomThemeColorKey, value: string) => {
     setCustomThemeDraft((current) => ({ ...current, [key]: value }));
+    if (!value) return;
+    setLocalSettings((current) => {
+      if (current[key] === value) return current;
+      const updated = { ...current, [key]: value };
+      onSettingsChange(updated);
+      return updated;
+    });
   };
 
   const commitCustomThemeColor = (key: CustomThemeColorKey, value: string) => {
@@ -971,7 +977,6 @@ export function SettingsPage({
                         <option value="dark-plus">Dark+</option>
                         <option value="blue-night">Blue Night</option>
                         <option value="oceanic">Oceanic</option>
-                        <option value="night-light">Night Light</option>
                         <option value="ember-night">Ember Night</option>
                         <option value="aurora-grove">Aurora Grove</option>
                         <option value="paper-sage">Paper Sage</option>

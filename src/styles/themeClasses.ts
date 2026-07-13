@@ -167,32 +167,6 @@ const oceanicThemeClasses = [
   "[&[data-theme=oceanic][data-theme=oceanic]]:[--graph-node-color:#5eead4]",
 ].join(" ");
 
-const sunsetGlowThemeClasses = [
-  "[&[data-theme=night-light][data-theme=night-light]]:[color-scheme:light]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--bg-primary:#fff8f0]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--bg-secondary:#f8ebdc]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--bg-tertiary:#efdcc9]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--bg-elevated:#fffdf9]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--bg-hover:rgba(116,_59,_22,_0.06)]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--bg-active:rgba(116,_59,_22,_0.12)]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--text-primary:#2f2118]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--text-secondary:#594536]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--text-muted:#846c5b]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--text-link:#b45309]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--color-accent:#d97706]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--color-accent-1:#b45309]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--color-accent-2:#92400e]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--accent-primary:#d97706]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--text-on-accent:#fffaf3]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--border-subtle:rgba(116,_59,_22,_0.1)]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--border-medium:rgba(116,_59,_22,_0.17)]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--divider-color:rgba(116,_59,_22,_0.11)]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--nav-item-background-selected:rgba(116,_59,_22,_0.14)]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--editor-link:#b45309]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--editor-code:#9a3412]",
-  "[&[data-theme=night-light][data-theme=night-light]]:[--graph-node-color:#d97706]",
-].join(" ");
-
 const emberNightThemeClasses = [
   "[&[data-theme=ember-night][data-theme=ember-night]]:[color-scheme:dark]",
   "[&[data-theme=ember-night][data-theme=ember-night]]:[--color-base-00:#0f1110]",
@@ -454,7 +428,6 @@ export const themeClasses = [
   darkPlusThemeClasses,
   blueNightThemeClasses,
   oceanicThemeClasses,
-  sunsetGlowThemeClasses,
   emberNightThemeClasses,
   auroraGroveThemeClasses,
   paperSageThemeClasses,

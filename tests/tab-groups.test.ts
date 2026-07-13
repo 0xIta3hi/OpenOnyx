@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Tab } from '../src/types';
-import { getUngroupedTabsToPreserve, isUngroupedTab, mergeTabsById } from '../src/utils/tabGroups';
+import {
+  getUngroupedTabsToPreserve,
+  isUngroupedTab,
+  mergePaneTabsWithPreservedUngrouped,
+  mergeTabsById,
+} from '../src/utils/tabGroups';
 
 const tab = (id: string, groupId?: string | null): Tab => ({
   id,
@@ -33,6 +38,20 @@ describe('tab group preservation helpers', () => {
       'flat-ungrouped',
       'pane-ungrouped',
       'other-group',
+    ]);
+  });
+
+  it('keeps ungrouped titlebar tabs when active group pane tabs change', () => {
+    const merged = mergePaneTabsWithPreservedUngrouped(
+      [tab('group-a-1', 'group-a'), tab('group-a-2', 'group-a')],
+      [tab('group-a-1', 'group-a'), tab('plain'), tab('group-b-1', 'group-b')],
+      [{ id: 'group-a' }, { id: 'group-b' }],
+    );
+
+    expect(merged.map((t) => t.id)).toEqual([
+      'group-a-1',
+      'group-a-2',
+      'plain',
     ]);
   });
 });

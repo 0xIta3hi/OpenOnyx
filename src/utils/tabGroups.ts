@@ -30,3 +30,16 @@ export function getUngroupedTabsToPreserve(
 ): Tab[] {
   return mergeTabsById(flatTabs, paneTabs).filter((tab) => isUngroupedTab(tab, groups));
 }
+
+export function mergePaneTabsWithPreservedUngrouped(
+  paneTabs: Tab[],
+  currentTabs: Tab[],
+  groups: GroupLike[],
+): Tab[] {
+  const paneTabIds = new Set(paneTabs.map((tab) => tab.id));
+  const ungroupedTabs = currentTabs.filter(
+    (tab) => isUngroupedTab(tab, groups) && !paneTabIds.has(tab.id),
+  );
+
+  return [...paneTabs, ...ungroupedTabs];
+}

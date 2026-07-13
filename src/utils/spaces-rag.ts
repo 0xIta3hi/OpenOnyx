@@ -26,6 +26,7 @@ const OVERVIEW_MIN_SIMILARITY = -1;
 const OVERVIEW_TOP_K = 160;
 const OVERVIEW_MAX_CHUNKS_PER_NOTE = 1;
 const OVERVIEW_MAX_CHUNKS_PER_FOLDER = 12;
+const DISPLAY_SOURCE_LIMIT = 8;
 
 // ── Space Metadata (passed from UI) ──────────────────────────────────────────
 
@@ -326,6 +327,32 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot; // vectors are pre-normalized
 }
 
+function tokenizeQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2)
+    .filter((token, index, source) => source.indexOf(token) === index)
+    .slice(0, 24);
+}
+
+function lexicalSimilarity(queryTerms: string[], chunk: SpaceChunk): number {
+  if (queryTerms.length === 0) return 0;
+
+  const title = `${chunk.noteTitle} ${chunk.notePath}`.toLowerCase();
+  const body = chunk.chunkText.toLowerCase();
+  let score = 0;
+
+  for (const term of queryTerms) {
+    if (title.includes(term)) score += 3;
+    if (body.includes(term)) score += 1;
+  }
+
+  return score / (queryTerms.length * 4);
+}
+
 // ── Retrieval ────────────────────────────────────────────────────────────────
 
 export interface RetrievedChunk {
@@ -440,11 +467,17 @@ export async function retrieveChunks(
   minSimilarity: number = MIN_SIMILARITY,
   options?: { diversify?: boolean },
 ): Promise<RetrievedChunk[]> {
-  const queryVector = await embedText(query);
+  let queryVector: number[] | null = null;
+  try {
+    const embedded = await embedText(query);
+    queryVector = embedded.some((value) => value !== 0) ? embedded : null;
+  } catch (err) {
+    console.warn("[SpacesRAG] Embedding query failed, using lexical retrieval fallback:", err);
+  }
   const results: RetrievedChunk[] = [];
 
   // 1. If cloud is available, try it first
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && queryVector) {
     try {
       const { data: cloudChunks, error } = await supabase.rpc("match_note_chunks", {
         filter_space_id: spaceId,
@@ -486,10 +519,13 @@ export async function retrieveChunks(
   // 2. Local Fallback (for local spaces or when offline)
   const index = await loadVectorIndex(spaceId);
   if (index && index.chunks.length > 0) {
+    const queryTerms = queryVector ? [] : tokenizeQuery(query);
     for (const chunk of index.chunks) {
-      if (chunk.vector.length !== queryVector.length) continue;
-      const sim = cosineSimilarity(queryVector, chunk.vector);
-      if (sim > minSimilarity) {
+      const sim = queryVector
+        ? (chunk.vector.length === queryVector.length ? cosineSimilarity(queryVector, chunk.vector) : 0)
+        : lexicalSimilarity(queryTerms, chunk);
+      const effectiveMinSimilarity = queryVector ? minSimilarity : 0;
+      if (sim > effectiveMinSimilarity) {
         results.push({ chunk, similarity: sim });
       }
     }
@@ -538,6 +574,30 @@ function buildUserPrompt(
 export interface RAGResult {
   answer: string;
   sources: { notePath: string; noteTitle: string; chunkText: string; similarity: number }[];
+}
+
+function buildDisplaySources(
+  retrieved: RetrievedChunk[],
+): RAGResult["sources"] {
+  const byNote = new Map<string, RetrievedChunk>();
+
+  for (const item of retrieved) {
+    const noteKey = item.chunk.notePath || item.chunk.noteTitle || item.chunk.id;
+    const existing = byNote.get(noteKey);
+    if (!existing || item.similarity > existing.similarity) {
+      byNote.set(noteKey, item);
+    }
+  }
+
+  return Array.from(byNote.values())
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, DISPLAY_SOURCE_LIMIT)
+    .map((r) => ({
+      notePath: r.chunk.notePath,
+      noteTitle: r.chunk.noteTitle,
+      chunkText: r.chunk.chunkText.substring(0, 200),
+      similarity: r.similarity,
+    }));
 }
 
 // ── Non-streaming Query ──────────────────────────────────────────────────────
@@ -614,12 +674,7 @@ export async function querySpace(
 
   return {
     answer,
-    sources: retrieved.map((r) => ({
-      notePath: r.chunk.notePath,
-      noteTitle: r.chunk.noteTitle,
-      chunkText: r.chunk.chunkText.substring(0, 200),
-      similarity: r.similarity,
-    })),
+    sources: buildDisplaySources(retrieved),
   };
 }
 
@@ -693,13 +748,7 @@ export async function querySpaceStreaming(
     throw new Error(await parseProviderError(response));
   }
 
-  const makeSources = () =>
-    retrieved.map((r) => ({
-      notePath: r.chunk.notePath,
-      noteTitle: r.chunk.noteTitle,
-      chunkText: r.chunk.chunkText.substring(0, 200),
-      similarity: r.similarity,
-    }));
+  const makeSources = () => buildDisplaySources(retrieved);
 
   // Parse SSE stream
   let fullAnswer = "";

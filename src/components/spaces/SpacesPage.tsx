@@ -63,10 +63,57 @@ const SPACE_PROMPT_CHIPS = [
   { label: "Draft note", prompt: "Draft a new note from the most relevant context in this space.", Icon: FileText },
 ];
 
+const DISPLAY_SOURCE_LIMIT = 8;
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+type DisplaySource = {
+  noteTitle: string;
+  chunkText: string;
+};
+
+function getSourceTitle(source: any): string {
+  if (typeof source === "string") return source;
+  if (!source || typeof source !== "object") return "";
+  return String(source.note || source.noteTitle || source.title || "").trim();
+}
+
+function getSourceChunk(source: any): string {
+  if (!source || typeof source !== "object") return "";
+  return String(source.chunk || source.chunkText || "").trim();
+}
+
+function getDisplaySources(sources: any[]): {
+  visibleSources: DisplaySource[];
+  hiddenCount: number;
+} {
+  const seen = new Set<string>();
+  const visibleSources: DisplaySource[] = [];
+  let totalUnique = 0;
+
+  for (const source of sources) {
+    const noteTitle = getSourceTitle(source);
+    if (!noteTitle) continue;
+    const key = noteTitle.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    totalUnique++;
+    if (visibleSources.length < DISPLAY_SOURCE_LIMIT) {
+      visibleSources.push({
+        noteTitle,
+        chunkText: getSourceChunk(source),
+      });
+    }
+  }
+
+  return {
+    visibleSources,
+    hiddenCount: Math.max(0, totalUnique - visibleSources.length),
+  };
 }
 
 const spaceBtnClass =
@@ -252,6 +299,8 @@ const spaceChatSourcesLabelClass =
 const spaceChatSourcesListClass = "flex flex-wrap gap-1.5";
 const spaceChatSourcePillClass =
   "cursor-pointer rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-all duration-150 hover:border-[var(--border-medium)] hover:text-[var(--text-primary)]";
+const spaceChatSourceMorePillClass =
+  "cursor-default rounded-xl border border-[var(--border-subtle)] bg-transparent px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]";
 const spaceChatLoadingClass =
   "mx-auto flex w-full max-w-[820px] items-center gap-2 self-start rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-muted)]";
 const spaceChatLoadingSpinnerClass =
@@ -3230,28 +3279,28 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
                     {(() => {
                       const payload = parseActionPayload(msg.content);
                       const sources = payload?.sources || msg.sources || [];
-                      if (sources.length === 0) return null;
+                      const { visibleSources, hiddenCount } = getDisplaySources(sources);
+                      if (visibleSources.length === 0) return null;
                       
                       return (
                         <div className={spaceChatSourcesClass}>
                           <span className={spaceChatSourcesLabelClass}>Sources Used</span>
                           <div className={spaceChatSourcesListClass}>
-                            {sources.map((s: any, i: number) => {
-                              const isObject = typeof s === "object";
-                              const noteTitle = isObject ? (s.note || s.noteTitle) : s;
-                              const chunkText = isObject ? (s.chunk || s.chunkText) : "";
-                              
-                              return (
-                                <span
-                                  key={i}
-                                  className={spaceChatSourcePillClass}
-                                  onClick={() => handleOpenSource(noteTitle, chunkText)}
-                                  title={chunkText ? `Excerpt: ${chunkText.substring(0, 100)}...` : `Open ${noteTitle}`}
-                                >
-                                  {noteTitle}
-                                </span>
-                              );
-                            })}
+                            {visibleSources.map((source, i) => (
+                              <span
+                                key={`${source.noteTitle}-${i}`}
+                                className={spaceChatSourcePillClass}
+                                onClick={() => handleOpenSource(source.noteTitle, source.chunkText)}
+                                title={source.chunkText ? `Excerpt: ${source.chunkText.substring(0, 100)}...` : `Open ${source.noteTitle}`}
+                              >
+                                {source.noteTitle}
+                              </span>
+                            ))}
+                            {hiddenCount > 0 && (
+                              <span className={spaceChatSourceMorePillClass} title={`${hiddenCount} additional retrieved sources were used as context.`}>
+                                +{hiddenCount} more relevant sources
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
