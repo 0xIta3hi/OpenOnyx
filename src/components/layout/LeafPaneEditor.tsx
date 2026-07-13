@@ -14,7 +14,6 @@ import { collaborationEngine, type RemoteDocumentMeta } from "../../lib/collabor
 import { syncEngine } from "../../lib/syncEngine";
 import { localDB } from "../../lib/localdb";
 import { supabase } from "../../lib/supabase";
-import { getUserSupabaseClient } from "../../lib/userDatabase";
 import type { CollabOperation, CursorPresence } from "../../utils/collabOperations";
 import { operationToChangeSpec, clampOperation, rangesOverlap } from "../../utils/collabOperations";
 import { setCursorsEffect } from "../../utils/remoteCursorsPlugin";
@@ -924,8 +923,7 @@ export function LeafPaneEditor({
         if (hasPendingEdit) return; // Keep unsaved local edits
 
         // Fetch the remote note from Supabase directly
-        const client = getUserSupabaseClient() || supabase;
-        const { data: remote } = await client
+        const { data: remote } = await supabase
           .from('notes')
           .select('content, updated_at, version, last_modified, client_id, content_hash')
           .eq('space_id', spaceId)

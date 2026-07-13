@@ -314,6 +314,11 @@ CREATE TRIGGER on_auth_user_created
 REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.set_updated_at() FROM anon, authenticated;
 
+-- Backfill any existing users from auth.users that are not in public.users
+INSERT INTO public.users (id, email, created_at)
+SELECT id, email, created_at FROM auth.users
+ON CONFLICT (id) DO NOTHING;
+
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- ROW LEVEL SECURITY POLICIES

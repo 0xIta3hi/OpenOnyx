@@ -176,6 +176,9 @@ Key capabilities:
 - Last-write-wins conflict resolution
 - Local IndexedDB cache for durable offline state
 - Supabase `pgvector` schema for semantic matching
+<p align="center">
+  <img width="1200" alt="Collaboration Settings" src="docs/images/Collaboration-settings.png" />
+</p>
 
 ### 9. Plugin System
 

@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabase } from './supabase';
 import type { User, Session } from '@supabase/supabase-js';
 import { SUPABASE_CONFIG_CHANGED_EVENT } from './supabaseConfig';
+import { syncUserDatabaseSession } from './userDatabase';
 
 export type AuthState = {
   user: User | null;
@@ -95,6 +96,7 @@ class AuthManager {
 
   private updateState(newState: AuthState) {
     this.state = newState;
+    void syncUserDatabaseSession(newState.session);
     this.listeners.forEach(fn => fn(this.state));
   }
 

@@ -16,9 +16,9 @@
 import { readData, writeData, deleteData, createDebouncedWriter } from "./disk-store";
 import { authManager, AuthRequiredError } from "../lib/auth";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
-import { getUserSupabaseClient } from "../lib/userDatabase";
 import { getAPI } from "./api";
 import { isPrivateCloudSpace, privateCrypto } from "../lib/privateCrypto";
+import { formatSupabaseError } from "../lib/supabaseError";
 import type {
   Space,
   SpaceIndexEntry,
@@ -36,7 +36,7 @@ function generateId(): string {
 }
 
 function getClient() {
-  return getUserSupabaseClient() || supabase;
+  return supabase;
 }
 
 function normalizeVisibility(value: string | null | undefined): SpaceVisibility {
@@ -116,7 +116,15 @@ async function upsertCloudSpace(space: Space): Promise<void> {
     throw new Error("Supabase is not configured. Add credentials in Settings > Database.");
   }
 
-  const { error } = await getClient()
+  // Verify we have an active auth session before making the request
+  const client = getClient();
+  const { data: { session } } = await client.auth.getSession();
+  if (!session) {
+    console.error('[SpacesStore] upsertCloudSpace: No active auth session! auth.uid() will be null, RLS will reject.');
+    throw new Error('You must be logged in to save cloud spaces. Please sign in and try again.');
+  }
+
+  const { error } = await client
     .from("spaces" as any)
     .upsert(
       {
@@ -135,7 +143,7 @@ async function upsertCloudSpace(space: Space): Promise<void> {
         key_salt: space.keySalt || null,
         key_iv: space.keyIv || null,
         key_auth_tag: space.keyAuthTag || null,
-        key_version: space.keyVersion || null,
+        key_version: space.keyVersion ?? 1,
         encryption_version: space.encryptionVersion || null,
         key_wrapping: space.keyWrapping || null,
         kdf: space.kdf || null,
@@ -144,7 +152,7 @@ async function upsertCloudSpace(space: Space): Promise<void> {
       { onConflict: "id" },
     );
 
-  if (error) throw error;
+  if (error) throw new Error(formatSupabaseError(error, "Failed to save cloud space."));
 }
 
 /**
@@ -207,13 +215,13 @@ export async function pushSpaceNotes(
       .upsert(batch, { onConflict: "id" });
 
     if (error) {
-      console.error(`[SpacesStore] Batch ${i / BATCH_SIZE + 1} failed:`, error.message || error.code || error.hint || JSON.stringify(error));
+      console.error(`[SpacesStore] Batch ${i / BATCH_SIZE + 1} failed:`, formatSupabaseError(error));
       // Try individual inserts as fallback
       let singles = 0;
       for (const row of batch) {
         const { error: singleErr } = await getClient().from("notes" as any).upsert(row, { onConflict: "id" });
         if (!singleErr) singles++;
-        else console.error(`[SpacesStore] Single insert failed for ${row.path}:`, singleErr.message || JSON.stringify(singleErr));
+        else console.error(`[SpacesStore] Single insert failed for ${row.path}:`, formatSupabaseError(singleErr));
       }
       totalInserted += singles;
     } else {
@@ -257,7 +265,7 @@ export async function pushSpaceChunks(
       .insert(batch);
 
     if (error) {
-      console.error(`[SpacesStore] Failed to push chunks batch ${i}: ${JSON.stringify(error)}`);
+      console.error(`[SpacesStore] Failed to push chunks batch ${i}: ${formatSupabaseError(error)}`);
     }
   }
 }

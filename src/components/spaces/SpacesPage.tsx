@@ -674,8 +674,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const [activeSpace, setActiveSpace] = useState<Space | null>(null);
   const currentUserId = authManager.getUserId();
   const isReadOnlySourceSpace = !!activeSpace && (
-    activeSpace.visibility === "public" ||
-    (activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId)
+    activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId
   );
   const canMutateSpaceSource = !!activeSpace && !isReadOnlySourceSpace;
   const canCreateLocalNotesFromSpace = !!activeSpace;
@@ -1086,7 +1085,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       setStreamingText("");
       setChatInput("");
       const currentUserId = authManager.getUserId();
-      const isRemoteSpace = space.visibility === "public" || (space.visibility !== "local" && space.ownerId !== currentUserId);
+      const isRemoteSpace = space.visibility !== "local" && space.ownerId !== currentUserId;
       
       // If it's a cloud space owned by someone else, we don't auto-index on open
       setIsIndexed(isRemoteSpace);
@@ -1341,8 +1340,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
       
       const currentUserId = authManager.getUserId();
       const isRemoteSpace = !!activeSpace && (
-        activeSpace.visibility === "public" ||
-        (activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId)
+        activeSpace.visibility !== "local" && activeSpace.ownerId !== currentUserId
       );
       if (activeSpace?.visibility === "private" && !privateCrypto.isUnlocked(activeSpaceId)) {
         showToast("Unlock this private space to use AI features.", "error");

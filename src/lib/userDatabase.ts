@@ -1,10 +1,11 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, type Session } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 import {
   clearLocalSupabaseConfig,
   loadLocalSupabaseConfig,
   saveLocalSupabaseConfig,
 } from './supabaseConfig';
+import { supabase } from './supabase';
 
 /**
  * User-owned Supabase Database Setup
@@ -199,6 +200,11 @@ CREATE TRIGGER on_auth_user_created
 -- Lock down internal functions from API exposure
 REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.set_updated_at() FROM anon, authenticated;
+
+-- Backfill any existing users from auth.users that are not in public.users
+INSERT INTO public.users (id, email, created_at)
+SELECT id, email, created_at FROM auth.users
+ON CONFLICT (id) DO NOTHING;
 
 -- ── RLS Policies ─────────────────────────────────────────────────────────────
 
@@ -433,6 +439,23 @@ export function getUserSupabaseClient(): SupabaseClient<Database> | null {
   return userClient;
 }
 
+export async function syncUserDatabaseSession(session: Session | null): Promise<void> {
+  if (!userClient) return;
+
+  try {
+    if (session?.access_token && session.refresh_token) {
+      await userClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+    } else {
+      await userClient.auth.signOut({ scope: 'local' });
+    }
+  } catch (err) {
+    console.warn('[UserDatabase] Failed to sync auth session to user database client:', err);
+  }
+}
+
 /**
  * Get the current user database configuration.
  */
@@ -461,14 +484,22 @@ export function connectUserDatabase(config: UserDatabaseConfig): SupabaseClient<
   userConfig = config;
   userClient = createClient<Database>(config.supabaseUrl, config.anonKey, {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
       lock: async (name, acquireTimeout, fn) => {
         return await fn();
       },
     },
   });
+  void supabase.auth.getSession()
+    .then(({ data, error }) => {
+      if (!error) void syncUserDatabaseSession(data.session);
+    })
+    .catch((err) => {
+      console.warn('[UserDatabase] Failed to read active auth session:', err);
+    });
   return userClient;
 }
 

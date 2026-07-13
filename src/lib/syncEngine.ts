@@ -1,7 +1,6 @@
 import { supabase } from './supabase';
 import { localDB, type LocalNote, type SyncQueueItem } from './localdb';
 import { authManager } from './auth';
-import { getUserSupabaseClient } from './userDatabase';
 import { collaborationEngine } from './collaborationEngine';
 import { getAPI } from '../utils/api';
 import { normalizeVersion, sha256Hex } from '../utils/collabDocument';
@@ -61,7 +60,7 @@ export function normalizeSyncPath(filePath: string): string {
  * or the default OpenObsidian instance.
  */
 function getActiveClient() {
-  return getUserSupabaseClient() || supabase;
+  return supabase;
 }
 
 async function toLocalNote(note: any, decryptForSpaceId?: string): Promise<LocalNote> {

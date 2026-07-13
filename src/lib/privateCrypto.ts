@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { authManager } from './auth';
-import { getUserSupabaseClient } from './userDatabase';
+import { formatSupabaseError } from './supabaseError';
 
 export const PRIVATE_ENCRYPTION_VERSION = 1;
 export const PRIVATE_KEY_VERSION = 1;
@@ -44,7 +44,7 @@ const failSafeNotes = new Set<string>();
 const listeners = new Set<SpaceStateListener>();
 
 function getClient() {
-  return getUserSupabaseClient() || supabase;
+  return supabase;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -342,16 +342,25 @@ export const privateCrypto = {
     if (typeof localStorage === 'undefined') return null;
 
     const client = getClient();
+
+    // Verify we have an active auth session before making RLS-protected requests
+    const { data: { session } } = await client.auth.getSession();
+    if (!session) {
+      console.error('[PrivateCrypto] ensureUserKeyring: No active auth session! auth.uid() will be null, RLS will reject.');
+      throw new Error('You must be logged in to set up encryption keys. Please sign in and try again.');
+    }
+
     const cachedPublic = localStorage.getItem(localPublicKeyName(user.id));
     const cachedPrivate = localStorage.getItem(localPrivateKeyName(user.id));
     if (cachedPublic && cachedPrivate) {
       const publicKey = JSON.parse(cachedPublic) as JsonWebKey;
-      await client.from('user_keyrings' as any).upsert({
+      const { error } = await client.from('user_keyrings' as any).upsert({
         user_id: user.id,
         public_key_jwk: publicKey,
         algorithm: 'RSA-OAEP-256',
         updated_at: new Date().toISOString(),
       } as any, { onConflict: 'user_id' });
+      if (error) throw new Error(`Failed to save encryption keyring: ${formatSupabaseError(error)}`);
       return publicKey;
     }
 
@@ -369,12 +378,13 @@ export const privateCrypto = {
     const privateKey = await crypto.subtle.exportKey('jwk', pair.privateKey);
     localStorage.setItem(localPublicKeyName(user.id), JSON.stringify(publicKey));
     localStorage.setItem(localPrivateKeyName(user.id), JSON.stringify(privateKey));
-    await client.from('user_keyrings' as any).upsert({
+    const { error } = await client.from('user_keyrings' as any).upsert({
       user_id: user.id,
       public_key_jwk: publicKey,
       algorithm: 'RSA-OAEP-256',
       updated_at: new Date().toISOString(),
     } as any, { onConflict: 'user_id' });
+    if (error) throw new Error(`Failed to save encryption keyring: ${formatSupabaseError(error)}`);
     return publicKey;
   },
 

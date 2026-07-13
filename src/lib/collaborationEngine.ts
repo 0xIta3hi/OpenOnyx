@@ -24,7 +24,6 @@
 
 import { supabase } from './supabase';
 import { authManager } from './auth';
-import { getUserSupabaseClient } from './userDatabase';
 import { localDB } from './localdb';
 import { normalizeSyncPath } from './syncEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,6 +35,7 @@ import {
   privateCrypto,
   type WrappedSpaceKey,
 } from './privateCrypto';
+import { formatSupabaseError } from './supabaseError';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,7 +130,7 @@ export interface ActiveUser {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getClient() {
-  return getUserSupabaseClient() || supabase;
+  return supabase;
 }
 
 function normalizePath(p: string): string {
@@ -534,7 +534,7 @@ class CollaborationEngine {
       } as any);
 
       if (spaceErr) {
-        throw new Error(`Failed to create space: ${spaceErr.message || spaceErr.code || JSON.stringify(spaceErr)}`);
+        throw new Error(`Failed to create space: ${formatSupabaseError(spaceErr)}`);
       }
 
       // Add owner as collaborator
@@ -552,7 +552,7 @@ class CollaborationEngine {
         accepted_at: now,
       } as any);
       if (collabErr) {
-        console.warn('[Collab] Failed to add owner as collaborator:', collabErr.message || JSON.stringify(collabErr));
+        console.warn('[Collab] Failed to add owner as collaborator:', formatSupabaseError(collabErr));
       }
 
       // Scan vault files
@@ -723,7 +723,7 @@ class CollaborationEngine {
       this.notify({ state: 'ready', space });
       return spaceId;
     } catch (err: any) {
-      const errMsg = err.message || 'Unknown error during space creation';
+      const errMsg = formatSupabaseError(err, 'Unknown error during space creation');
       console.error('[Collab] createCloudSpace failed:', errMsg);
       this.notify({ state: 'error', message: errMsg });
       throw err;

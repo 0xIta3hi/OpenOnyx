@@ -160,7 +160,15 @@ export function CollaborationPanel({
     } catch { /* ignore */ }
   }, [vaultPath, user]);
 
-  useEffect(() => { loadSpaceData(true); }, [loadSpaceData]);
+  // Load data initially on mount or when vault changes
+  useEffect(() => {
+    loadSpaceData(true);
+  }, [vaultPath]);
+
+  // Load data when user changes, without showing full-screen loader
+  useEffect(() => {
+    loadSpaceData(false);
+  }, [user]);
 
   // Periodic refresh
   useEffect(() => {
