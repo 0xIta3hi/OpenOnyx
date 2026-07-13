@@ -1,7 +1,7 @@
 # OpenObsidian
 
 <p align="center">
-  <img width="1600" height="878" alt="OpenObsidian desktop screenshot" src="https://github.com/user-attachments/assets/ae1ca16c-6621-4948-8e30-bb9743abf895" />
+  <img width="1600" height="878" alt="OpenObsidian desktop workspace" src="https://github.com/user-attachments/assets/ae1ca16c-6621-4948-8e30-bb9743abf895" />
 </p>
 
 <p align="center">
@@ -16,14 +16,14 @@
   <img alt="Local first" src="https://img.shields.io/badge/local--first-yes-10B981?style=flat-square">
 </p>
 
-OpenObsidian is a professional desktop knowledge management app built around plain Markdown files, local graph navigation, Obsidian-style workflows, and an optional AI thinking layer. It keeps the core writing and retrieval experience local by default, while allowing users to opt into Supabase-backed sync, collaboration, public Spaces, and remote LLM providers when those features are useful.
+OpenObsidian is a professional desktop knowledge management app built around plain Markdown files, Obsidian-style workflows, graph navigation, local semantic indexing, and optional cloud collaboration. It is designed for people who want ownership of their notes while still having a modern thinking layer for search, synthesis, writing assistance, and knowledge exploration.
 
-It is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
+The app is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
 
 ## Contents
 
 - [Why OpenObsidian](#why-openobsidian)
-- [Features](#features)
+- [Feature Tour](#feature-tour)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Development](#development)
@@ -32,66 +32,262 @@ It is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Tran
 - [Project Structure](#project-structure)
 - [Plugin Compatibility](#plugin-compatibility)
 - [Privacy and Security](#privacy-and-security)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Why OpenObsidian
 
-OpenObsidian is designed for people who want ownership of their notes without giving up modern knowledge tooling.
+OpenObsidian is for writers, researchers, engineers, students, and teams who want a serious knowledge base without surrendering their files to a proprietary silo.
 
-- **Your notes stay portable.** Vaults are normal folders of `.md`, `.canvas`, and related files.
-- **The app works offline.** Editing, search, links, graph navigation, local Spaces, and embeddings do not require cloud infrastructure.
-- **AI is contextual.** Retrieval is grounded in your vault, with citations back to source notes.
-- **Cloud is optional.** Accounts, sync, collaboration, and public Spaces are available through Supabase but are not required for local use.
-- **Plugins are a first-class goal.** OpenObsidian includes an Obsidian API compatibility layer and tests real community plugin bundles.
+| Principle | What it means |
+| --- | --- |
+| Local-first by default | Notes are normal files in normal folders. Core workflows work offline. |
+| Markdown-native | Your writing stays portable, readable, and tool-friendly. |
+| AI where it helps | Retrieval, suggestions, summaries, and inline writing tools are grounded in your vault. |
+| Cloud when you choose | Supabase-backed sync, collaboration, and public Spaces are optional. |
+| Plugin-aware | OpenObsidian targets Obsidian plugin compatibility through a tested runtime layer. |
 
-## Features
+## Feature Tour
 
-### Writing and Navigation
+### 1. Markdown Workspace
 
-- Markdown editor powered by CodeMirror 6
-- Live preview, split editor/preview mode, KaTeX rendering, and sanitized Markdown output
+Write in a fast CodeMirror-powered editor with live preview, source mode, split panes, tab groups, backlinks, tags, outline, properties, and wiki links. OpenObsidian keeps the editing surface focused while making surrounding context available when you need it.
+
+Key capabilities:
+
+- Markdown editing with live preview and sanitized rendering
 - Wiki links with `[[note-name]]` syntax
+- KaTeX math support
 - Backlinks, outgoing links, unlinked mentions, tags, outline, and properties panels
-- Fuzzy vault search and in-note search
-- Daily notes, bookmarks, file explorer, context menus, and recent vault history
-- Multi-tab workspace with split panes and tab groups
-- Multiple visual themes plus custom theme support
+- Split panes, multi-tab workspaces, tab groups, and recent vault history
+- Vim mode support with editor commands for common workflows
 
-### Graph and Canvas
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/markdown-workspace.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
 
-- Interactive graph view for note relationships
-- D3-powered graph exploration and a canvas renderer path for larger graphs
-- AI knowledge graph view for semantic connections
+### 2. Vault Navigation and Search
+
+Move through large vaults with quick switching, global search, in-note search, bookmarks, daily notes, context menus, and a file explorer that keeps ordinary folders as the source of truth.
+
+Key capabilities:
+
+- Fuzzy vault search and quick switcher
+- Search and replace inside the active note
+- Daily note creation
+- Bookmarks and recent vault workflows
+- File explorer actions for notes, folders, assets, and canvases
+- Global keyboard shortcuts for fast navigation
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/navigation-search.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 3. Knowledge Graph
+
+Explore relationships between notes through an interactive graph built for local vaults. The graph helps reveal dense clusters, isolated notes, hidden relationships, and important hubs in the knowledge base.
+
+Key capabilities:
+
+- Interactive note graph with configurable physics and display settings
+- Canvas2D rendering path for larger graph views
+- Search, focus, filtering, and node centering tools
+- Persistent layout and theme-aware graph styling
+- Edge and node controls for precise exploration
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/knowledge-graph.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 4. AI Knowledge Graph
+
+Use semantic similarity and graph analysis to surface relationships that are not obvious from manual links alone. The AI graph can highlight suggested links, bridge notes, idea islands, central concepts, clusters, and directional reading flows.
+
+Key capabilities:
+
+- Semantic graph generation from local embeddings
+- Suggested connections between related notes
+- Bridge note insights across clusters
+- Idea island detection for isolated topic groups
+- Focus cards for concepts, links, clusters, and generated explanations
+- Configurable thresholds, node limits, and cluster breadth
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/ai-knowledge-graph.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 5. Canvas
+
+Create visual maps of notes, ideas, and relationships with Obsidian-style `.canvas` support. Canvas files stay portable and live beside the rest of the vault.
+
+Key capabilities:
+
 - Obsidian-style `.canvas` document support
-- Canvas nodes, edges, toolbar controls, duplicate/save-as flows, and recent canvas tracking
+- Canvas nodes, edges, toolbar controls, and recent canvas tracking
+- Duplicate and save-as flows
+- Markdown note embedding inside visual layouts
+- Compatibility tests for canvas document behavior
 
-### Spaces and AI
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/canvas-workspace.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
 
-- Local Spaces that index a vault into a queryable semantic layer
-- Browser-native embeddings through `@xenova/transformers`
-- RAG chat over your notes with streamed responses and source citations
-- Public, private, and local Space visibility modes
-- Space remixing/forking workflow for public knowledge systems
-- AI-powered note annotations, related-note suggestions, contradiction/expansion hints, and synthesis flows
-- Configurable OpenAI and OpenRouter model providers
+### 6. Spaces
 
-### Sync, Collaboration, and Cloud
+Spaces turn a vault into a queryable knowledge layer. A Space indexes notes, chunks content, creates embeddings, and lets users ask contextual questions over their own material.
+
+Key capabilities:
+
+- Local Spaces stored in IndexedDB
+- Private and public cloud-backed Spaces through Supabase
+- Browser-native embeddings with `@xenova/transformers`
+- RAG chat with source citations back to notes
+- Suggested queries, indexing progress, and vault previews
+- Public Space discovery, upvotes, and Remix/fork workflows
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/spaces-dashboard.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 7. AI Writing and Synthesis
+
+OpenObsidian includes optional AI assistance for writing, editing, synthesis, and vault-level reasoning. Remote LLM providers are used only when configured.
+
+Key capabilities:
+
+- Inline AI writing actions in the editor
+- Retrieval-grounded answers from Spaces
+- Note annotations and related-note suggestions
+- Contradiction, expansion, and synthesis hints
+- Configurable OpenAI and OpenRouter providers
+- Source-aware responses designed for vault context
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/ai-writing-tools.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 8. Sync and Collaboration
+
+Cloud features are optional, but when enabled OpenObsidian can sync Spaces, preserve offline edits, and support collaborative workflows through a Supabase-backed data model.
+
+Key capabilities:
 
 - Optional Supabase authentication
-- Optional cloud sync for Spaces and collaboration features
-- Offline-first sync queue with deduplication, retry handling, and last-write-wins conflict resolution
-- Supabase `pgvector` schema for semantic matching
+- Offline-first sync queue with retry handling
+- Deduplication of pending local mutations
+- Last-write-wins conflict resolution
 - Local IndexedDB cache for durable offline state
+- Supabase `pgvector` schema for semantic matching
 
-### Plugin System
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/sync-collaboration.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
 
-- Obsidian-compatible runtime API
+### 9. Plugin System
+
+OpenObsidian includes an Obsidian-compatible runtime layer and a plugin management experience for community-style plugins.
+
+Key capabilities:
+
+- Obsidian API compatibility layer based on the official `obsidian` package
 - Plugin marketplace and local plugin management UI
-- Commands, ribbon actions, status bar items, settings tabs, custom views, sidebars, Markdown processors, editor extensions, and lifecycle cleanup
-- Secure plugin runtime with permissions, crash isolation, manifest caching, and compatibility checks
-- Regression tests against real compiled community plugins
+- Commands, ribbon actions, status bar items, settings tabs, custom views, and sidebars
+- Markdown processors, editor extensions, lifecycle cleanup, and compatibility checks
+- Runtime isolation, permission prompts, manifest caching, and crash containment
+- Regression tests against real community plugin bundles
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/plugin-marketplace.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 10. Themes and Interface
+
+The interface is built for long working sessions: quiet surfaces, readable typography, restrained contrast, and theme-aware components across the editor, graph, settings, modals, and plugin views.
+
+Key capabilities:
+
+- Dark, light, oceanic, and custom theme support
+- Theme-aware graph and editor surfaces
+- Responsive pane layout
+- Command palette, modals, settings pages, and status bar
+- Logo and icon assets in `public/`
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/themes-interface.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
+
+### 11. Export and Compatibility Tooling
+
+OpenObsidian includes compatibility infrastructure for export plugins and plugin runtimes that expect desktop APIs.
+
+Key capabilities:
+
+- Managed Pandoc 3.10 WASM backend for export plugins
+- Electron and Node compatibility shims for plugin workflows
+- Canvas compatibility tests
+- Obsidian API runtime export checks
+- Live compatibility scripts for selected plugins
+
+<table>
+  <tr>
+    <td align="center">
+      <br><strong>Screenshot Slot</strong><br>
+      <sub>Add image at <code>docs/images/export-compatibility.png</code></sub><br><br>
+    </td>
+  </tr>
+</table>
 
 ## Quick Start
 
@@ -111,20 +307,30 @@ npm run dev
 
 `npm run dev` builds the Electron main process, starts Vite on port `5173`, and launches the Electron app against the local dev server.
 
+If Electron's postinstall download was skipped or interrupted, the dev launcher will try to repair `node_modules/electron` automatically before starting the desktop app. If the repair cannot download Electron because of a network or proxy issue, run:
+
+```bash
+npm config set ignore-scripts false
+npm rebuild electron
+npm run dev
+```
+
 ### Build a Desktop Package
 
 ```bash
 npm run package
 ```
 
-Electron Builder writes distributable artifacts to `release/`. The current package targets include:
+Electron Builder writes distributable artifacts to `release/`.
+
+Current package targets:
 
 - Windows: NSIS installer
 - Linux: AppImage and Debian package
 
 ## Configuration
 
-OpenObsidian runs without environment variables for local vault editing, local search, local embeddings, and local Spaces.
+OpenObsidian runs without environment variables for local vault editing, local search, local embeddings, local graphs, and local Spaces.
 
 Cloud-backed features require Supabase:
 
@@ -165,11 +371,11 @@ Common commands:
 | --- | --- |
 | `npm run dev` | Build Electron, start Vite, and launch the desktop app |
 | `npm run build` | Type-check, build the renderer, and build Electron |
-| `npm run build:electron` | Compile the Electron main/preload process |
+| `npm run build:electron` | Compile the Electron main and preload process |
 | `npm run package` | Build and package desktop installers |
 | `npm run lint` | Run TypeScript with `--noEmit` |
 
-The Vite dev server uses a strict port:
+The Vite dev server uses:
 
 ```text
 http://localhost:5173
@@ -243,14 +449,14 @@ Local Vault
 Markdown files, canvas files, assets, .openobsidian cache
 ```
 
-### Core Principles
+Core principles:
 
-- **Local-first storage.** Notes are normal files. Local AI caches and indexes live on the user's machine.
-- **Context isolation.** Renderer code cannot directly access Node.js APIs.
-- **Async filesystem access.** Vault operations are routed through IPC handlers to avoid blocking the UI.
-- **Durable local state.** IndexedDB stores Spaces, note chunks, vector indexes, sync metadata, and pending mutations.
-- **Optional remote services.** Supabase and LLM providers are used only for features that need them.
-- **Plugin compatibility.** The runtime exposes Obsidian-like APIs while keeping plugin execution contained.
+- Local-first storage: notes are ordinary files, and local indexes stay on device by default.
+- Context isolation: renderer code cannot directly access Node.js APIs.
+- Async filesystem access: vault operations are routed through IPC handlers.
+- Durable local state: IndexedDB stores Spaces, chunks, vector indexes, sync metadata, and pending mutations.
+- Optional remote services: Supabase and LLM providers are used only for features that need them.
+- Plugin compatibility: the runtime exposes Obsidian-like APIs while keeping plugin execution contained.
 
 ## Project Structure
 
@@ -269,7 +475,8 @@ Markdown files, canvas files, assets, .openobsidian cache
 |-- supabase/
 |   |-- schema.sql               # Tables, RLS, pgvector functions, sync schema
 |   `-- functions/               # Edge functions for chat and embeddings
-|-- docs/                        # Architecture and feature documentation
+|-- docs/                        # Architecture, feature docs, and screenshot slots
+|   `-- images/                  # README screenshots and feature images
 |-- scripts/                     # Dev, compatibility, fixture, and Pandoc scripts
 |-- tests/                       # Vitest and runtime compatibility tests
 |-- public/                      # Logos, icons, and static assets
@@ -314,7 +521,7 @@ See [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility
 | `Ctrl+O` / `Cmd+O` | Quick switcher |
 | `Ctrl+P` / `Cmd+P` | Command palette |
 | `Ctrl+G` / `Cmd+G` | Open graph |
-| `Ctrl+Shift+C` / `Cmd+Shift+C` | Create/open canvas |
+| `Ctrl+Shift+C` / `Cmd+Shift+C` | Create or open canvas |
 | `Ctrl+B` / `Cmd+B` | Toggle sidebar |
 | `Ctrl+Tab` | Next tab |
 | `Ctrl+Shift+Tab` | Previous tab |

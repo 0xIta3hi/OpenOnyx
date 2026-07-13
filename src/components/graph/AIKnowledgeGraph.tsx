@@ -2654,38 +2654,35 @@ Summarize the theme and key intersections. No emojis.`;
             </Section>
 
             <Section title="Insights" defaultOpen={false}>
-              <div className="graph-section-content ai-graph-insights-list" style={{ padding: 0, borderBottom: "1px solid var(--border-medium)", paddingBottom: "10px", marginBottom: "10px" }}>
-                <div className="ai-graph-insight-item">
+              <div className="ai-graph-insights-summary">
+                <div className="ai-graph-insight-stat">
                   <strong>{graphData?.clusterCount || 0}</strong>
                   <span>clusters</span>
                 </div>
-                <div className="ai-graph-insight-item">
+                <div className="ai-graph-insight-stat">
                   <strong>{graphData?.bridgeNotes.length || 0}</strong>
                   <span>bridge notes</span>
                 </div>
-                <div className="ai-graph-insight-item">
+                <div className="ai-graph-insight-stat">
                   <strong>{graphData?.ideaIslands.length || 0}</strong>
                   <span>idea islands</span>
                 </div>
-                <div className="ai-graph-insight-item">
+                <div className="ai-graph-insight-stat">
                   <strong>{suggestedLinks.length || 0}</strong>
                   <span>suggested links</span>
                 </div>
               </div>
 
               {/* Key Concepts List */}
-              <div style={{ marginBottom: "12px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Key Concepts (Highest Centrality):</span>
-                <div className="ai-graph-insights-list" style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div className="ai-graph-insight-group">
+                <div className="ai-graph-insight-heading">Key Concepts</div>
+                <div className="ai-graph-insights-list">
                   {keyConcepts.map((node) => (
-                    <div key={node.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px" }}>
-                        {node.name}
-                      </span>
+                    <div key={node.id} className="ai-graph-insight-row">
+                      <span className="ai-graph-insight-title">{node.name}</span>
                       <button
                         type="button"
-                        className="graph-btn-secondary"
-                        style={{ padding: "2px 6px", fontSize: "10px" }}
+                        className="graph-btn-secondary ai-graph-insight-action"
                         onClick={() => {
                           setSelectedNodeId(node.id);
                           setSelectedEdge(null);
@@ -2706,19 +2703,20 @@ Summarize the theme and key intersections. No emojis.`;
 
               {/* Suggested Links List */}
               {suggestedLinks.length > 0 && (
-                <div style={{ marginBottom: "12px", borderTop: "1px solid var(--border-medium)", paddingTop: "8px" }}>
-                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Suggested Connections:</span>
-                  <div className="ai-graph-insights-list" style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="ai-graph-insight-group">
+                  <div className="ai-graph-insight-heading">Suggested Connections</div>
+                  <div className="ai-graph-insights-list">
                     {suggestedLinks.map((edge) => (
-                      <div key={pairKey(edge.source, edge.target)} style={{ display: "block", background: "var(--bg-active)", padding: "6px", borderRadius: "6px" }}>
-                        <div style={{ fontSize: "11px", color: "var(--text-primary)", marginBottom: "4px" }}>
-                          {noteNameFromPath(edge.source)} &harr; {noteNameFromPath(edge.target)}
+                      <div key={pairKey(edge.source, edge.target)} className="ai-graph-insight-card">
+                        <div className="ai-graph-insight-link-title">
+                          <span>{noteNameFromPath(edge.source)}</span>
+                          <span className="ai-graph-insight-arrow">↔</span>
+                          <span>{noteNameFromPath(edge.target)}</span>
                         </div>
-                        <div style={{ display: "flex", gap: "4px" }}>
+                        <div className="ai-graph-insight-actions">
                           <button
                             type="button"
-                            className="graph-btn-secondary"
-                            style={{ flex: 1, padding: "2px", fontSize: "9.5px" }}
+                            className="graph-btn-secondary ai-graph-insight-action"
                             onClick={() => {
                               setSelectedEdge(edge);
                               setSelectedNodeId(null);
@@ -2735,8 +2733,7 @@ Summarize the theme and key intersections. No emojis.`;
                           </button>
                           <button
                             type="button"
-                            className="graph-btn-secondary"
-                            style={{ flex: 1, padding: "2px", fontSize: "9.5px", color: "#3b82f6" }}
+                            className="graph-btn-secondary ai-graph-insight-action ai-graph-insight-action-accent"
                             onClick={() => handleCreateManualLink(edge.source, edge.target)}
                           >
                             Accept Link
@@ -2750,21 +2747,21 @@ Summarize the theme and key intersections. No emojis.`;
 
               {/* Bridge Notes List */}
               {(graphData?.bridgeNotes || []).length > 0 && (
-                <div style={{ marginBottom: "12px", borderTop: "1px solid var(--border-medium)", paddingTop: "8px" }}>
-                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Bridge Note Insights:</span>
-                  <div className="ai-graph-insights-list" style={{ marginTop: 4 }}>
+                <div className="ai-graph-insight-group">
+                  <div className="ai-graph-insight-heading">Bridge Note Insights</div>
+                  <div className="ai-graph-insights-list">
                     {(graphData?.bridgeNotes || []).map((bridge) => {
                       const firstCluster = bridge.clusterIds[0];
                       const secondCluster = bridge.clusterIds[1];
                       return (
-                        <div key={bridge.path} className="ai-graph-insight-item" style={{ display: "block", marginBottom: 6 }}>
-                          <div style={{ color: "var(--text-primary)", marginBottom: 4, fontSize: "10.5px" }}>
-                            {bridge.name} connects {clusterLabelById.get(firstCluster) || `Cluster ${(firstCluster ?? 0) + 1}`} <span>{"<->"}</span> {clusterLabelById.get(secondCluster) || `Cluster ${(secondCluster ?? 0) + 1}`}
+                        <div key={bridge.path} className="ai-graph-insight-card">
+                          <div className="ai-graph-insight-title">{bridge.name}</div>
+                          <div className="ai-graph-insight-meta">
+                            Connects {clusterLabelById.get(firstCluster) || `Cluster ${(firstCluster ?? 0) + 1}`} <span>↔</span> {clusterLabelById.get(secondCluster) || `Cluster ${(secondCluster ?? 0) + 1}`}
                           </div>
                           <button
                             type="button"
-                            className="graph-btn-secondary"
-                            style={{ padding: "2px 6px", fontSize: "10px" }}
+                            className="graph-btn-secondary ai-graph-insight-action"
                             onClick={() => handleBridgeActivate(bridge)}
                           >
                             Focus Bridge
@@ -2778,27 +2775,25 @@ Summarize the theme and key intersections. No emojis.`;
 
               {/* Idea Islands List */}
               {(graphData?.ideaIslands || []).length > 0 && (
-                <div style={{ borderTop: "1px solid var(--border-medium)", paddingTop: "8px" }}>
-                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Idea Islands (Isolated Clusters):</span>
-                  <div className="ai-graph-insights-list" style={{ marginTop: 4 }}>
+                <div className="ai-graph-insight-group">
+                  <div className="ai-graph-insight-heading">Idea Islands</div>
+                  <div className="ai-graph-insights-list">
                     {(graphData?.ideaIslands || []).map((island) => (
-                      <div key={island.clusterId} className="ai-graph-insight-item" style={{ display: "block", marginBottom: 6 }}>
-                        <div style={{ color: "var(--text-primary)", marginBottom: 4, fontSize: "10.5px" }}>
+                      <div key={island.clusterId} className="ai-graph-insight-card">
+                        <div className="ai-graph-insight-title">
                           {clusterLabelById.get(island.clusterId) || `Cluster ${island.clusterId + 1}`}: isolated idea cluster
                         </div>
-                        <div className="graph-settings-actions" style={{ margin: 0 }}>
+                        <div className="ai-graph-insight-actions">
                           <button
                             type="button"
-                            className="graph-btn-secondary"
-                            style={{ padding: "2px 6px", fontSize: "10px" }}
+                            className="graph-btn-secondary ai-graph-insight-action"
                             onClick={() => handleIslandExplore(island)}
                           >
                             Explore Concepts
                           </button>
                           <button
                             type="button"
-                            className="graph-btn-secondary"
-                            style={{ padding: "2px 6px", fontSize: "10px" }}
+                            className="graph-btn-secondary ai-graph-insight-action"
                             onClick={() => handleIslandMissingLinks(island)}
                           >
                             Find Missing Links
