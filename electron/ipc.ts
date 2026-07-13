@@ -93,6 +93,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('fs:createFile', async (_event, filePath: string, content?: string) => {
     await fsManager.createFile(filePath, content || '');
+    searchEngine.buildIndex(fsManager).catch(console.error);
   });
 
   ipcMain.handle('fs:deleteFile', async (_event, filePath: string) => {
@@ -112,6 +113,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('fs:createDirectory', async (_event, dirPath: string) => {
     await fsManager.createDirectory(dirPath);
+    searchEngine.buildIndex(fsManager).catch(console.error);
   });
 
   ipcMain.handle('fs:deleteDirectory', async (_event, dirPath: string) => {

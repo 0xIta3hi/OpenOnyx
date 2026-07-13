@@ -3213,14 +3213,56 @@ export default function App() {
     [vaultEntryTransitionPhase, handleCreateVault, handleOpenVault],
   );
 
-  const refreshFileTree = async () => {
+  const refreshFileTree = useCallback(async () => {
     try {
       const tree = await api.getFileTree();
       setFileTree(tree);
     } catch (e) {
       console.error("Failed to refresh file tree:", e);
     }
-  };
+  }, []);
+
+  const indexMarkdownFileNow = useCallback(async (path: string, content?: string) => {
+    if (!path.toLowerCase().endsWith(".md")) return;
+    if (path.startsWith(".trash/") || path.startsWith(".openobsidian/")) return;
+    if (!areEmbeddingsAvailable()) return;
+
+    try {
+      const source = typeof content === "string" ? content : (await api.readFile(path)) || "";
+      const store = loadStore();
+      const changed = await embedNote(store, path, source);
+      if (changed) {
+        window.dispatchEvent(
+          new CustomEvent("openobsidian:embedding-updated", {
+            detail: { path },
+          }),
+        );
+      }
+    } catch (err) {
+      console.warn("[Auto-index] Failed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFileCreated = () => {
+      void refreshFileTree();
+    };
+
+    const onFileWritten = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string; content?: string }>).detail;
+      if (!detail?.path) return;
+      void indexMarkdownFileNow(detail.path, detail.content);
+    };
+
+    window.addEventListener("openobsidian:file-created", onFileCreated as EventListener);
+    window.addEventListener("openobsidian:directory-created", onFileCreated as EventListener);
+    window.addEventListener("openobsidian:file-written", onFileWritten as EventListener);
+    return () => {
+      window.removeEventListener("openobsidian:file-created", onFileCreated as EventListener);
+      window.removeEventListener("openobsidian:directory-created", onFileCreated as EventListener);
+      window.removeEventListener("openobsidian:file-written", onFileWritten as EventListener);
+    };
+  }, [indexMarkdownFileNow, refreshFileTree]);
 
   const promptForInput = useCallback(
     (
@@ -4955,6 +4997,34 @@ export default function App() {
     }
   }, [paneTree, tabs, refreshInlineSuggestions, inlineSuggestionsByPath]);
 
+  useEffect(() => {
+    const onEmbeddingUpdated = (event: Event) => {
+      const updatedPath = (event as CustomEvent<{ path?: string }>).detail?.path;
+      const pathsToRefresh = new Set(
+        collectAllActiveTabPaths(paneTree).filter((path) =>
+          isHostEditableMarkdownPath(path),
+        ),
+      );
+
+      const activePath = tabs.find((tab) => tab.id === activeTabId)?.path;
+      if (activePath && isHostEditableMarkdownPath(activePath)) {
+        pathsToRefresh.add(activePath);
+      }
+      if (updatedPath && isHostEditableMarkdownPath(updatedPath)) {
+        pathsToRefresh.add(updatedPath);
+      }
+
+      pathsToRefresh.forEach((path) => {
+        void refreshInlineSuggestions(path);
+      });
+    };
+
+    window.addEventListener("openobsidian:embedding-updated", onEmbeddingUpdated as EventListener);
+    return () => {
+      window.removeEventListener("openobsidian:embedding-updated", onEmbeddingUpdated as EventListener);
+    };
+  }, [activeTabId, paneTree, refreshInlineSuggestions, tabs]);
+
   const handleInlineAccept = useCallback(
     async (targetPath: string, linkType: LinkType) => {
       const tab = tabs.find((t) => t.id === activeTabId);
@@ -5018,19 +5088,8 @@ export default function App() {
 
   // Auto-embed a note after save (background, non-blocking)
   const autoEmbedNote = useCallback(async (path: string, content: string) => {
-    if (!path.toLowerCase().endsWith(".md")) return;
-    if (!areEmbeddingsAvailable()) return;
-    try {
-      const store = loadStore();
-      const changed = await embedNote(store, path, content);
-      if (changed) {
-        // Refresh inline suggestions after embedding updates
-        refreshInlineSuggestions(path);
-      }
-    } catch (err) {
-      console.warn("[Auto-embed] Failed:", err);
-    }
-  }, [refreshInlineSuggestions]);
+    await indexMarkdownFileNow(path, content);
+  }, [indexMarkdownFileNow]);
 
   const handleGenerateInsight = useCallback(async (path: string, tabId: string) => {
     if (!path || isCanvasFile(path)) return;
