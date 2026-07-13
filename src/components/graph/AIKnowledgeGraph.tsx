@@ -9,7 +9,7 @@ import {
   Target,
   X,
 } from "lucide-react";
-import { Theme } from "../../types";
+import { FileEntry, Theme } from "../../types";
 import { GraphRenderer } from "./GraphRenderer";
 import { getDefaultSettings as getManualDefaultSettings } from "./GraphView";
 import {
@@ -85,6 +85,7 @@ interface AIKnowledgeGraphProps {
   onToggleFullScreen?: () => void;
   theme?: Theme;
   vaultPath?: string | null;
+  fileTree?: FileEntry[];
   localNodePath?: string;
   onCreateGroupFromPaths?: (name: string, color: string, paths: string[]) => void;
   onOpenPathsAsGroup?: (paths: string[]) => void;
@@ -281,6 +282,136 @@ function buildManualEdgeSet(data: {
   return manual;
 }
 
+function collectMarkdownFiles(entries: FileEntry[] | undefined): FileEntry[] {
+  const result: FileEntry[] = [];
+  const visit = (items: FileEntry[]) => {
+    for (const entry of items) {
+      const normalizedPath = entry.path.replace(/\\/g, "/");
+      if (
+        normalizedPath.startsWith(".openobsidian/") ||
+        normalizedPath.startsWith(".trash/") ||
+        normalizedPath.includes("/.openobsidian/") ||
+        normalizedPath.includes("/.trash/")
+      ) {
+        continue;
+      }
+
+      if (entry.isDirectory) {
+        if (entry.children) visit(entry.children);
+      } else if (normalizedPath.toLowerCase().endsWith(".md")) {
+        result.push({ ...entry, path: normalizedPath });
+      }
+    }
+  };
+
+  if (entries) visit(entries);
+  return result;
+}
+
+function folderFromPath(path: string): string {
+  const index = path.lastIndexOf("/");
+  return index >= 0 ? path.slice(0, index) : "";
+}
+
+function buildStructuralGraphFromFiles(
+  fileTree: FileEntry[] | undefined,
+  maxNodes: number,
+  manualGraph: {
+    nodes: Array<{ id: string; path: string }>;
+    edges: Array<{ source: string | { id: string }; target: string | { id: string } }>;
+  } | null,
+): AIGraphData | null {
+  const files = collectMarkdownFiles(fileTree)
+    .sort((a, b) => (b.modifiedAt || 0) - (a.modifiedAt || 0))
+    .slice(0, maxNodes);
+
+  if (files.length === 0) return null;
+
+  const folderIds = new Map<string, number>();
+  const getFolderId = (path: string) => {
+    const folder = folderFromPath(path);
+    if (!folderIds.has(folder)) folderIds.set(folder, folderIds.size);
+    return folderIds.get(folder) || 0;
+  };
+
+  const nodes: AIGraphNode[] = files.map((file) => ({
+    id: file.path,
+    name: noteNameFromPath(file.path),
+    path: file.path,
+    clusterId: getFolderId(file.path),
+    connections: 0,
+    updatedAt: file.modifiedAt || Date.now(),
+  }));
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const degreeMap = new Map<string, number>();
+  const edgeKeys = new Set<string>();
+  const edges: AIGraphEdge[] = [];
+
+  const addEdge = (
+    source: string,
+    target: string,
+    similarity: number,
+    hiddenConnection: boolean,
+    enforceDegreeCap = true,
+  ) => {
+    if (source === target || !nodeIds.has(source) || !nodeIds.has(target)) return;
+    const key = pairKey(source, target);
+    if (edgeKeys.has(key)) return;
+    if (enforceDegreeCap && ((degreeMap.get(source) || 0) >= 5 || (degreeMap.get(target) || 0) >= 5)) return;
+
+    edgeKeys.add(key);
+    edges.push({ source, target, similarity, hiddenConnection });
+    degreeMap.set(source, (degreeMap.get(source) || 0) + 1);
+    degreeMap.set(target, (degreeMap.get(target) || 0) + 1);
+  };
+
+  if (manualGraph) {
+    const idToPath = new Map<string, string>();
+    for (const node of manualGraph.nodes || []) {
+      idToPath.set(node.id, node.path || node.id);
+    }
+    for (const edge of manualGraph.edges || []) {
+      const sourceId = typeof edge.source === "string" ? edge.source : edge.source.id;
+      const targetId = typeof edge.target === "string" ? edge.target : edge.target.id;
+      addEdge(idToPath.get(sourceId) || sourceId, idToPath.get(targetId) || targetId, 0.72, false, false);
+    }
+  }
+
+  const byFolder = new Map<string, string[]>();
+  for (const node of nodes) {
+    const folder = folderFromPath(node.path);
+    const list = byFolder.get(folder) || [];
+    list.push(node.path);
+    byFolder.set(folder, list);
+  }
+
+  for (const paths of byFolder.values()) {
+    paths.sort((a, b) => noteNameFromPath(a).localeCompare(noteNameFromPath(b)));
+    for (let i = 1; i < paths.length; i++) {
+      addEdge(paths[i - 1], paths[i], 0.42, false);
+    }
+    const hub = paths[0];
+    for (let i = 2; i < paths.length; i += Math.max(2, Math.floor(paths.length / 12))) {
+      addEdge(hub, paths[i], 0.38, false);
+    }
+  }
+
+  for (const node of nodes) {
+    node.connections = degreeMap.get(node.id) || 0;
+  }
+
+  return {
+    nodes,
+    edges,
+    directionalFlows: [],
+    clusterCount: folderIds.size,
+    hiddenConnectionCount: 0,
+    bridgeNotes: [],
+    ideaIslands: [],
+  };
+}
+
 function Section({
   title,
   children,
@@ -441,6 +572,7 @@ export function AIKnowledgeGraph({
   onToggleFullScreen,
   theme = "dark",
   vaultPath,
+  fileTree,
   onCreateGroupFromPaths,
   onOpenPathsAsGroup,
 }: AIKnowledgeGraphProps) {
@@ -664,6 +796,7 @@ export function AIKnowledgeGraph({
 
       try {
         const store = await loadStoreAsync();
+        const rawManualGraph = await api.getGraphData();
         const allEntries = [...store.entries.values()]
           .filter((entry) => entry.path.toLowerCase().endsWith(".md"))
           .filter((entry) => entry.vector.length > 0)
@@ -672,7 +805,11 @@ export function AIKnowledgeGraph({
 
         if (allEntries.length === 0) {
           if (!cancelled) {
-            setGraphData({
+            const fallbackData = buildStructuralGraphFromFiles(
+              fileTree,
+              semanticConfig.maxNodes,
+              rawManualGraph || null,
+            ) || {
               nodes: [],
               edges: [],
               directionalFlows: [],
@@ -680,7 +817,12 @@ export function AIKnowledgeGraph({
               hiddenConnectionCount: 0,
               bridgeNotes: [],
               ideaIslands: [],
-            });
+            };
+            hasRenderedGraphRef.current = fallbackData.nodes.length > 0;
+            if (vaultPath && fallbackData.nodes.length > 0) {
+              cachedGraph = { vaultPath, graphData: fallbackData };
+            }
+            setGraphData(fallbackData);
           }
           return;
         }
@@ -707,7 +849,6 @@ export function AIKnowledgeGraph({
           similarityCacheRef.current.set(cacheKey, pairs);
         }
 
-        const rawManualGraph = await api.getGraphData();
         const manualEdgeSet = buildManualEdgeSet(rawManualGraph || null);
 
         const nodeMap = new Map<string, AIGraphNode>();
@@ -952,7 +1093,27 @@ export function AIKnowledgeGraph({
     semanticConfig.maxEdgesPerNode,
     semanticConfig.maxNodes,
     reloadTick,
+    fileTree,
   ]);
+
+  useEffect(() => {
+    const refreshGraph = () => {
+      cachedGraph = null;
+      similarityCacheRef.current.clear();
+      setReloadTick((tick) => tick + 1);
+    };
+
+    window.addEventListener("openobsidian:embedding-updated", refreshGraph);
+    window.addEventListener("openobsidian:file-created", refreshGraph);
+    window.addEventListener("openobsidian:directory-created", refreshGraph);
+    window.addEventListener("openobsidian:file-written", refreshGraph);
+    return () => {
+      window.removeEventListener("openobsidian:embedding-updated", refreshGraph);
+      window.removeEventListener("openobsidian:file-created", refreshGraph);
+      window.removeEventListener("openobsidian:directory-created", refreshGraph);
+      window.removeEventListener("openobsidian:file-written", refreshGraph);
+    };
+  }, []);
 
   const adjacencyByNode = useMemo(() => {
     const adjacency = new Map<string, Array<{ id: string; similarity: number }>>();
@@ -1931,7 +2092,7 @@ Summarize the theme and key intersections. No emojis.`;
 
           {!loading && !error && graphData && graphData.nodes.length === 0 && (
             <div className="graph-empty">
-              <span>No embeddings found yet. Open and save a few notes to build the AI graph.</span>
+              <span>No markdown notes found in this vault yet.</span>
             </div>
           )}
 

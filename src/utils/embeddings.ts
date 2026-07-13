@@ -57,13 +57,10 @@ export function getEmbeddingDisabledReason(): string | null {
 }
 
 export function areEmbeddingsAvailable(): boolean {
-  return _disabledReason === null;
+  return true;
 }
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
-  if (_disabledReason) {
-    throw new Error(_disabledReason);
-  }
   if (_pipeline) return _pipeline;
   if (_loadingPromise) return _loadingPromise;
 
@@ -74,7 +71,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       
       // Explicitly catch pipeline errors
       const p = await pipeline("feature-extraction", MODEL_ID).catch(err => {
-        console.warn("[Embeddings] Pipeline creation failed; semantic analysis disabled for this session:", err);
+        console.warn("[Embeddings] Pipeline creation failed; using local fallback analysis for this session:", err);
         throw err;
       });
 
@@ -89,7 +86,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       _loadingPromise = null;
       _loadProgress = 0;
       _disabledReason = err instanceof Error ? err.message : "Analysis engine failed to load";
-      _onProgress?.(0, "Analysis engine unavailable");
+      _onProgress?.(100, "Local analysis fallback ready");
       throw err;
     }
   })();
@@ -133,20 +130,80 @@ export function simpleHash(text: string | null | undefined): string {
 
 // ── Embedding generation ─────────────────────────────────────────────────────
 
-export async function embedText(text: string | null | undefined): Promise<number[]> {
-  if (_disabledReason) {
-    return new Array(EMBEDDING_DIM).fill(0);
+function hashNumber(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
-  const embedder = await getEmbedder();
+  return hash >>> 0;
+}
+
+function addHashedFeature(vector: number[], feature: string, weight: number): void {
+  const hash = hashNumber(feature);
+  const index = hash % EMBEDDING_DIM;
+  const sign = hash & 1 ? 1 : -1;
+  vector[index] += sign * weight;
+}
+
+function lexicalEmbedText(text: string): number[] {
+  const vector = new Array(EMBEDDING_DIM).fill(0);
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2)
+    .slice(0, 320);
+
+  if (tokens.length === 0) return vector;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    addHashedFeature(vector, `w:${token}`, 1);
+
+    if (token.length > 5) {
+      for (let j = 0; j <= token.length - 3; j++) {
+        addHashedFeature(vector, `c:${token.slice(j, j + 3)}`, 0.18);
+      }
+    }
+
+    if (i > 0) {
+      addHashedFeature(vector, `b:${tokens[i - 1]} ${token}`, 0.6);
+    }
+  }
+
+  let norm = 0;
+  for (const value of vector) norm += value * value;
+  norm = Math.sqrt(norm);
+  if (norm === 0) return vector;
+  return vector.map((value) => value / norm);
+}
+
+function hasVectorSignal(vector: number[] | undefined): boolean {
+  return Array.isArray(vector) && vector.some((value) => Math.abs(value) > 1e-8);
+}
+
+export async function embedText(text: string | null | undefined): Promise<number[]> {
   const clean = stripMarkdown(typeof text === "string" ? text : "").substring(0, 1500);
   if (clean.length < 5) {
     return new Array(EMBEDDING_DIM).fill(0);
   }
-  const output = await embedder(clean, { pooling: "mean", normalize: true });
-  if (!output?.data) {
-    return new Array(EMBEDDING_DIM).fill(0);
+
+  if (_disabledReason) {
+    return lexicalEmbedText(clean);
   }
-  return Array.from(output.data as Float32Array).slice(0, EMBEDDING_DIM);
+
+  try {
+    const embedder = await getEmbedder();
+    const output = await embedder(clean, { pooling: "mean", normalize: true });
+    if (!output?.data) {
+      return lexicalEmbedText(clean);
+    }
+    return Array.from(output.data as Float32Array).slice(0, EMBEDDING_DIM);
+  } catch {
+    return lexicalEmbedText(clean);
+  }
 }
 
 // ── Cosine similarity ────────────────────────────────────────────────────────
@@ -313,12 +370,14 @@ export async function embedNote(
   modifiedAt?: number,
   size?: number,
 ): Promise<boolean> {
-  if (_disabledReason) return false;
   const source = typeof content === "string" ? content : "";
   const hash = simpleHash(source);
   const existing = store.entries.get(path);
 
-  if (existing && existing.hash === hash) return false;
+  if (existing && existing.hash === hash) {
+    const cleanLength = stripMarkdown(source).length;
+    if (cleanLength < 5 || hasVectorSignal(existing.vector)) return false;
+  }
 
   const vector = await embedText(source);
   const entry: StoredEmbedding = {

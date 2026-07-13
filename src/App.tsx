@@ -7143,6 +7143,7 @@ export default function App() {
             onToggleFullScreen={() => setGraphFullScreen((f) => !f)}
             theme={theme}
             vaultPath={vaultPath}
+            fileTree={fileTree}
             localNodePath={localNodePath}
             onCreateGroupFromPaths={handleCreateGroupFromPaths}
             onOpenPathsAsGroup={handleOpenPathsAsGroup}
@@ -7165,6 +7166,7 @@ export default function App() {
       graphMode,
       handleCreateGroupFromPaths,
       handleOpenPathsAsGroup,
+      fileTree,
       setGraphFullScreen,
       setGraphMode,
       theme,

@@ -181,17 +181,17 @@ function sortQueue(): void {
 const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 100;
 
-async function processBatch(api: any): Promise<void> {
+async function processBatch(api: any): Promise<boolean> {
   if (!areEmbeddingsAvailable()) {
     _queue = [];
-    _processedCount = _totalCount;
-    reportStatus("Analysis engine unavailable");
+    _isProcessing = false;
+    reportStatus("Local analysis fallback ready");
     await persistQueue();
-    return;
+    return false;
   }
 
   const batch = _queue.splice(0, BATCH_SIZE);
-  if (batch.length === 0) return;
+  if (batch.length === 0) return true;
 
   const store = await loadStoreAsync();
 
@@ -233,6 +233,8 @@ async function processBatch(api: any): Promise<void> {
   if (_processedCount % 10 === 0) {
     persistQueue();
   }
+
+  return true;
 }
 
 export async function startProcessing(api?: any): Promise<void> {
@@ -243,7 +245,8 @@ export async function startProcessing(api?: any): Promise<void> {
   reportStatus("Analyzing your notes...");
 
   while (_queue.length > 0) {
-    await processBatch(api);
+    const canContinue = await processBatch(api);
+    if (!canContinue) return;
     await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
   }
 
@@ -307,6 +310,10 @@ export async function initializeVault(
   api?: any,
 ): Promise<{ enqueued: number; alreadyIndexed: number }> {
   if (!areEmbeddingsAvailable()) {
+    _isProcessing = false;
+    _processedCount = 0;
+    _totalCount = allNotes.length;
+    reportStatus("Local analysis fallback ready");
     return { enqueued: 0, alreadyIndexed: allNotes.length };
   }
 
@@ -326,9 +333,11 @@ export async function initializeVault(
 
   for (const note of allNotes) {
     const existing = store.entries.get(note.path);
+    const hasStoredSignal = existing?.vector?.some((value) => Math.abs(value) > 1e-8);
     const isUnchanged = existing &&
                         existing.modifiedAt === note.modifiedAt &&
-                        existing.size === note.size;
+                        existing.size === note.size &&
+                        (hasStoredSignal || note.size < 5);
     if (isUnchanged) {
       alreadyIndexed++;
       continue;

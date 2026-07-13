@@ -66,9 +66,9 @@ export function StatusBar({
             }}
           />
         ))}
-        {queueStatus && queueStatus.isRunning && (
+        {queueStatus && (queueStatus.isRunning || queueStatus.message) && (
           <span className={statusItemClass} title={queueStatus.message}>
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--text-muted)]" />
+            <span className={`h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] ${queueStatus.isRunning ? "animate-pulse" : ""}`} />
             <span className="max-w-[220px] truncate">{queueStatus.message}</span>
             {queueStatus.progress > 0 && queueStatus.progress < 100 && (
               <span className="font-semibold [font-variant-numeric:tabular-nums]">{queueStatus.progress}%</span>
