@@ -1,7 +1,7 @@
 # OpenObsidian
 
 <p align="center">
-  <img width="1600" height="878" alt="OpenObsidian desktop workspace" src="https://github.com/user-attachments/assets/ae1ca16c-6621-4948-8e30-bb9743abf895" />
+  <img width="1600" alt="OpenObsidian desktop workspace" src="docs/images/banner.png" />
 </p>
 
 <p align="center">
@@ -64,14 +64,9 @@ Key capabilities:
 - Split panes, multi-tab workspaces, tab groups, and recent vault history
 - Vim mode support with editor commands for common workflows
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/markdown-workspace.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="Markdown workspace" src="docs/images/markdown-workspace.png" />
+</p>
 
 ### 2. Vault Navigation and Search
 
@@ -86,15 +81,6 @@ Key capabilities:
 - File explorer actions for notes, folders, assets, and canvases
 - Global keyboard shortcuts for fast navigation
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/navigation-search.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
-
 ### 3. Knowledge Graph
 
 Explore relationships between notes through an interactive graph built for local vaults. The graph helps reveal dense clusters, isolated notes, hidden relationships, and important hubs in the knowledge base.
@@ -107,14 +93,9 @@ Key capabilities:
 - Persistent layout and theme-aware graph styling
 - Edge and node controls for precise exploration
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/knowledge-graph.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="Knowledge graph" src="docs/images/knowledge-graph.png" />
+</p>
 
 ### 4. AI Knowledge Graph
 
@@ -129,14 +110,9 @@ Key capabilities:
 - Focus cards for concepts, links, clusters, and generated explanations
 - Configurable thresholds, node limits, and cluster breadth
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/ai-knowledge-graph.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="AI knowledge graph" src="docs/images/ai-knowledge-graph.png" />
+</p>
 
 ### 5. Canvas
 
@@ -150,14 +126,9 @@ Key capabilities:
 - Markdown note embedding inside visual layouts
 - Compatibility tests for canvas document behavior
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/canvas-workspace.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="Canvas workspace" src="docs/images/canvas-workspace.png" />
+</p>
 
 ### 6. Spaces
 
@@ -172,14 +143,9 @@ Key capabilities:
 - Suggested queries, indexing progress, and vault previews
 - Public Space discovery, upvotes, and Remix/fork workflows
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/spaces-dashboard.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="Spaces dashboard" src="docs/images/spaces-dashboard.png" />
+</p>
 
 ### 7. AI Writing and Synthesis
 
@@ -194,14 +160,9 @@ Key capabilities:
 - Configurable OpenAI and OpenRouter providers
 - Source-aware responses designed for vault context
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/ai-writing-tools.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="AI writing tools" src="docs/images/ai-writing-tools.png" />
+</p>
 
 ### 8. Sync and Collaboration
 
@@ -216,15 +177,6 @@ Key capabilities:
 - Local IndexedDB cache for durable offline state
 - Supabase `pgvector` schema for semantic matching
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/sync-collaboration.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
-
 ### 9. Plugin System
 
 OpenObsidian includes an Obsidian-compatible runtime layer and a plugin management experience for community-style plugins.
@@ -238,14 +190,9 @@ Key capabilities:
 - Runtime isolation, permission prompts, manifest caching, and crash containment
 - Regression tests against real community plugin bundles
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/plugin-marketplace.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img width="1200" alt="Plugin marketplace" src="docs/images/plugin-marketplace.png" />
+</p>
 
 ### 10. Themes and Interface
 
@@ -259,15 +206,6 @@ Key capabilities:
 - Command palette, modals, settings pages, and status bar
 - Logo and icon assets in `public/`
 
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/themes-interface.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
-
 ### 11. Export and Compatibility Tooling
 
 OpenObsidian includes compatibility infrastructure for export plugins and plugin runtimes that expect desktop APIs.
@@ -279,15 +217,6 @@ Key capabilities:
 - Canvas compatibility tests
 - Obsidian API runtime export checks
 - Live compatibility scripts for selected plugins
-
-<table>
-  <tr>
-    <td align="center">
-      <br><strong>Screenshot Slot</strong><br>
-      <sub>Add image at <code>docs/images/export-compatibility.png</code></sub><br><br>
-    </td>
-  </tr>
-</table>
 
 ## Quick Start
 
