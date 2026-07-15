@@ -12,7 +12,7 @@ env.VITE_DEV_SERVER_URL = env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
 const electronMainPath = path.join(process.cwd(), 'dist-electron', 'main.js');
 if (!fs.existsSync(electronMainPath)) {
   console.error(`Electron entry file not found: ${electronMainPath}`);
-  console.error('Run "npm run build:electron" and try again.');
+  console.error('Run "npm run build:electron" or "bun run build:electron" and try again.');
   process.exit(1);
 }
 
@@ -24,6 +24,82 @@ function findElectronInstallScript() {
   }
 }
 
+function findElectronPackageDir() {
+  try {
+    return path.dirname(require.resolve('electron/package.json'));
+  } catch {
+    return null;
+  }
+}
+
+function getElectronPlatformPath() {
+  const platform = process.env.npm_config_platform || process.platform;
+
+  switch (platform) {
+    case 'mas':
+    case 'darwin':
+      return 'Electron.app/Contents/MacOS/Electron';
+    case 'freebsd':
+    case 'openbsd':
+    case 'linux':
+      return 'electron';
+    case 'win32':
+      return 'electron.exe';
+    default:
+      return null;
+  }
+}
+
+function getElectronInstallState() {
+  const packageDir = findElectronPackageDir();
+  if (!packageDir) {
+    return {
+      ok: false,
+      reason: 'electron package is not installed',
+    };
+  }
+
+  const platformPath = getElectronPlatformPath();
+  if (!platformPath) {
+    return {
+      ok: false,
+      reason: `unsupported Electron platform: ${process.env.npm_config_platform || process.platform}`,
+    };
+  }
+
+  const pathFile = path.join(packageDir, 'path.txt');
+  if (!fs.existsSync(pathFile)) {
+    return {
+      ok: false,
+      reason: `missing ${pathFile}`,
+    };
+  }
+
+  const executablePath = fs.readFileSync(pathFile, 'utf8').trim();
+  if (!executablePath) {
+    return {
+      ok: false,
+      reason: `${pathFile} is empty`,
+    };
+  }
+
+  const expectedBinary = process.env.ELECTRON_OVERRIDE_DIST_PATH
+    ? path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, executablePath)
+    : path.join(packageDir, 'dist', executablePath);
+
+  if (!fs.existsSync(expectedBinary)) {
+    return {
+      ok: false,
+      reason: `missing Electron binary at ${expectedBinary}`,
+    };
+  }
+
+  return {
+    ok: true,
+    binary: expectedBinary,
+  };
+}
+
 function isBrokenElectronInstall(error) {
   return error instanceof Error && /Electron failed to install correctly/i.test(error.message);
 }
@@ -31,7 +107,7 @@ function isBrokenElectronInstall(error) {
 function runElectronInstaller(reason) {
   const installScript = findElectronInstallScript();
   if (!installScript) {
-    console.error('Electron is not installed. Run "npm install" and try again.');
+    console.error('Electron is not installed. Run "npm install" or "bun install" and try again.');
     process.exit(1);
   }
 
@@ -53,12 +129,24 @@ function runElectronInstaller(reason) {
 
   if (result.status !== 0) {
     console.error('[dev] Electron installer failed.');
-    console.error('[dev] Check your network/proxy settings, then run "npm install" again.');
+    console.error('[dev] Check your network/proxy settings, then run "npm install" or "bun install" again.');
     process.exit(result.status ?? 1);
+  }
+
+  const installedState = getElectronInstallState();
+  if (!installedState.ok) {
+    console.error(`[dev] Electron installer completed, but the install is still incomplete: ${installedState.reason}`);
+    console.error('[dev] Delete node_modules/electron and run "npm install" or "bun install" again.');
+    process.exit(1);
   }
 }
 
 function loadElectronBinary() {
+  const installState = getElectronInstallState();
+  if (!installState.ok) {
+    runElectronInstaller(installState.reason);
+  }
+
   try {
     return require('electron');
   } catch (error) {

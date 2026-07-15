@@ -7,10 +7,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/dev/start-electron.cjs\"",
-    "build": "tsc && vite build && npm run build:electron",
+    "dev": "tsc -p tsconfig.electron.json && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/dev/start-electron.cjs\"",
+    "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "package": "npm run build && electron-builder",
+    "package": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder",
     "lint": "tsc --noEmit",
     "test:canvas-compat": "node scripts/test-canvas-compat.cjs",
     "test:obsidian-api": "node scripts/test-obsidian-api-compat.cjs",
@@ -21,8 +21,8 @@
     "fetch:plugin-fixtures": "node scripts/fetch-plugin-fixtures.cjs",
     "install:pandoc-backend": "node scripts/install-pandoc-backend.cjs",
     "test:pandoc-backend": "node scripts/test-pandoc-backend.cjs",
-    "test:plugin-bundles": "npm run fetch:plugin-fixtures && vitest run tests/real-plugin-bundles.test.ts",
-    "test:plugin-compat": "npm run test:obsidian-api && npm run test:plugin-runtime && npm run test:pandoc-backend && npm run test:plugin-bundles"
+    "test:plugin-bundles": "node scripts/fetch-plugin-fixtures.cjs && vitest run tests/real-plugin-bundles.test.ts",
+    "test:plugin-compat": "node scripts/test-obsidian-api-compat.cjs && vitest run tests/plugin-runtime.test.ts && node scripts/test-pandoc-backend.cjs && node scripts/fetch-plugin-fixtures.cjs && vitest run tests/real-plugin-bundles.test.ts"
   },
   "keywords": [
     "notes",
