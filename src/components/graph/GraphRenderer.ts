@@ -237,18 +237,25 @@ export class GraphRenderer {
     const animate = () => {
       this.animationFrame = requestAnimationFrame(animate);
 
-      // Smooth zoom interpolation (Obsidian-style)
-      const zoomLerp = 0.15;
-      const panLerp = 0.15;
+      // Keep zoom eased, but responsive enough that wheel input does not trail
+      // behind the cursor on large graphs.
+      const zoomLerp = 0.35;
+      const panLerp = 0.35;
 
       const scaleDiff = Math.abs(this.targetScale - this.scale);
       const offsetXDiff = Math.abs(this.targetOffsetX - this.offsetX);
       const offsetYDiff = Math.abs(this.targetOffsetY - this.offsetY);
 
       if (scaleDiff > 0.001 || offsetXDiff > 0.5 || offsetYDiff > 0.5) {
-        this.scale += (this.targetScale - this.scale) * zoomLerp;
-        this.offsetX += (this.targetOffsetX - this.offsetX) * panLerp;
-        this.offsetY += (this.targetOffsetY - this.offsetY) * panLerp;
+        this.scale = scaleDiff < 0.003
+          ? this.targetScale
+          : this.scale + (this.targetScale - this.scale) * zoomLerp;
+        this.offsetX = offsetXDiff < 0.75
+          ? this.targetOffsetX
+          : this.offsetX + (this.targetOffsetX - this.offsetX) * panLerp;
+        this.offsetY = offsetYDiff < 0.75
+          ? this.targetOffsetY
+          : this.offsetY + (this.targetOffsetY - this.offsetY) * panLerp;
         this.needsRender = true;
       }
 
@@ -274,13 +281,21 @@ export class GraphRenderer {
     const zoomFactor = Math.pow(1.5, -e.deltaY / 120);
     const newScale = Math.max(1 / 128, Math.min(8, this.targetScale * zoomFactor));
 
-    // Zoom towards mouse position
-    const worldX = (mouseX - this.targetOffsetX) / this.targetScale;
-    const worldY = (mouseY - this.targetOffsetY) / this.targetScale;
+    // Zoom towards the point currently under the cursor. Using the visible
+    // transform avoids the "rubber band" feel when wheel events arrive faster
+    // than the eased target catches up.
+    const worldX = (mouseX - this.offsetX) / this.scale;
+    const worldY = (mouseY - this.offsetY) / this.scale;
 
     this.targetScale = newScale;
     this.targetOffsetX = mouseX - worldX * newScale;
     this.targetOffsetY = mouseY - worldY * newScale;
+
+    const immediateLerp = 0.45;
+    this.scale += (this.targetScale - this.scale) * immediateLerp;
+    this.offsetX += (this.targetOffsetX - this.offsetX) * immediateLerp;
+    this.offsetY += (this.targetOffsetY - this.offsetY) * immediateLerp;
+    this.needsRender = true;
 
     this.onViewportChange?.(
       this.targetOffsetX,

@@ -9,7 +9,7 @@ import {
   Target,
   X,
 } from "lucide-react";
-import { FileEntry, Theme } from "../../types";
+import { Theme } from "../../types";
 import { GraphRenderer } from "./GraphRenderer";
 import { getDefaultSettings as getManualDefaultSettings } from "./GraphView";
 import {
@@ -34,6 +34,8 @@ const AI_GRAPH_MAX_EDGES_PER_NODE = 4;
 const AI_GRAPH_DEFAULT_MAX_NODES = 180;
 const AI_GRAPH_MIN_NODES = 100;
 const AI_GRAPH_MAX_NODES = 1000;
+const AI_GRAPH_LAYOUT_EDGES_PER_NODE = 2;
+const AI_GRAPH_LAYOUT_MAX_AVERAGE_DEGREE = 2.2;
 
 const CLUSTER_COLORS = [
   "#6ee7b7",
@@ -85,7 +87,7 @@ interface AIKnowledgeGraphProps {
   onToggleFullScreen?: () => void;
   theme?: Theme;
   vaultPath?: string | null;
-  fileTree?: FileEntry[];
+  fileTree?: unknown;
   localNodePath?: string;
   onCreateGroupFromPaths?: (name: string, color: string, paths: string[]) => void;
   onOpenPathsAsGroup?: (paths: string[]) => void;
@@ -157,6 +159,10 @@ interface AIGraphSettings {
   showDirectionalFlow: boolean;
   searchTerm: string;
 }
+
+type DisplayGraphEdge = AIGraphEdge & {
+  directed?: boolean;
+};
 
 function getDefaultSettings(theme: Theme): AIGraphSettings {
   return {
@@ -282,133 +288,90 @@ function buildManualEdgeSet(data: {
   return manual;
 }
 
-function collectMarkdownFiles(entries: FileEntry[] | undefined): FileEntry[] {
-  const result: FileEntry[] = [];
-  const visit = (items: FileEntry[]) => {
-    for (const entry of items) {
-      const normalizedPath = entry.path.replace(/\\/g, "/");
-      if (
-        normalizedPath.startsWith(".openobsidian/") ||
-        normalizedPath.startsWith(".trash/") ||
-        normalizedPath.includes("/.openobsidian/") ||
-        normalizedPath.includes("/.trash/")
-      ) {
-        continue;
-      }
-
-      if (entry.isDirectory) {
-        if (entry.children) visit(entry.children);
-      } else if (normalizedPath.toLowerCase().endsWith(".md")) {
-        result.push({ ...entry, path: normalizedPath });
-      }
-    }
-  };
-
-  if (entries) visit(entries);
-  return result;
-}
-
-function folderFromPath(path: string): string {
-  const index = path.lastIndexOf("/");
-  return index >= 0 ? path.slice(0, index) : "";
-}
-
-function buildStructuralGraphFromFiles(
-  fileTree: FileEntry[] | undefined,
-  maxNodes: number,
-  manualGraph: {
-    nodes: Array<{ id: string; path: string }>;
-    edges: Array<{ source: string | { id: string }; target: string | { id: string } }>;
-  } | null,
-): AIGraphData | null {
-  const files = collectMarkdownFiles(fileTree)
-    .sort((a, b) => (b.modifiedAt || 0) - (a.modifiedAt || 0))
-    .slice(0, maxNodes);
-
-  if (files.length === 0) return null;
-
-  const folderIds = new Map<string, number>();
-  const getFolderId = (path: string) => {
-    const folder = folderFromPath(path);
-    if (!folderIds.has(folder)) folderIds.set(folder, folderIds.size);
-    return folderIds.get(folder) || 0;
-  };
-
-  const nodes: AIGraphNode[] = files.map((file) => ({
-    id: file.path,
-    name: noteNameFromPath(file.path),
-    path: file.path,
-    clusterId: getFolderId(file.path),
-    connections: 0,
-    updatedAt: file.modifiedAt || Date.now(),
-  }));
+function buildLayoutEdges(nodes: AIGraphNode[], edges: DisplayGraphEdge[]): DisplayGraphEdge[] {
+  if (nodes.length === 0 || edges.length === 0) return [];
 
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const degreeMap = new Map<string, number>();
-  const edgeKeys = new Set<string>();
-  const edges: AIGraphEdge[] = [];
+  const selected: DisplayGraphEdge[] = [];
+  const selectedKeys = new Set<string>();
+  const degree = new Map<string, number>();
+  const maxEdges = Math.max(
+    nodes.length - 1,
+    Math.min(edges.length, Math.ceil(nodes.length * AI_GRAPH_LAYOUT_MAX_AVERAGE_DEGREE)),
+  );
+  const maxDegree = Math.max(3, Math.ceil(Math.log2(nodes.length + 1)));
 
-  const addEdge = (
-    source: string,
-    target: string,
-    similarity: number,
-    hiddenConnection: boolean,
-    enforceDegreeCap = true,
-  ) => {
-    if (source === target || !nodeIds.has(source) || !nodeIds.has(target)) return;
-    const key = pairKey(source, target);
-    if (edgeKeys.has(key)) return;
-    if (enforceDegreeCap && ((degreeMap.get(source) || 0) >= 5 || (degreeMap.get(target) || 0) >= 5)) return;
+  for (const node of nodes) degree.set(node.id, 0);
 
-    edgeKeys.add(key);
-    edges.push({ source, target, similarity, hiddenConnection });
-    degreeMap.set(source, (degreeMap.get(source) || 0) + 1);
-    degreeMap.set(target, (degreeMap.get(target) || 0) + 1);
+  const addEdge = (edge: DisplayGraphEdge, ignoreDegreeCap = false) => {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) return false;
+    const key = pairKey(edge.source, edge.target);
+    if (selectedKeys.has(key)) return false;
+    if (!ignoreDegreeCap) {
+      if ((degree.get(edge.source) || 0) >= maxDegree) return false;
+      if ((degree.get(edge.target) || 0) >= maxDegree) return false;
+    }
+    if (selected.length >= maxEdges) return false;
+
+    selectedKeys.add(key);
+    selected.push(edge);
+    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
+    return true;
   };
 
-  if (manualGraph) {
-    const idToPath = new Map<string, string>();
-    for (const node of manualGraph.nodes || []) {
-      idToPath.set(node.id, node.path || node.id);
-    }
-    for (const edge of manualGraph.edges || []) {
-      const sourceId = typeof edge.source === "string" ? edge.source : edge.source.id;
-      const targetId = typeof edge.target === "string" ? edge.target : edge.target.id;
-      addEdge(idToPath.get(sourceId) || sourceId, idToPath.get(targetId) || targetId, 0.72, false, false);
-    }
+  const rankedEdges = [...edges].sort((a, b) => {
+    const manualDelta = Number(!b.hiddenConnection) - Number(!a.hiddenConnection);
+    if (manualDelta !== 0) return manualDelta;
+    const directionalDelta = Number(Boolean(b.directed)) - Number(Boolean(a.directed));
+    if (directionalDelta !== 0) return directionalDelta;
+    return b.similarity - a.similarity;
+  });
+
+  for (const edge of rankedEdges) {
+    if (!edge.hiddenConnection) addEdge(edge, true);
   }
 
-  const byFolder = new Map<string, string[]>();
-  for (const node of nodes) {
-    const folder = folderFromPath(node.path);
-    const list = byFolder.get(folder) || [];
-    list.push(node.path);
-    byFolder.set(folder, list);
-  }
+  const perNodeHiddenEdges = new Map<string, DisplayGraphEdge[]>();
+  for (const edge of rankedEdges) {
+    if (!edge.hiddenConnection) continue;
 
-  for (const paths of byFolder.values()) {
-    paths.sort((a, b) => noteNameFromPath(a).localeCompare(noteNameFromPath(b)));
-    for (let i = 1; i < paths.length; i++) {
-      addEdge(paths[i - 1], paths[i], 0.42, false);
-    }
-    const hub = paths[0];
-    for (let i = 2; i < paths.length; i += Math.max(2, Math.floor(paths.length / 12))) {
-      addEdge(hub, paths[i], 0.38, false);
-    }
+    const sourceEdges = perNodeHiddenEdges.get(edge.source) || [];
+    sourceEdges.push(edge);
+    perNodeHiddenEdges.set(edge.source, sourceEdges);
+
+    const targetEdges = perNodeHiddenEdges.get(edge.target) || [];
+    targetEdges.push(edge);
+    perNodeHiddenEdges.set(edge.target, targetEdges);
   }
 
   for (const node of nodes) {
-    node.connections = degreeMap.get(node.id) || 0;
+    const candidates = perNodeHiddenEdges.get(node.id) || [];
+    for (const edge of candidates.slice(0, AI_GRAPH_LAYOUT_EDGES_PER_NODE)) {
+      addEdge(edge);
+    }
   }
+
+  for (const edge of rankedEdges) {
+    if (selected.length >= maxEdges) break;
+    addEdge(edge);
+  }
+
+  return selected;
+}
+
+function getAIGraphForces(
+  manualSettings: ReturnType<typeof getManualDefaultSettings>,
+  nodeCount: number,
+) {
+  const sizeBoost = Math.max(1, Math.min(2.5, Math.sqrt(Math.max(nodeCount, 1) / 180)));
 
   return {
-    nodes,
-    edges,
-    directionalFlows: [],
-    clusterCount: folderIds.size,
-    hiddenConnectionCount: 0,
-    bridgeNotes: [],
-    ideaIslands: [],
+    centerStrength: Math.max(0.008, (manualSettings.centerForce / 100) * 0.32),
+    repelStrength: manualSettings.repelForce * 18 * sizeBoost,
+    linkStrength: (manualSettings.linkForce / 50) * 0.22,
+    linkDistance: manualSettings.linkDistance * 4.8,
+    collisionRadius: 90,
   };
 }
 
@@ -572,7 +535,6 @@ export function AIKnowledgeGraph({
   onToggleFullScreen,
   theme = "dark",
   vaultPath,
-  fileTree,
   onCreateGroupFromPaths,
   onOpenPathsAsGroup,
 }: AIKnowledgeGraphProps) {
@@ -610,7 +572,7 @@ export function AIKnowledgeGraph({
   if (theme === "light") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-light`;
   if (theme === "oceanic") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-oceanic`;
   
-  const positionsKey = `openobsidian-ai-graph-positions-v2-${vaultHash}`;
+  const positionsKey = `openobsidian-ai-graph-positions-v4-${vaultHash}`;
 
   const [settings, setSettings] = useState<AIGraphSettings>(() => {
     try {
@@ -796,7 +758,6 @@ export function AIKnowledgeGraph({
 
       try {
         const store = await loadStoreAsync();
-        const rawManualGraph = await api.getGraphData();
         const allEntries = [...store.entries.values()]
           .filter((entry) => entry.path.toLowerCase().endsWith(".md"))
           .filter((entry) => entry.vector.length > 0)
@@ -805,11 +766,7 @@ export function AIKnowledgeGraph({
 
         if (allEntries.length === 0) {
           if (!cancelled) {
-            const fallbackData = buildStructuralGraphFromFiles(
-              fileTree,
-              semanticConfig.maxNodes,
-              rawManualGraph || null,
-            ) || {
+            setGraphData({
               nodes: [],
               edges: [],
               directionalFlows: [],
@@ -817,12 +774,7 @@ export function AIKnowledgeGraph({
               hiddenConnectionCount: 0,
               bridgeNotes: [],
               ideaIslands: [],
-            };
-            hasRenderedGraphRef.current = fallbackData.nodes.length > 0;
-            if (vaultPath && fallbackData.nodes.length > 0) {
-              cachedGraph = { vaultPath, graphData: fallbackData };
-            }
-            setGraphData(fallbackData);
+            });
           }
           return;
         }
@@ -849,6 +801,7 @@ export function AIKnowledgeGraph({
           similarityCacheRef.current.set(cacheKey, pairs);
         }
 
+        const rawManualGraph = await api.getGraphData();
         const manualEdgeSet = buildManualEdgeSet(rawManualGraph || null);
 
         const nodeMap = new Map<string, AIGraphNode>();
@@ -1093,27 +1046,7 @@ export function AIKnowledgeGraph({
     semanticConfig.maxEdgesPerNode,
     semanticConfig.maxNodes,
     reloadTick,
-    fileTree,
   ]);
-
-  useEffect(() => {
-    const refreshGraph = () => {
-      cachedGraph = null;
-      similarityCacheRef.current.clear();
-      setReloadTick((tick) => tick + 1);
-    };
-
-    window.addEventListener("openobsidian:embedding-updated", refreshGraph);
-    window.addEventListener("openobsidian:file-created", refreshGraph);
-    window.addEventListener("openobsidian:directory-created", refreshGraph);
-    window.addEventListener("openobsidian:file-written", refreshGraph);
-    return () => {
-      window.removeEventListener("openobsidian:embedding-updated", refreshGraph);
-      window.removeEventListener("openobsidian:file-created", refreshGraph);
-      window.removeEventListener("openobsidian:directory-created", refreshGraph);
-      window.removeEventListener("openobsidian:file-written", refreshGraph);
-    };
-  }, []);
 
   const adjacencyByNode = useMemo(() => {
     const adjacency = new Map<string, Array<{ id: string; similarity: number }>>();
@@ -1216,7 +1149,7 @@ export function AIKnowledgeGraph({
       .map((e) => `${e.source}->${e.target}${e.directed ? ":d" : ""}`)
       .join("|")}`;
 
-    return { nodes, edges, signature };
+    return { nodes, edges: edges as DisplayGraphEdge[], signature };
   }, [
     activeFocusSet,
     directionalByPair,
@@ -1228,6 +1161,11 @@ export function AIKnowledgeGraph({
     timelineValue,
     dismissedSuggestions,
   ]);
+
+  const layoutEdges = useMemo(
+    () => buildLayoutEdges(filteredData.nodes, filteredData.edges),
+    [filteredData.nodes, filteredData.edges],
+  );
 
   useEffect(() => {
     if (!filteredData.nodes.some((n) => n.id === selectedNodeId)) {
@@ -1446,6 +1384,7 @@ export function AIKnowledgeGraph({
     renderer.setData(nodesWithPositions, filteredData.edges);
 
     const manualSettings = getManualGraphSettings(theme, vaultHash);
+    const forces = getAIGraphForces(manualSettings, nodesWithPositions.length);
 
     worker.postMessage({
       type: "init",
@@ -1456,14 +1395,8 @@ export function AIKnowledgeGraph({
           y: n.y,
           connections: n.connections || 0,
         })),
-        edges: filteredData.edges,
-        forces: {
-          centerStrength: manualSettings.centerForce / 100,
-          repelStrength: manualSettings.repelForce * 10,
-          linkStrength: manualSettings.linkForce / 50,
-          linkDistance: manualSettings.linkDistance * 2.5,
-          collisionRadius: 60,
-        },
+        edges: layoutEdges,
+        forces,
       },
     });
 
@@ -1486,6 +1419,7 @@ export function AIKnowledgeGraph({
     filteredData.signature,
     filteredData.nodes,
     filteredData.edges,
+    layoutEdges,
     loading,
     rendererReadyTick,
     positionsKey,
@@ -1531,19 +1465,15 @@ export function AIKnowledgeGraph({
     if (!worker) return;
 
     const manualSettings = getManualGraphSettings(theme, vaultHash);
+    const forces = getAIGraphForces(manualSettings, filteredData.nodes.length);
 
     setSimulating(true);
     worker.postMessage({
       type: "forces",
-      data: {
-        centerStrength: manualSettings.centerForce / 100,
-        repelStrength: manualSettings.repelForce * 10,
-        linkStrength: manualSettings.linkForce / 50,
-        linkDistance: manualSettings.linkDistance * 2.5,
-      },
+      data: forces,
     });
     worker.postMessage({ type: "reheat" });
-  }, [theme, vaultHash, manualSettingsTick]);
+  }, [theme, vaultHash, manualSettingsTick, filteredData.nodes.length]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -2092,7 +2022,7 @@ Summarize the theme and key intersections. No emojis.`;
 
           {!loading && !error && graphData && graphData.nodes.length === 0 && (
             <div className="graph-empty">
-              <span>No markdown notes found in this vault yet.</span>
+              <span>No embeddings found yet. Open and save a few notes to build the AI graph.</span>
             </div>
           )}
 
@@ -2815,35 +2745,38 @@ Summarize the theme and key intersections. No emojis.`;
             </Section>
 
             <Section title="Insights" defaultOpen={false}>
-              <div className="ai-graph-insights-summary">
-                <div className="ai-graph-insight-stat">
+              <div className="graph-section-content ai-graph-insights-list" style={{ padding: 0, borderBottom: "1px solid var(--border-medium)", paddingBottom: "10px", marginBottom: "10px" }}>
+                <div className="ai-graph-insight-item">
                   <strong>{graphData?.clusterCount || 0}</strong>
                   <span>clusters</span>
                 </div>
-                <div className="ai-graph-insight-stat">
+                <div className="ai-graph-insight-item">
                   <strong>{graphData?.bridgeNotes.length || 0}</strong>
                   <span>bridge notes</span>
                 </div>
-                <div className="ai-graph-insight-stat">
+                <div className="ai-graph-insight-item">
                   <strong>{graphData?.ideaIslands.length || 0}</strong>
                   <span>idea islands</span>
                 </div>
-                <div className="ai-graph-insight-stat">
+                <div className="ai-graph-insight-item">
                   <strong>{suggestedLinks.length || 0}</strong>
                   <span>suggested links</span>
                 </div>
               </div>
 
               {/* Key Concepts List */}
-              <div className="ai-graph-insight-group">
-                <div className="ai-graph-insight-heading">Key Concepts</div>
-                <div className="ai-graph-insights-list">
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Key Concepts (Highest Centrality):</span>
+                <div className="ai-graph-insights-list" style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
                   {keyConcepts.map((node) => (
-                    <div key={node.id} className="ai-graph-insight-row">
-                      <span className="ai-graph-insight-title">{node.name}</span>
+                    <div key={node.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "11px", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px" }}>
+                        {node.name}
+                      </span>
                       <button
                         type="button"
-                        className="graph-btn-secondary ai-graph-insight-action"
+                        className="graph-btn-secondary"
+                        style={{ padding: "2px 6px", fontSize: "10px" }}
                         onClick={() => {
                           setSelectedNodeId(node.id);
                           setSelectedEdge(null);
@@ -2864,20 +2797,19 @@ Summarize the theme and key intersections. No emojis.`;
 
               {/* Suggested Links List */}
               {suggestedLinks.length > 0 && (
-                <div className="ai-graph-insight-group">
-                  <div className="ai-graph-insight-heading">Suggested Connections</div>
-                  <div className="ai-graph-insights-list">
+                <div style={{ marginBottom: "12px", borderTop: "1px solid var(--border-medium)", paddingTop: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Suggested Connections:</span>
+                  <div className="ai-graph-insights-list" style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
                     {suggestedLinks.map((edge) => (
-                      <div key={pairKey(edge.source, edge.target)} className="ai-graph-insight-card">
-                        <div className="ai-graph-insight-link-title">
-                          <span>{noteNameFromPath(edge.source)}</span>
-                          <span className="ai-graph-insight-arrow">↔</span>
-                          <span>{noteNameFromPath(edge.target)}</span>
+                      <div key={pairKey(edge.source, edge.target)} style={{ display: "block", background: "var(--bg-active)", padding: "6px", borderRadius: "6px" }}>
+                        <div style={{ fontSize: "11px", color: "var(--text-primary)", marginBottom: "4px" }}>
+                          {noteNameFromPath(edge.source)} &harr; {noteNameFromPath(edge.target)}
                         </div>
-                        <div className="ai-graph-insight-actions">
+                        <div style={{ display: "flex", gap: "4px" }}>
                           <button
                             type="button"
-                            className="graph-btn-secondary ai-graph-insight-action"
+                            className="graph-btn-secondary"
+                            style={{ flex: 1, padding: "2px", fontSize: "9.5px" }}
                             onClick={() => {
                               setSelectedEdge(edge);
                               setSelectedNodeId(null);
@@ -2894,7 +2826,8 @@ Summarize the theme and key intersections. No emojis.`;
                           </button>
                           <button
                             type="button"
-                            className="graph-btn-secondary ai-graph-insight-action ai-graph-insight-action-accent"
+                            className="graph-btn-secondary"
+                            style={{ flex: 1, padding: "2px", fontSize: "9.5px", color: "#3b82f6" }}
                             onClick={() => handleCreateManualLink(edge.source, edge.target)}
                           >
                             Accept Link
@@ -2908,21 +2841,21 @@ Summarize the theme and key intersections. No emojis.`;
 
               {/* Bridge Notes List */}
               {(graphData?.bridgeNotes || []).length > 0 && (
-                <div className="ai-graph-insight-group">
-                  <div className="ai-graph-insight-heading">Bridge Note Insights</div>
-                  <div className="ai-graph-insights-list">
+                <div style={{ marginBottom: "12px", borderTop: "1px solid var(--border-medium)", paddingTop: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Bridge Note Insights:</span>
+                  <div className="ai-graph-insights-list" style={{ marginTop: 4 }}>
                     {(graphData?.bridgeNotes || []).map((bridge) => {
                       const firstCluster = bridge.clusterIds[0];
                       const secondCluster = bridge.clusterIds[1];
                       return (
-                        <div key={bridge.path} className="ai-graph-insight-card">
-                          <div className="ai-graph-insight-title">{bridge.name}</div>
-                          <div className="ai-graph-insight-meta">
-                            Connects {clusterLabelById.get(firstCluster) || `Cluster ${(firstCluster ?? 0) + 1}`} <span>↔</span> {clusterLabelById.get(secondCluster) || `Cluster ${(secondCluster ?? 0) + 1}`}
+                        <div key={bridge.path} className="ai-graph-insight-item" style={{ display: "block", marginBottom: 6 }}>
+                          <div style={{ color: "var(--text-primary)", marginBottom: 4, fontSize: "10.5px" }}>
+                            {bridge.name} connects {clusterLabelById.get(firstCluster) || `Cluster ${(firstCluster ?? 0) + 1}`} <span>{"<->"}</span> {clusterLabelById.get(secondCluster) || `Cluster ${(secondCluster ?? 0) + 1}`}
                           </div>
                           <button
                             type="button"
-                            className="graph-btn-secondary ai-graph-insight-action"
+                            className="graph-btn-secondary"
+                            style={{ padding: "2px 6px", fontSize: "10px" }}
                             onClick={() => handleBridgeActivate(bridge)}
                           >
                             Focus Bridge
@@ -2936,25 +2869,27 @@ Summarize the theme and key intersections. No emojis.`;
 
               {/* Idea Islands List */}
               {(graphData?.ideaIslands || []).length > 0 && (
-                <div className="ai-graph-insight-group">
-                  <div className="ai-graph-insight-heading">Idea Islands</div>
-                  <div className="ai-graph-insights-list">
+                <div style={{ borderTop: "1px solid var(--border-medium)", paddingTop: "8px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>Idea Islands (Isolated Clusters):</span>
+                  <div className="ai-graph-insights-list" style={{ marginTop: 4 }}>
                     {(graphData?.ideaIslands || []).map((island) => (
-                      <div key={island.clusterId} className="ai-graph-insight-card">
-                        <div className="ai-graph-insight-title">
+                      <div key={island.clusterId} className="ai-graph-insight-item" style={{ display: "block", marginBottom: 6 }}>
+                        <div style={{ color: "var(--text-primary)", marginBottom: 4, fontSize: "10.5px" }}>
                           {clusterLabelById.get(island.clusterId) || `Cluster ${island.clusterId + 1}`}: isolated idea cluster
                         </div>
-                        <div className="ai-graph-insight-actions">
+                        <div className="graph-settings-actions" style={{ margin: 0 }}>
                           <button
                             type="button"
-                            className="graph-btn-secondary ai-graph-insight-action"
+                            className="graph-btn-secondary"
+                            style={{ padding: "2px 6px", fontSize: "10px" }}
                             onClick={() => handleIslandExplore(island)}
                           >
                             Explore Concepts
                           </button>
                           <button
                             type="button"
-                            className="graph-btn-secondary ai-graph-insight-action"
+                            className="graph-btn-secondary"
+                            style={{ padding: "2px 6px", fontSize: "10px" }}
                             onClick={() => handleIslandMissingLinks(island)}
                           >
                             Find Missing Links
