@@ -151,7 +151,7 @@
         "zip"
       ],
       "category": "public.app-category.productivity",
-      "icon": "build/icon.png"
+      "icon": "build/icon.icns"
     },
     "dmg": {
       "backgroundColor": "#121212"
