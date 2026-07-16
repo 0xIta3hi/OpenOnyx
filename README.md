@@ -255,10 +255,16 @@ npm run package
 
 Electron Builder writes distributable artifacts to `release/`.
 
-Current package targets:
+Platform-specific builds:
 
-- Windows: NSIS installer
-- Linux: AppImage and Debian package
+- `npm run package:win` builds Windows `.exe` installers.
+- `npm run package:mac` builds macOS `.dmg` and `.zip` artifacts.
+- `npm run package:linux` builds Linux `.AppImage`, `.deb`, `.rpm`, and Arch pacman package artifacts.
+- `npm run package:all` requests every configured target. Use CI for real cross-platform releases because macOS installers must be produced on macOS.
+
+GitHub release builds are handled by `.github/workflows/release.yml`. Push a tag such as `v1.0.0`, or run the workflow manually with a tag, and the workflow will attach the Windows, macOS, and Linux installer files to the GitHub Release.
+
+On Arch-based local machines, the `.deb`, `.rpm`, and pacman targets require `libxcrypt-compat` for Electron Builder's bundled `fpm` tool. The GitHub workflow installs the Ubuntu equivalent automatically.
 
 ## Configuration
 

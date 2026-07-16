@@ -10,7 +10,11 @@
     "dev": "tsc -p tsconfig.electron.json && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/dev/start-electron.cjs\"",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "package": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "package": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --publish never",
+    "package:linux": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux AppImage deb rpm pacman --x64 --publish never",
+    "package:win": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --win nsis portable --x64 --publish never",
+    "package:mac": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --mac dmg zip --x64 --arm64 --publish never",
+    "package:all": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux AppImage deb rpm pacman --win nsis portable --mac dmg zip --publish never",
     "lint": "tsc --noEmit",
     "test:canvas-compat": "node scripts/test-canvas-compat.cjs",
     "test:obsidian-api": "node scripts/test-obsidian-api-compat.cjs",
@@ -30,7 +34,10 @@
     "markdown",
     "graph"
   ],
-  "author": "OpenObsidian",
+  "author": {
+    "name": "OpenObsidian",
+    "email": "openobsidian@users.noreply.github.com"
+  },
   "license": "MIT",
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
@@ -108,9 +115,10 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ],
-      "icon": "public/icon.ico"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -121,14 +129,32 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "rpm",
+        "pacman"
       ],
       "category": "Office",
-      "icon": "public/icons"
+      "icon": "build/icon.png"
     },
     "deb": {
       "priority": "optional",
       "afterInstall": "scripts/linux/after-install.sh"
+    },
+    "rpm": {
+      "fpm": [
+        "--rpm-rpmbuild-define=_build_id_links none"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png"
+    },
+    "dmg": {
+      "backgroundColor": "#121212"
     }
   }
 }
