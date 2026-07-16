@@ -20,7 +20,6 @@ jobs:
     runs-on: ${{ matrix.platform.os }}
     env:
       GH_TOKEN: ${{ github.token }}
-      CSC_IDENTITY_AUTO_DISCOVERY: false
     strategy:
       fail-fast: false
       matrix:
@@ -83,7 +82,30 @@ jobs:
           test -f build/icon.ico
           test -f build/icon.icns
 
+      - name: Verify macOS signing credentials
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            echo "::warning::CSC_LINK is not set — macOS build will be UNSIGNED and blocked by Gatekeeper"
+          else
+            echo "macOS signing certificate is configured"
+          fi
+
       - name: Build installers
+        env:
+          # macOS code signing (electron-builder decodes CSC_LINK and imports to a temp keychain)
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # macOS notarization (handled natively by electron-builder v26+)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows Authenticode signing
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run ${{ matrix.platform.script }}
 
       - name: Upload build artifacts

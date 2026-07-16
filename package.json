@@ -126,7 +126,10 @@
         "nsis",
         "portable"
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -159,7 +162,11 @@
         "zip"
       ],
       "category": "public.app-category.productivity",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "backgroundColor": "#121212"
