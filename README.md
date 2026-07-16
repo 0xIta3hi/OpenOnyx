@@ -266,6 +266,8 @@ GitHub release builds are handled by `.github/workflows/release.yml`. Push a tag
 
 On Arch-based local machines, the `.deb`, `.rpm`, and pacman targets require `libxcrypt-compat` for Electron Builder's bundled `fpm` tool. The GitHub workflow installs the Ubuntu equivalent automatically.
 
+Package-manager publishing templates for AUR, Homebrew, and winget are documented in [`docs/release/package-distribution.md`](docs/release/package-distribution.md).
+
 ## Configuration
 
 OpenObsidian runs without environment variables for local vault editing, local search, local embeddings, local graphs, and local Spaces.

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+PackageIdentifier: OpenObsidian.OpenObsidian
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: OpenObsidian
+PublisherUrl: https://github.com/OpenObsidian
+PublisherSupportUrl: https://github.com/OpenObsidian/OpenObsidian/issues
+Author: OpenObsidian
+PackageName: OpenObsidian
+PackageUrl: https://github.com/OpenObsidian/OpenObsidian
+License: MIT
+LicenseUrl: https://github.com/OpenObsidian/OpenObsidian/blob/main/LICENSE
+ShortDescription: Local-first knowledge management app built around Markdown and graph navigation.
+Description: OpenObsidian is a desktop knowledge management app built around plain Markdown files, Obsidian-style workflows, graph navigation, local semantic indexing, and optional cloud collaboration.
+Tags:
+  - markdown
+  - notes
+  - knowledge-management
+  - graph
+  - electron
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0

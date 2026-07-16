@@ -38,6 +38,14 @@
     "name": "OpenObsidian",
     "email": "openobsidian@gmail.com"
   },
+  "homepage": "https://github.com/OpenObsidian/OpenObsidian",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenObsidian/OpenObsidian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OpenObsidian/OpenObsidian/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
