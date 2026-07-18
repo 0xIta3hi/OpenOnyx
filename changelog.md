@@ -4,6 +4,27 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ---
 
+## 2026-07-18 (v1.0.1)
+
+### Features and Improvements
+* **Text Formatting Hotkeys**: Implemented native formatting shortcuts inside the CodeMirror markdown editor: Bold (Ctrl+B / Cmd+B), Italic (Ctrl+I / Cmd+I), Inline Code (Ctrl+E / Ctrl+` / Cmd+E / Cmd+`), and Strikethrough (Ctrl+Shift+X / Cmd+Shift+X). These wrap/unwrap selections correctly and position the cursor inside empty tags.
+* **Update Checker & Installer Linker**: Connected the "Check for updates" option in Settings to fetch release details from GitHub. Added platform detection to recommend and directly link the corresponding package download (.pkg.tar.zst for Arch, .deb for Debian, .dmg for Mac, or .exe for Windows).
+* **Logo Contrast Containers**: Wrapped all application logo image tags in contrast boxes (white card for dark/black logo variants and high-contrast dark frames for light/white logo variants) to ensure perfect visibility on all desktop and client background configurations.
+* **Settings Panel Styling**: Redesigned the About section in Settings into a static, clear text-based layout with clean visual grids, system status information, and community resource links. Emojis, transitions, and hover scaling animations were removed.
+
+### Refactoring and Optimization
+* **AI Graph Performance Optimization**: Decoupled the high-frequency physics ticks (~60fps) of the D3 layout engine from the React thread in the AI Knowledge Graph component. Implemented a throttled 10fps polling routine for progress tracking, reducing React update overhead and resolving UI stutters.
+* **General Smooth Scrolling**: Added GPU-accelerated smooth scrolling Chromium switches to the Electron startup pipeline and configured will-change/scroll-behavior properties on all scrollable panels.
+
+### Bug Fixes
+* **Supabase Authentication Race Condition**: Resolved a race condition where saving custom Supabase config in settings triggered overlapping auth initialization routines. Implemented generation counters to abort obsolete checks and clean up active listeners.
+* **Supabase Session Persistence**: Set persistSession to false for secondary databases to avoid session collisions.
+
+### Infrastructure & Packaging
+* **Linux Pacman Packaging Fix**: Replaced the general "gtk" package dependency with "gtk3" inside Pacman package configs, and added FPM --no-auto-depends to prevent spurious native dependencies from being injected during AUR builds.
+
+---
+
 ## 2026-05-21
 
 ### Features and Improvements

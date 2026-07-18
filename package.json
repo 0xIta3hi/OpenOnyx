@@ -1,6 +1,6 @@
 {
   "name": "openobsidian",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A local-first knowledge management tool with graph-based note linking",
   "main": "dist-electron/main.js",
   "engines": {
