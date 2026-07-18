@@ -38,6 +38,9 @@ class AuthManager {
   private state: AuthState = { user: null, session: null, isLoading: isSupabaseConfigured };
   private listeners: Set<AuthListener> = new Set();
   private unsubscribeAuthState: (() => void) | null = null;
+  // Incremented on each refreshConfiguration() call so stale concurrent
+  // init() calls can detect they've been superseded and abort early.
+  private initGeneration = 0;
 
   constructor() {
     if (isSupabaseConfigured) void this.init();
@@ -49,11 +52,14 @@ class AuthManager {
   }
 
   private async init() {
+    const gen = this.initGeneration;
     try {
       this.unsubscribeAuthState?.();
       this.unsubscribeAuthState = null;
 
       const { data: { session }, error } = await supabase.auth.getSession();
+      // Abort if a newer refreshConfiguration() call has already taken over.
+      if (gen !== this.initGeneration) return;
       if (error) throw error;
       this.updateState({
         user: session?.user ?? null,
@@ -62,20 +68,31 @@ class AuthManager {
       });
 
       const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+        // Only fire if this subscription was set up by the still-active init.
+        if (gen !== this.initGeneration) return;
         this.updateState({
           user: nextSession?.user ?? null,
           session: nextSession ?? null,
           isLoading: false,
         });
       });
+      // Abort if superseded while awaiting the subscription setup.
+      if (gen !== this.initGeneration) {
+        data.subscription.unsubscribe();
+        return;
+      }
       this.unsubscribeAuthState = () => data.subscription.unsubscribe();
     } catch (error) {
+      if (gen !== this.initGeneration) return;
       console.warn('[Auth] Initialization failed; continuing without a cloud session.', error);
       this.updateState({ user: null, session: null, isLoading: false });
     }
   }
 
   async refreshConfiguration() {
+    // Increment generation BEFORE cancelling the old subscription so that any
+    // in-flight init() call sees the new generation and aborts.
+    this.initGeneration += 1;
     this.unsubscribeAuthState?.();
     this.unsubscribeAuthState = null;
 

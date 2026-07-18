@@ -190,6 +190,11 @@ function configureChromiumRuntime(): void {
     app.commandLine.appendSwitch('remote-debugging-port', debugPort);
   }
 
+  // Enable smooth scrolling on all platforms (especially important on Linux
+  // where Electron/Chromium ships with smooth scrolling disabled by default).
+  app.commandLine.appendSwitch('enable-smooth-scrolling');
+  app.commandLine.appendSwitch('enable-features', 'ScrollUnification');
+
   if (!isDevMode) return;
   if (process.env.OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS === '1') return;
 

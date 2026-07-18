@@ -484,9 +484,9 @@ export function connectUserDatabase(config: UserDatabaseConfig): SupabaseClient<
   userConfig = config;
   userClient = createClient<Database>(config.supabaseUrl, config.anonKey, {
     auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
       flowType: 'pkce',
       lock: async (name, acquireTimeout, fn) => {
         return await fn();

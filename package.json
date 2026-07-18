@@ -12,6 +12,7 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --publish never",
     "package:linux": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux AppImage deb rpm pacman --x64 --publish never",
+    "package:pacman": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux pacman --x64 --publish never",
     "package:win": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --win nsis portable --x64 --publish never",
     "package:mac": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --mac dmg zip --x64 --arm64 --publish never",
     "package:all": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux AppImage deb rpm pacman --win nsis portable --mac dmg zip --publish never",
@@ -159,12 +160,39 @@
       ]
     },
     "pacman": {
+      "fpm": [
+        "--no-auto-depends"
+      ],
       "depends": [
         "gtk3",
         "nss",
         "alsa-lib",
         "libxss",
-        "libxtst"
+        "libxtst",
+        "libnotify",
+        "libsecret",
+        "xdg-utils",
+        "at-spi2-core",
+        "cairo",
+        "dbus",
+        "expat",
+        "glib2",
+        "glibc",
+        "hicolor-icon-theme",
+        "libcups",
+        "libx11",
+        "libxcb",
+        "libxcomposite",
+        "libxdamage",
+        "libxext",
+        "libxfixes",
+        "libxkbcommon",
+        "libxrandr",
+        "mesa",
+        "nspr",
+        "pango",
+        "systemd-libs",
+        "util-linux-libs"
       ]
     },
     "mac": {

@@ -13,7 +13,7 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { X, Lightbulb, BookOpen, Pen, RefreshCw, Sparkles } from "lucide-react";
-import { Compartment, EditorState, Transaction, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, StateEffect, StateField, EditorSelection } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -23,6 +23,7 @@ import {
   DecorationSet,
   ViewPlugin,
   WidgetType,
+  Command,
 } from "@codemirror/view";
 import {
   defaultKeymap,
@@ -301,8 +302,62 @@ function getEditorSettingsExtensions(settings?: AppSettings) {
   ];
 }
 
+const toggleFormat = (marker: string): Command => {
+  return (view: EditorView) => {
+    const { state, dispatch } = view;
+    if (state.readOnly) return false;
+
+    const changes = state.changeByRange((range) => {
+      const { from, to } = range;
+      if (from === to) {
+        return {
+          changes: { from, to, insert: `${marker}${marker}` },
+          range: EditorSelection.range(from + marker.length, from + marker.length),
+        };
+      }
+
+      const selectedText = state.doc.sliceString(from, to);
+      const prefix = state.doc.sliceString(Math.max(0, from - marker.length), from);
+      const suffix = state.doc.sliceString(to, Math.min(state.doc.length, to + marker.length));
+
+      if (prefix === marker && suffix === marker) {
+        return {
+          changes: [
+            { from: from - marker.length, to: from, insert: "" },
+            { from: to, to: to + marker.length, insert: "" },
+          ],
+          range: EditorSelection.range(from - marker.length, to - marker.length),
+        };
+      } else if (selectedText.startsWith(marker) && selectedText.endsWith(marker)) {
+        return {
+          changes: { from, to, insert: selectedText.slice(marker.length, -marker.length) },
+          range: EditorSelection.range(from, to - marker.length * 2),
+        };
+      } else {
+        return {
+          changes: { from, to, insert: `${marker}${selectedText}${marker}` },
+          range: EditorSelection.range(from + marker.length, to + marker.length),
+        };
+      }
+    });
+
+    dispatch(state.update(changes, { scrollIntoView: true, userEvent: "input.format" }));
+    return true;
+  };
+};
+
+const toggleBold = toggleFormat("**");
+const toggleItalic = toggleFormat("*");
+const toggleCode = toggleFormat("`");
+const toggleStrikethrough = toggleFormat("~~");
+
 function getEditorKeymapExtensions(settings?: AppSettings) {
   return keymap.of([
+    { key: "Mod-b", run: toggleBold },
+    { key: "Mod-i", run: toggleItalic },
+    { key: "Mod-e", run: toggleCode },
+    { key: "Mod-`", run: toggleCode },
+    { key: "Mod-Shift-x", run: toggleStrikethrough },
     ...defaultKeymap,
     ...historyKeymap,
     ...(settings?.indentUsingTabs === false ? [] : [indentWithTab]),

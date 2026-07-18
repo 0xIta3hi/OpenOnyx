@@ -824,3 +824,40 @@ img.emoji {
 .ai-graph-insight-action-accent {
   color: var(--accent-primary) !important;
 }
+
+/* ── Smooth Scrolling & Performance Optimizations ── */
+.overflow-y-auto,
+.overflow-auto,
+.overflow-y-scroll,
+.overflow-scroll,
+.graph-settings-panel,
+.ai-graph-focus-card,
+.sidebarClass,
+.contentClass,
+[style*="overflow-y: auto"],
+[style*="overflow-y: scroll"] {
+  scroll-behavior: smooth !important;
+  will-change: scroll-position;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Optimize scrollbar rendering on Linux/Windows */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(128, 128, 128, 0.2));
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, rgba(128, 128, 128, 0.4));
+}
+

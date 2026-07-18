@@ -20,10 +20,12 @@ import {
   RotateCcw,
   Search,
   Settings,
+  Shield,
   Terminal,
   Type,
   Users,
   Wand2,
+  WifiOff,
   X,
 } from "lucide-react";
 import { PluginSettingsPanel } from "../plugins/PluginSettingsPanel";
@@ -491,7 +493,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
   );
 }
 
-function StatusLine({ type, message }: { type: "success" | "error" | "info" | "idle"; message: string }) {
+function StatusLine({ type, message }: { type: "success" | "error" | "info" | "idle"; message: React.ReactNode }) {
   if (!message) return null;
   const color = type === "success" ? "text-[var(--success)]" : type === "error" ? "text-[var(--danger)]" : "text-[var(--text-muted)]";
   return (
@@ -531,7 +533,9 @@ export function SettingsPage({
   const [currentUser, setCurrentUser] = useState(authManager.getUser());
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
-  const [updateStatus, setUpdateStatus] = useState("");
+  const [updateStatus, setUpdateStatus] = useState<React.ReactNode>("");
+  const [updateType, setUpdateType] = useState<"success" | "error" | "info" | "idle">("info");
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 
   const [aiSettings, setAiSettings] = useState<AISettings>(() => loadSettings());
   const [store, setStore] = useState(() => loadStore());
@@ -672,9 +676,12 @@ export function SettingsPage({
       return;
     }
     try {
+      // Configure the Supabase client FIRST so it is already pointing at the
+      // new credentials when saveUserDatabaseConfig fires the config-changed
+      // event (which triggers authManager.refreshConfiguration internally).
+      configureSupabaseClient(config);
       const saved = saveUserDatabaseConfig(config);
       connectUserDatabase(saved);
-      configureSupabaseClient(saved);
       await authManager.refreshConfiguration();
       setDatabaseConfig(saved);
       setDatabaseStatus({ type: "success", message: "Saved locally. Cloud features now use these credentials." });
@@ -699,6 +706,111 @@ export function SettingsPage({
       setDatabaseSchemaCopyStatus({ type: "success", message: "Copied schema.sql migration to clipboard." });
     } catch {
       setDatabaseSchemaCopyStatus({ type: "error", message: "Failed to copy migration SQL." });
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (isCheckingUpdates) return;
+    setIsCheckingUpdates(true);
+    setUpdateType("info");
+    setUpdateStatus("Checking for updates...");
+
+    try {
+      const response = await fetch("https://api.github.com/repos/OpenObsidian/OpenObsidian/releases/latest");
+      if (!response.ok) {
+        throw new Error("Failed to fetch release info.");
+      }
+      const data = await response.json();
+      const latestVersion = data.tag_name ? data.tag_name.replace(/^v/, "") : "";
+      
+      if (!latestVersion) {
+        setUpdateType("error");
+        setUpdateStatus("Could not determine the latest version from GitHub.");
+        return;
+      }
+
+      // Semantic version comparison
+      const currentVersion = "1.0.0";
+      const currentParts = currentVersion.split(".").map(Number);
+      const latestParts = latestVersion.split(".").map(Number);
+      
+      let isNewer = false;
+      for (let i = 0; i < 3; i++) {
+        const latestPart = latestParts[i] || 0;
+        const currentPart = currentParts[i] || 0;
+        if (latestPart > currentPart) {
+          isNewer = true;
+          break;
+        } else if (latestPart < currentPart) {
+          break;
+        }
+      }
+
+      if (isNewer) {
+        // Detect OS platform to recommend the right asset
+        const userAgent = navigator.userAgent.toLowerCase();
+        let targetExt = "";
+        let targetName = "";
+
+        if (userAgent.includes("win")) {
+          targetExt = ".exe";
+          targetName = "Windows Installer (.exe)";
+        } else if (userAgent.includes("mac")) {
+          targetExt = ".dmg";
+          targetName = "macOS Disk Image (.dmg)";
+        } else if (userAgent.includes("linux")) {
+          // On Linux, prefer .pkg.tar.zst for Arch, or .AppImage / .deb
+          if (userAgent.includes("arch") || userAgent.includes("manjaro")) {
+            targetExt = ".pkg.tar.zst";
+            targetName = "Arch Linux Package (.pkg.tar.zst)";
+          } else if (userAgent.includes("ubuntu") || userAgent.includes("debian")) {
+            targetExt = ".deb";
+            targetName = "Debian Package (.deb)";
+          } else {
+            targetExt = ".AppImage";
+            targetName = "Linux AppImage (.AppImage)";
+          }
+        }
+
+        // Search for a matching asset
+        let matchedAsset = null;
+        if (data.assets && Array.isArray(data.assets)) {
+          if (targetExt) {
+            matchedAsset = data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(targetExt));
+          }
+          if (!matchedAsset && userAgent.includes("linux")) {
+            matchedAsset = data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".appimage")) ||
+                           data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".deb")) ||
+                           data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".pkg.tar.zst"));
+          }
+        }
+
+        const downloadUrl = matchedAsset ? matchedAsset.browser_download_url : data.html_url;
+        const assetLabel = matchedAsset ? `Download ${targetName || matchedAsset.name}` : "Open Releases Page";
+
+        setUpdateType("success");
+        setUpdateStatus(
+          <span className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span>New version v{latestVersion} is available!</span>
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--text-link)] font-semibold underline hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1"
+            >
+              {assetLabel}
+            </a>
+          </span>
+        );
+      } else {
+        setUpdateType("success");
+        setUpdateStatus(`You are up to date! Version ${currentVersion} is the latest version.`);
+      }
+    } catch (err: any) {
+      setUpdateType("error");
+      setUpdateStatus("Failed to check for updates. Rate limit or connection issue.");
+    } finally {
+      setIsCheckingUpdates(false);
     }
   };
 
@@ -796,12 +908,12 @@ export function SettingsPage({
                           <button className="text-[var(--text-link)] underline" onClick={() => setActiveSection("about")}>
                             Read the changelog.
                           </button>
-                          <StatusLine type="info" message={updateStatus} />
+                          <StatusLine type={updateType} message={updateStatus} />
                         </>
                       )}
                     >
-                      <button className={buttonClass} onClick={() => setUpdateStatus("This local build is managed by the local app build.")}>
-                        Check for updates
+                      <button className={buttonClass} onClick={handleCheckForUpdates} disabled={isCheckingUpdates}>
+                        {isCheckingUpdates ? "Checking..." : "Check for updates"}
                       </button>
                     </SettingRow>
                     <SettingRow title="Language" description="Change the display language.">
@@ -1398,16 +1510,69 @@ export function SettingsPage({
 
               {activeSection === "about" && (
                 <div className={sectionClass}>
-                  <div className="flex flex-col items-center py-10 text-center">
-                    <img src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"} alt="OpenObsidian logo" className="mb-5 h-16 w-auto object-contain" />
-                    <h3 className="mb-2 text-lg font-semibold">OpenObsidian</h3>
-                    <p className="mb-6 text-xs text-[var(--text-muted)]">Version 1.0.0</p>
-                    <p className="max-w-md text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                  <div className="flex flex-col items-center py-8">
+                    {/* Logo container with static contrast background (no hover scale animation) */}
+                    <div className={`mb-6 flex items-center justify-center p-4 rounded-2xl shadow-sm border ${isDark ? "bg-[#18181b] border-neutral-800/80" : "bg-white border-neutral-200/60"} h-24 w-24`}>
+                      <img src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"} alt="OpenObsidian logo" className="h-full w-full object-contain" />
+                    </div>
+
+                    <h2 className="mb-1 text-2xl font-bold tracking-tight text-[var(--text-primary)]">OpenObsidian</h2>
+                    <div className="mb-6 flex items-center gap-2">
+                      <span className="rounded-full bg-[var(--bg-tertiary)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                        v1.0.0
+                      </span>
+                      <span className="rounded-full bg-[rgba(52,211,153,0.12)] px-2.5 py-0.5 text-[11px] font-semibold text-[#34d399] border border-[rgba(52,211,153,0.2)]">
+                        Local-First
+                      </span>
+                    </div>
+
+                    <p className="max-w-lg text-center text-sm leading-relaxed text-[var(--text-secondary)] mb-10">
                       A local-first, offline-ready knowledge management tool for creating, linking, and mapping Markdown note networks.
                     </p>
-                    <button className={cx(buttonClass, "mt-8 inline-flex items-center gap-2 border-dashed")} onClick={() => onSettingsChange(DEFAULT_SETTINGS)}>
-                      <RotateCcw size={14} /> Reset all settings to factory default
-                    </button>
+
+                    {/* Features Grid */}
+                    <div className="grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-3 mb-10">
+                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 text-center sm:text-left">
+                        <h4 className="mb-1 text-[13px] font-semibold text-[var(--text-primary)]">Private & Secure</h4>
+                        <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">Notes are stored locally on your device in plain text Markdown files.</p>
+                      </div>
+                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 text-center sm:text-left">
+                        <h4 className="mb-1 text-[13px] font-semibold text-[var(--text-primary)]">Linked Graph</h4>
+                        <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">Explore connections and visualize your thoughts as an interconnected network.</p>
+                      </div>
+                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 text-center sm:text-left">
+                        <h4 className="mb-1 text-[13px] font-semibold text-[var(--text-primary)]">Offline First</h4>
+                        <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">Work anywhere, anytime. Synced selectively when you choose.</p>
+                      </div>
+                    </div>
+
+                    {/* Community / Help Section */}
+                    <div className="w-full max-w-2xl rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-5 mb-8">
+                      <h4 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">
+                        Useful Links & Resources
+                      </h4>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs">
+                        <a href="https://github.com/OpenObsidian/OpenObsidian" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                          GitHub Repository
+                        </a>
+                        <span className="hidden sm:inline text-[var(--border-subtle)]">|</span>
+                        <a href="https://github.com/OpenObsidian/OpenObsidian/wiki" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                          User Documentation
+                        </a>
+                        <span className="hidden sm:inline text-[var(--border-subtle)]">|</span>
+                        <a href="https://github.com/OpenObsidian/OpenObsidian/issues" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                          Report an Issue
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Factory reset button */}
+                    <div className="w-full max-w-2xl border-t border-[var(--border-subtle)] pt-6 flex flex-col items-center gap-3">
+                      <button className={cx(buttonClass, "inline-flex items-center border-dashed border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50")} onClick={() => onSettingsChange(DEFAULT_SETTINGS)}>
+                        Reset all settings to factory default
+                      </button>
+                      <p className="text-[11px] text-[var(--text-muted)]">This will reset all user preferences back to their original values.</p>
+                    </div>
                   </div>
                 </div>
               )}

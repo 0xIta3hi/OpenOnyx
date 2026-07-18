@@ -249,11 +249,13 @@ export function VaultManager({
           </div>
 
           <div className="flex flex-1 flex-col items-center justify-center px-9 pb-12 pt-16">
-            <img
-              src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"}
-              alt=""
-              className="mb-5 h-[86px] w-[86px] object-contain"
-            />
+            <div className={`mb-5 flex items-center justify-center p-4 rounded-2xl shadow-sm border ${isDark ? "bg-[#18181b] border-neutral-800/80" : "bg-white border-neutral-200/60"} h-24 w-24`}>
+              <img
+                src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"}
+                alt=""
+                className="h-full w-full object-contain"
+              />
+            </div>
             <div className="mb-1 text-[30px] font-bold leading-none tracking-normal text-[var(--text-primary)]">
               OpenObsidian
             </div>

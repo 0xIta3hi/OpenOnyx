@@ -59,11 +59,11 @@ export function WelcomeScreen({
 
   return (
     <div className="flex flex-col items-center justify-center h-full w-full bg-(--bg-primary) text-(--text-primary) select-none" ref={screenRef} data-transition-phase={transitionPhase}>
-      <div className="mb-6">
+      <div className={`mb-6 flex items-center justify-center p-3.5 rounded-2xl shadow-sm border ${isDark ? "bg-[#18181b] border-neutral-800/80" : "bg-white border-neutral-200/60"} h-24 w-24`}>
         <img
           src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"}
           alt="OpenObsidian Logo"
-          className="w-20 h-20 object-contain"
+          className="w-full h-full object-contain"
         />
       </div>
       <h1 className="text-3xl font-bold tracking-tight mb-2 text-(--text-primary)">OpenObsidian</h1>

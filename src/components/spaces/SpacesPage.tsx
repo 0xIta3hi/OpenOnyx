@@ -2701,11 +2701,13 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
               <div className={spaceChatWelcomeClass}>
                 <div className={spaceChatWelcomeContentClass}>
                   <h2 className={spaceChatWelcomeTitleClass}>
-                    <img
-                      src="logos/logo-dark.png"
-                      alt="OpenObsidian"
-                      className={spaceChatWelcomeLogoClass}
-                    />
+                    <div className="mr-3 flex items-center justify-center p-2 rounded-xl bg-[#18181b] border border-neutral-800 h-14 w-14 shadow-sm">
+                      <img
+                        src="logos/logo-dark.png"
+                        alt="OpenObsidian"
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
                     <span>{welcomeGreeting}</span>
                   </h2>
                   

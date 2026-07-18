@@ -601,7 +601,10 @@ export function AIKnowledgeGraph({
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [simulating, setSimulating] = useState(false);
-  const [alpha, setAlpha] = useState(0);
+  // alphaRef is written imperatively from the worker tick handler (no re-render).
+  // displayAlpha is read by the progress indicator at ~10fps via a throttled interval.
+  const alphaRef = useRef(0);
+  const [displayAlpha, setDisplayAlpha] = useState(0);
   const [layoutResetTick, setLayoutResetTick] = useState(0);
   const [rendererInitRetry, setRendererInitRetry] = useState(0);
   const [rendererReadyTick, setRendererReadyTick] = useState(0);
@@ -691,6 +694,16 @@ export function AIKnowledgeGraph({
       localStorage.setItem(`openobsidian-ai-dismissed-links-${vaultHash}`, JSON.stringify(Array.from(dismissedSuggestions)));
     } catch {}
   }, [dismissedSuggestions, vaultHash]);
+
+  // Drive the simulation progress indicator at ~10fps by polling alphaRef from a throttled interval.
+  // The worker writes alphaRef on every tick (60fps) but we only need UI updates at 10fps.
+  useEffect(() => {
+    if (!simulating) return;
+    const id = window.setInterval(() => {
+      setDisplayAlpha(alphaRef.current);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [simulating]);
 
   useEffect(() => {
     try {
@@ -1211,10 +1224,12 @@ export function AIKnowledgeGraph({
       const { type, ids, positions, alpha: workerAlpha } = e.data;
       if (type === "tick" && renderer.isInitialized()) {
         renderer.updatePositionsFromArray(ids, new Float32Array(positions));
-        setAlpha(workerAlpha);
+        // Write to ref only — no React setState, no re-render at 60fps.
+        alphaRef.current = workerAlpha;
       } else if (type === "end") {
         setSimulating(false);
-        setAlpha(0);
+        alphaRef.current = 0;
+        setDisplayAlpha(0);
         try {
           const allPositions = renderer.getAllPositions();
           const posObj: Record<string, { x: number; y: number }> = {};
@@ -1514,7 +1529,8 @@ export function AIKnowledgeGraph({
     setActiveInsight(null);
     setLayoutResetTick((v) => v + 1);
     setSimulating(true);
-    setAlpha(1);
+    alphaRef.current = 1;
+    setDisplayAlpha(1);
   }, [isDark, positionsKey, settingsKey]);
 
   const clearInsightFocus = useCallback(() => {
@@ -2917,7 +2933,7 @@ Summarize the theme and key intersections. No emojis.`;
           {simulating && (
             <div className="graph-tools-sim-indicator">
               <div className="graph-sim-spinner" />
-              <span>{Math.round(alpha * 100)}%</span>
+              <span>{Math.round(displayAlpha * 100)}%</span>
             </div>
           )}
 
