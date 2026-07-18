@@ -82,30 +82,45 @@ jobs:
           test -f build/icon.ico
           test -f build/icon.icns
 
-      - name: Verify macOS signing credentials
+      - name: Configure macOS code signing and notarization
         if: runner.os == 'macOS'
         shell: bash
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$CSC_LINK" ]; then
             echo "::warning::CSC_LINK is not set — macOS build will be UNSIGNED and blocked by Gatekeeper"
           else
-            echo "macOS signing certificate is configured"
+            echo "macOS signing credentials configured"
+            echo "CSC_LINK=$CSC_LINK" >> $GITHUB_ENV
+            echo "CSC_KEY_PASSWORD=$CSC_KEY_PASSWORD" >> $GITHUB_ENV
+            if [ -n "$APPLE_ID" ]; then
+              echo "APPLE_ID=$APPLE_ID" >> $GITHUB_ENV
+              echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD" >> $GITHUB_ENV
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Configure Windows code signing
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -z "$WIN_CSC_LINK" ]; then
+            echo "::warning::WIN_CSC_LINK is not set — Windows build will not be signed"
+          else
+            echo "Windows signing credentials configured"
+            echo "WIN_CSC_LINK=$WIN_CSC_LINK" >> $GITHUB_ENV
+            echo "WIN_CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD" >> $GITHUB_ENV
           fi
 
       - name: Build installers
-        env:
-          # macOS code signing (electron-builder decodes CSC_LINK and imports to a temp keychain)
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # macOS notarization (handled natively by electron-builder v26+)
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Windows Authenticode signing
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run ${{ matrix.platform.script }}
 
       - name: Upload build artifacts
