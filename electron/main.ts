@@ -264,9 +264,9 @@ function createWindow(): void {
   });
 
   // In development, load from Vite dev server
-  if (process.env.NODE_ENV !== 'production' && process.env.VITE_DEV_SERVER_URL) {
+  if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else if (process.env.NODE_ENV !== 'production') {
+  } else if (!app.isPackaged) {
     mainWindow.loadURL('http://localhost:5173');
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));

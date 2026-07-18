@@ -158,6 +158,15 @@
         "--rpm-rpmbuild-define=_build_id_links none"
       ]
     },
+    "pacman": {
+      "depends": [
+        "gtk3",
+        "nss",
+        "alsa-lib",
+        "libxss",
+        "libxtst"
+      ]
+    },
     "mac": {
       "target": [
         "dmg",
