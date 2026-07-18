@@ -718,7 +718,10 @@ export function SettingsPage({
     try {
       const response = await fetch("https://api.github.com/repos/OpenObsidian/OpenObsidian/releases/latest");
       if (!response.ok) {
-        throw new Error("Failed to fetch release info.");
+        if (response.status === 404) {
+          throw new Error("Repository not found (HTTP 404). If the GitHub repository is private, the update checker cannot access it.");
+        }
+        throw new Error(`Failed to fetch release info (HTTP ${response.status}).`);
       }
       const data = await response.json();
       const latestVersion = data.tag_name ? data.tag_name.replace(/^v/, "") : "";
@@ -808,7 +811,7 @@ export function SettingsPage({
       }
     } catch (err: any) {
       setUpdateType("error");
-      setUpdateStatus("Failed to check for updates. Rate limit or connection issue.");
+      setUpdateStatus(err.message || "Failed to check for updates. Rate limit or connection issue.");
     } finally {
       setIsCheckingUpdates(false);
     }
