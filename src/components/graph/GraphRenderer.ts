@@ -277,31 +277,58 @@ export class GraphRenderer {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Smooth zoom factor (Obsidian style)
-    const zoomFactor = Math.pow(1.5, -e.deltaY / 120);
-    const newScale = Math.max(1 / 128, Math.min(8, this.targetScale * zoomFactor));
+    if (e.ctrlKey || e.metaKey) {
+      // Smooth zoom factor (Obsidian style)
+      const zoomFactor = Math.pow(1.5, -e.deltaY / 120);
+      const newScale = Math.max(1 / 128, Math.min(8, this.targetScale * zoomFactor));
 
-    // Zoom towards the point currently under the cursor. Using the visible
-    // transform avoids the "rubber band" feel when wheel events arrive faster
-    // than the eased target catches up.
-    const worldX = (mouseX - this.offsetX) / this.scale;
-    const worldY = (mouseY - this.offsetY) / this.scale;
+      // Zoom towards the point currently under the cursor. Using the visible
+      // transform avoids the "rubber band" feel when wheel events arrive faster
+      // than the eased target catches up.
+      const worldX = (mouseX - this.offsetX) / this.scale;
+      const worldY = (mouseY - this.offsetY) / this.scale;
 
-    this.targetScale = newScale;
-    this.targetOffsetX = mouseX - worldX * newScale;
-    this.targetOffsetY = mouseY - worldY * newScale;
+      this.targetScale = newScale;
+      this.targetOffsetX = mouseX - worldX * newScale;
+      this.targetOffsetY = mouseY - worldY * newScale;
 
-    const immediateLerp = 0.45;
-    this.scale += (this.targetScale - this.scale) * immediateLerp;
-    this.offsetX += (this.targetOffsetX - this.offsetX) * immediateLerp;
-    this.offsetY += (this.targetOffsetY - this.offsetY) * immediateLerp;
-    this.needsRender = true;
+      const immediateLerp = 0.45;
+      this.scale += (this.targetScale - this.scale) * immediateLerp;
+      this.offsetX += (this.targetOffsetX - this.offsetX) * immediateLerp;
+      this.offsetY += (this.targetOffsetY - this.offsetY) * immediateLerp;
+      this.needsRender = true;
 
-    this.onViewportChange?.(
-      this.targetOffsetX,
-      this.targetOffsetY,
-      this.targetScale,
-    );
+      this.onViewportChange?.(
+        this.targetOffsetX,
+        this.targetOffsetY,
+        this.targetScale,
+      );
+    } else {
+      // Pan
+      const dx = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? e.deltaX * 16
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? e.deltaX * window.innerWidth
+          : e.deltaX;
+
+      const dy = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? e.deltaY * 16
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? e.deltaY * window.innerHeight
+          : e.deltaY;
+
+      this.targetOffsetX -= dx;
+      this.targetOffsetY -= dy;
+      this.offsetX = this.targetOffsetX;
+      this.offsetY = this.targetOffsetY;
+      this.needsRender = true;
+
+      this.onViewportChange?.(
+        this.targetOffsetX,
+        this.targetOffsetY,
+        this.targetScale,
+      );
+    }
   }
 
   private getRect(): DOMRect {

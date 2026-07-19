@@ -2925,41 +2925,67 @@ export function CanvasView({
         (scrollHost.scrollHeight > scrollHost.clientHeight ||
           scrollHost.scrollWidth > scrollHost.clientWidth);
 
-      if (!e.ctrlKey && !e.metaKey && canScrollNodeBody) {
-        return;
-      }
+      if (e.ctrlKey || e.metaKey) {
+        if (inEmbeddedNoteBody) {
+          return;
+        }
+        e.preventDefault();
+        stopPanInertia();
+        const r = el.getBoundingClientRect();
+        const base = targetVpRef.current;
+        const normalizedDelta =
+          e.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? e.deltaY * 16
+            : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? e.deltaY * window.innerHeight
+              : e.deltaY;
+        const zoomFactor = Math.exp(-normalizedDelta * WHEEL_ZOOM_SENSITIVITY);
+        const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, base.zoom * zoomFactor));
+        if (Math.abs(nz - base.zoom) < 0.0001) return;
+        const mx = e.clientX - r.left,
+          my = e.clientY - r.top;
+        const worldX = (mx - base.x) / base.zoom;
+        const worldY = (my - base.y) / base.zoom;
+        applyViewportDirect({
+          x: mx - worldX * nz,
+          y: my - worldY * nz,
+          zoom: nz,
+        });
+        delayMarkdownPreviews();
+      } else {
+        if (canScrollNodeBody) {
+          return;
+        }
+        e.preventDefault();
+        stopPanInertia();
+        const base = targetVpRef.current;
+        const dx =
+          e.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? e.deltaX * 16
+            : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? e.deltaX * window.innerWidth
+              : e.deltaX;
+        const dy =
+          e.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? e.deltaY * 16
+            : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? e.deltaY * window.innerHeight
+              : e.deltaY;
 
-      if ((e.ctrlKey || e.metaKey) && inEmbeddedNoteBody) {
-        return;
+        const nextPanVp = {
+          x: base.x - dx,
+          y: base.y - dy,
+          zoom: base.zoom,
+        };
+        targetVpRef.current = nextPanVp;
+        applyViewportToDOM(nextPanVp);
+        scheduleVpSync();
+        delayMarkdownPreviews();
       }
-
-      e.preventDefault();
-      stopPanInertia();
-      const r = el.getBoundingClientRect();
-      const base = targetVpRef.current;
-      const normalizedDelta =
-        e.deltaMode === WheelEvent.DOM_DELTA_LINE
-          ? e.deltaY * 16
-          : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
-            ? e.deltaY * window.innerHeight
-            : e.deltaY;
-      const zoomFactor = Math.exp(-normalizedDelta * WHEEL_ZOOM_SENSITIVITY);
-      const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, base.zoom * zoomFactor));
-      if (Math.abs(nz - base.zoom) < 0.0001) return;
-      const mx = e.clientX - r.left,
-        my = e.clientY - r.top;
-      const worldX = (mx - base.x) / base.zoom;
-      const worldY = (my - base.y) / base.zoom;
-      applyViewportDirect({
-        x: mx - worldX * nz,
-        y: my - worldY * nz,
-        zoom: nz,
-      });
-      delayMarkdownPreviews();
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [applyViewportDirect, delayMarkdownPreviews, stopPanInertia]);
+  }, [applyViewportDirect, applyViewportToDOM, scheduleVpSync, delayMarkdownPreviews, stopPanInertia]);
 
   const zoomBy = useCallback(
     (d: number) => {
