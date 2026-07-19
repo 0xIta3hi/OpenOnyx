@@ -259,6 +259,9 @@ function createWindow(): void {
     backgroundColor: '#0f0f14',
     titleBarStyle: 'hiddenInset',
     frame: process.platform === 'darwin' ? true : false,
+    icon: process.platform === 'win32'
+      ? path.join(__dirname, '../build/icon.ico')
+      : path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
