@@ -251,49 +251,96 @@ CREATE POLICY "Space owners can update collaborators"
   );
 
 -- Notes
-CREATE POLICY "Notes are viewable if space is public or owned"
+-- Notes
+CREATE POLICY "Notes are viewable if space is public, owned, or collaborated"
   ON public.notes FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.spaces
       WHERE spaces.id = notes.space_id
-        AND (spaces.visibility = 'public' OR spaces.owner_id = auth.uid()))
+        AND (spaces.visibility = 'public' 
+             OR spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL)))
   );
-CREATE POLICY "Users can insert notes to their own spaces"
+CREATE POLICY "Users and editors can insert notes"
   ON public.notes FOR INSERT WITH CHECK (
     EXISTS (SELECT 1 FROM public.spaces
-      WHERE spaces.id = notes.space_id AND spaces.owner_id = auth.uid())
+      WHERE spaces.id = notes.space_id 
+        AND (spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL
+                          AND space_collaborators.role IN ('owner', 'editor'))))
   );
-CREATE POLICY "Users can update notes in their own spaces"
+CREATE POLICY "Users and editors can update notes"
   ON public.notes FOR UPDATE USING (
     EXISTS (SELECT 1 FROM public.spaces
-      WHERE spaces.id = notes.space_id AND spaces.owner_id = auth.uid())
+      WHERE spaces.id = notes.space_id 
+        AND (spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL
+                          AND space_collaborators.role IN ('owner', 'editor'))))
   );
-CREATE POLICY "Users can delete notes in their own spaces"
+CREATE POLICY "Users and editors can delete notes"
   ON public.notes FOR DELETE USING (
     EXISTS (SELECT 1 FROM public.spaces
-      WHERE spaces.id = notes.space_id AND spaces.owner_id = auth.uid())
+      WHERE spaces.id = notes.space_id 
+        AND (spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL
+                          AND space_collaborators.role IN ('owner', 'editor'))))
   );
 
 -- Note chunks
-CREATE POLICY "Chunks viewable if space public or owned"
+CREATE POLICY "Chunks viewable if space public, owned, or collaborated"
   ON public.note_chunks FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
       WHERE notes.id = note_chunks.note_id
-        AND (spaces.visibility = 'public' OR spaces.owner_id = auth.uid()))
+        AND (spaces.visibility = 'public' 
+             OR spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL)))
   );
-CREATE POLICY "Users can insert chunks to their own notes"
+CREATE POLICY "Users and editors can insert chunks"
   ON public.note_chunks FOR INSERT WITH CHECK (
     EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-      WHERE notes.id = note_chunks.note_id AND spaces.owner_id = auth.uid())
+      WHERE notes.id = note_chunks.note_id 
+        AND (spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL
+                          AND space_collaborators.role IN ('owner', 'editor'))))
   );
-CREATE POLICY "Users can update chunks in their own notes"
+CREATE POLICY "Users and editors can update chunks"
   ON public.note_chunks FOR UPDATE USING (
     EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-      WHERE notes.id = note_chunks.note_id AND spaces.owner_id = auth.uid())
+      WHERE notes.id = note_chunks.note_id 
+        AND (spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL
+                          AND space_collaborators.role IN ('owner', 'editor'))))
   );
-CREATE POLICY "Users can delete chunks in their own notes"
+CREATE POLICY "Users and editors can delete chunks"
   ON public.note_chunks FOR DELETE USING (
     EXISTS (SELECT 1 FROM public.notes JOIN public.spaces ON spaces.id = notes.space_id
-      WHERE notes.id = note_chunks.note_id AND spaces.owner_id = auth.uid())
+      WHERE notes.id = note_chunks.note_id 
+        AND (spaces.owner_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM public.space_collaborators 
+                        WHERE space_collaborators.space_id = spaces.id 
+                          AND space_collaborators.user_id = auth.uid()
+                          AND space_collaborators.accepted_at IS NOT NULL
+                          AND space_collaborators.role IN ('owner', 'editor'))))
   );
 
 -- Space embeddings

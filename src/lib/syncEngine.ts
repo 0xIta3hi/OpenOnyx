@@ -435,8 +435,13 @@ export class SyncEngine {
         for (const itemId of pushedItemIds) {
           await localDB.removeSyncItem(itemId);
         }
-      } catch (err) {
-        console.error(`[SyncEngine] Push failed for ${table}:`, err);
+      } catch (err: any) {
+        console.error(`[SyncEngine] Push failed for ${table}:`, err?.message || err, {
+          code: err?.code,
+          details: err?.details,
+          hint: err?.hint,
+          message: err?.message
+        });
         // Increment retry count but NEVER drop items. Offline edits must
         // survive indefinitely until connectivity is restored. The retry
         // count is used for exponential backoff, not as a hard limit.
@@ -522,17 +527,23 @@ export class SyncEngine {
         // Apply to IndexedDB (no sync enqueue -- this came from remote)
         await localDB.putNote(remoteNote, false);
 
-        // Write to filesystem
-        if (cleanPath && !remote.deleted) {
+        // Apply file change to filesystem (write or delete)
+        if (cleanPath) {
           try {
             const api = getAPI();
-            if (cleanPath.includes('/')) {
-              const parentDir = cleanPath.split('/').slice(0, -1).join('/');
-              try { await api.createDirectory(parentDir); } catch { /* exists */ }
+            if (remote.deleted) {
+              await api.deleteFile(cleanPath);
+            } else {
+              if (cleanPath.includes('/')) {
+                const parentDir = cleanPath.split('/').slice(0, -1).join('/');
+                try { await api.createDirectory(parentDir); } catch { /* exists */ }
+              }
+              await api.writeFile(cleanPath, remoteNote.content || '');
             }
-            await api.writeFile(cleanPath, remoteNote.content || '');
           } catch (err) {
-            console.error('[SyncEngine] Failed to write pulled file:', err);
+            if (!remote.deleted) {
+              console.error('[SyncEngine] Failed to write pulled file:', err);
+            }
           }
         }
 
@@ -634,6 +645,8 @@ export class SyncEngine {
           }
         }
       }
+
+
 
       if (enqueuedAny) {
         console.log('[SyncEngine] Detected and enqueued offline edits for sync');
