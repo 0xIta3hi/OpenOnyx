@@ -299,6 +299,23 @@ export function CollaborationPanel({
     setExpandedSection(prev => prev === section ? null : section);
   };
 
+  // ── Maintenance state ────────────────────────────────────────────────────
+
+  const MAINTENANCE_MODE = true;
+  if (MAINTENANCE_MODE) {
+    return (
+      <div className={settingCenteredCardClass}>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <AlertCircle size={32} strokeWidth={1.5} className="text-yellow-500" />
+          <div className="text-sm font-medium text-[var(--text-primary)]">Collaboration Under Maintenance</div>
+          <div className="text-[12.5px] text-[var(--text-muted)] max-w-[280px] leading-relaxed">
+            We found a few issues with real-time collaboration and are working to resolve them. It will be fully back soon.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Loading state ────────────────────────────────────────────────────────
 
   if (authLoading || isInitialLoading) {
@@ -365,6 +382,13 @@ export function CollaborationPanel({
 
   return (
     <div className="collaboration-panel-container">
+      <div className="flex items-start gap-2.5 px-3.5 py-2.5 bg-yellow-500/[0.08] border border-yellow-500/20 rounded-md text-yellow-500 text-[12.5px] mb-4">
+        <AlertCircle size={14} className="shrink-0 mt-0.5" />
+        <span className="flex-1 leading-relaxed">
+          We found a few issues with real-time collaboration and are working to resolve them. It will be fully back soon.
+        </span>
+      </div>
+
       {error && (
         <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/[0.08] border border-red-500/20 rounded-md text-red-500 text-[12.5px] mb-4">
           <AlertCircle size={14} className="shrink-0" />
