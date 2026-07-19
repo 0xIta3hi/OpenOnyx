@@ -17,6 +17,7 @@
 import { embedText, simpleHash } from "./embeddings";
 import { loadVectorIndex, saveVectorIndex, updateSpace, pushSpaceNotes, pushSpaceChunks, getSpace } from "./spaces-store";
 import { getAPI } from "./api";
+import { authManager } from "../lib/auth";
 import type { SpaceChunk, SpaceVectorIndex } from "../types/spaces";
 import type { FileEntry } from "../types/index";
 
@@ -214,9 +215,13 @@ export async function buildVectorIndex(
   const vaultNotes = customNotes || await collectVaultNotes(fileTree);
   const totalNotes = vaultNotes.length;
 
-  // 1.5. Push raw notes to Supabase immediately if this is a cloud space
+  // 1.5. Push raw notes to Supabase immediately if this is a cloud space owned by the user
   const spaceData = await getSpace(spaceId);
-  if (spaceData && spaceData.visibility !== "local" && !customNotes) {
+  const currentUserId = authManager.getUserId();
+  const isOwner = spaceData && spaceData.ownerId === currentUserId;
+  const shouldPushToCloud = spaceData && spaceData.visibility !== "local" && isOwner && !customNotes;
+
+  if (shouldPushToCloud) {
     const notesForCloud = vaultNotes.map((n) => ({
       path: n.path,
       title: n.title,
@@ -327,8 +332,8 @@ export async function buildVectorIndex(
 
   await saveVectorIndex(index);
 
-  // 4. Push notes to Supabase if this space is cloud-synced
-  if (spaceData && spaceData.visibility !== "local") {
+  // 4. Push notes to Supabase if this space is cloud-synced and owned by the user
+  if (shouldPushToCloud) {
     const notesForCloud = vaultNotes
       .map((n) => ({
         path: n.path,

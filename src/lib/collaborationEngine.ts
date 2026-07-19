@@ -1855,7 +1855,7 @@ class CollaborationEngine {
    */
   private opBatchBuffer = new Map<string, CollabOperation[]>();
   private opBatchTimer: ReturnType<typeof setTimeout> | null = null;
-  private static readonly OP_BATCH_INTERVAL = 50; // ms
+  private static readonly OP_BATCH_INTERVAL = 20; // ms
 
   /**
    * Internal state for cursor presence throttling. Cursor positions are
@@ -1865,7 +1865,7 @@ class CollaborationEngine {
   private cursorThrottleTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingCursorPresence: CursorPresence | null = null;
   private lastCursorBroadcast = 0;
-  private static readonly CURSOR_THROTTLE_MS = 100;
+  private static readonly CURSOR_THROTTLE_MS = 60;
 
   /**
    * Broadcast granular editing operations to all connected peers.

@@ -12,10 +12,11 @@
  * the creator's perspective, and refuses generic answers.
  */
 
-import { embedText } from "./embeddings";
+import { embedText, isModelLoaded } from "./embeddings";
 import { loadVectorIndex } from "./spaces-store";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "./ai-settings";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { privateCrypto } from "../lib/privateCrypto";
 import type { SpaceChunk, SpaceChatMessage } from "../types/spaces";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -338,6 +339,17 @@ function tokenizeQuery(query: string): string[] {
     .slice(0, 24);
 }
 
+function splitTextIntoChunks(text: string, size = 1200, overlap = 200): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    const chunkText = text.substring(start, start + size);
+    chunks.push(chunkText);
+    start += size - overlap;
+  }
+  return chunks;
+}
+
 function lexicalSimilarity(queryTerms: string[], chunk: SpaceChunk): number {
   if (queryTerms.length === 0) return 0;
 
@@ -467,18 +479,26 @@ export async function retrieveChunks(
   minSimilarity: number = MIN_SIMILARITY,
   options?: { diversify?: boolean },
 ): Promise<RetrievedChunk[]> {
+  console.log("[SpacesRAG] retrieveChunks called for space:", spaceId, "query:", query);
+  
   let queryVector: number[] | null = null;
   try {
     const embedded = await embedText(query);
-    queryVector = embedded.some((value) => value !== 0) ? embedded : null;
+    if (isModelLoaded()) {
+      queryVector = embedded.some((value) => value !== 0) ? embedded : null;
+      console.log("[SpacesRAG] Generated semantic query vector. Length:", queryVector?.length);
+    } else {
+      console.log("[SpacesRAG] Local model not loaded, skipping semantic query vector generation.");
+    }
   } catch (err) {
     console.warn("[SpacesRAG] Embedding query failed, using lexical retrieval fallback:", err);
   }
   const results: RetrievedChunk[] = [];
 
-  // 1. If cloud is available, try it first
+  // 1. If cloud is available and we have a semantic query vector, try semantic cloud search first
   if (isSupabaseConfigured && queryVector) {
     try {
+      console.log("[SpacesRAG] Attempting semantic cloud search...");
       const { data: cloudChunks, error } = await supabase.rpc("match_note_chunks", {
         filter_space_id: spaceId,
         query_embedding: `[${queryVector.join(",")}]`,
@@ -489,6 +509,7 @@ export async function retrieveChunks(
       if (error) throw error;
 
       if (cloudChunks && cloudChunks.length > 0) {
+        console.log(`[SpacesRAG] Semantic cloud search returned ${cloudChunks.length} chunks.`);
         for (const rc of cloudChunks) {
           results.push({
             chunk: {
@@ -504,21 +525,22 @@ export async function retrieveChunks(
             similarity: rc.similarity,
           });
         }
-        // If we got cloud results, we return them (they are more authoritative for shared spaces)
-        if (results.length > 0) {
-          return options?.diversify
-            ? diversifyRetrievedChunks(results, topK)
-            : results;
-        }
+        
+        return options?.diversify
+          ? diversifyRetrievedChunks(results, topK)
+          : results;
+      } else {
+        console.log("[SpacesRAG] Semantic cloud search returned 0 chunks.");
       }
     } catch (err) {
-      console.warn("[SpacesRAG] Cloud retrieval failed, falling back to local:", err);
+      console.warn("[SpacesRAG] Cloud semantic search failed:", err);
     }
   }
 
-  // 2. Local Fallback (for local spaces or when offline)
+  // 2. Try Local Fallback (for local spaces or cached cloud spaces)
   const index = await loadVectorIndex(spaceId);
   if (index && index.chunks.length > 0) {
+    console.log(`[SpacesRAG] Found local vector index with ${index.chunks.length} chunks. Performing search.`);
     const queryTerms = queryVector ? [] : tokenizeQuery(query);
     for (const chunk of index.chunks) {
       const sim = queryVector
@@ -528,6 +550,117 @@ export async function retrieveChunks(
       if (sim > effectiveMinSimilarity) {
         results.push({ chunk, similarity: sim });
       }
+    }
+    console.log(`[SpacesRAG] Local fallback matched ${results.length} chunks.`);
+  } else {
+    console.log("[SpacesRAG] No local vector index found on disk.");
+  }
+
+  // 3. Try Cloud Lexical Fallback if we didn't find any results but we have Supabase configured
+  if (results.length === 0 && isSupabaseConfigured) {
+    try {
+      console.log("[SpacesRAG] Attempting cloud database lexical fallback for space:", spaceId);
+      
+      // First, fetch notes in this space (including encrypted and mapping columns for private spaces)
+      const { data: notesData, error: notesErr } = await supabase
+        .from("notes" as any)
+        .select("id, title, path, version, content, content_encrypted, iv, auth_tag, encryption_version")
+        .eq("space_id", spaceId)
+        .eq("deleted", false);
+
+      if (notesErr) throw notesErr;
+
+      const noteTitleMap: Record<string, string> = {};
+      const noteIds: string[] = [];
+      const decryptedNotes: { id: string; title: string; content: string }[] = [];
+
+      if (notesData) {
+        for (const n of notesData as any[]) {
+          noteTitleMap[n.id] = n.title;
+          noteIds.push(n.id);
+
+          let decryptedContent = n.content || "";
+          if (n.content_encrypted && privateCrypto.isUnlocked(spaceId)) {
+            try {
+              decryptedContent = await privateCrypto.decryptNoteContent(spaceId, n);
+            } catch (decErr) {
+              console.warn(`[SpacesRAG] Cloud fallback decryption failed for note: "${n.title}" (id: "${n.id}", path: "${n.path}", version: ${n.version}, iv: "${n.iv}", auth_tag: "${n.auth_tag}")`, decErr);
+            }
+          }
+          decryptedNotes.push({
+            id: n.id,
+            title: n.title,
+            content: decryptedContent,
+          });
+        }
+      }
+
+      if (noteIds.length > 0) {
+        console.log(`[SpacesRAG] Cloud lexical fallback: querying note_chunks via inner join on notes...`);
+        const { data, error } = await supabase
+          .from("note_chunks" as any)
+          .select("id, note_id, content, notes!inner(space_id)")
+          .eq("notes.space_id", spaceId);
+
+        if (error) throw error;
+
+        const cloudChunks = data as any[] | null;
+        if (cloudChunks && cloudChunks.length > 0) {
+          console.log(`[SpacesRAG] Cloud database lexical fallback fetched ${cloudChunks.length} chunks. Scoring...`);
+          const queryTerms = tokenizeQuery(query);
+          for (const rc of cloudChunks) {
+            const mockChunk = {
+              id: rc.id,
+              spaceId,
+              notePath: "",
+              noteTitle: noteTitleMap[rc.note_id] || "Unknown Note",
+              chunkText: rc.content || "",
+              vector: [],
+              startOffset: 0,
+              endOffset: 0,
+            };
+            const sim = lexicalSimilarity(queryTerms, mockChunk);
+            if (sim > 0) {
+              results.push({
+                chunk: mockChunk,
+                similarity: sim,
+              });
+            }
+          }
+          console.log(`[SpacesRAG] Cloud database lexical fallback matched ${results.length} chunks.`);
+        } else {
+          console.log("[SpacesRAG] Cloud note_chunks table empty. Performing in-memory decryption and fallback chunking search...");
+          const queryTerms = tokenizeQuery(query);
+          for (const n of decryptedNotes) {
+            if (!n.content || n.content.trim().length < 5) continue;
+            const textChunks = splitTextIntoChunks(n.content);
+            textChunks.forEach((chunkText, idx) => {
+              const mockChunk = {
+                id: `mem-${n.id}-${idx}`,
+                spaceId,
+                notePath: "",
+                noteTitle: n.title,
+                chunkText: chunkText,
+                vector: [],
+                startOffset: 0,
+                endOffset: 0,
+              };
+              const sim = lexicalSimilarity(queryTerms, mockChunk);
+              if (sim > 0) {
+                results.push({
+                  chunk: mockChunk,
+                  similarity: sim,
+                });
+              }
+            });
+          }
+          console.log(`[SpacesRAG] In-memory decryption and fallback chunking matched ${results.length} chunks.`);
+        }
+      } else {
+        console.log("[SpacesRAG] Cloud database lexical fallback: no notes found for this space.");
+      }
+    } catch (err) {
+      console.warn("[SpacesRAG] Cloud database lexical fallback failed:", err);
     }
   }
 

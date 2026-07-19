@@ -231,7 +231,7 @@ export class SyncEngine {
     if (this.pushDebounceTimeout) clearTimeout(this.pushDebounceTimeout);
     this.pushDebounceTimeout = setTimeout(() => {
       this.pushChanges();
-    }, 500);
+    }, 200);
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────

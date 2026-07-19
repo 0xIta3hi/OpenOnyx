@@ -7217,6 +7217,7 @@ export default function App() {
               onClose={() => closeTab(spacesTab.id)}
               fileTree={fileTree}
               onOpenNote={(path) => { openFile(path); }}
+              vaultPath={vaultPath || undefined}
             />
           </div>
         )}

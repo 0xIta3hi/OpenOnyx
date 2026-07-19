@@ -379,8 +379,8 @@ export class PluginManager {
     const approvals = await this._getApprovals();
     const existing = approvals[manifest.id];
 
-    // Check if already approved for this version
-    if (existing && existing.version === manifest.version) {
+    // Check if already approved (any version)
+    if (existing) {
       const allApproved = requestedPermissions.every(p => existing.permissions.includes(p));
       if (allApproved) return true;
     }

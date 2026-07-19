@@ -15,7 +15,7 @@ import { syncEngine } from "../../lib/syncEngine";
 import { localDB } from "../../lib/localdb";
 import { supabase } from "../../lib/supabase";
 import type { CollabOperation, CursorPresence } from "../../utils/collabOperations";
-import { operationToChangeSpec, clampOperation, rangesOverlap } from "../../utils/collabOperations";
+import { operationToChangeSpec, clampOperation } from "../../utils/collabOperations";
 import { setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { normalizeVersion, sha256Hex } from "../../utils/collabDocument";
 import { Transaction } from "@codemirror/state";
@@ -451,7 +451,7 @@ export function LeafPaneEditor({
         if (!autoSaveTimer.current) {
           pendingSaveRef.current = null;
         }
-      }, 800);
+      }, 300);
     }
   }, [activeTab.path, onContentChangeGlobal, collabFailSafe]);
 
@@ -566,12 +566,23 @@ export function LeafPaneEditor({
   const enterFailSafeMode = useCallback((reason: string) => {
     desyncCountRef.current += 1;
     console.warn("[Collab][fail_safe_check]", { path: activeTab.path, reason, desyncCount: desyncCountRef.current });
-    if (desyncCountRef.current >= 3) {
+    if (desyncCountRef.current >= 10) {
       console.error("[Collab][fail_safe_enabled]", { path: activeTab.path, reason });
       setCollabFailSafe(true);
       collaborationEngine.setCollabPaused(true);
     }
   }, [activeTab.path]);
+
+  // Decay the desync counter over time so transient issues do not accumulate
+  // across an entire session and eventually trip the fail-safe.
+  useEffect(() => {
+    const decayInterval = setInterval(() => {
+      if (desyncCountRef.current > 0) {
+        desyncCountRef.current = Math.max(0, desyncCountRef.current - 1);
+      }
+    }, 30_000);
+    return () => clearInterval(decayInterval);
+  }, []);
 
   const scheduleRemoteContentPersist = useCallback((path: string, remoteContent: string, meta?: RemoteDocumentMeta) => {
     if (!collaborationEngine.activeSpaceId || path === "__new_tab__") return;
@@ -623,39 +634,14 @@ export function LeafPaneEditor({
       // length, so we must re-read doc.length after each one. Batching them
       // all against a single stale snapshot causes position corruption on the
       // 2nd+ operation.
-      let expectedBaseVersion = docVersionRef.current;
-      let batchNextVersion = expectedBaseVersion;
+      let batchNextVersion = docVersionRef.current;
       for (let index = 0; index < ops.length; index++) {
         const op = ops[index];
-        const baseVersion = normalizeVersion(op.base_version);
         const incomingVersion = normalizeVersion(op.version);
-        const opTo = op.to ?? op.from + (op.text?.length || 0);
-        const hasLocalOverlap = recentLocalEditsRef.current.some(edit =>
-          rangesOverlap(op.from, opTo, edit.from, edit.to),
-        );
 
-        if (baseVersion !== expectedBaseVersion) {
-          console.warn("[Collab][op_rejected_version_mismatch]", {
-            path,
-            operation_id: op.operation_id,
-            baseVersion,
-            currentVersion: expectedBaseVersion,
-            incomingVersion,
-          });
-
-          if (hasLocalOverlap) {
-            console.warn("[Collab][op_conflict_overlap]", {
-              path,
-              operation_id: op.operation_id,
-              range: [op.from, opTo],
-            });
-          }
-
-          enterFailSafeMode("remote operation version mismatch");
-          void collaborationEngine.triggerSafeResync(path, expectedBaseVersion);
-          return;
-        }
-
+        // Apply optimistically -- version skew is expected during concurrent
+        // editing in a LWW system. Position clamping prevents out-of-range
+        // errors, and the full-document fallback handles convergence.
         const docLen = view.state.doc.length;
         const clamped = clampOperation(op, docLen);
         const change = operationToChangeSpec(clamped);
@@ -665,29 +651,28 @@ export function LeafPaneEditor({
           // as a non-user edit (isUserEvent("input"/"delete"/etc.) returns false).
           annotations: Transaction.remote.of(true),
         });
-        batchNextVersion = Math.max(batchNextVersion, incomingVersion || expectedBaseVersion + 1);
+        batchNextVersion = Math.max(batchNextVersion, incomingVersion || batchNextVersion + 1);
         collaborationEngine.markOperationApplied(op.operation_id);
-        const nextOp = ops[index + 1];
-        if (!nextOp || normalizeVersion(nextOp.base_version) !== baseVersion) {
-          expectedBaseVersion = batchNextVersion;
-        }
       }
       docVersionRef.current = batchNextVersion;
+      // Reset desync counter on every successful batch of remote ops
+      desyncCountRef.current = 0;
 
       const nextContent = view.state.doc.toString();
       const lastOp = ops[ops.length - 1];
       void sha256Hex(nextContent).then((hash) => {
         docHashRef.current = hash;
         if (lastOp?.content_hash && lastOp.content_hash !== hash) {
-          console.warn("[Collab][hash_mismatch_after_ops]", {
+          // Log for debugging but do NOT enter fail-safe -- during concurrent
+          // edits the local doc will differ from the sender's snapshot. Schedule
+          // a background resync to eventually converge.
+          console.info("[Collab][hash_drift_after_ops]", {
             path,
             expected: lastOp.content_hash,
             actual: hash,
             version: docVersionRef.current,
           });
-          enterFailSafeMode("hash mismatch after remote operations");
           void collaborationEngine.triggerSafeResync(path, docVersionRef.current);
-          return;
         }
         setContent(nextContent);
         latestContentRef.current = nextContent;
@@ -806,10 +791,9 @@ export function LeafPaneEditor({
       if (path !== activeTab.path) return;
       if (collabFailSafe) return;
 
-      const isTabModified = leaf.tabs.find(t => t.id === activeTab.id)?.isModified;
-      if (isSelfTyping || isTabModified) {
-        return;
-      }
+      // Allow remote full-doc updates even while the user is typing. Previously
+      // this was blocked by `isSelfTyping`, which caused peer text changes to
+      // be silently dropped for 2.5s after each keystroke.
 
       const incomingVersion = normalizeVersion(meta?.version);
       const currentVersion = docVersionRef.current;

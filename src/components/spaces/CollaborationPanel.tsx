@@ -301,7 +301,7 @@ export function CollaborationPanel({
 
   // ── Maintenance state ────────────────────────────────────────────────────
 
-  const MAINTENANCE_MODE = true;
+  const MAINTENANCE_MODE = false;
   if (MAINTENANCE_MODE) {
     return (
       <div className={settingCenteredCardClass}>

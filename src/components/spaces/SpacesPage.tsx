@@ -51,6 +51,7 @@ interface SpacesPageProps {
   onClose: () => void;
   fileTree: FileEntry[];
   onOpenNote?: (path: string) => void;
+  vaultPath?: string;
 }
 
 // ── Suggested Queries ────────────────────────────────────────────────────────
@@ -657,7 +658,7 @@ function ActiveActionStatus({ actionType, isApplied }: ActiveActionStatusProps) 
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
+export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesPageProps) {
   // Navigation
   const [view, setView] = useState<"marketplace" | "space">("marketplace");
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
@@ -710,6 +711,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
   const activeConversationIdRef = useRef<string | null>(null);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Unlock Private Space states
+  const [unlockSpaceId, setUnlockSpaceId] = useState<string | null>(null);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   const inputTokens = useMemo(() => Math.ceil((chatInput || "").length / 4), [chatInput]);
   const availableChatModels = useMemo<AIModel[]>(() => {
@@ -1069,29 +1076,93 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
     }
   }, []);
 
+  // Reset view and active space state when the vault is changed
+  useEffect(() => {
+    setView("marketplace");
+    setActiveSpace(null);
+    setActiveSpaceId(null);
+    activeSpaceIdRef.current = null;
+    setActiveConversationId(null);
+    activeConversationIdRef.current = null;
+    setConversations([]);
+    setChatMessages([]);
+    setIsIndexed(false);
+  }, [vaultPath]);
+
+  // Refresh spaces list when vault or login status changes
   useEffect(() => {
     refreshSpaces();
-  }, [refreshSpaces]);
+  }, [vaultPath, authEmail, refreshSpaces]);
 
   // ── Open a space ─────────────────────────────────────
   const openSpace = useCallback(async (id: string) => {
-    activeSpaceIdRef.current = id;
-    const space = await getSpace(id);
-    if (activeSpaceIdRef.current !== id) return;
-    if (space) {
-      setActiveSpace(space);
-      setActiveSpaceId(id);
-      setView("space");
-      setStreamingText("");
-      setChatInput("");
-      const currentUserId = authManager.getUserId();
-      const isRemoteSpace = space.visibility !== "local" && space.ownerId !== currentUserId;
+    console.log("[SpacesPage] openSpace triggered for space ID:", id);
+    try {
+      activeSpaceIdRef.current = id;
       
-      // If it's a cloud space owned by someone else, we don't auto-index on open
-      setIsIndexed(isRemoteSpace);
+      console.log("[SpacesPage] Current spaces in state:", spaces.map(s => ({ id: s.id, title: s.title, visibility: s.visibility })));
+      const listSpace = spaces.find(s => s.id === id);
+      console.log("[SpacesPage] Found listSpace:", listSpace);
+      
+      const isUnlocked = privateCrypto.isUnlocked(id);
+      console.log("[SpacesPage] Is space unlocked in crypto engine:", isUnlocked);
 
-      // Load conversations from disk
-      const convList = await loadSpaceConversations(id);
+      if (listSpace && listSpace.visibility === "private" && !isUnlocked) {
+        console.log("[SpacesPage] Space is private and locked. Opening password prompt modal.");
+        setUnlockSpaceId(id);
+        setUnlockPassword("");
+        setUnlockError(null);
+        return;
+      }
+
+      console.log("[SpacesPage] Fetching full space metadata...");
+      let space = await getSpace(id);
+      console.log("[SpacesPage] Loaded space metadata from store/db:", space);
+
+      if (!space && listSpace) {
+        console.log("[SpacesPage] getSpace returned null, using listSpace fallback.");
+        space = {
+          id: listSpace.id,
+          title: listSpace.title,
+          description: listSpace.description || "",
+          helpsWith: listSpace.helpsWith || [],
+          visibility: listSpace.visibility,
+          ownerId: listSpace.ownerId,
+          noteCount: listSpace.noteCount,
+          createdAt: listSpace.createdAt,
+          updatedAt: listSpace.updatedAt,
+        };
+      }
+
+      if (activeSpaceIdRef.current !== id) {
+        console.log("[SpacesPage] activeSpaceIdRef changed, ignoring this open event.");
+        return;
+      }
+
+      if (space) {
+        // Secondary check just in case listSpace was missing
+        if (space.visibility === "private" && !privateCrypto.isUnlocked(id)) {
+          console.log("[SpacesPage] Secondary check: space is locked. Opening password prompt modal.");
+          setUnlockSpaceId(id);
+          setUnlockPassword("");
+          setUnlockError(null);
+          return;
+        }
+
+        console.log("[SpacesPage] Unlocked and ready. Opening space view.");
+        setActiveSpace(space);
+        setActiveSpaceId(id);
+        setView("space");
+        setStreamingText("");
+        setChatInput("");
+        const currentUserId = authManager.getUserId();
+        const isRemoteSpace = space.visibility !== "local" && space.ownerId !== currentUserId;
+        
+        setIsIndexed(space.noteCount > 0 || isRemoteSpace);
+
+        // Load conversations from disk
+        console.log("[SpacesPage] Loading conversations list...");
+        const convList = await loadSpaceConversations(id);
       if (activeSpaceIdRef.current !== id) return;
 
       if (convList.length === 0) {
@@ -1144,7 +1215,30 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
         }
       }
     }
-  }, []);
+  } catch (err) {
+    console.error("[SpacesPage] Error in openSpace:", err);
+  }
+}, [spaces]);
+
+  const handleUnlockSpace = useCallback(async () => {
+    if (!unlockSpaceId || !unlockPassword) return;
+    setUnlockError(null);
+    setUnlocking(true);
+    try {
+      await collaborationEngine.unlockPrivateSpace(unlockSpaceId, unlockPassword);
+      const spaceId = unlockSpaceId;
+      setUnlockSpaceId(null);
+      setUnlockPassword("");
+      // Refresh the spaces/index so it's marked as unlocked
+      await refreshSpaces();
+      // Open the space
+      await openSpace(spaceId);
+    } catch (err: any) {
+      setUnlockError(err.message || "Incorrect password or decryption failed.");
+    } finally {
+      setUnlocking(false);
+    }
+  }, [unlockSpaceId, unlockPassword, refreshSpaces, openSpace]);
 
   // ── Conversation actions ─────────────────────────────
   const selectConversation = useCallback(async (convId: string) => {
@@ -2462,6 +2556,73 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
             message={authMessage}
           />
         )}
+
+        {/* Unlock Private Space Modal */}
+        {unlockSpaceId && (() => {
+          const spaceToUnlock = spaces.find(s => s.id === unlockSpaceId);
+          return (
+            <div className={modalOverlayClass} onClick={() => {
+              setUnlockSpaceId(null);
+              setUnlockPassword("");
+              setUnlockError(null);
+            }}>
+              <div className={`${modalContentClass} max-w-[380px]`} onClick={(e) => e.stopPropagation()}>
+                <div className={modalHeaderClass}>
+                  <h3 className={modalTitleClass}>Unlock Private Space</h3>
+                  <button className={modalCloseClass} onClick={() => {
+                    setUnlockSpaceId(null);
+                    setUnlockPassword("");
+                    setUnlockError(null);
+                  }}>
+                    <X size={15} />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-3.5 p-5">
+                  <p className="m-0 text-[13px] leading-normal text-[var(--text-secondary)]">
+                    Enter the password to unlock the private space <strong>{spaceToUnlock?.title || "this space"}</strong>.
+                  </p>
+                  
+                  <div className={spaceFormFieldClass}>
+                    <label className={spaceFormLabelClass}>Encryption Password</label>
+                    <input
+                      className={spaceFormInputClass}
+                      type="password"
+                      placeholder="Password"
+                      value={unlockPassword}
+                      onChange={(e) => setUnlockPassword(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && unlockPassword.trim()) {
+                          e.preventDefault();
+                          handleUnlockSpace();
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
+
+                  {unlockError && <div className={spaceFormErrorClass}>{unlockError}</div>}
+
+                  <div className={spaceFormActionsClass}>
+                    <button className={cx(spaceBtnGhostClass, spaceBtnSmClass)} onClick={() => {
+                      setUnlockSpaceId(null);
+                      setUnlockPassword("");
+                      setUnlockError(null);
+                    }}>
+                      Cancel
+                    </button>
+                    <button
+                      className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
+                      onClick={handleUnlockSpace}
+                      disabled={unlocking || !unlockPassword.trim()}
+                    >
+                      {unlocking ? "Unlocking..." : "Unlock"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -3741,6 +3902,73 @@ export function SpacesPage({ onClose, fileTree, onOpenNote }: SpacesPageProps) {
           message={authMessage}
         />
       )}
+
+      {/* Unlock Private Space Modal */}
+      {unlockSpaceId && (() => {
+        const spaceToUnlock = spaces.find(s => s.id === unlockSpaceId);
+        return (
+          <div className={modalOverlayClass} onClick={() => {
+            setUnlockSpaceId(null);
+            setUnlockPassword("");
+            setUnlockError(null);
+          }}>
+            <div className={`${modalContentClass} max-w-[380px]`} onClick={(e) => e.stopPropagation()}>
+              <div className={modalHeaderClass}>
+                <h3 className={modalTitleClass}>Unlock Private Space</h3>
+                <button className={modalCloseClass} onClick={() => {
+                  setUnlockSpaceId(null);
+                  setUnlockPassword("");
+                  setUnlockError(null);
+                }}>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="flex flex-col gap-3.5 p-5">
+                <p className="m-0 text-[13px] leading-normal text-[var(--text-secondary)]">
+                  Enter the password to unlock the private space <strong>{spaceToUnlock?.title || "this space"}</strong>.
+                </p>
+                
+                <div className={spaceFormFieldClass}>
+                  <label className={spaceFormLabelClass}>Encryption Password</label>
+                  <input
+                    className={spaceFormInputClass}
+                    type="password"
+                    placeholder="Password"
+                    value={unlockPassword}
+                    onChange={(e) => setUnlockPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && unlockPassword.trim()) {
+                        e.preventDefault();
+                        handleUnlockSpace();
+                      }
+                    }}
+                    autoFocus
+                  />
+                </div>
+
+                {unlockError && <div className={spaceFormErrorClass}>{unlockError}</div>}
+
+                <div className={spaceFormActionsClass}>
+                  <button className={cx(spaceBtnGhostClass, spaceBtnSmClass)} onClick={() => {
+                    setUnlockSpaceId(null);
+                    setUnlockPassword("");
+                    setUnlockError(null);
+                  }}>
+                    Cancel
+                  </button>
+                  <button
+                    className={cx(spaceBtnPrimaryClass, spaceBtnSmClass)}
+                    onClick={handleUnlockSpace}
+                    disabled={unlocking || !unlockPassword.trim()}
+                  >
+                    {unlocking ? "Unlocking..." : "Unlock"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

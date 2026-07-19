@@ -295,72 +295,26 @@ function generateDeterministicId(spaceId: string, notePath: string): string {
 
 async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
   if (!isSupabaseConfigured) return [];
+  if (!authManager.isLoggedIn()) return [];
 
-  const rawSpaces: RemoteSpaceRow[] = [];
+  const userId = authManager.getUserId();
+  if (!userId) return [];
 
-  // 1. Fetch public spaces
-  const { data: publicSpaces, error: publicErr } = await getClient()
+  // Fetch all remote spaces owned by the current user (both public and private)
+  const { data: ownSpaces, error: ownErr } = await getClient()
     .from("spaces" as any)
     .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
-    .eq("visibility", "public")
+    .eq("owner_id", userId)
     .order("updated_at", { ascending: false });
 
-  if (publicErr) {
-    console.error("[SpacesStore] Failed to fetch public spaces:", publicErr);
-  } else if (publicSpaces) {
-    rawSpaces.push(...(publicSpaces as unknown as RemoteSpaceRow[]));
+  if (ownErr) {
+    console.error("[SpacesStore] Failed to fetch own spaces:", ownErr);
+    return [];
   }
 
-  // 2. Fetch private spaces if logged in
-  if (authManager.isLoggedIn()) {
-    const userId = authManager.getUserId();
-    if (userId) {
-      const { data: ownSpaces, error: ownErr } = await getClient()
-        .from("spaces" as any)
-        .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
-        .eq("owner_id", userId)
-        .eq("visibility", "private")
-        .order("updated_at", { ascending: false });
+  const rawSpaces = (ownSpaces || []) as unknown as RemoteSpaceRow[];
 
-      if (ownErr) {
-        console.error("[SpacesStore] Failed to fetch own spaces:", ownErr);
-      } else if (ownSpaces) {
-        for (const s of ownSpaces as any[]) {
-          if (!rawSpaces.find(rs => rs.id === s.id)) {
-            rawSpaces.push(s as RemoteSpaceRow);
-          }
-        }
-      }
-
-      // 2b. Fetch spaces where user is a collaborator
-      const { data: collabRelations, error: collabRelationsErr } = await getClient()
-        .from("space_collaborators" as any)
-        .select("space_id")
-        .eq("user_id", userId);
-
-      if (collabRelationsErr) {
-        console.error("[SpacesStore] Failed to fetch collaborator spaces:", collabRelationsErr);
-      } else if (collabRelations && collabRelations.length > 0) {
-        const collabSpaceIds = (collabRelations as any[]).map(cr => cr.space_id);
-        const { data: collabSpaces, error: collabSpacesErr } = await getClient()
-          .from("spaces" as any)
-          .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
-          .in("id", collabSpaceIds);
-
-        if (collabSpacesErr) {
-          console.error("[SpacesStore] Failed to fetch collaborator spaces details:", collabSpacesErr);
-        } else if (collabSpaces) {
-          for (const s of collabSpaces as any[]) {
-            if (!rawSpaces.find(rs => rs.id === s.id)) {
-              rawSpaces.push(s as RemoteSpaceRow);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Fetch note counts for each space
+  // Fetch note counts for each space
   const countMap: Record<string, number> = {};
   await Promise.all(rawSpaces.map(async (row) => {
     try {

@@ -3,10 +3,10 @@
  *
  * Shown when a plugin requests permissions that haven't been approved yet.
  * Displays the requested permissions with risk levels and descriptions.
+ * Icon-free and emoji-free to match system rules.
  */
 
-import React, { useCallback } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, X, Globe, HardDrive, Palette, Code, Cpu } from 'lucide-react';
+import React from 'react';
 import type { PluginManifest, PluginPermission } from '../../types/plugin';
 import { PERMISSION_DESCRIPTIONS } from '../../types/plugin';
 
@@ -17,18 +17,16 @@ interface PluginPermissionModalProps {
   onDeny: () => void;
 }
 
-const PERMISSION_ICONS: Record<PluginPermission, React.ReactNode> = {
-  filesystem: <HardDrive size={16} />,
-  network: <Globe size={16} />,
-  ui: <Palette size={16} />,
-  editor: <Code size={16} />,
-  system: <Cpu size={16} />,
+const RISK_COLORS: Record<string, string> = {
+  low: 'var(--success, #22c55e)',
+  medium: 'var(--warning, #f59e0b)',
+  high: 'var(--danger, #ef4444)',
 };
 
-const RISK_COLORS: Record<string, string> = {
-  low: '#22c55e',
-  medium: '#f59e0b',
-  high: '#ef4444',
+const RISK_BG: Record<string, string> = {
+  low: 'rgba(34,197,94,0.08)',
+  medium: 'rgba(245,158,11,0.08)',
+  high: 'rgba(239,68,68,0.08)',
 };
 
 export function PluginPermissionModal({
@@ -57,27 +55,28 @@ export function PluginPermissionModal({
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(6px)',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(5px)',
         }}
         onClick={onDeny}
       />
 
-      {/* Modal */}
+      {/* Modal Container */}
       <div
         style={{
           position: 'relative',
           background: 'var(--bg-primary, #181825)',
-          border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
-          borderRadius: '16px',
-          padding: '28px',
-          maxWidth: '480px',
+          border: '1px solid var(--border-medium, rgba(255,255,255,0.08))',
+          borderRadius: '8px',
+          padding: '24px',
+          maxWidth: '440px',
           width: '90vw',
-          boxShadow: 'none',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
           zIndex: 1,
+          fontFamily: 'var(--font-interface, system-ui, sans-serif)',
         }}
       >
-        {/* Close */}
+        {/* Close Button */}
         <button
           onClick={onDeny}
           style={{
@@ -86,62 +85,42 @@ export function PluginPermissionModal({
             right: '16px',
             background: 'none',
             border: 'none',
-            color: 'var(--text-muted)',
+            color: 'var(--text-muted, #888)',
             cursor: 'pointer',
             padding: '4px',
+            fontSize: '14px',
+            fontWeight: 500,
           }}
         >
-          <X size={18} />
+          X
         </button>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: hasHighRisk
-                ? 'rgba(239, 68, 68, 0.15)'
-                : 'color-mix(in srgb, var(--accent-primary, var(--color-accent, #3b82f6)) 15%, transparent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {hasHighRisk ? (
-              <ShieldAlert size={22} color="#ef4444" />
-            ) : (
-              <Shield size={22} color="var(--accent-primary, var(--color-accent, #3b82f6))" />
-            )}
-          </div>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Plugin Permissions
-            </h3>
-            <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-              <strong>{manifest.name}</strong> v{manifest.version} by {manifest.author}
-            </p>
-          </div>
+        <div style={{ marginBottom: '18px' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Plugin Permissions
+          </h3>
+          <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+            <strong>{manifest.name}</strong> v{manifest.version} by {manifest.author}
+          </p>
         </div>
 
         {/* Description */}
         <p style={{
-          fontSize: '13px',
-          color: 'var(--text-secondary)',
+          fontSize: '12px',
+          color: 'var(--text-secondary, #b8b8b8)',
           lineHeight: 1.5,
-          marginBottom: '16px',
+          margin: '0 0 16px 0',
         }}>
           This plugin requires the following permissions to function. Review them carefully before enabling.
         </p>
 
-        {/* Permission list */}
+        {/* Permission List */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           gap: '6px',
-          marginBottom: '24px',
+          marginBottom: '20px',
         }}>
           {permissions.map(perm => {
             const desc = PERMISSION_DESCRIPTIONS[perm];
@@ -154,30 +133,30 @@ export function PluginPermissionModal({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
-                  padding: '10px 12px',
-                  background: 'var(--bg-hover, rgba(255,255,255,0.03))',
-                  borderRadius: '8px',
-                  border: `1px solid ${desc.risk === 'high' ? 'rgba(239,68,68,0.2)' : 'var(--border-subtle, rgba(255,255,255,0.05))'}`,
+                  padding: '8px 12px',
+                  background: 'var(--bg-secondary, rgba(255,255,255,0.02))',
+                  borderRadius: '6px',
+                  border: `1px solid ${desc.risk === 'high' ? 'rgba(239,68,68,0.15)' : 'var(--border-subtle, rgba(255,255,255,0.04))'}`,
                 }}
               >
-                <div style={{ color: RISK_COLORS[desc.risk], flexShrink: 0 }}>
-                  {PERMISSION_ICONS[perm]}
-                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <div style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
                     {desc.label}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: '1.4' }}>
                     {desc.description}
                   </div>
                 </div>
                 <div
                   style={{
-                    fontSize: '10px',
-                    fontWeight: 600,
+                    fontSize: '9px',
+                    fontWeight: 700,
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     color: RISK_COLORS[desc.risk],
+                    background: RISK_BG[desc.risk],
+                    padding: '2px 6px',
+                    borderRadius: '4px',
                     flexShrink: 0,
                   }}
                 >
@@ -188,36 +167,35 @@ export function PluginPermissionModal({
           })}
         </div>
 
-        {/* Warning for high-risk */}
+        {/* High Risk Warning Message */}
         {hasHighRisk && (
           <div style={{
             padding: '10px 12px',
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.15)',
-            borderRadius: '8px',
-            fontSize: '12px',
-            color: '#fca5a5',
-            lineHeight: 1.5,
+            background: 'rgba(239,68,68,0.04)',
+            border: '1px solid rgba(239,68,68,0.12)',
+            borderRadius: '6px',
+            fontSize: '11.5px',
+            color: 'var(--text-secondary, #fca5a5)',
+            lineHeight: 1.4,
             marginBottom: '20px',
           }}>
-            ⚠️ This plugin requests <strong>high-risk</strong> permissions. Only enable if you trust the author.
+            This plugin requests high-risk permissions. Only enable if you trust the author.
           </div>
         )}
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        {/* Actions Button Row */}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
           <button
             onClick={onDeny}
             style={{
-              background: 'var(--bg-hover, rgba(255,255,255,0.06))',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '8px',
-              padding: '8px 20px',
+              background: 'transparent',
+              border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+              borderRadius: '6px',
+              padding: '7px 16px',
               color: 'var(--text-secondary)',
-              fontSize: '13px',
+              fontSize: '12px',
               fontWeight: 500,
               cursor: 'pointer',
-              transition: 'all 0.15s',
             }}
           >
             Deny
@@ -225,21 +203,16 @@ export function PluginPermissionModal({
           <button
             onClick={onApprove}
             style={{
-              background: hasHighRisk ? '#ef4444' : 'var(--accent-primary, var(--color-accent, #3b82f6))',
+              background: hasHighRisk ? 'var(--danger, #ef4444)' : 'var(--accent-primary, #3b82f6)',
               border: 'none',
-              borderRadius: '8px',
-              padding: '8px 20px',
-              color: 'white',
-              fontSize: '13px',
+              borderRadius: '6px',
+              padding: '7px 16px',
+              color: 'var(--text-on-accent, #ffffff)',
+              fontSize: '12px',
               fontWeight: 500,
               cursor: 'pointer',
-              transition: 'all 0.15s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
             }}
           >
-            <ShieldCheck size={14} />
             Allow & Enable
           </button>
         </div>

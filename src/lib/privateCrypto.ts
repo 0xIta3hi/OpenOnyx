@@ -321,11 +321,61 @@ export const privateCrypto = {
       if (note.content) return note.content;
       return '';
     }
-    return this.decryptText(spaceId, {
+
+    const payload = {
       encrypted_payload: note.content_encrypted,
       iv: note.iv,
       auth_tag: note.auth_tag,
-    }, `note:${spaceId}:${note.id || ''}:${note.path || ''}:${note.version ?? 0}`);
+    };
+
+    // 1. Path Variations
+    const pathVariations: string[] = [];
+    const rawPath = note.path || '';
+    pathVariations.push(rawPath);
+
+    // Normalize relative path
+    let rel = rawPath.replace(/\\/g, '/');
+    const vaultPath = typeof window !== 'undefined' ? (window as any).__oo_vault_path : null;
+    if (vaultPath) {
+      const normalizedVault = vaultPath.replace(/\\/g, '/');
+      if (rel.startsWith(normalizedVault)) {
+        rel = rel.slice(normalizedVault.length);
+      }
+    }
+    if (rel.startsWith('/')) {
+      rel = rel.slice(1);
+    }
+    if (rel && rel !== rawPath) {
+      pathVariations.push(rel);
+    }
+
+    // Stripping leading slash variation
+    if (rawPath.startsWith('/')) {
+      pathVariations.push(rawPath.slice(1));
+    } else {
+      pathVariations.push('/' + rawPath);
+    }
+
+    const uniquePaths = Array.from(new Set(pathVariations));
+
+    // 2. Version Variations
+    const versionVariations: number[] = [note.version ?? 0, 0];
+    const uniqueVersions = Array.from(new Set(versionVariations));
+
+    // Try each combination of path and version
+    let lastError: any = null;
+    for (const p of uniquePaths) {
+      for (const v of uniqueVersions) {
+        try {
+          const aad = `note:${spaceId}:${note.id || ''}:${p}:${v}`;
+          return await this.decryptText(spaceId, payload, aad);
+        } catch (err) {
+          lastError = err;
+        }
+      }
+    }
+
+    throw lastError || new Error('Decryption failed for all path/version AAD variations.');
   },
 
   async encryptJson(spaceId: string, payload: JsonObject, aad?: string): Promise<EncryptedBlob> {

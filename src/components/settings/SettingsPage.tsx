@@ -725,7 +725,7 @@ export function SettingsPage({
       }
       const data = await response.json();
       const latestVersion = data.tag_name ? data.tag_name.replace(/^v/, "") : "";
-      
+
       if (!latestVersion) {
         setUpdateType("error");
         setUpdateStatus("Could not determine the latest version from GitHub.");
@@ -736,7 +736,7 @@ export function SettingsPage({
       const currentVersion = "1.0.1";
       const currentParts = currentVersion.split(".").map(Number);
       const latestParts = latestVersion.split(".").map(Number);
-      
+
       let isNewer = false;
       for (let i = 0; i < 3; i++) {
         const latestPart = latestParts[i] || 0;
@@ -783,8 +783,8 @@ export function SettingsPage({
           }
           if (!matchedAsset && userAgent.includes("linux")) {
             matchedAsset = data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".appimage")) ||
-                           data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".deb")) ||
-                           data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".pkg.tar.zst"));
+              data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".deb")) ||
+              data.assets.find((asset: any) => asset.name.toLowerCase().endsWith(".pkg.tar.zst"));
           }
         }
 
@@ -847,11 +847,11 @@ export function SettingsPage({
 
   const commandRows = useMemo(() => {
     const baseCommands = commands.length > 0 ? commands : [
-      { id: "new-note", label: "Create new note", shortcut: "Ctrl+N", action: () => {}, category: "Notes" },
-      { id: "save", label: "Save current note", shortcut: "Ctrl+S", action: () => {}, category: "Notes" },
-      { id: "search-file", label: "Find inside current note", shortcut: "Ctrl+F", action: () => {}, category: "Search" },
-      { id: "search-vault", label: "Search all notes in vault", shortcut: "Ctrl+Shift+F", action: () => {}, category: "Search" },
-      { id: "command-palette", label: "Open command palette", shortcut: "Ctrl+P", action: () => {}, category: "Command palette" },
+      { id: "new-note", label: "Create new note", shortcut: "Ctrl+N", action: () => { }, category: "Notes" },
+      { id: "save", label: "Save current note", shortcut: "Ctrl+S", action: () => { }, category: "Notes" },
+      { id: "search-file", label: "Find inside current note", shortcut: "Ctrl+F", action: () => { }, category: "Search" },
+      { id: "search-vault", label: "Search all notes in vault", shortcut: "Ctrl+Shift+F", action: () => { }, category: "Search" },
+      { id: "command-palette", label: "Open command palette", shortcut: "Ctrl+P", action: () => { }, category: "Command palette" },
     ];
     return baseCommands
       .map((cmd) => ({
@@ -1357,9 +1357,9 @@ export function SettingsPage({
                   <PluginSettingsPanel
                     plugins={plugins}
                     settingTabs={pluginSettingTabs}
-                    onEnablePlugin={onEnablePlugin || (async () => {})}
-                    onDisablePlugin={onDisablePlugin || (async () => {})}
-                    onRefresh={onRefreshPlugins || (async () => {})}
+                    onEnablePlugin={onEnablePlugin || (async () => { })}
+                    onDisablePlugin={onDisablePlugin || (async () => { })}
+                    onRefresh={onRefreshPlugins || (async () => { })}
                     onReloadPlugin={onReloadPlugin}
                     onUninstallPlugin={onUninstallPlugin}
                     onInstallPlugin={onInstallPlugin}
