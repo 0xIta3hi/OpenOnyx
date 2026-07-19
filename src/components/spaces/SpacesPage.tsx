@@ -760,6 +760,10 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
   const [indexProgress, setIndexProgress] = useState({ done: 0, total: 0 });
   const [isIndexed, setIsIndexed] = useState(false);
 
+  // Remix progress
+  const [isRemixing, setIsRemixing] = useState(false);
+  const [remixProgress, setRemixProgress] = useState<{ done: number; total: number } | null>(null);
+
   // Right Sidebar for AI Actions (Preview, Diff, Edit)
   const [rightSidebarMode, setRightSidebarMode] = useState<"preview" | "diff" | "edit" | "review_list" | null>(null);
   const [rightSidebarData, setRightSidebarData] = useState<{
@@ -1394,7 +1398,11 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
   // ── Fork space ───────────────────────────────────────
   const handleFork = useCallback(async (id: string) => {
     try {
-      const forked = await forkSpace(id);
+      setIsRemixing(true);
+      setRemixProgress({ done: 0, total: 100 });
+      const forked = await forkSpace(id, undefined, (done, total) => {
+        setRemixProgress({ done, total });
+      });
       if (forked) {
         await refreshSpaces();
         showToast(`\u201c${forked.title}\u201d saved to your vault.`);
@@ -1407,6 +1415,9 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
       } else {
         showToast(err instanceof Error ? err.message : "Remix failed.", "error");
       }
+    } finally {
+      setIsRemixing(false);
+      setRemixProgress(null);
     }
   }, [refreshSpaces, openSpace, showToast]);
 
@@ -2623,6 +2634,31 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
             </div>
           );
         })()}
+
+        {isRemixing && remixProgress && (
+          <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+            <div className="w-full max-w-sm p-6 rounded-2xl bg-[#0f0f10] border border-neutral-800 text-neutral-200 shadow-2xl flex flex-col items-center">
+              <h3 className="text-base font-semibold text-neutral-100 mb-2">Remixing Space</h3>
+              <p className="text-xs text-neutral-400 mb-5 text-center leading-relaxed">
+                Downloading and saving note resources locally...
+              </p>
+              
+              <div className="w-full bg-[#18181b] h-2 rounded-full overflow-hidden mb-3.5 border border-neutral-800/80">
+                <div 
+                  className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${Math.round((remixProgress.done / remixProgress.total) * 100)}%` }}
+                />
+              </div>
+              
+              <div className="text-sm font-semibold text-neutral-200">
+                {Math.round((remixProgress.done / remixProgress.total) * 100)}%
+              </div>
+              <div className="text-[11px] text-neutral-500 mt-1">
+                ({remixProgress.done} of {remixProgress.total} notes)
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -3968,9 +4004,34 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
             </div>
           </div>
         );
-      })()}
-    </div>
-  );
+        })()}
+
+        {isRemixing && remixProgress && (
+          <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+            <div className="w-full max-w-sm p-6 rounded-2xl bg-[#0f0f10] border border-neutral-800 text-neutral-200 shadow-2xl flex flex-col items-center">
+              <h3 className="text-base font-semibold text-neutral-100 mb-2">Remixing Space</h3>
+              <p className="text-xs text-neutral-400 mb-5 text-center leading-relaxed">
+                Downloading and saving note resources locally...
+              </p>
+              
+              <div className="w-full bg-[#18181b] h-2 rounded-full overflow-hidden mb-3.5 border border-neutral-800/80">
+                <div 
+                  className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${Math.round((remixProgress.done / remixProgress.total) * 100)}%` }}
+                />
+              </div>
+              
+              <div className="text-sm font-semibold text-neutral-200">
+                {Math.round((remixProgress.done / remixProgress.total) * 100)}%
+              </div>
+              <div className="text-[11px] text-neutral-500 mt-1">
+                ({remixProgress.done} of {remixProgress.total} notes)
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
 }
 
 export default SpacesPage;

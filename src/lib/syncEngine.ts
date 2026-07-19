@@ -31,7 +31,7 @@ export function normalizeSyncPath(filePath: string): string {
   if (normalizedFile.startsWith('/') || /^[a-zA-Z]:/.test(normalizedFile)) {
     const vaultParts = normalizedVault.split('/');
     const fileParts = normalizedFile.split('/');
-    
+
     // Find the last index where both paths match before their respective vault roots
     let lastCommonIndex = -1;
     for (let i = 0; i < Math.min(vaultParts.length - 1, fileParts.length - 1); i++) {
@@ -41,14 +41,14 @@ export function normalizeSyncPath(filePath: string): string {
         break;
       }
     }
-    
+
     if (lastCommonIndex >= 0) {
       const relativeIndex = lastCommonIndex + 2;
       if (relativeIndex < fileParts.length) {
         return fileParts.slice(relativeIndex).join('/');
       }
     }
-    
+
     return fileParts[fileParts.length - 1];
   }
 
@@ -518,9 +518,9 @@ export class SyncEngine {
               continue;
             }
           } else {
-          const remoteTime = new Date(remote.updated_at).getTime();
-          const localTime = new Date(local.updated_at).getTime();
-          if (remoteTime <= localTime) continue;
+            const remoteTime = new Date(remote.updated_at).getTime();
+            const localTime = new Date(local.updated_at).getTime();
+            if (remoteTime <= localTime) continue;
           }
         }
 
@@ -571,7 +571,7 @@ export class SyncEngine {
     try {
       const api = getAPI();
       const fileTree = await api.getFileTree();
-      
+
       const files: { path: string; modifiedAt: number }[] = [];
       const scan = async (entries: any[]) => {
         for (const e of entries) {
@@ -596,7 +596,7 @@ export class SyncEngine {
 
         // Check if note exists in IndexedDB
         const localNote = await localDB.getNoteByPath(this.activeSpaceId, relativePath);
-        
+
         let needsSync = false;
         if (!localNote) {
           // New file created offline / when collab was off!
@@ -605,7 +605,7 @@ export class SyncEngine {
           // File edited offline / when collab was off!
           const noteTime = new Date(localNote.updated_at || localNote.last_modified || 0).getTime();
           const fileTime = file.modifiedAt;
-          
+
           // Sync if filesystem file is newer by more than 2 seconds (buffer clock skew)
           if (fileTime - noteTime > 2000) {
             needsSync = true;
@@ -618,7 +618,7 @@ export class SyncEngine {
             const title = relativePath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || relativePath;
             const isCanvas = relativePath.endsWith('.canvas');
             const nowIso = new Date(file.modifiedAt || Date.now()).toISOString();
-            
+
             // Persist the note edit locally and enqueue for cloud sync
             await localDB.putNote({
               id: localNote?.id || uuidv4(),
@@ -638,7 +638,7 @@ export class SyncEngine {
               deleted: false,
               is_canvas: isCanvas,
             }, true);
-            
+
             enqueuedAny = true;
           } catch (err) {
             console.error(`[SyncEngine] Failed to sync offline change for ${file.path}:`, err);

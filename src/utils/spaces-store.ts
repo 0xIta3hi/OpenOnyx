@@ -652,6 +652,7 @@ export async function deleteSpace(id: string): Promise<void> {
 export async function forkSpace(
   sourceId: string,
   overrides?: { title?: string; description?: string },
+  onProgress?: (done: number, total: number) => void,
 ): Promise<Space | null> {
   const source = await getSpace(sourceId);
   if (!source) return null;
@@ -675,8 +676,10 @@ export async function forkSpace(
         .eq("deleted", false);
 
       if (cloudNotes && cloudNotes.length > 0) {
+        const total = cloudNotes.length;
+        if (onProgress) onProgress(0, total);
+
         const api = getAPI();
-        const originalSpaceFolder = `Spaces/${source.title.replace(/[\\/:*?"<>|]/g, "")}`;
         const newSpaceFolder = `Spaces/${forkedSpace.title.replace(/[\\/:*?"<>|]/g, "")}`;
         await api.createDirectory(newSpaceFolder);
 
@@ -694,6 +697,10 @@ export async function forkSpace(
           return path;
         };
 
+        // Pre-scan directories to create them in order
+        const directoriesToCreate = new Set<string>();
+        const notesToCreate = [];
+
         for (const note of cloudNotes as any[]) {
           let subPath = "";
           if (note.path && note.path.trim() !== "") {
@@ -704,23 +711,45 @@ export async function forkSpace(
           }
 
           const targetNotePath = `${newSpaceFolder}/${subPath}`;
+          notesToCreate.push({ targetNotePath, content: note.content });
 
-          // Create necessary subdirectories via the API before creating file
           if (subPath.includes("/")) {
             const parts = subPath.split("/");
-            parts.pop(); // remove file name
+            parts.pop(); // Remove filename
             let currentPath = newSpaceFolder;
             for (const part of parts) {
               currentPath = `${currentPath}/${part}`;
-              try {
-                await api.createDirectory(currentPath);
-              } catch (e) {
-                // Ignore if directory already exists
-              }
+              directoriesToCreate.add(currentPath);
             }
           }
+        }
 
-          await api.writeFile(targetNotePath, note.content);
+        // Create directories sequentially (usually very small in count and very fast)
+        const sortedDirs = Array.from(directoriesToCreate).sort((a, b) => a.length - b.length);
+        for (const dir of sortedDirs) {
+          try {
+            await api.createDirectory(dir);
+          } catch (e) {
+            // Ignore if directory already exists
+          }
+        }
+
+        // Write files in parallel batches of 15 to prevent resource exhaustion while maximizing I/O speed
+        const concurrency = 15;
+        let done = 0;
+        const chunks = [];
+        for (let i = 0; i < notesToCreate.length; i += concurrency) {
+          chunks.push(notesToCreate.slice(i, i + concurrency));
+        }
+
+        for (const chunk of chunks) {
+          await Promise.all(
+            chunk.map(async (note) => {
+              await api.writeFile(note.targetNotePath, note.content);
+              done++;
+            })
+          );
+          if (onProgress) onProgress(done, total);
         }
       }
     } catch (err) {

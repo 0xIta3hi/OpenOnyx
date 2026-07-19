@@ -193,24 +193,25 @@ ${actionsBlock}
 9. PREMIUM MARKDOWN LAYOUT AND STRUCTURING RULES (CRITICAL)
 Your generated note contents must look stunning, highly professional, and extremely well-organized. Follow these formatting rules strictly:
 - No emojis are allowed in any note titles, paths, contents, or headers (Strict project rule).
-- Use a clear and beautiful heading hierarchy (e.g., # Main Title, ## Section, ### Sub-section) for logical structure.
-- Always bold important terms, keys, and definitions using **double asterisks** to make sections easily scannable.
-- Use task list checkboxes (e.g., - [ ] uncompleted task, - [x] completed task) for action items and roadmaps.
-- Use nested, bulleted list items for breakdown and detail.
-- Use Obsidian-style Callout blocks to highlight key definitions, tips, warnings, or notes. Format them as:
-  > [!NOTE]
-  > Important note content here.
-  
-  > [!TIP]
-  > Pro tip or recommended approach.
-  
-  > [!IMPORTANT]
-  > Critical instructions or key takeaways.
-  
-  > [!WARNING]
-  > Potential risks or caveats.
-- Use beautifully formatted Markdown Tables for comparisons, structural data, and side-by-side analyses. Ensure clean spacing and proper header separation (e.g., | Topic | Pros | Cons |).
-- Make sure notes feel like premium wiki entries, rich with deep structure, summaries, and logical layout. Avoid long walls of unstructured text.
+- Structure note contents like a professional README or a premium wiki landing page:
+  - Add a clear main title (\`# Title\`), a brief high-level summary or overview section, and structured main sections (\`## Section Title\`).
+  - Always include a beautifully formatted Markdown Table for key structured properties, comparisons, definitions, metadata, or data analysis (e.g., | Topic | Key Idea | Impact |). Ensure clean spacing and proper header separation.
+  - Use Obsidian-style Callout blocks to highlight key definitions, tips, warnings, or notes. Format them as:
+    > [!NOTE]
+    > Important note content here.
+    
+    > [!TIP]
+    > Pro tip or recommended approach.
+    
+    > [!IMPORTANT]
+    > Critical instructions or key takeaways.
+    
+    > [!WARNING]
+    > Potential risks or caveats.
+  - Always bold important terms, keys, and definitions using **double asterisks** to make sections easily scannable.
+  - Use task list checkboxes (e.g., - [ ] uncompleted task, - [x] completed task) for action items, next steps, and roadmaps.
+  - Use nested, bulleted list items for breakdowns and detailed sub-points.
+  - Avoid writing long, unstructured walls of text. Make the note feel like a rich, scannable, standalone README document.
 ${explicitFileBlock}
 
 ---
