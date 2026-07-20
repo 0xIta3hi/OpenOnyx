@@ -4,6 +4,25 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ---
 
+## 2026-07-20 (v1.0.2)
+
+### Features and Improvements
+* **Space Unlocking & Password Authentication**: Added a private space unlocking flow with modal interface and secure password authentication.
+* **Space Forking & Visual Progress**: Optimized space forking with batch processing and real-time visual progress tracking for remixed spaces.
+* **Collaboration & File Deletion**: Integrated file deletion handling in the sync engine and updated RLS database policies to support space collaboration.
+* **Collaboration Maintenance Notice**: Added a maintenance mode status notice to the collaboration panel.
+* **Application Icon Refresh**: Updated high-resolution icon assets (.icns, .ico, .png) and configured native icon loading in the Electron main process.
+
+### Refactoring and Optimization
+* **Canvas & Graph Pan Support**: Added smooth panning support for wheel and scroll events across both CanvasView and GraphRenderer components.
+* **Markdown Renderer Line Break Options**: Standardized line break options across MarkdownPreview, LinkPreview, and Obsidian API MarkdownRenderer.
+
+### Bug Fixes
+* **Sidebar File Navigation**: Fixed file tree navigation in the sidebar to correctly preserve and render empty directories.
+* **Update Checker Info**: Clarified private repository constraints and manual update steps in Settings update checker.
+
+---
+
 ## 2026-07-18 (v1.0.1)
 
 ### Features and Improvements

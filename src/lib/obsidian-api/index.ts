@@ -115,7 +115,7 @@ export class MarkdownRenderer extends MarkdownRenderChild {
   static async render(app: any, markdown: string, el: any, sourcePath: string, component: any): Promise<void> {
     const container = document.createElement('div');
     container.className = 'markdown-rendered';
-    container.innerHTML = marked.parse(markdown, { async: false }) as string;
+    container.innerHTML = marked.parse(markdown, { async: false, breaks: true }) as string;
     for (const link of Array.from(container.querySelectorAll('a'))) {
       const href = link.getAttribute('href') || '';
       if (!href || /^(https?:|mailto:|#)/i.test(href)) continue;

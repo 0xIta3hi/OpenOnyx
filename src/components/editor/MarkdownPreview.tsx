@@ -753,7 +753,7 @@ export function MarkdownPreview({
     // Parse markdown to HTML
     let html = marked.parse(processed, {
       gfm: true,
-      breaks: settings?.strictLineBreaks === false,
+      breaks: settings?.strictLineBreaks !== true,
     }) as string;
     html = closeCallouts(html);
     html = html.replace(
@@ -947,7 +947,7 @@ export function MarkdownPreview({
     }
 
     // Render markdown
-    const html = marked.parse(text, { async: false }) as string;
+    const html = marked.parse(text, { async: false, breaks: true }) as string;
     return DOMPurify.sanitize(html);
   }, []);
 

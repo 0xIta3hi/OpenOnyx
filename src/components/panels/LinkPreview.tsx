@@ -42,7 +42,7 @@ export function LinkPreview({
     }
 
     // Render markdown
-    const html = marked.parse(text, { async: false }) as string;
+    const html = marked.parse(text, { async: false, breaks: true }) as string;
     return DOMPurify.sanitize(html);
   }, [content]);
 
