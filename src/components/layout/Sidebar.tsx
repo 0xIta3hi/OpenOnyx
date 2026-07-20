@@ -464,7 +464,7 @@ export function Sidebar({
       entries.reduce<FileEntry[]>((acc, entry) => {
         if (entry.isDirectory) {
           const children = filterSupportedTypes(entry.children || []);
-          if (children.length > 0) acc.push({ ...entry, children });
+          acc.push({ ...entry, children });
           return acc;
         }
         if (showAllFileTypes || entry.extension === ".md" || entry.extension === ".canvas") {
