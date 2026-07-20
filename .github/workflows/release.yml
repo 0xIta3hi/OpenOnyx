@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform.name }}
+    name: Build & Publish ${{ matrix.platform.name }}
     runs-on: ${{ matrix.platform.os }}
     env:
       GH_TOKEN: ${{ github.token }}
@@ -27,8 +27,7 @@ jobs:
           - name: linux
             os: ubuntu-latest
             script: package:linux
-            artifact_name: linux-installers
-            artifact_paths: |
+            release_paths: |
               release/*.AppImage
               release/*.deb
               release/*.rpm
@@ -39,16 +38,14 @@ jobs:
           - name: windows
             os: windows-latest
             script: package:win
-            artifact_name: windows-installers
-            artifact_paths: |
+            release_paths: |
               release/*.exe
               release/*.blockmap
               release/latest.yml
           - name: macos
             os: macos-latest
             script: package:mac
-            artifact_name: macos-installers
-            artifact_paths: |
+            release_paths: |
               release/*.dmg
               release/*-mac.zip
               release/*.blockmap
@@ -123,29 +120,11 @@ jobs:
       - name: Build installers
         run: npm run ${{ matrix.platform.script }}
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform.artifact_name }}
-          path: ${{ matrix.platform.artifact_paths }}
-          if-no-files-found: error
-
-  publish:
-    name: Publish GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-          merge-multiple: true
-
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          files: release-artifacts/*
-          fail_on_unmatched_files: true
+          files: ${{ matrix.platform.release_paths }}
+          fail_on_unmatched_files: false
           generate_release_notes: true
