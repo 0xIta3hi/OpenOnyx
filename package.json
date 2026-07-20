@@ -141,6 +141,7 @@
       "runAfterFinish": true
     },
     "linux": {
+      "executableName": "openobsidian",
       "target": [
         "AppImage",
         "deb",
