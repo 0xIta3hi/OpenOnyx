@@ -153,7 +153,16 @@
     },
     "deb": {
       "priority": "optional",
-      "afterInstall": "scripts/linux/after-install.sh"
+      "afterInstall": "scripts/linux/after-install.sh",
+      "depends": [
+        "libgtk-3-0",
+        "libnss3",
+        "libasound2",
+        "libxss1",
+        "libxtst6",
+        "libsecret-1-0",
+        "xdg-utils"
+      ]
     },
     "rpm": {
       "fpm": [
