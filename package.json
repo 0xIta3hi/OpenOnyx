@@ -162,7 +162,7 @@
     },
     "pacman": {
       "fpm": [
-        "--no-auto-depends"
+        "--no-depends"
       ],
       "depends": [
         "gtk3",
