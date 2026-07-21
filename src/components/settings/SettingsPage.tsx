@@ -59,6 +59,7 @@ import {
 import { configureSupabaseClient } from "../../lib/supabase";
 import { parseSupabaseEnv } from "../../lib/supabaseConfig";
 import databaseSchemaSql from "../../../supabase/schema.sql?raw";
+import { version as APP_VERSION } from "../../../package.json";
 import { getAPI } from "../../utils/api";
 
 type ThemeSetting =
@@ -733,7 +734,7 @@ export function SettingsPage({
       }
 
       // Semantic version comparison
-      const currentVersion = "1.0.1";
+      const currentVersion = APP_VERSION;
       const currentParts = currentVersion.split(".").map(Number);
       const latestParts = latestVersion.split(".").map(Number);
 
@@ -1522,7 +1523,7 @@ export function SettingsPage({
                     <h2 className="mb-1 text-2xl font-bold tracking-tight text-[var(--text-primary)]">OpenObsidian</h2>
                     <div className="mb-6 flex items-center gap-2">
                       <span className="rounded-full bg-[var(--bg-tertiary)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-                        v1.0.1
+                        v{APP_VERSION}
                       </span>
                       <span className="rounded-full bg-[rgba(52,211,153,0.12)] px-2.5 py-0.5 text-[11px] font-semibold text-[#34d399] border border-[rgba(52,211,153,0.2)]">
                         Local-First

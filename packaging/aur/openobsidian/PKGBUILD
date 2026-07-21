@@ -24,7 +24,9 @@ sha256sums_x86_64=("SKIP" "SKIP" "SKIP")
 
 package() {
   install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/openobsidian/openobsidian.AppImage"
-  install -Dm644 "${srcdir}/openobsidian.png" "${pkgdir}/usr/share/icons/hicolor/1024x1024/apps/openobsidian.png"
+  install -Dm644 "${srcdir}/openobsidian.png" "${pkgdir}/usr/share/pixmaps/openobsidian.png"
+  install -Dm644 "${srcdir}/openobsidian.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/openobsidian.png"
+  install -Dm644 "${srcdir}/openobsidian.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/openobsidian.png"
   install -Dm644 "${srcdir}/openobsidian.desktop" "${pkgdir}/usr/share/applications/openobsidian.desktop"
 
   install -dm755 "${pkgdir}/usr/bin"

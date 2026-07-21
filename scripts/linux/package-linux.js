@@ -26,6 +26,30 @@ function getDirectorySize(dir) {
   return size;
 }
 
+function installIcons(targetPkgDir) {
+  const iconSizes = ["512x512", "256x256", "128x128", "64x64", "48x48", "32x32", "16x16"];
+  fs.mkdirSync(path.join(targetPkgDir, "usr/share/pixmaps"), { recursive: true });
+  fs.copyFileSync(
+    path.join(buildDir, "icon.png"),
+    path.join(targetPkgDir, "usr/share/pixmaps/openobsidian.png")
+  );
+
+  // Also copy icon directly into app root for fallback
+  fs.copyFileSync(
+    path.join(buildDir, "icon.png"),
+    path.join(targetPkgDir, "opt/OpenObsidian/icon.png")
+  );
+
+  for (const size of iconSizes) {
+    const dir = path.join(targetPkgDir, `usr/share/icons/hicolor/${size}/apps`);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(
+      path.join(buildDir, "icon.png"),
+      path.join(dir, "openobsidian.png")
+    );
+  }
+}
+
 async function buildDeb() {
   console.log("Building Debian package...");
   const debPkgDir = path.join(scratchDir, "deb-pkg");
@@ -35,24 +59,11 @@ async function buildDeb() {
   fs.mkdirSync(path.join(debPkgDir, "DEBIAN"), { recursive: true });
   fs.mkdirSync(path.join(debPkgDir, "opt/OpenObsidian"), { recursive: true });
   fs.mkdirSync(path.join(debPkgDir, "usr/share/applications"), { recursive: true });
-  fs.mkdirSync(path.join(debPkgDir, "usr/share/pixmaps"), { recursive: true });
-  fs.mkdirSync(path.join(debPkgDir, "usr/share/icons/hicolor/scalable/apps"), { recursive: true });
-  fs.mkdirSync(path.join(debPkgDir, "usr/share/icons/hicolor/1024x1024/apps"), { recursive: true });
 
   // Copy files
   execSync(`cp -r "${unpackedDir}"/* "${path.join(debPkgDir, "opt/OpenObsidian")}"`);
-  fs.copyFileSync(
-    path.join(buildDir, "icon.png"),
-    path.join(debPkgDir, "usr/share/pixmaps/openobsidian.png")
-  );
-  fs.copyFileSync(
-    path.join(buildDir, "icon.png"),
-    path.join(debPkgDir, "usr/share/icons/hicolor/scalable/apps/openobsidian.png")
-  );
-  fs.copyFileSync(
-    path.join(buildDir, "icon.png"),
-    path.join(debPkgDir, "usr/share/icons/hicolor/1024x1024/apps/openobsidian.png")
-  );
+  installIcons(debPkgDir);
+
   fs.copyFileSync(
     path.join(root, "packaging/aur/openobsidian/openobsidian.desktop"),
     path.join(debPkgDir, "usr/share/applications/openobsidian.desktop")
@@ -84,24 +95,11 @@ async function buildPacman() {
   fs.mkdirSync(path.join(pacmanPkgDir, "opt/OpenObsidian"), { recursive: true });
   fs.mkdirSync(path.join(pacmanPkgDir, "usr/bin"), { recursive: true });
   fs.mkdirSync(path.join(pacmanPkgDir, "usr/share/applications"), { recursive: true });
-  fs.mkdirSync(path.join(pacmanPkgDir, "usr/share/pixmaps"), { recursive: true });
-  fs.mkdirSync(path.join(pacmanPkgDir, "usr/share/icons/hicolor/scalable/apps"), { recursive: true });
-  fs.mkdirSync(path.join(pacmanPkgDir, "usr/share/icons/hicolor/1024x1024/apps"), { recursive: true });
 
   // Copy files
   execSync(`cp -r "${unpackedDir}"/* "${path.join(pacmanPkgDir, "opt/OpenObsidian")}"`);
-  fs.copyFileSync(
-    path.join(buildDir, "icon.png"),
-    path.join(pacmanPkgDir, "usr/share/pixmaps/openobsidian.png")
-  );
-  fs.copyFileSync(
-    path.join(buildDir, "icon.png"),
-    path.join(pacmanPkgDir, "usr/share/icons/hicolor/scalable/apps/openobsidian.png")
-  );
-  fs.copyFileSync(
-    path.join(buildDir, "icon.png"),
-    path.join(pacmanPkgDir, "usr/share/icons/hicolor/1024x1024/apps/openobsidian.png")
-  );
+  installIcons(pacmanPkgDir);
+
   fs.copyFileSync(
     path.join(root, "packaging/aur/openobsidian/openobsidian.desktop"),
     path.join(pacmanPkgDir, "usr/share/applications/openobsidian.desktop")
