@@ -8,6 +8,9 @@ const unpackedDir = path.join(releaseDir, "linux-unpacked");
 const buildDir = path.join(root, "build");
 const scratchDir = path.join(root, "scratch");
 
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const version = pkg.version;
+
 function getDirectorySize(dir) {
   let size = 0;
   const files = fs.readdirSync(dir);
@@ -57,7 +60,7 @@ async function buildDeb() {
 
   // Write control file
   const control = `Package: openobsidian
-Version: 1.0.2
+Version: ${version}
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -68,7 +71,7 @@ Description: A local-first knowledge management tool with graph-based note linki
   fs.writeFileSync(path.join(debPkgDir, "DEBIAN/control"), control);
 
   // Build
-  execSync(`dpkg-deb --root-owner-group --build "${debPkgDir}" "${path.join(releaseDir, "openobsidian_1.0.2_amd64.deb")}"`);
+  execSync(`dpkg-deb --root-owner-group --build "${debPkgDir}" "${path.join(releaseDir, `openobsidian_${version}_amd64.deb`)}"`);
   console.log("Debian package built successfully!");
 }
 
@@ -116,7 +119,7 @@ async function buildPacman() {
 
   // Write .PKGINFO
   const pkginfo = `pkgname = openobsidian
-pkgver = 1.0.2-1
+pkgver = ${version}-1
 pkgdesc = A local-first knowledge management tool with graph-based note linking
 url = https://github.com/OpenObsidian/OpenObsidian
 builddate = ${Math.floor(Date.now() / 1000)}
@@ -135,7 +138,7 @@ depend = xdg-utils
   fs.writeFileSync(path.join(pacmanPkgDir, ".PKGINFO"), pkginfo);
 
   // Build
-  execSync(`tar --owner=0 --group=0 --numeric-owner --zstd -cf "${path.join(releaseDir, "openobsidian-1.0.2-1-x86_64.pkg.tar.zst")}" -C "${pacmanPkgDir}" .PKGINFO opt usr`);
+  execSync(`tar --owner=0 --group=0 --numeric-owner --zstd -cf "${path.join(releaseDir, `openobsidian-${version}-1-x86_64.pkg.tar.zst`)}" -C "${pacmanPkgDir}" .PKGINFO opt usr`);
   console.log("Pacman package built successfully!");
 }
 
