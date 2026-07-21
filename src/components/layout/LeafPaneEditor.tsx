@@ -1197,10 +1197,10 @@ export function LeafPaneEditor({
       {activeTab.path === "__new_tab__" ? (
         <NewTabView
           onNewNote={() => {
-            document.dispatchEvent(new CustomEvent("menu:new-note"));
+            window.dispatchEvent(new CustomEvent("oo:new-note"));
           }}
           onSearch={() => {
-            document.dispatchEvent(new CustomEvent("editor:open-search"));
+            window.dispatchEvent(new CustomEvent("oo:fuzzy-search"));
           }}
           onClose={() => onTabClose(activeTab.id)}
         />

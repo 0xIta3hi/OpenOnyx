@@ -20,6 +20,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { Editor } from "./components/editor/Editor";
 import { EditorHeader } from "./components/editor/EditorHeader";
 import { LeafPaneEditor } from "./components/layout/LeafPaneEditor";
+import { NewTabView } from "./components/layout/NewTabView";
 import { GraphView } from "./components/graph/GraphView";
 import { AIKnowledgeGraph } from "./components/graph/AIKnowledgeGraph";
 import { CanvasView } from "./components/canvas/CanvasView";
@@ -3015,7 +3016,7 @@ export default function App() {
         handleNewNote();
       } else if (ctrl && e.key.toLowerCase() === "o" && settings.coreQuickSwitcher !== false) {
         e.preventDefault();
-        document.dispatchEvent(new CustomEvent("editor:open-search"));
+        window.dispatchEvent(new CustomEvent("oo:fuzzy-search"));
       } else if (ctrl && e.key === "s") {
         e.preventDefault();
         handleSave();
@@ -7179,12 +7180,14 @@ export default function App() {
     const leafActiveTab = leaf.tabs.find((t) => t.id === leaf.activeTabId);
     if (!leafActiveTab) {
       return (
-        <div className="flex h-full flex-col items-center justify-center gap-[var(--space-3)] text-[var(--text-muted)]">
-          <div className="opacity-30">
-            <FileText size={48} strokeWidth={1} />
-          </div>
-          <div className="text-[length:var(--text-sm)]">Select a note or create a new one</div>
-        </div>
+        <NewTabView
+          onNewNote={() => {
+            window.dispatchEvent(new CustomEvent("oo:new-note"));
+          }}
+          onSearch={() => {
+            window.dispatchEvent(new CustomEvent("oo:fuzzy-search"));
+          }}
+        />
       );
     }
 
