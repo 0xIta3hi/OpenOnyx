@@ -5678,41 +5678,64 @@ export default function App() {
 
   // ── Link Navigation ─────────────────────────────────
   const handleLinkClick = async (linkName: string, heading?: string) => {
-    const normalizedLink = decodeURIComponent(linkName)
-      .replace(/\\/g, "/")
-      .replace(/^\/+/, "")
-      .replace(/\.md$/i, "")
-      .toLowerCase();
+    const rawLink = decodeURIComponent(linkName).replace(/\\/g, "/").replace(/^\/+/, "");
+    const normalizedLink = rawLink.replace(/\.(md|canvas)$/i, "").toLowerCase();
+    const linkBaseName = normalizedLink.split("/").pop() || normalizedLink;
 
-    // Find the note by name
-    const findNote = (entries: FileEntry[]): string | null => {
+    // Get current note's directory path for relative resolution
+    const activePath = activeTab?.path || "";
+    const activeDir = activePath.includes("/")
+      ? activePath.slice(0, activePath.lastIndexOf("/")).toLowerCase()
+      : "";
+
+    // Collect all files from fileTree
+    const allFiles: { path: string; notePath: string; noteName: string; dirPath: string }[] = [];
+    const collectFiles = (entries: FileEntry[]) => {
       for (const entry of entries) {
         if (!entry.isDirectory) {
-          const noteName = getNoteName(entry.path);
-          const notePath = entry.path.replace(/\.md$/i, "").toLowerCase();
-          if (notePath === normalizedLink || noteName.toLowerCase() === normalizedLink) {
-            return entry.path;
-          }
+          const notePath = entry.path.replace(/\.(md|canvas)$/i, "").toLowerCase();
+          const noteName = (entry.path.replace(/\.(md|canvas)$/i, "").split("/").pop() || entry.path).toLowerCase();
+          const dirPath = entry.path.includes("/")
+            ? entry.path.slice(0, entry.path.lastIndexOf("/")).toLowerCase()
+            : "";
+          allFiles.push({ path: entry.path, notePath, noteName, dirPath });
         }
         if (entry.children) {
-          const found = findNote(entry.children);
-          if (found) return found;
+          collectFiles(entry.children);
         }
       }
-      return null;
     };
+    collectFiles(fileTree);
 
-    const filePath = findNote(fileTree);
+    // Resolution strategy:
+    // 1. Exact full path match (e.g., "FolderB/Test" === "folderb/test")
+    let target = allFiles.find((f) => f.notePath === normalizedLink);
+
+    // 2. Suffix path match (e.g., "sub/folderb/test" ends with "/folderb/test")
+    if (!target && normalizedLink.includes("/")) {
+      target = allFiles.find(
+        (f) => f.notePath.endsWith("/" + normalizedLink) || normalizedLink.endsWith("/" + f.notePath),
+      );
+    }
+
+    // 3. Same directory match (if link is "Test", prefer "Test" in active file's folder)
+    if (!target && activeDir) {
+      target = allFiles.find(
+        (f) => f.dirPath === activeDir && (f.noteName === linkBaseName || f.notePath.endsWith("/" + linkBaseName)),
+      );
+    }
+
+    // 4. Exact note name match anywhere in the vault
+    if (!target) {
+      target = allFiles.find((f) => f.noteName === linkBaseName);
+    }
+
+    const filePath = target?.path;
     if (filePath) {
       await openFile(filePath, "preview");
-      // TODO: Scroll to heading if specified
+      // Scroll to heading if specified
       if (heading) {
-        // Dispatch event to scroll to heading in preview
         setTimeout(() => {
-          const headingEl = document.querySelector(
-            `.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6`,
-          );
-          // Find the heading that matches
           const allHeadings = document.querySelectorAll(
             ".markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6",
           );
@@ -5726,11 +5749,16 @@ export default function App() {
       }
     } else {
       // Auto-create note if it doesn't exist
-      const newPath = linkName.toLowerCase().endsWith(".md") ? linkName : `${linkName}.md`;
-      const content = `# ${linkName}\n\n`;
-      await api.createFile(newPath, content);
+      const newPath = rawLink.toLowerCase().endsWith(".md") || rawLink.toLowerCase().endsWith(".canvas")
+        ? rawLink
+        : `${rawLink}.md`;
+      const targetPath = newPath.includes("/")
+        ? newPath
+        : (activeDir ? `${activeDir}/${newPath}` : newPath);
+      const content = `# ${rawLink.split("/").pop()?.replace(/\.(md|canvas)$/i, "") || rawLink}\n\n`;
+      await api.createFile(targetPath, content);
       await refreshFileTree();
-      await openFile(newPath, "preview");
+      await openFile(targetPath, "preview");
     }
   };
 
@@ -6286,10 +6314,10 @@ export default function App() {
     ): { name: string; path: string }[] => {
       const notes: { name: string; path: string }[] = [];
       for (const entry of entries) {
-        if (!entry.isDirectory && entry.extension === ".md") {
+        if (!entry.isDirectory && (entry.extension === ".md" || entry.extension === ".canvas")) {
           // Extract name without extension
           const name =
-            entry.path.replace(/\.md$/, "").split("/").pop() || entry.path;
+            entry.path.replace(/\.(md|canvas)$/i, "").split("/").pop() || entry.path;
           notes.push({ name, path: entry.path });
         }
         if (entry.children) {

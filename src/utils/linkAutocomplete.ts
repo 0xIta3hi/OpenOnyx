@@ -25,83 +25,130 @@ export function setAvailableNotes(notes: NoteInfo[]) {
   availableNotes = notes;
 }
 
+// Helper to extract folder location from file path
+function getNoteLocation(path: string): string {
+  const parts = path.split("/");
+  if (parts.length > 1) {
+    parts.pop(); // Remove filename
+    return parts.join("/");
+  }
+  return "Vault root";
+}
+
 // Completion function for wiki links
 function wikiLinkCompletion(
   context: CompletionContext,
 ): CompletionResult | null {
   // Look for [[ pattern before cursor
-  const before = context.matchBefore(/\[\[([^\]]*)/);
+  const before = context.matchBefore(/\[\[([^\]#|]*)/);
 
   if (!before) return null;
 
-  // Don't trigger if we're inside a completed link
+  // Check if closing brackets ]] exist immediately after cursor
   const afterCursor = context.state.doc.sliceString(
     context.pos,
     context.pos + 2,
   );
-  if (afterCursor.startsWith("]]")) return null;
+  const hasClosingBrackets = afterCursor.startsWith("]]");
 
-  const query = before.text.slice(2).toLowerCase(); // Remove [[
+  const query = before.text.slice(2).trim().toLowerCase(); // Remove [[
   const from = before.from + 2; // Position after [[
 
-  // Filter and sort notes by relevance
+  // Filter and sort notes by relevance matching name or path
   let matches = availableNotes
-    .filter((note) => note.name.toLowerCase().includes(query))
-    .map((note) => ({
-      note,
-      // Score: exact match > starts with > contains
-      score:
-        note.name.toLowerCase() === query
-          ? 0
-          : note.name.toLowerCase().startsWith(query)
-            ? 1
-            : 2,
-    }))
+    .filter((note) => {
+      if (!query) return true; // Show all notes when query is empty
+      const lowerName = note.name.toLowerCase();
+      const lowerPath = note.path.toLowerCase();
+      return lowerName.includes(query) || lowerPath.includes(query);
+    })
+    .map((note) => {
+      const lowerName = note.name.toLowerCase();
+      const lowerPath = note.path.toLowerCase();
+      let score = 4;
+      if (!query) score = 0;
+      else if (lowerName === query) score = 0;
+      else if (lowerName.startsWith(query)) score = 1;
+      else if (lowerName.includes(query)) score = 2;
+      else if (lowerPath.includes(query)) score = 3;
+
+      return { note, score };
+    })
     .sort((a, b) => {
       if (a.score !== b.score) return a.score - b.score;
       return a.note.name.localeCompare(b.note.name);
     })
-    .slice(0, 20); // Limit results
+    .slice(0, 30); // Limit results
 
   if (matches.length === 0 && query.length > 0) {
     // Offer to create a new note
     return {
       from,
+      to: context.pos,
       options: [
         {
           label: query,
           detail: "(create new note)",
           type: "text",
-          apply: query,
+          apply: (
+            view: EditorView,
+            completion: Completion,
+            from: number,
+            to: number,
+          ) => {
+            const endPos = hasClosingBrackets ? context.pos + 2 : to;
+            const insert = query + "]]";
+            view.dispatch({
+              changes: { from, to: endPos, insert },
+              selection: { anchor: from + insert.length },
+            });
+          },
           boost: -1,
         },
       ],
     };
   }
 
-  const options: Completion[] = matches.map(({ note }) => ({
-    label: note.name,
-    detail: note.path !== note.name + ".md" ? note.path : undefined,
-    type: "text",
-    apply: (
-      view: EditorView,
-      completion: Completion,
-      from: number,
-      to: number,
-    ) => {
-      // Insert the note name and close the link
-      const insert = note.name + "]]";
-      view.dispatch({
-        changes: { from, to, insert },
-        selection: { anchor: from + insert.length },
-      });
-    },
-  }));
+  // Count occurrence of names to handle duplicate note names across folders
+  const nameCounts = new Map<string, number>();
+  availableNotes.forEach((n) => {
+    const key = n.name.toLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  });
+
+  const options: Completion[] = matches.map(({ note }) => {
+    const location = getNoteLocation(note.path);
+    const isDuplicate = (nameCounts.get(note.name.toLowerCase()) || 0) > 1;
+    const insertText = isDuplicate
+      ? note.path.replace(/\.(md|canvas)$/i, "")
+      : note.name;
+
+    return {
+      label: note.name,
+      detail: location,
+      type: "text",
+      apply: (
+        view: EditorView,
+        completion: Completion,
+        from: number,
+        to: number,
+      ) => {
+        // If closing ]] already exists right after cursor, replace up to after ]]
+        const replaceTo = hasClosingBrackets ? context.pos + 2 : to;
+        const insert = insertText + "]]";
+        view.dispatch({
+          changes: { from, to: replaceTo, insert },
+          selection: { anchor: from + insert.length },
+        });
+      },
+    };
+  });
 
   return {
     from,
+    to: context.pos,
     options,
-    validFor: /^[^\]]*$/,
+    validFor: /^[^\]#|]*$/,
   };
 }
 
@@ -157,7 +204,7 @@ export function linkAutocomplete() {
   return autocompletion({
     override: [wikiLinkCompletion],
     activateOnTyping: true,
-    maxRenderedOptions: 20,
+    maxRenderedOptions: 30,
     defaultKeymap: true,
     icons: false,
   });
@@ -166,33 +213,58 @@ export function linkAutocomplete() {
 // CSS styles for the autocomplete dropdown
 export const linkAutocompleteTheme = EditorView.theme({
   ".cm-tooltip-autocomplete": {
-    backgroundColor: "var(--bg-elevated)",
+    backgroundColor: "var(--bg-elevated, var(--bg-secondary))",
     border: "1px solid var(--border-medium)",
-    borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-lg)",
-    maxHeight: "300px",
+    borderRadius: "var(--radius-md, 8px)",
+    boxShadow: "var(--shadow-lg, 0 10px 25px -5px rgba(0, 0, 0, 0.3))",
+    maxHeight: "320px",
+    minWidth: "280px",
     overflow: "auto",
+    padding: "4px",
   },
   ".cm-tooltip-autocomplete ul": {
     fontFamily: "var(--font-sans)",
-    fontSize: "var(--text-sm)",
+    fontSize: "var(--text-sm, 13px)",
+    padding: "0",
+    margin: "0",
+    listStyle: "none",
   },
   ".cm-tooltip-autocomplete li": {
-    padding: "6px 12px",
-    borderBottom: "1px solid var(--border-subtle)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 10px",
+    borderRadius: "var(--radius-sm, 4px)",
+    cursor: "pointer",
+    transition: "background-color 0.1s ease",
   },
   ".cm-tooltip-autocomplete li:last-child": {
     borderBottom: "none",
   },
   ".cm-tooltip-autocomplete li[aria-selected]": {
-    backgroundColor: "var(--bg-active)",
+    backgroundColor: "var(--bg-active, var(--interactive-accent))",
   },
   ".cm-completionLabel": {
     color: "var(--text-primary)",
+    fontWeight: "500",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   ".cm-completionDetail": {
     color: "var(--text-muted)",
-    fontSize: "var(--text-xs)",
-    marginLeft: "8px",
+    fontSize: "11px",
+    marginLeft: "12px",
+    opacity: "0.8",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "180px",
+    textAlign: "right",
+  },
+  ".cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail": {
+    color: "var(--text-secondary)",
+    opacity: "1",
   },
 });
+
