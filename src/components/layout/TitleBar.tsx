@@ -27,6 +27,7 @@ import {
   Save,
   Link2Off,
   List,
+  Sparkles,
 } from "lucide-react";
 
 // Custom Backlinks (incoming arrow) SVG
@@ -862,6 +863,18 @@ export function TitleBar({
                 data-tooltip="Outline"
               >
                 <List size={20} strokeWidth={1.5} />
+              </button>
+
+              <button
+                className={`${titlebarActionBtnClass} ${
+                  activeRightTab === "ai"
+                    ? "bg-(--bg-active) !text-(--text-primary)"
+                    : "text-(--text-muted) hover:text-(--text-secondary)"
+                }`}
+                onClick={() => setActiveRightTab("ai")}
+                data-tooltip="AI Assistant"
+              >
+                <Sparkles size={20} strokeWidth={1.5} />
               </button>
 
               {rightPluginViews.map((view) => (

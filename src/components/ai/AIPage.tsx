@@ -219,10 +219,10 @@ export function AIPage({
   const [store, setStore] = useState<EmbeddingStore>(loadStore);
   const indexedCount = store.entries.size;
 
+  // Update store state on activeNotePath change
   useEffect(() => {
-    const interval = setInterval(() => setStore(loadStore()), 3000);
-    return () => clearInterval(interval);
-  }, []);
+    setStore(loadStore());
+  }, [activeNotePath]);
 
   // ── Suggestion threshold (user-controlled) ────────
   const [suggestionThreshold, setSuggestionThreshold] = useState(() => {
@@ -250,7 +250,7 @@ export function AIPage({
     (async () => {
       try {
         const currentStore = loadStore();
-        const raw = findSimilar(currentStore, activeNotePath, Math.max(0.2, suggestionThreshold - 0.15), 8);
+        const raw = findSimilar(currentStore, activeNotePath, Math.max(0.35, suggestionThreshold), 25);
         const weighted = applyHistoryWeighting(activeNotePath, raw);
         const basic = weighted.map((s) => ({ ...s, title: getNoteName(s.path) }));
 
@@ -269,8 +269,20 @@ export function AIPage({
         );
 
         const enriched = enrichSuggestions(sourceContent, basic, noteContents);
-        // Apply threshold filter after enrichment
-        setSuggestions(enriched.filter((s) => s.similarity >= suggestionThreshold).slice(0, 8));
+        // Filter threshold and deduplicate titles
+        const uniqueSuggestions = enriched
+          .filter((s) => s.similarity >= suggestionThreshold)
+          .filter(
+            (candidate, index, list) =>
+              list.findIndex(
+                (item) =>
+                  item.path === candidate.path ||
+                  item.title.toLowerCase().trim() === candidate.title.toLowerCase().trim(),
+              ) === index,
+          )
+          .slice(0, 20);
+
+        setSuggestions(uniqueSuggestions);
       } catch { /* silent */ }
     })();
   }, [activeNotePath, indexedCount, suggestionThreshold, api]);
@@ -312,6 +324,7 @@ export function AIPage({
   const [unwrittenInsights, setUnwrittenInsights] = useState<UnwrittenInsight[]>([]);
   const [synthesisResult, setSynthesisResult] = useState<SynthesisResult | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isCalculatingInsights, setIsCalculatingInsights] = useState(false);
   const [selectedClusterIdx, setSelectedClusterIdx] = useState<number | null>(null);
 
   // Insight dismissal cooldown (prevent noise)
@@ -335,43 +348,55 @@ export function AIPage({
     setUnwrittenInsights((prev) => prev.filter((_, i) => i !== idx));
   }, [unwrittenInsights]);
 
-  // Auto-compute clusters, missing links, and unwritten insights
+  // Compute clusters and insights lazily & asynchronously ONLY when on the Insights tab
   useEffect(() => {
-    if (indexedCount < 3) {
-      setClusters([]);
-
-      setMissingLinks([]);
-      setUnwrittenInsights([]);
+    if (activeTab !== "insights" || indexedCount < 3) {
       return;
     }
-    const currentStore = loadStore();
-    const c = detectClusters(currentStore, 0.4, 3);
-    setClusters(c);
 
-    (async () => {
-      const contents = new Map<string, string>();
-      await Promise.all(
-        [...currentStore.entries.keys()].map(async (path) => {
-          try {
-            const content = await api.readFile(path);
-            contents.set(path, content);
-          } catch { /* skip */ }
-        }),
-      );
-      const ml = detectMissingLinks(currentStore, contents, 0.4, 10);
-      setMissingLinks(ml);
-      const rawInsights = detectUnwrittenInsights(currentStore, contents, 0.35);
-      // Filter: confidence ≥ 0.4, exclude dismissed, max 3
-      const filtered = rawInsights
-        .filter((ui) => ui.confidence >= 0.4)
-        .filter((ui) => {
-          const key = ui.relatedNotes.sort().join("|");
-          return !dismissedInsights.has(key);
-        })
-        .slice(0, 3);
-      setUnwrittenInsights(filtered);
-    })();
-  }, [indexedCount, api, dismissedInsights]);
+    let isSubscribed = true;
+    setIsCalculatingInsights(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const currentStore = loadStore();
+        const c = detectClusters(currentStore, 0.4, 3, 40);
+        if (!isSubscribed) return;
+        setClusters(c);
+
+        const candidatePaths = Array.from(currentStore.entries.keys()).slice(0, 15);
+        const contents = new Map<string, string>();
+        await Promise.all(
+          candidatePaths.map(async (path) => {
+            try {
+              const content = await api.readFile(path);
+              contents.set(path, content);
+            } catch { /* skip */ }
+          }),
+        );
+        if (!isSubscribed) return;
+        const ml = detectMissingLinks(currentStore, contents, 0.4, 8);
+        setMissingLinks(ml);
+        const rawInsights = detectUnwrittenInsights(currentStore, contents, 0.35);
+        const filtered = rawInsights
+          .filter((ui) => ui.confidence >= 0.4)
+          .filter((ui) => {
+            const key = ui.relatedNotes.sort().join("|");
+            return !dismissedInsights.has(key);
+          })
+          .slice(0, 3);
+        if (!isSubscribed) return;
+        setUnwrittenInsights(filtered);
+      } catch { /* silent */ } finally {
+        if (isSubscribed) setIsCalculatingInsights(false);
+      }
+    }, 50);
+
+    return () => {
+      isSubscribed = false;
+      clearTimeout(timer);
+    };
+  }, [activeTab, indexedCount, api, dismissedInsights]);
 
   const handleSynthesizeCluster = useCallback(
     async (clusterMembers: string[]) => {
@@ -624,7 +649,12 @@ export function AIPage({
         {/* ══ Insights Tab ════════════════════════════════ */}
         {activeTab === "insights" && (
           <div className={ai.tabPanelScroll}>
-            {indexedCount < 3 ? (
+            {isCalculatingInsights ? (
+              <div className={ai.empty}>
+                <Loader2 size={24} className={tm.spinner} />
+                <p>Analyzing graph intelligence...</p>
+              </div>
+            ) : indexedCount < 3 ? (
               <div className={ai.empty}>
                 <Layers size={32} style={{ opacity: 0.15 }} />
                 <p>Need at least 3 indexed notes for graph intelligence.</p>

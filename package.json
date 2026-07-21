@@ -11,8 +11,8 @@
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --publish never",
-    "package:linux": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux AppImage deb rpm pacman --x64 --publish never",
-    "package:pacman": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux pacman --x64 --publish never",
+    "package:linux": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux dir AppImage --x64 --publish never && node scripts/linux/package-linux.js",
+    "package:pacman": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux dir --x64 --publish never && node scripts/linux/package-linux.js",
     "package:win": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --win nsis portable --x64 --publish never",
     "package:mac": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --mac dmg zip --x64 --arm64 --publish never",
     "package:all": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux AppImage deb rpm pacman --win nsis portable --mac dmg zip --publish never",
@@ -154,6 +154,9 @@
     "deb": {
       "priority": "optional",
       "afterInstall": "scripts/linux/after-install.sh",
+      "fpm": [
+        "--no-auto-depends"
+      ],
       "depends": [
         "libgtk-3-0",
         "libnss3",
@@ -166,12 +169,13 @@
     },
     "rpm": {
       "fpm": [
-        "--rpm-rpmbuild-define=_build_id_links none"
+        "--rpm-rpmbuild-define=_build_id_links none",
+        "--no-auto-depends"
       ]
     },
     "pacman": {
       "fpm": [
-        "--no-depends"
+        "--no-auto-depends"
       ],
       "depends": [
         "gtk3",

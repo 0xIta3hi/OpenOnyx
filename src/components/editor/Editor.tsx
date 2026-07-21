@@ -1690,8 +1690,8 @@ const SECTION_STOP_WORDS = new Set([
   "section",
 ]);
 
-const SECTION_GENERATION_SIMILARITY_FLOOR = 0.18;
-const SECTION_PRIMARY_RELEVANCE_THRESHOLD = 0.5;
+const SECTION_GENERATION_SIMILARITY_FLOOR = 0.38;
+const SECTION_PRIMARY_RELEVANCE_THRESHOLD = 0.48;
 const SECTION_DISPLAY_CAP = 2;
 const SECTION_FORCED_MINIMUM_RELEVANCE_FLOOR = 0.34;
 const SECTION_SEMANTIC_DUPLICATE_OVERLAP = 0.72;
@@ -2205,82 +2205,12 @@ function buildSectionScopedSuggestions(
   });
 
   const primary = afterDedup
-    .filter((entry) => entry.relevance >= SECTION_PRIMARY_RELEVANCE_THRESHOLD)
+    .filter((entry) => entry.relevance >= SECTION_PRIMARY_RELEVANCE_THRESHOLD && entry.candidate.similarity >= 0.35)
     .sort((a, b) => b.relevance - a.relevance);
 
   const lowConfidencePaths = new Set<string>();
-  let finalEntries = primary.slice(0, SECTION_DISPLAY_CAP);
-
-  // Fallback mode: keep intent/category relevance but allow lower confidence.
-  if (finalEntries.length === 0) {
-    const fallbackRanked = afterDedup
-      .sort((a, b) => {
-        if (!resetBias) {
-          if (b.recentListOverlap !== a.recentListOverlap) {
-            return b.recentListOverlap - a.recentListOverlap;
-          }
-          if (b.contextOverlap !== a.contextOverlap) {
-            return b.contextOverlap - a.contextOverlap;
-          }
-          if (b.intentOverlap !== a.intentOverlap) {
-            return b.intentOverlap - a.intentOverlap;
-          }
-          if (b.keywordOverlap !== a.keywordOverlap) {
-            return b.keywordOverlap - a.keywordOverlap;
-          }
-        }
-        const boostA = a.fallbackRelevance + a.explorationBoost * 0.35;
-        const boostB = b.fallbackRelevance + b.explorationBoost * 0.35;
-        if (boostB !== boostA) return boostB - boostA;
-        if (b.relevance !== a.relevance) return b.relevance - a.relevance;
-        return b.candidate.similarity - a.candidate.similarity;
-      })
-      .slice(0, SECTION_DISPLAY_CAP);
-
-    if (fallbackRanked.length > 0) {
-      finalEntries = fallbackRanked;
-      fallbackRanked.forEach((entry) => lowConfidencePaths.add(entry.candidate.path));
-    }
-  }
-
-  let deferredMinimum = false;
-
-  // Minimum guarantee: only force after a retry interaction and quality floor pass.
-  if (finalEntries.length === 0) {
-    const forcedCandidate = afterDedup
-      .sort(
-        (a, b) =>
-          b.fallbackRelevance + b.explorationBoost * 0.35 -
-          (a.fallbackRelevance + a.explorationBoost * 0.35),
-      )[0];
-
-    if (
-      forcedCandidate &&
-      forcedCandidate.fallbackRelevance >= SECTION_FORCED_MINIMUM_RELEVANCE_FLOOR
-    ) {
-      if (allowForcedMinimum) {
-        const forced = forcedCandidate.candidate;
-        finalEntries = [
-          {
-            candidate: forced,
-            relevance: forced.similarity,
-            fallbackRelevance: forcedCandidate.fallbackRelevance,
-            explorationBoost: forcedCandidate.explorationBoost,
-            recentListOverlap: forcedCandidate.recentListOverlap,
-            intentOverlap: forcedCandidate.intentOverlap,
-            contextOverlap: forcedCandidate.contextOverlap,
-            keywordOverlap: forcedCandidate.keywordOverlap,
-            hasSectionSignal: forcedCandidate.hasSectionSignal,
-          },
-        ];
-        lowConfidencePaths.add(forced.path);
-      } else {
-        deferredMinimum = true;
-      }
-    } else if (afterDedup.length > 0) {
-      deferredMinimum = true;
-    }
-  }
+  const finalEntries = primary.slice(0, SECTION_DISPLAY_CAP);
+  const deferredMinimum = false;
 
   const suggestions = finalEntries
     .slice(0, SECTION_DISPLAY_CAP)
@@ -2365,13 +2295,22 @@ class EndOfNoteSuggestionsWidget extends WidgetType {
       event.preventDefault();
     });
 
-    if (this.nextStepSuggestions.length > 0) {
+    const uniqueNextSteps = this.nextStepSuggestions.filter(
+      (candidate, index, list) =>
+        list.findIndex(
+          (item) =>
+            item.path === candidate.path ||
+            item.title.toLowerCase().trim() === candidate.title.toLowerCase().trim(),
+        ) === index,
+    );
+
+    if (uniqueNextSteps.length > 0) {
       const heading = document.createElement("div");
       heading.className = "editor-virtual-end-heading editor-virtual-end-heading--next-step";
       heading.textContent = "You may be moving toward...";
       root.appendChild(heading);
 
-      for (const suggestion of this.nextStepSuggestions) {
+      for (const suggestion of uniqueNextSteps) {
         const line = document.createElement("div");
         line.className = "editor-virtual-end-line";
 
@@ -2397,13 +2336,22 @@ class EndOfNoteSuggestionsWidget extends WidgetType {
     // Smoothly update children in place to prevent animation re-triggers
     dom.innerHTML = "";
 
-    if (this.nextStepSuggestions.length > 0) {
+    const uniqueNextSteps = this.nextStepSuggestions.filter(
+      (candidate, index, list) =>
+        list.findIndex(
+          (item) =>
+            item.path === candidate.path ||
+            item.title.toLowerCase().trim() === candidate.title.toLowerCase().trim(),
+        ) === index,
+    );
+
+    if (uniqueNextSteps.length > 0) {
       const heading = document.createElement("div");
       heading.className = "editor-virtual-end-heading editor-virtual-end-heading--next-step";
       heading.textContent = "You may be moving toward...";
       dom.appendChild(heading);
 
-      for (const suggestion of this.nextStepSuggestions) {
+      for (const suggestion of uniqueNextSteps) {
         const line = document.createElement("div");
         line.className = "editor-virtual-end-line";
 

@@ -250,28 +250,31 @@ export function enrichSuggestions(
 
   const sourceConcepts = extractConcepts(sourceContent);
 
-  return results.map((result) => {
-    const targetContent = noteContents.get(result.path) || "";
-    const targetConcepts = extractConcepts(targetContent);
-    const sharedConcepts = findSharedConcepts(sourceConcepts, targetConcepts);
+  return results
+    .filter((result) => result.similarity >= 0.35)
+    .map((result) => {
+      const targetContent = noteContents.get(result.path) || "";
+      const targetConcepts = extractConcepts(targetContent);
+      const sharedConcepts = findSharedConcepts(sourceConcepts, targetConcepts);
 
-    const type = classifySuggestionType(
-      sourceContent, targetContent, result.title, result.similarity,
-    );
+      const type = classifySuggestionType(
+        sourceContent, targetContent, result.title, result.similarity,
+      );
 
-    const reason = generateReason(type, sharedConcepts, result.title, result.similarity);
-    const isLinked = checkIsLinked(sourceContent, result.title);
-    const group: "strong" | "broader" = result.similarity >= 0.55 ? "strong" : "broader";
+      const reason = generateReason(type, sharedConcepts, result.title, result.similarity);
+      const isLinked = checkIsLinked(sourceContent, result.title);
+      const group: "strong" | "broader" = result.similarity >= 0.55 ? "strong" : "broader";
 
-    return {
-      ...result,
-      type,
-      typeLabel: TYPE_META[type].label,
-      typeSymbol: TYPE_META[type].symbol,
-      reason,
-      isLinked,
-      group,
-      sharedConcepts,
-    };
-  });
+      return {
+        ...result,
+        type,
+        typeLabel: TYPE_META[type].label,
+        typeSymbol: TYPE_META[type].symbol,
+        reason,
+        isLinked,
+        group,
+        sharedConcepts,
+      };
+    })
+    .filter((suggestion) => suggestion.similarity >= 0.5 || suggestion.sharedConcepts.length > 0);
 }

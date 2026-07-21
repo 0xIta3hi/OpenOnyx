@@ -3,10 +3,11 @@ import { BacklinksPanel } from "../panels/BacklinksPanel";
 import { OutgoingLinksPanel } from "../panels/OutgoingLinksPanel";
 import { OutlinePane } from "../panels/OutlinePane";
 import { UnlinkedMentionsPanel } from "../panels/UnlinkedMentionsPanel";
-import { X } from "lucide-react";
+import { AIPage } from "../ai/AIPage";
 import { getPluginScopeClass } from "../../lib/pluginStyles";
+import type { Theme, FileEntry } from "../../types";
 
-export type RightSidebarTabType = "backlinks" | "outgoing" | "outline" | string;
+export type RightSidebarTabType = "backlinks" | "outgoing" | "outline" | "ai" | string;
 
 interface PluginViewHostProps {
   view: { containerEl: HTMLElement; pluginId?: string };
@@ -62,6 +63,10 @@ interface RightSidebarProps {
   activeFileName: string;
   showUnlinkedMentions?: boolean;
   width: number;
+  vaultPath?: string | null;
+  theme?: Theme;
+  fileTree?: FileEntry[];
+  onClose?: () => void;
   rightPluginViews?: Array<{
     viewType: string;
     displayText: string;
@@ -84,6 +89,10 @@ export function RightSidebar({
   activeFileName,
   showUnlinkedMentions = true,
   width,
+  vaultPath,
+  theme,
+  fileTree = [],
+  onClose,
   rightPluginViews = [],
   onClosePluginView,
 }: RightSidebarProps) {
@@ -156,6 +165,23 @@ export function RightSidebar({
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === "ai" && vaultPath && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <AIPage
+              vaultPath={vaultPath}
+              theme={theme || "dark"}
+              fileTree={fileTree}
+              activeNotePath={activeFilePath}
+              onOpenNote={(path) => {
+                void openFile(path);
+              }}
+              onClose={() => onClose?.()}
+              isFullScreen={false}
+              onToggleFullScreen={() => {}}
+            />
           </div>
         )}
 

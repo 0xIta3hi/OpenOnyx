@@ -4783,8 +4783,8 @@ export default function App() {
         setNextStepSuggestions([]);
         return;
       }
-      // Generation stage: keep this pool broad so display layers can rank/fallback.
-      const raw = findSimilar(store, notePath, 0.15, 30);
+      // Generation stage: filter out low-similarity candidates
+      const raw = findSimilar(store, notePath, 0.35, 30);
       const weighted = applyHistoryWeighting(notePath, raw);
       const basic = weighted.map((s) => ({
         ...s,
@@ -4840,7 +4840,7 @@ export default function App() {
       const sourceConcept = deriveCurrentConcept(sourceContent);
       const transitionMap = loadTransitionMap();
 
-      // Candidate generation only. Display layers handle strict ranking and fallback.
+      // Candidate generation with strict quality filter.
       const enriched = enrichSuggestions(sourceContent, basic, noteContents)
         .map((suggestion) => {
           const candidateTokens = `${suggestion.title} ${suggestion.sharedConcepts.join(" ")}`
@@ -4870,6 +4870,7 @@ export default function App() {
             similarity: Math.max(0, Math.min(1, suggestion.similarity + totalBoost)),
           };
         })
+        .filter((suggestion) => suggestion.similarity >= 0.38 && (suggestion.sharedConcepts.length > 0 || suggestion.similarity >= 0.5))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 24);
 
@@ -4892,6 +4893,11 @@ export default function App() {
 
       const nextSteps = enriched
         .map((suggestion) => {
+          // Strict relevance check: candidate MUST be genuinely connected to the current note
+          const isRelevantToCurrentNote =
+            suggestion.sharedConcepts.length > 0 || suggestion.similarity >= 0.42;
+          if (!isRelevantToCurrentNote) return null;
+
           const candidateTokens = extractConceptTokens(
             `${suggestion.title} ${suggestion.sharedConcepts.join(" ")}`,
             10,
@@ -4924,13 +4930,6 @@ export default function App() {
             clusterOverlap * 0.12 +
             sessionIntentOverlap * 0.1;
 
-          const passesSignalGate =
-            transitionLikelihood >= 0.02 ||
-            intentOverlap >= 0.45 ||
-            clusterOverlap >= 0.28 ||
-            sessionIntentOverlap >= 0.2;
-          if (!passesSignalGate) return null;
-
           const primaryHint = suggestion.sharedConcepts[0] || suggestion.title;
           const guidanceReason =
             transitionLikelihood > 0.02
@@ -4945,8 +4944,13 @@ export default function App() {
         })
         .filter((item): item is EnrichedSuggestion => Boolean(item))
         .sort((a, b) => b.similarity - a.similarity)
-        .filter((candidate, index, list) =>
-          list.findIndex((item) => item.path === candidate.path) === index,
+        .filter(
+          (candidate, index, list) =>
+            list.findIndex(
+              (item) =>
+                item.path === candidate.path ||
+                item.title.toLowerCase().trim() === candidate.title.toLowerCase().trim(),
+            ) === index,
         )
         .slice(0, 4);
 
@@ -6971,7 +6975,8 @@ export default function App() {
     if (
       rightSidebarTab !== "outline" &&
       rightSidebarTab !== "backlinks" &&
-      rightSidebarTab !== "outgoing"
+      rightSidebarTab !== "outgoing" &&
+      rightSidebarTab !== "ai"
     ) {
       const stillExists = rightPluginViews.some((v) => v.viewType === rightSidebarTab);
       if (!stillExists) {
@@ -7378,9 +7383,12 @@ export default function App() {
             }}
             onToggleTags={() => setShowTags((t) => !t)}
             onThoughtModel={() => {
-              setShowGraph(false);
-              setShowCanvas(false);
-              setShowThoughtModel((t) => !t);
+              if (showRightSidebar && rightSidebarTab === "ai") {
+                setShowRightSidebar(false);
+              } else {
+                setRightSidebarTab("ai");
+                setShowRightSidebar(true);
+              }
             }}
             onSpaces={() => {
               openSpacesAsTab();
@@ -7643,33 +7651,6 @@ export default function App() {
         </div>
 
         {/* Thought Model Panel - independent of graph */}
-        {showThoughtModel && vaultPath && !isFTUXZeroState && (
-          <>
-            <div
-              className={resizerClass}
-              onMouseDown={startThoughtModelDrag}
-              style={{ zIndex: 100 }}
-            />
-            <div
-              className="thought-model-panel flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
-              style={{ width: `${thoughtModelWidth}px` }}
-            >
-              <AIPage
-                vaultPath={vaultPath}
-                theme={theme}
-                fileTree={fileTree}
-                activeNotePath={activeTab?.path.endsWith('.md') ? activeTab.path : null}
-                onOpenNote={(path) => {
-                  openFile(path);
-                }}
-                onClose={() => setShowThoughtModel(false)}
-                isFullScreen={false}
-                onToggleFullScreen={() => {}}
-              />
-            </div>
-          </>
-        )}
-
         {/* Right Sidebar Container */}
         {showRightSidebar && !isFTUXZeroState && (
           <div
@@ -7700,6 +7681,10 @@ export default function App() {
                 activeFileName={activeTab?.name || ""}
                 showUnlinkedMentions={settings.backlinksShowUnlinked !== false}
                 width={rightSidebarWidth}
+                vaultPath={vaultPath}
+                theme={theme}
+                fileTree={fileTree}
+                onClose={() => setShowRightSidebar(false)}
                 rightPluginViews={rightPluginViews}
                 onClosePluginView={(viewType) => {
                   const app = ooAppRef.current;

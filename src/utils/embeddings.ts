@@ -146,6 +146,23 @@ function addHashedFeature(vector: number[], feature: string, weight: number): vo
   vector[index] += sign * weight;
 }
 
+const EMBEDDING_STOP_WORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+  "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
+  "being", "have", "has", "had", "do", "does", "did", "will", "would",
+  "could", "should", "may", "might", "can", "shall", "not", "no", "nor",
+  "this", "that", "these", "those", "it", "its", "they", "them", "their",
+  "you", "your", "we", "our", "he", "she", "him", "her", "my", "me",
+  "what", "which", "who", "whom", "how", "when", "where", "why",
+  "if", "then", "else", "so", "as", "than", "very", "just", "also",
+  "about", "up", "out", "all", "some", "any", "each", "every", "both",
+  "more", "most", "other", "into", "over", "after", "before", "between",
+  "through", "during", "without", "within", "along", "around", "like",
+  "here", "there", "now", "still", "already", "even", "much", "many",
+  "well", "back", "only", "such", "make", "use", "using", "used",
+  "one", "two", "three", "new", "old", "first", "last", "next", "same",
+]);
+
 function lexicalEmbedText(text: string): number[] {
   const vector = new Array(EMBEDDING_DIM).fill(0);
   const tokens = text
@@ -153,23 +170,17 @@ function lexicalEmbedText(text: string): number[] {
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
     .map((token) => token.trim())
-    .filter((token) => token.length > 2)
+    .filter((token) => token.length > 2 && !EMBEDDING_STOP_WORDS.has(token))
     .slice(0, 320);
 
   if (tokens.length === 0) return vector;
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    addHashedFeature(vector, `w:${token}`, 1);
-
-    if (token.length > 5) {
-      for (let j = 0; j <= token.length - 3; j++) {
-        addHashedFeature(vector, `c:${token.slice(j, j + 3)}`, 0.18);
-      }
-    }
+    addHashedFeature(vector, `w:${token}`, 1.0);
 
     if (i > 0) {
-      addHashedFeature(vector, `b:${tokens[i - 1]} ${token}`, 0.6);
+      addHashedFeature(vector, `b:${tokens[i - 1]}_${token}`, 0.6);
     }
   }
 
@@ -542,17 +553,25 @@ export function findSimilar(
   store: EmbeddingStore,
   notePath: string,
   threshold = 0.35,
-  maxResults = 5,
+  maxResults = 20,
 ): SimilarNote[] {
   const entry = store.entries.get(notePath);
   if (!entry || entry.vector.length === 0) return [];
 
+  const activeTitle = notePath.split("/").pop()?.replace(/\.md$/, "").toLowerCase().trim();
+  const seenTitles = new Set<string>();
+  if (activeTitle) seenTitles.add(activeTitle);
+
   const results: SimilarNote[] = [];
   for (const [path, other] of store.entries) {
     if (path === notePath) continue;
+    const title = path.split("/").pop()?.replace(/\.md$/, "").toLowerCase().trim() || "";
+    if (!title || seenTitles.has(title)) continue;
+
     if (other.vector.length !== entry.vector.length) continue;
     const sim = cosineSimilarity(entry.vector, other.vector);
     if (sim >= threshold) {
+      seenTitles.add(title);
       results.push({ path, similarity: sim });
     }
   }

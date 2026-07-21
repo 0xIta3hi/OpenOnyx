@@ -122,8 +122,10 @@ export function detectClusters(
   store: EmbeddingStore,
   threshold = 0.4,
   minClusterSize = 3,
+  maxNodes = 60,
 ): NoteCluster[] {
-  const paths = Array.from(store.entries.keys());
+  const allPaths = Array.from(store.entries.keys());
+  const paths = allPaths.length > maxNodes ? allPaths.slice(0, maxNodes) : allPaths;
   const visited = new Set<string>();
   const clusters: NoteCluster[] = [];
 
@@ -135,11 +137,11 @@ export function detectClusters(
     const queue = [path];
     visited.add(path);
 
-    while (queue.length > 0) {
+    while (queue.length > 0 && component.length < 20) {
       const current = queue.shift()!;
       component.push(current);
 
-      const similar = findSimilar(store, current, threshold, 20);
+      const similar = findSimilar(store, current, threshold, 10);
       for (const { path: neighborPath } of similar) {
         if (!visited.has(neighborPath)) {
           visited.add(neighborPath);
@@ -153,7 +155,7 @@ export function detectClusters(
       let maxConns = 0;
       let center = component[0];
       for (const p of component) {
-        const conns = findSimilar(store, p, threshold, 50).filter((s) =>
+        const conns = findSimilar(store, p, threshold, 15).filter((s) =>
           component.includes(s.path),
         ).length;
         if (conns > maxConns) {
@@ -166,7 +168,7 @@ export function detectClusters(
       let totalSim = 0;
       let pairCount = 0;
       for (const p of component) {
-        const sims = findSimilar(store, p, 0, 50);
+        const sims = findSimilar(store, p, threshold, 15);
         for (const sim of sims) {
           if (component.includes(sim.path)) {
             totalSim += sim.similarity;
@@ -174,14 +176,10 @@ export function detectClusters(
           }
         }
       }
-      const avgSim = pairCount > 0 ? totalSim / pairCount : 0;
+      const avgSim = pairCount > 0 ? totalSim / pairCount : threshold;
 
-      // Confidence scoring:
-      //  - Higher avg similarity = stronger cluster
-      //  - More members = richer potential synthesis
-      //  - But too high similarity = might be duplicates (lower confidence)
-      const sizeFactor = Math.min(1, component.length / 8); // caps at 8 notes
-      const simFactor = avgSim > 0.8 ? 0.5 : avgSim; // penalize near-duplicates
+      const sizeFactor = Math.min(1, component.length / 8);
+      const simFactor = avgSim > 0.8 ? 0.5 : avgSim;
       const confidence = Math.min(1, sizeFactor * 0.4 + simFactor * 0.6);
 
       clusters.push({
@@ -217,9 +215,10 @@ export function detectMissingLinks(
   const results: MissingLinkSuggestion[] = [];
   const seen = new Set<string>();
 
-  for (const [path] of store.entries) {
+  const candidatePaths = Array.from(store.entries.keys()).slice(0, 60);
+  for (const path of candidatePaths) {
     const content = noteContents.get(path) || "";
-    const similar = findSimilar(store, path, threshold, 10);
+    const similar = findSimilar(store, path, threshold, 8);
 
     for (const { path: targetPath, similarity } of similar) {
       const key = [path, targetPath].sort().join("<>");
@@ -268,10 +267,10 @@ export function detectUnwrittenInsights(
   threshold = 0.35,
 ): UnwrittenInsight[] {
   const insights: UnwrittenInsight[] = [];
-  const clusters = detectClusters(store, 0.4, 3);
+  const clusters = detectClusters(store, 0.4, 3, 60);
 
   // 1. Bridge gaps: notes with high similarity to multiple clusters
-  const paths = Array.from(store.entries.keys());
+  const paths = Array.from(store.entries.keys()).slice(0, 60);
   for (const path of paths) {
     const clusterMemberships: number[] = [];
     for (let i = 0; i < clusters.length; i++) {
