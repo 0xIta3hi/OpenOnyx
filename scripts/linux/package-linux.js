@@ -65,7 +65,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: OpenObsidian <openobsidian@gmail.com>
-Depends: libgtk-3-0, libnss3, libasound2, libxss1, libxtst6, libsecret-1-0, xdg-utils
+Depends: gtk3, libnss3, libasound2, libxss1, libxtst6, libsecret-1-0, xdg-utils
 Description: A local-first knowledge management tool with graph-based note linking
 `;
   fs.writeFileSync(path.join(debPkgDir, "DEBIAN/control"), control);

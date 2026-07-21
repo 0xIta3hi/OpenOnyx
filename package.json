@@ -158,7 +158,7 @@
         "--no-auto-depends"
       ],
       "depends": [
-        "libgtk-3-0",
+        "gtk3",
         "libnss3",
         "libasound2",
         "libxss1",
