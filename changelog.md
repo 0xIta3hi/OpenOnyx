@@ -4,6 +4,22 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ---
 
+## 2026-07-21 (v1.0.3)
+
+### Features and Improvements
+* **Link AutoComplete Panel**: Added dedicated LinkAutoComplete Panel component to simplify linking files across vaults.
+* **Linux Desktop Installation**: Added standalone install script (`scripts/install.sh`) and optimized Linux GTK desktop packaging integration.
+
+### Performance and Refactoring
+* **AI Panel Performance**: Optimized AI page rendering performance, note embedding retrieval, and search suggestion filtering.
+* **Workspace Clean Up**: Removed obsolete New Tab view components and streamlined tab layout routing.
+
+### Security and Fixes
+* **Dependency Security**: Resolved security vulnerabilities across package dependencies.
+* **Packaging & Desktop Icons**: Fixed desktop icon path configuration and native packaging scripts for Linux GTK targets.
+
+---
+
 ## 2026-07-20 (v1.0.2)
 
 ### Features and Improvements
