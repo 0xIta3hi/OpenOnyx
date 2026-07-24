@@ -905,10 +905,10 @@ export function SettingsPage({
                 <div className={sectionClass}>
                   <SettingGroup>
                     <SettingRow
-                      title="Version 1.0.1"
+                      title={`Version ${APP_VERSION}`}
                       description={(
                         <>
-                          Installer version: 1.0.1{" "}
+                          Installer version: {APP_VERSION}{" "}
                           <button className="text-[var(--text-link)] underline" onClick={() => setActiveSection("about")}>
                             Read the changelog.
                           </button>

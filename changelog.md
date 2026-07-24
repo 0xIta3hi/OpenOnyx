@@ -4,10 +4,13 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ---
 
-## 2026-07-24
+## 2026-07-24 (v1.0.4)
 
-### OpenOnyx Rebrand
-* **Rebrand**: Rebranded project and organization to OpenOnyx (`github.com/OpenOnyx/OpenOnyx`), updating package manifests, desktop metadata, storage keys, environment variables, database schemas, and documentation while retaining nominative fair-use references to Obsidian plugin API compatibility.
+### OpenOnyx Rebrand & Vault Migration
+* **Project Rebrand**: Rebranded project and organization to **OpenOnyx** (`github.com/OpenOnyx/OpenOnyx`), updating package manifests, desktop metadata, storage keys, environment variables, database schemas, and documentation while retaining nominative fair-use references to Obsidian plugin API compatibility.
+* **Automatic Vault Migration**: Implemented automatic migration of legacy `.openobsidian/` data directories to `.openonyx/` when opening existing vaults, preserving vector embeddings, space metadata, and disk caches seamlessly.
+* **Dynamic Settings Versioning**: Connected Settings "About" section and General Options tab to display dynamic application version (`v1.0.4`) and updated GitHub API endpoint to `OpenOnyx/OpenOnyx` for update checking.
+* **CI/CD Release Workflow Fix**: Fixed GitHub Action release workflow (`release.yml`) to generate release notes on a single matrix runner, preventing duplicated `Full Changelog:` links across multi-platform release builds.
 
 ---
 

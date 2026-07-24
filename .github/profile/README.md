@@ -71,6 +71,12 @@ The flagship desktop application built with Electron, React 19, TypeScript, Code
 ### Installation
 Download the latest binaries for Linux, macOS, or Windows directly from our [Releases Page](https://github.com/OpenOnyx/OpenOnyx/releases).
 
+* **macOS Note**: If Gatekeeper displays *"OpenOnyx.app is damaged or from an unidentified developer"*, right-click `OpenOnyx.app` → select **Open**, or run:
+  ```bash
+  xattr -cr /Applications/OpenOnyx.app
+  ```
+* **Windows Note**: Free code signing provided by [SignPath.io](https://signpath.io/) and certificate by [SignPath Foundation](https://signpath.org/).
+
 ### Building from Source
 
 ```bash

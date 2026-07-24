@@ -1,7 +1,7 @@
 # Maintainer: OpenOnyx <openonyx@gmail.com>
 
 pkgname=openonyx
-pkgver=1.0.3
+pkgver=1.0.4
 pkgrel=1
 pkgdesc="Local-first knowledge management app built around Markdown, graph navigation, and optional cloud collaboration"
 arch=("x86_64")

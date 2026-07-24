@@ -221,7 +221,17 @@ Key capabilities:
 - Obsidian API runtime export checks
 - Live compatibility scripts for selected plugins
 
-## Quick Start
+### Installation & Downloads
+
+Download official binaries for your platform from the [GitHub Releases Page](https://github.com/OpenOnyx/OpenOnyx/releases).
+
+#### Platform Notes:
+- **macOS Gatekeeper**: If macOS shows *"OpenOnyx.app cannot be opened because it is from an unidentified developer"* or *"damaged and cannot be opened"*, right-click `OpenOnyx.app` → select **Open**, or run this command in Terminal after moving to Applications:
+  ```bash
+  xattr -cr /Applications/OpenOnyx.app
+  ```
+- **Windows**: Download `.exe` installer from Releases. Free code signing provided by [SignPath.io](https://signpath.io/) and certificate by [SignPath Foundation](https://signpath.org/).
+- **Linux**: Download `.AppImage`, `.deb`, `.rpm`, or `.pkg.tar.zst` from Releases, or run `curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash`.
 
 ### Prerequisites
 
