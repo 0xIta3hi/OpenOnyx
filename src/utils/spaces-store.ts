@@ -6,7 +6,7 @@
  *   - metadata (title, description, helpsWith, visibility, noteCount)
  *   - vector index (for RAG queries)
  *
- * Storage layout (.openobsidian/spaces/):
+ * Storage layout (.openonyx/spaces/):
  *   ├── _index.json          — lightweight listing of all spaces
  *   ├── {space-id}.json      — space metadata
  *   └── {space-id}/

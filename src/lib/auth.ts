@@ -10,7 +10,7 @@ export type AuthState = {
 };
 
 /**
- * Auth module — wraps Supabase Auth for the OpenObsidian app.
+ * Auth module — wraps Supabase Auth for the OpenOnyx app.
  *
  * Rules:
  * - Users can use the app WITHOUT login (local-only mode)

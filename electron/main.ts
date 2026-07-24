@@ -1,5 +1,5 @@
 /**
- * OpenObsidian - Electron Main Process
+ * OpenOnyx - Electron Main Process
  * 
  * Handles window creation, IPC communication, and lifecycle management.
  * All filesystem operations are delegated to the fileSystem module and
@@ -185,7 +185,7 @@ function configureChromiumRuntime(): void {
   configureLinuxFontConfig();
   registerWidevineCDM();
 
-  const debugPort = process.env.OPENOBSIDIAN_DEBUG_PORT;
+  const debugPort = process.env.OPENONYX_DEBUG_PORT;
   if (debugPort && /^\d+$/.test(debugPort)) {
     app.commandLine.appendSwitch('remote-debugging-port', debugPort);
   }
@@ -196,7 +196,7 @@ function configureChromiumRuntime(): void {
   app.commandLine.appendSwitch('enable-features', 'ScrollUnification');
 
   if (!isDevMode) return;
-  if (process.env.OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS === '1') return;
+  if (process.env.OPENONYX_VERBOSE_CHROMIUM_LOGS === '1') return;
 
   // Suppress noisy Chromium diagnostics that are non-actionable in local dev.
   app.commandLine.appendSwitch('disable-logging');
@@ -255,7 +255,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'OpenObsidian',
+    title: 'OpenOnyx',
     backgroundColor: '#0f0f14',
     titleBarStyle: 'hiddenInset',
     frame: process.platform === 'darwin' ? true : false,
@@ -406,7 +406,7 @@ app.whenReady().then(() => {
   const originalUserAgent = session.defaultSession.getUserAgent();
   const cleanUserAgent = originalUserAgent
     .replace(/Electron\/[0-9.]+\s?/g, '')
-    .replace(/OpenObsidian\/[0-9.]+\s?/g, '');
+    .replace(/OpenOnyx\/[0-9.]+\s?/g, '');
   session.defaultSession.setUserAgent(cleanUserAgent);
 
   const requestInfo = new Map<number, { origin?: string; requestHeadersList?: string }>();

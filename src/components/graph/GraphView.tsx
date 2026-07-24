@@ -427,8 +427,8 @@ export function GraphView({
   );
 
   // Dynamic theme settings keys
-  const settingsKey = `openobsidian-graph-settings-v8-${theme}-${vaultHash}`;
-  const positionsKey = `openobsidian-graph-positions-v3-${vaultHash}`;
+  const settingsKey = `openonyx-graph-settings-v8-${theme}-${vaultHash}`;
+  const positionsKey = `openonyx-graph-positions-v3-${vaultHash}`;
 
   const [settings, setSettings] = useState<GraphSettings>(() => {
     try {

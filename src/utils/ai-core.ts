@@ -1,7 +1,7 @@
 /**
  * AI Core — Minimal, controlled LLM usage
  *
- * Storage: .openobsidian/annotations.json (disk-backed, NOT localStorage)
+ * Storage: .openonyx/annotations.json (disk-backed, NOT localStorage)
  *
  * LLM is used ONLY for:
  *  1. Auto-annotation: 1-line per note (generated once, cached)
@@ -52,13 +52,13 @@ async function loadCache(): Promise<AICache> {
 
   // Migrate from localStorage if exists
   try {
-    const raw = localStorage.getItem("openobsidian-ai-cache-v2");
+    const raw = localStorage.getItem("openonyx-ai-cache-v2");
     if (raw) {
       _cache = JSON.parse(raw);
       _cacheLoaded = true;
       // Persist to disk and remove from localStorage
       await writeData("annotations.json", _cache);
-      localStorage.removeItem("openobsidian-ai-cache-v2");
+      localStorage.removeItem("openonyx-ai-cache-v2");
       console.log("[AI Core] Migrated cache from localStorage to disk");
       return _cache!;
     }

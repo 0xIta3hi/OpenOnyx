@@ -1,6 +1,6 @@
 # Obsidian plugin compatibility
 
-OpenObsidian targets the public Obsidian plugin API and tests against the official
+OpenOnyx targets the public Obsidian plugin API and tests against the official
 `obsidian` npm package.
 
 ## Compatibility baseline

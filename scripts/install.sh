@@ -2,7 +2,7 @@
 set -e
 
 # Repository configuration
-REPO="OpenObsidian/OpenObsidian"
+REPO="OpenOnyx/OpenOnyx"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
 echo "Checking system compatibility..."
@@ -59,26 +59,26 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 # Installer logic
 if [ "${OS_TYPE}" = "macos" ]; then
-  echo "Downloading OpenObsidian for macOS..."
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/OpenObsidian-${VERSION}.dmg"
+  echo "Downloading OpenOnyx for macOS..."
+  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/OpenOnyx-${VERSION}.dmg"
   
-  DMG_PATH="${TMP_DIR}/OpenObsidian.dmg"
+  DMG_PATH="${TMP_DIR}/OpenOnyx.dmg"
   curl -L -# -o "${DMG_PATH}" "${DOWNLOAD_URL}"
   
   echo "Mounting disk image..."
-  MOUNT_POINT="/Volumes/OpenObsidian-Install"
+  MOUNT_POINT="/Volumes/OpenOnyx-Install"
   hdiutil attach "${DMG_PATH}" -mountpoint "${MOUNT_POINT}" -nobrowse -quiet
   
   echo "Installing to /Applications..."
-  if [ -d "/Applications/OpenObsidian.app" ]; then
-    sudo rm -rf "/Applications/OpenObsidian.app"
+  if [ -d "/Applications/OpenOnyx.app" ]; then
+    sudo rm -rf "/Applications/OpenOnyx.app"
   fi
-  sudo cp -R "${MOUNT_POINT}/OpenObsidian.app" "/Applications/"
+  sudo cp -R "${MOUNT_POINT}/OpenOnyx.app" "/Applications/"
   
   echo "Detaching disk image..."
   hdiutil detach "${MOUNT_POINT}" -quiet
   
-  echo "OpenObsidian successfully installed to /Applications!"
+  echo "OpenOnyx successfully installed to /Applications!"
   
 elif [ "${OS_TYPE}" = "linux" ]; then
   INSTALL_APPIMAGE=false
@@ -86,12 +86,12 @@ elif [ "${OS_TYPE}" = "linux" ]; then
   # Detect package manager
   if [ -f /etc/arch-release ] || [ -f /etc/manjaro-release ]; then
     echo "Arch Linux detected. Downloading pacman package..."
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/openobsidian-${VERSION}-1-x86_64.pkg.tar.zst"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/openonyx-${VERSION}-1-x86_64.pkg.tar.zst"
     
-    PKG_PATH="${TMP_DIR}/openobsidian.pkg.tar.zst"
+    PKG_PATH="${TMP_DIR}/openonyx.pkg.tar.zst"
     if curl -fsSL -o "${PKG_PATH}" "${DOWNLOAD_URL}"; then
       sudo pacman -U --noconfirm "${PKG_PATH}"
-      echo "OpenObsidian successfully installed via Pacman!"
+      echo "OpenOnyx successfully installed via Pacman!"
     else
       echo "Pacman package download failed. Falling back to AppImage..."
       INSTALL_APPIMAGE=true
@@ -99,12 +99,12 @@ elif [ "${OS_TYPE}" = "linux" ]; then
     
   elif [ -f /etc/debian_version ] || [ -f /etc/lsb-release ]; then
     echo "Debian/Ubuntu detected. Downloading Debian package..."
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/openobsidian_${VERSION}_amd64.deb"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/openonyx_${VERSION}_amd64.deb"
     
-    PKG_PATH="${TMP_DIR}/openobsidian.deb"
+    PKG_PATH="${TMP_DIR}/openonyx.deb"
     if curl -fsSL -o "${PKG_PATH}" "${DOWNLOAD_URL}"; then
       sudo dpkg -i "${PKG_PATH}" || sudo apt-get install -f -y
-      echo "OpenObsidian successfully installed via Dpkg/Apt!"
+      echo "OpenOnyx successfully installed via Dpkg/Apt!"
     else
       echo "Debian package download failed. Falling back to AppImage..."
       INSTALL_APPIMAGE=true
@@ -115,33 +115,33 @@ elif [ "${OS_TYPE}" = "linux" ]; then
   
   if [ "${INSTALL_APPIMAGE}" = "true" ]; then
     echo "Downloading AppImage..."
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/OpenObsidian-${VERSION}.AppImage"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/OpenOnyx-${VERSION}.AppImage"
     
-    APP_PATH="/usr/local/bin/openobsidian"
+    APP_PATH="/usr/local/bin/openonyx"
     echo "Downloading AppImage to ${APP_PATH}..."
     sudo curl -L -# -o "${APP_PATH}" "${DOWNLOAD_URL}"
     sudo chmod +x "${APP_PATH}"
     
     # Generate desktop entry
-    DESKTOP_ENTRY="/usr/share/applications/openobsidian.desktop"
+    DESKTOP_ENTRY="/usr/share/applications/openonyx.desktop"
     echo "Creating desktop entry at ${DESKTOP_ENTRY}..."
     sudo tee "${DESKTOP_ENTRY}" > /dev/null <<EOF
 [Desktop Entry]
-Name=OpenObsidian
+Name=OpenOnyx
 Comment=Local-first knowledge management app
-Exec=openobsidian %U
+Exec=openonyx %U
 Terminal=false
 Type=Application
-Icon=openobsidian
-StartupWMClass=OpenObsidian
+Icon=openonyx
+StartupWMClass=OpenOnyx
 Categories=Office;Utility;
 MimeType=text/markdown;text/plain;
 EOF
     
     # Download icon
     sudo mkdir -p /usr/share/pixmaps
-    sudo curl -fsSL -o /usr/share/pixmaps/openobsidian.png "https://raw.githubusercontent.com/${REPO}/main/build/icon.png"
+    sudo curl -fsSL -o /usr/share/pixmaps/openonyx.png "https://raw.githubusercontent.com/${REPO}/main/build/icon.png"
     
-    echo "OpenObsidian AppImage successfully installed to /usr/local/bin/openobsidian!"
+    echo "OpenOnyx AppImage successfully installed to /usr/local/bin/openonyx!"
   fi
 fi

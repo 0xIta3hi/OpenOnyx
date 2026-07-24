@@ -95,9 +95,9 @@ const MIN_MD_PREVIEW_SCREEN_WIDTH = 240;
 const MIN_MD_PREVIEW_SCREEN_HEIGHT = 140;
 const MD_PREVIEW_RESUME_DELAY_MS = 160;
 const MD_PREVIEW_REFRESH_INTERVAL_MS = 1200;
-const CANVAS_SCRIBBLES_KEY = "openobsidianScribblesV1";
-const CANVAS_CUSTOMIZATION_KEY = "openobsidianCanvasCustomizationV1";
-const CANVAS_VIEWPORT_KEY = "openobsidianCanvasViewportV1";
+const CANVAS_SCRIBBLES_KEY = "openonyxScribblesV1";
+const CANVAS_CUSTOMIZATION_KEY = "openonyxCanvasCustomizationV1";
+const CANVAS_VIEWPORT_KEY = "openonyxCanvasViewportV1";
 const DEFAULT_SCRIBBLE_WIDTH = 2.4;
 const MIN_SCRIBBLE_WIDTH = 0.8;
 const MAX_SCRIBBLE_WIDTH = 48;
@@ -5073,7 +5073,7 @@ function EmbeddedFileNode({
       }
     };
 
-    const onLiveNoteChange = (event: Event) => {
+    const onNoteContentChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ path?: string; content?: string }>)
         .detail;
       if (
@@ -5088,8 +5088,8 @@ function EmbeddedFileNode({
     };
 
     window.addEventListener(
-      "openobsidian:note-content-changed",
-      onLiveNoteChange as EventListener,
+      "openonyx:note-content-changed",
+      onNoteContentChanged as EventListener,
     );
 
     refreshContent();
@@ -5101,8 +5101,8 @@ function EmbeddedFileNode({
         clearInterval(refreshTimer);
       }
       window.removeEventListener(
-        "openobsidian:note-content-changed",
-        onLiveNoteChange as EventListener,
+        "openonyx:note-content-changed",
+        onNoteContentChanged as EventListener,
       );
     };
   }, [node.file, isMarkdown, enableMarkdownPreview]);

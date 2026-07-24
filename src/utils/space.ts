@@ -1,11 +1,11 @@
 /**
- * Space — Core entity for OpenObsidian knowledge spaces
+ * Space — Core entity for OpenOnyx knowledge spaces
  *
  * A Space is the unit of publishing, sharing, and forking.
  * It contains notes, relationships, embeddings, annotations, and attachments.
  *
- * Export/Import uses ZIP archives (.openobsidian.zip):
- *   space.openobsidian.zip/
+ * Export/Import uses ZIP archives (.openonyx.zip):
+ *   space.openonyx.zip/
  *   ├── space.json          — metadata, relationships, annotations, synthesis
  *   ├── notes/              — markdown files
  *   ├── attachments/        — images, files (no base64, no JSON embedding)
@@ -91,7 +91,7 @@ function extractRelationships(
 // ── Export ────────────────────────────────────────────────────────────────────
 
 /**
- * Export the current vault as a .openobsidian.zip archive.
+ * Export the current vault as a .openonyx.zip archive.
  * Includes notes, attachments, relationships, annotations, and optionally embeddings.
  */
 export async function exportSpace(options: {
@@ -173,7 +173,7 @@ export async function exportSpace(options: {
   // Load annotations from cache
   const annotations: SpaceAnnotation[] = [];
   try {
-    const cacheRaw = localStorage.getItem("openobsidian-ai-cache-v2");
+    const cacheRaw = localStorage.getItem("openonyx-ai-cache-v2");
     if (cacheRaw) {
       const cache = JSON.parse(cacheRaw);
       for (const [noteId, data] of Object.entries(cache.annotations || {})) {
@@ -190,7 +190,7 @@ export async function exportSpace(options: {
   // Load synthesis results from cache
   const syntheses: SpaceSynthesis[] = [];
   try {
-    const synthRaw = localStorage.getItem("openobsidian-synthesis-cache-v1");
+    const synthRaw = localStorage.getItem("openonyx-synthesis-cache-v1");
     if (synthRaw) {
       const synthCache = JSON.parse(synthRaw);
       let idx = 0;
@@ -250,7 +250,7 @@ export async function exportSpace(options: {
   });
 
   const safeName = options.title.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
-  saveAs(blob, `${safeName}.openobsidian.zip`);
+  saveAs(blob, `${safeName}.openonyx.zip`);
 }
 
 // ── Import ───────────────────────────────────────────────────────────────────
@@ -264,7 +264,7 @@ export interface ImportResult {
 }
 
 /**
- * Import a .openobsidian.zip archive into the vault.
+ * Import a .openonyx.zip archive into the vault.
  * Restores notes, attachments, and optionally embeddings.
  */
 export async function importSpace(file: File): Promise<ImportResult> {
@@ -355,7 +355,7 @@ export async function importSpace(file: File): Promise<ImportResult> {
     // Restore annotations
     if (manifest.annotations.length > 0) {
       try {
-        const cacheRaw = localStorage.getItem("openobsidian-ai-cache-v2");
+        const cacheRaw = localStorage.getItem("openonyx-ai-cache-v2");
         const cache = cacheRaw ? JSON.parse(cacheRaw) : { annotations: {}, syntheses: {} };
         for (const ann of manifest.annotations) {
           cache.annotations[ann.noteId] = {
@@ -364,14 +364,14 @@ export async function importSpace(file: File): Promise<ImportResult> {
             createdAt: new Date(ann.createdAt).getTime(),
           };
         }
-        localStorage.setItem("openobsidian-ai-cache-v2", JSON.stringify(cache));
+        localStorage.setItem("openonyx-ai-cache-v2", JSON.stringify(cache));
       } catch { /* silent */ }
     }
 
     // Restore synthesis insights
     if (manifest.syntheses.length > 0) {
       try {
-        const synthRaw = localStorage.getItem("openobsidian-synthesis-cache-v1");
+        const synthRaw = localStorage.getItem("openonyx-synthesis-cache-v1");
         const synthCache = synthRaw ? JSON.parse(synthRaw) : {};
         for (const synth of manifest.syntheses) {
           const key = synth.noteIds.sort().join("|");
@@ -381,7 +381,7 @@ export async function importSpace(file: File): Promise<ImportResult> {
             createdAt: new Date(synth.createdAt).getTime(),
           };
         }
-        localStorage.setItem("openobsidian-synthesis-cache-v1", JSON.stringify(synthCache));
+        localStorage.setItem("openonyx-synthesis-cache-v1", JSON.stringify(synthCache));
       } catch { /* silent */ }
     }
 

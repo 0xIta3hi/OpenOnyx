@@ -104,7 +104,7 @@ export function StatusBar({
             <span className={statusItemClass}>{charCount} characters</span>
           </>
         ) : (
-          pluginStatusBarItems.length === 0 && <span className={statusItemClass}>OpenObsidian</span>
+          pluginStatusBarItems.length === 0 && <span className={statusItemClass}>OpenOnyx</span>
         )}
       </div>
     </div>

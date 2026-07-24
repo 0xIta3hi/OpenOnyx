@@ -3,12 +3,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const toolDir = process.env.OPENOBSIDIAN_PANDOC_DIR
-  || path.join(os.homedir(), '.local', 'share', 'openobsidian', 'tools', 'pandoc');
+const toolDir = process.env.OPENONYX_PANDOC_DIR
+  || path.join(os.homedir(), '.local', 'share', 'openonyx', 'tools', 'pandoc');
 const executable = process.platform === 'win32'
   ? path.join(toolDir, 'pandoc.cjs')
   : path.join(toolDir, 'pandoc');
-const outputPath = path.join(os.tmpdir(), 'openobsidian-pandoc-backend-test.html');
+const outputPath = path.join(os.tmpdir(), 'openonyx-pandoc-backend-test.html');
 
 function runPandoc(args, input) {
   return new Promise((resolve, reject) => {
@@ -43,7 +43,7 @@ async function main() {
     '--from', 'markdown',
     '--to', 'html',
     '--output', outputPath,
-  ], '# OpenObsidian export\n\nPandoc backend is operational.\n');
+  ], '# OpenOnyx export\n\nPandoc backend is operational.\n');
 
   const result = fs.readFileSync(outputPath, 'utf8');
   if (!result.includes('<h1') || !result.includes('Pandoc backend is operational.')) {

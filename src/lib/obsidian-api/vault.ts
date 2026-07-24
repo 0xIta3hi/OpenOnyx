@@ -1,6 +1,6 @@
 /**
  * Obsidian API Compatibility — Vault
- * Wraps OpenObsidian's file system operations to match Obsidian's Vault API.
+ * Wraps OpenOnyx's file system operations to match Obsidian's Vault API.
  */
 
 import { Events, EventRef } from './components';
@@ -11,7 +11,7 @@ const api = () => (window as any).electronAPI;
 
 export class OOVault extends Events {
   adapter: any;
-  configDir = '.openobsidian';
+  configDir = '.openonyx';
   config: Record<string, any> = {
     useMarkdownLinks: false,
     newLinkFormat: 'shortest',
@@ -428,7 +428,7 @@ export class OOVault extends Events {
       await updateEntryPath(file, np);
     }
 
-    window.dispatchEvent(new CustomEvent('openobsidian:file-renamed', {
+    window.dispatchEvent(new CustomEvent('openonyx:file-renamed', {
       detail: { oldPath, newPath: np, isDirectory: file instanceof TFolder },
     }));
     this.trigger('rename', file, oldPath);

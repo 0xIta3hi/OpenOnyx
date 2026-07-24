@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { WASI } = require('node:wasi');
 
-const wasmPath = process.env.OPENOBSIDIAN_PANDOC_WASM
+const wasmPath = process.env.OPENONYX_PANDOC_WASM
   || path.join(path.dirname(fs.realpathSync(__filename)), 'pandoc.wasm');
 
 if (!fs.existsSync(wasmPath)) {

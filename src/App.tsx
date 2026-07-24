@@ -1084,7 +1084,7 @@ export default function App() {
       return;
     }
     try {
-      const saved = localStorage.getItem(`openobsidian-bookmarks:${vaultPath}`);
+      const saved = localStorage.getItem(`openonyx-bookmarks:${vaultPath}`);
       const items = saved ? JSON.parse(saved) as BookmarkEntry[] : [];
       setBookmarkStore({ vaultPath, items: Array.isArray(items) ? items : [] });
     } catch {
@@ -1095,7 +1095,7 @@ export default function App() {
   useEffect(() => {
     if (!vaultPath || bookmarkStore.vaultPath !== vaultPath) return;
     localStorage.setItem(
-      `openobsidian-bookmarks:${vaultPath}`,
+      `openonyx-bookmarks:${vaultPath}`,
       JSON.stringify(bookmarkStore.items),
     );
   }, [bookmarkStore, vaultPath]);
@@ -1204,7 +1204,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     // Load settings from localStorage on initial render
     try {
-      const saved = localStorage.getItem("openobsidian-settings");
+      const saved = localStorage.getItem("openonyx-settings");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.theme === "peach-white") parsed.theme = "light";
@@ -1581,7 +1581,7 @@ export default function App() {
         isHostEditableMarkdownPath(path)
       ) {
         window.dispatchEvent(
-          new CustomEvent("openobsidian:note-content-changed", {
+          new CustomEvent("openonyx:note-content-changed", {
             detail: { path, content },
           }),
         );
@@ -2302,7 +2302,7 @@ export default function App() {
     );
 
     // Save settings to localStorage
-    localStorage.setItem("openobsidian-settings", JSON.stringify(settings));
+    localStorage.setItem("openonyx-settings", JSON.stringify(settings));
   }, [settings, theme]);
 
   useEffect(() => {
@@ -3225,7 +3225,7 @@ export default function App() {
 
   const indexMarkdownFileNow = useCallback(async (path: string, content?: string) => {
     if (!path.toLowerCase().endsWith(".md")) return;
-    if (path.startsWith(".trash/") || path.startsWith(".openobsidian/")) return;
+    if (path.startsWith(".trash/") || path.startsWith(".openonyx/")) return;
     if (!areEmbeddingsAvailable()) return;
 
     try {
@@ -3234,7 +3234,7 @@ export default function App() {
       const changed = await embedNote(store, path, source);
       if (changed) {
         window.dispatchEvent(
-          new CustomEvent("openobsidian:embedding-updated", {
+          new CustomEvent("openonyx:embedding-updated", {
             detail: { path },
           }),
         );
@@ -3255,13 +3255,13 @@ export default function App() {
       void indexMarkdownFileNow(detail.path, detail.content);
     };
 
-    window.addEventListener("openobsidian:file-created", onFileCreated as EventListener);
-    window.addEventListener("openobsidian:directory-created", onFileCreated as EventListener);
-    window.addEventListener("openobsidian:file-written", onFileWritten as EventListener);
+    window.addEventListener("openonyx:file-created", onFileCreated as EventListener);
+    window.addEventListener("openonyx:directory-created", onFileCreated as EventListener);
+    window.addEventListener("openonyx:file-written", onFileWritten as EventListener);
     return () => {
-      window.removeEventListener("openobsidian:file-created", onFileCreated as EventListener);
-      window.removeEventListener("openobsidian:directory-created", onFileCreated as EventListener);
-      window.removeEventListener("openobsidian:file-written", onFileWritten as EventListener);
+      window.removeEventListener("openonyx:file-created", onFileCreated as EventListener);
+      window.removeEventListener("openonyx:directory-created", onFileCreated as EventListener);
+      window.removeEventListener("openonyx:file-written", onFileWritten as EventListener);
     };
   }, [indexMarkdownFileNow, refreshFileTree]);
 
@@ -5024,9 +5024,9 @@ export default function App() {
       });
     };
 
-    window.addEventListener("openobsidian:embedding-updated", onEmbeddingUpdated as EventListener);
+    window.addEventListener("openonyx:embedding-updated", onEmbeddingUpdated as EventListener);
     return () => {
-      window.removeEventListener("openobsidian:embedding-updated", onEmbeddingUpdated as EventListener);
+      window.removeEventListener("openonyx:embedding-updated", onEmbeddingUpdated as EventListener);
     };
   }, [activeTabId, paneTree, refreshInlineSuggestions, tabs]);
 
@@ -5148,7 +5148,7 @@ export default function App() {
     const saveContent = currentContentRef.current;
     await api.writeFile(tab.path, saveContent);
     window.dispatchEvent(
-      new CustomEvent("openobsidian:note-content-changed", {
+      new CustomEvent("openonyx:note-content-changed", {
         detail: { path: tab.path, content: saveContent },
       }),
     );
@@ -5226,7 +5226,7 @@ export default function App() {
         isHostEditableMarkdownPath(activeTab.path)
       ) {
         window.dispatchEvent(
-          new CustomEvent("openobsidian:note-content-changed", {
+          new CustomEvent("openonyx:note-content-changed", {
             detail: { path: activeTab.path, content },
           }),
         );
@@ -5249,7 +5249,7 @@ export default function App() {
         if (tab && isHostEditableMarkdownPath(tab.path)) {
           await api.writeFile(tab.path, content);
           window.dispatchEvent(
-            new CustomEvent("openobsidian:note-content-changed", {
+            new CustomEvent("openonyx:note-content-changed", {
               detail: { path: tab.path, content },
             }),
           );
@@ -5642,8 +5642,8 @@ export default function App() {
     window.addEventListener("oo:command-palette", onCommandPalette as EventListener);
     window.addEventListener("oo:next-tab", onNextTab as EventListener);
     window.addEventListener("oo:prev-tab", onPrevTab as EventListener);
-    window.addEventListener("openobsidian:note-saved", onNoteSaved as EventListener);
-    window.addEventListener("openobsidian:file-renamed", onFileRenamed as EventListener);
+    window.addEventListener("openonyx:note-saved", onNoteSaved as EventListener);
+    window.addEventListener("openonyx:file-renamed", onFileRenamed as EventListener);
 
     return () => {
       window.removeEventListener("oo:save", onSave as EventListener);
@@ -5661,8 +5661,8 @@ export default function App() {
       window.removeEventListener("oo:command-palette", onCommandPalette as EventListener);
       window.removeEventListener("oo:next-tab", onNextTab as EventListener);
       window.removeEventListener("oo:prev-tab", onPrevTab as EventListener);
-      window.removeEventListener("openobsidian:note-saved", onNoteSaved as EventListener);
-      window.removeEventListener("openobsidian:file-renamed", onFileRenamed as EventListener);
+      window.removeEventListener("openonyx:note-saved", onNoteSaved as EventListener);
+      window.removeEventListener("openonyx:file-renamed", onFileRenamed as EventListener);
     };
   }, [
     activeTabId,

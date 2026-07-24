@@ -38,7 +38,7 @@ async function waitFor(check, label, timeoutMs = 30_000) {
 async function evaluate(expression) {
   const targets = await fetch(`http://127.0.0.1:${debugPort}/json/list`).then((response) => response.json());
   const target = targets.find((entry) => entry.type === 'page' && entry.url.startsWith(`http://127.0.0.1:${vitePort}`));
-  if (!target) throw new Error('OpenObsidian renderer target was not found.');
+  if (!target) throw new Error('OpenOnyx renderer target was not found.');
 
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -110,7 +110,7 @@ async function main() {
     ...process.env,
     NODE_ENV: 'development',
     VITE_DEV_SERVER_URL: `http://127.0.0.1:${vitePort}`,
-    OPENOBSIDIAN_DEBUG_PORT: String(debugPort),
+    OPENONYX_DEBUG_PORT: String(debugPort),
   };
   delete electronEnv.ELECTRON_RUN_AS_NODE;
   electron = spawn(require('electron'), ['.'], {
@@ -150,7 +150,7 @@ async function main() {
   const result = await evaluate(`
     (async () => {
       const app = window.app;
-      if (!app) throw new Error('OpenObsidian app global is not ready.');
+      if (!app) throw new Error('OpenOnyx app global is not ready.');
       const errors = [];
       const describeError = (error) => error?.stack || String(error);
       const describeConsoleArg = (arg) => {

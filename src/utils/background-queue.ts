@@ -1,7 +1,7 @@
 /**
  * Background Queue — Persistent, non-blocking job processor
  *
- * Storage: .openobsidian/queue.json (resumes across restarts)
+ * Storage: .openonyx/queue.json (resumes across restarts)
  *
  * Features:
  *  - Vault initialization (batch embedding of existing notes)

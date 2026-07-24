@@ -192,7 +192,7 @@ export function registerIpcHandlers(
     return fsManager.saveAttachmentDedup(fileName, base64Data);
   });
 
-  // ── .openobsidian Data Storage ────────────────────
+  // ── .openonyx Data Storage ────────────────────
   ipcMain.handle('data:read', async (_event, relativePath: string) => {
     return fsManager.readDataFile(relativePath);
   });
@@ -214,7 +214,7 @@ export function registerIpcHandlers(
     try {
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'OpenObsidian/1.0',
+          'User-Agent': 'OpenOnyx/1.0',
           'Accept': 'application/json, text/plain, */*',
         },
       });
@@ -258,7 +258,7 @@ export function registerIpcHandlers(
       return { canceled: true as const, filePath: null };
     }
 
-    const tempHtmlPath = nodePath.join(app.getPath('temp'), `openobsidian-export-${Date.now()}.html`);
+    const tempHtmlPath = nodePath.join(app.getPath('temp'), `openonyx-export-${Date.now()}.html`);
     let pdfWindow: BrowserWindow | null = null;
 
     try {
@@ -309,7 +309,7 @@ export function registerIpcHandlers(
       const options: RequestInit = {
         method: params.method || 'GET',
         headers: {
-          'User-Agent': 'OpenObsidian/1.0',
+          'User-Agent': 'OpenOnyx/1.0',
           ...params.headers,
         },
         body: params.body,

@@ -1,7 +1,7 @@
-# OpenObsidian
+# OpenOnyx
 
 <p align="center">
-  <img width="1600" alt="OpenObsidian desktop workspace" src="docs/images/banner.png" />
+  <img width="1600" alt="OpenOnyx desktop workspace" src="docs/images/banner.png" />
 </p>
 
 <p align="center">
@@ -16,13 +16,13 @@
   <img alt="Local first" src="https://img.shields.io/badge/local--first-yes-10B981?style=flat-square">
 </p>
 
-OpenObsidian is a professional desktop knowledge management app built around plain Markdown files, Obsidian-style workflows, graph navigation, local semantic indexing, and optional cloud collaboration. It is designed for people who want ownership of their notes while still having a modern thinking layer for search, synthesis, writing assistance, and knowledge exploration.
+OpenOnyx is a professional desktop knowledge management app built around plain Markdown files, Obsidian-style workflows, graph navigation, local semantic indexing, and optional cloud collaboration. It is designed for people who want ownership of their notes while still having a modern thinking layer for search, synthesis, writing assistance, and knowledge exploration.
 
 The app is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
 
 ## Contents
 
-- [Why OpenObsidian](#why-openobsidian)
+- [Why OpenOnyx](#why-openonyx)
 - [Feature Tour](#feature-tour)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
@@ -37,9 +37,9 @@ The app is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS,
 - [Contributing](#contributing)
 - [License](#license)
 
-## Why OpenObsidian
+## Why OpenOnyx
 
-OpenObsidian is for writers, researchers, engineers, students, and teams who want a serious knowledge base without surrendering their files to a proprietary silo.
+OpenOnyx is for writers, researchers, engineers, students, and teams who want a serious knowledge base without surrendering their files to a proprietary silo.
 
 | Principle | What it means |
 | --- | --- |
@@ -47,13 +47,13 @@ OpenObsidian is for writers, researchers, engineers, students, and teams who wan
 | Markdown-native | Your writing stays portable, readable, and tool-friendly. |
 | AI where it helps | Retrieval, suggestions, summaries, and inline writing tools are grounded in your vault. |
 | Cloud when you choose | Supabase-backed sync, collaboration, and public Spaces are optional. |
-| Plugin-aware | OpenObsidian targets Obsidian plugin compatibility through a tested runtime layer. |
+| Plugin-aware | OpenOnyx targets Obsidian plugin compatibility through a tested runtime layer. |
 
 ## Feature Tour
 
 ### 1. Markdown Workspace
 
-Write in a fast CodeMirror-powered editor with live preview, source mode, split panes, tab groups, backlinks, tags, outline, properties, and wiki links. OpenObsidian keeps the editing surface focused while making surrounding context available when you need it.
+Write in a fast CodeMirror-powered editor with live preview, source mode, split panes, tab groups, backlinks, tags, outline, properties, and wiki links. OpenOnyx keeps the editing surface focused while making surrounding context available when you need it.
 
 Key capabilities:
 
@@ -149,7 +149,7 @@ Key capabilities:
 
 ### 7. AI Writing and Synthesis
 
-OpenObsidian includes optional AI assistance for writing, editing, synthesis, and vault-level reasoning. Remote LLM providers are used only when configured.
+OpenOnyx includes optional AI assistance for writing, editing, synthesis, and vault-level reasoning. Remote LLM providers are used only when configured.
 
 Key capabilities:
 
@@ -166,7 +166,7 @@ Key capabilities:
 
 ### 8. Sync and Collaboration
 
-Cloud features are optional, but when enabled OpenObsidian can sync Spaces, preserve offline edits, and support collaborative workflows through a Supabase-backed data model.
+Cloud features are optional, but when enabled OpenOnyx can sync Spaces, preserve offline edits, and support collaborative workflows through a Supabase-backed data model.
 
 Key capabilities:
 
@@ -182,7 +182,7 @@ Key capabilities:
 
 ### 9. Plugin System
 
-OpenObsidian includes an Obsidian-compatible runtime layer and a plugin management experience for community-style plugins.
+OpenOnyx includes an Obsidian-compatible runtime layer and a plugin management experience for community-style plugins.
 
 Key capabilities:
 
@@ -211,7 +211,7 @@ Key capabilities:
 
 ### 11. Export and Compatibility Tooling
 
-OpenObsidian includes compatibility infrastructure for export plugins and plugin runtimes that expect desktop APIs.
+OpenOnyx includes compatibility infrastructure for export plugins and plugin runtimes that expect desktop APIs.
 
 Key capabilities:
 
@@ -231,8 +231,8 @@ Key capabilities:
 ### Run Locally
 
 ```bash
-git clone https://github.com/OpenObsidian/OpenObsidian.git
-cd OpenObsidian
+git clone https://github.com/OpenOnyx/OpenOnyx.git
+cd OpenOnyx
 npm install
 npm run dev
 ```
@@ -270,7 +270,7 @@ Package-manager publishing templates for AUR, Homebrew, and winget are documente
 
 ## Configuration
 
-OpenObsidian runs without environment variables for local vault editing, local search, local embeddings, local graphs, and local Spaces.
+OpenOnyx runs without environment variables for local vault editing, local search, local embeddings, local graphs, and local Spaces.
 
 Cloud-backed features require Supabase:
 
@@ -326,11 +326,11 @@ Useful development environment variables:
 | Variable | Purpose |
 | --- | --- |
 | `VITE_DEV_SERVER_URL` | Override the renderer URL loaded by Electron |
-| `OPENOBSIDIAN_DEBUG_PORT` | Enable Chromium remote debugging for Electron |
-| `OPENOBSIDIAN_VERBOSE_CHROMIUM_LOGS=1` | Keep verbose Chromium logs in development |
-| `OPENOBSIDIAN_PANDOC_DIR` | Override the managed Pandoc backend directory |
-| `OPENOBSIDIAN_PANDOC_ARCHIVE` | Install Pandoc backend from a local archive |
-| `OPENOBSIDIAN_PANDOC_WASM` | Override the Pandoc WASM path used by the runner |
+| `OPENONYX_DEBUG_PORT` | Enable Chromium remote debugging for Electron |
+| `OPENONYX_VERBOSE_CHROMIUM_LOGS=1` | Keep verbose Chromium logs in development |
+| `OPENONYX_PANDOC_DIR` | Override the managed Pandoc backend directory |
+| `OPENONYX_PANDOC_ARCHIVE` | Install Pandoc backend from a local archive |
+| `OPENONYX_PANDOC_WASM` | Override the Pandoc WASM path used by the runner |
 
 ## Testing
 
@@ -368,7 +368,7 @@ Some live tests expect a vault path through environment variables such as `OO_KA
 
 ## Architecture
 
-OpenObsidian uses Electron's multi-process model with a strict boundary between the renderer and local system access.
+OpenOnyx uses Electron's multi-process model with a strict boundary between the renderer and local system access.
 
 ```text
 Renderer Process
@@ -386,7 +386,7 @@ window lifecycle, vault filesystem, search index, dialogs, shell integration
         |
         v
 Local Vault
-Markdown files, canvas files, assets, .openobsidian cache
+Markdown files, canvas files, assets, .openonyx cache
 ```
 
 Core principles:
@@ -426,7 +426,7 @@ Core principles:
 
 ## Plugin Compatibility
 
-OpenObsidian targets the public Obsidian plugin API using the official `obsidian` npm package as its baseline.
+OpenOnyx targets the public Obsidian plugin API using the official `obsidian` npm package as its baseline.
 
 Current compatibility coverage includes:
 
@@ -487,4 +487,4 @@ For changes that touch plugins, Spaces, sync, AI retrieval, filesystem behavior,
 
 ## License
 
-OpenObsidian is released under the [MIT License](LICENSE).
+OpenOnyx is released under the [MIT License](LICENSE).

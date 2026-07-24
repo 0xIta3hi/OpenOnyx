@@ -22,12 +22,12 @@ import { supabase } from './supabase';
  */
 
 // ── Schema Migration SQL ─────────────────────────────────────────────────────
-// This is the complete, self-contained SQL that creates the OpenObsidian
+// This is the complete, self-contained SQL that creates the OpenOnyx
 // schema from scratch in a fresh Supabase project.
 
 const SCHEMA_MIGRATION_SQL = `
 -- ============================================================================
--- OpenObsidian Schema v2 - Self-contained migration for user-owned databases
+-- OpenOnyx Schema v2 - Self-contained migration for user-owned databases
 -- ============================================================================
 
 -- 1. Enable required extensions
@@ -593,7 +593,7 @@ export async function testConnection(config: UserDatabaseConfig): Promise<{ ok: 
 }
 
 /**
- * Setup the OpenObsidian schema in a user-owned Supabase database.
+ * Setup the OpenOnyx schema in a user-owned Supabase database.
  *
  * This function:
  * 1. Connects to the user's Supabase instance

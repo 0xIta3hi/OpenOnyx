@@ -14,7 +14,7 @@ import moment from 'moment';
 export class OOApp {
   // Community plugins use this as a stable key for their IndexedDB-backed
   // caches. An empty value prevents those stores from being initialized.
-  appId = 'openobsidian';
+  appId = 'openonyx';
   vault: OOVault;
   workspace: OOWorkspace;
   metadataCache: OOMetadataCache;
@@ -224,7 +224,7 @@ export class OOApp {
       manifests: {} as Record<string, any>,
       getPlugin: (id: string) => this.plugins.plugins[id] || null,
       isEnabled: (id: string) => this.plugins.enabledPlugins.has(id),
-      getPluginFolder: (manifest: any) => manifest?.dir || `.openobsidian/plugins/${manifest?.id || ''}`,
+      getPluginFolder: (manifest: any) => manifest?.dir || `.openonyx/plugins/${manifest?.id || ''}`,
       loadManifest: async (id: string) => this.plugins.manifests[id] || null,
       loadManifests: async () => this.plugins.manifests,
       loadPlugin: async (_id: string) => false,

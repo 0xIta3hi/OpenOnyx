@@ -227,14 +227,14 @@ export function AIPage({
   // ── Suggestion threshold (user-controlled) ────────
   const [suggestionThreshold, setSuggestionThreshold] = useState(() => {
     try {
-      const saved = localStorage.getItem("openobsidian-suggestion-threshold");
+      const saved = localStorage.getItem("openonyx-suggestion-threshold");
       return saved ? parseFloat(saved) : 0.35;
     } catch { return 0.35; }
   });
 
   const updateThreshold = useCallback((value: number) => {
     setSuggestionThreshold(value);
-    localStorage.setItem("openobsidian-suggestion-threshold", value.toString());
+    localStorage.setItem("openonyx-suggestion-threshold", value.toString());
   }, []);
 
   // ── Auto-suggestions for active note ───────────────
@@ -330,7 +330,7 @@ export function AIPage({
   // Insight dismissal cooldown (prevent noise)
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem("openobsidian-dismissed-insights");
+      const saved = localStorage.getItem("openonyx-dismissed-insights");
       return saved ? new Set(JSON.parse(saved)) : new Set();
     } catch { return new Set<string>(); }
   });
@@ -342,7 +342,7 @@ export function AIPage({
     setDismissedInsights((prev) => {
       const next = new Set(prev);
       next.add(key);
-      localStorage.setItem("openobsidian-dismissed-insights", JSON.stringify([...next]));
+      localStorage.setItem("openonyx-dismissed-insights", JSON.stringify([...next]));
       return next;
     });
     setUnwrittenInsights((prev) => prev.filter((_, i) => i !== idx));

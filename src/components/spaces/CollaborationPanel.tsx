@@ -1,5 +1,5 @@
 /**
- * CollaborationPanel -- Full collaboration UI for OpenObsidian.
+ * CollaborationPanel -- Full collaboration UI for OpenOnyx.
  *
  * Owner flow: Create cloud space -> upload vault -> invite collaborators
  * Receiver flow: View invites -> accept -> select folder -> bootstrap vault

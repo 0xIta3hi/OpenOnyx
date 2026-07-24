@@ -118,7 +118,7 @@ const JSON_SCHEMA = {
 
 // ── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a sharp research partner embedded in a knowledge management tool called OpenObsidian.
+const SYSTEM_PROMPT = `You are a sharp research partner embedded in a knowledge management tool called OpenOnyx.
 
 ## Your Job
 Add a concise annotation that augments the note — not a summary. Surface what the user likely doesn't know yet: a counter-argument, a relevant framework, a key tension, an adjacent concept, or a logical implication.
@@ -432,7 +432,7 @@ export async function askVault(
       ).join('\n\n')}`
     : "";
 
-  const systemMessage = `You are an AI assistant for a knowledge management tool called OpenObsidian.
+  const systemMessage = `You are an AI assistant for a knowledge management tool called OpenOnyx.
 You have access to the user's vault notes as context. Answer questions about their notes, suggest connections, summarize themes, or help with research.
 
 Be concise, helpful, and reference specific notes when relevant.${contextBlock}`;

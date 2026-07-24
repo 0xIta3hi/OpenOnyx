@@ -62,11 +62,11 @@ export function WelcomeScreen({
       <div className={`mb-6 flex items-center justify-center p-3.5 rounded-2xl shadow-sm border ${isDark ? "bg-[#18181b] border-neutral-800/80" : "bg-white border-neutral-200/60"} h-24 w-24`}>
         <img
           src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"}
-          alt="OpenObsidian Logo"
+          alt="OpenOnyx Logo"
           className="w-full h-full object-contain"
         />
       </div>
-      <h1 className="text-3xl font-bold tracking-tight mb-2 text-(--text-primary)">OpenObsidian</h1>
+      <h1 className="text-3xl font-bold tracking-tight mb-2 text-(--text-primary)">OpenOnyx</h1>
       <p className="text-sm text-(--text-secondary) text-center max-w-[360px] leading-relaxed mb-8">
         Your local-first knowledge base. Create, link, and visualize your
         thoughts as an interconnected graph.

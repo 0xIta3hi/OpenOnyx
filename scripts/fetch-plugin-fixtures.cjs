@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const fixtureDir = process.env.OO_PLUGIN_FIXTURE_DIR
-  || path.join(os.tmpdir(), 'openobsidian-plugin-fixtures');
+  || path.join(os.tmpdir(), 'openonyx-plugin-fixtures');
 
 const fixtures = {
   'dataview-main.js': 'https://github.com/blacksmithgu/obsidian-dataview/releases/download/0.5.70/main.js',
@@ -26,7 +26,7 @@ async function download(name, url) {
   if (fs.existsSync(target) && fs.statSync(target).size > 0) return;
 
   const response = await fetch(url, {
-    headers: { 'user-agent': 'OpenObsidian compatibility tests' },
+    headers: { 'user-agent': 'OpenOnyx compatibility tests' },
   });
   if (!response.ok) {
     throw new Error(`Failed to download ${name}: ${response.status} ${response.statusText}`);

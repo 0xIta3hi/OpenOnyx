@@ -23,7 +23,6 @@ Thumbs.db
 *.log
 
 # Project-specific
-thought_model/
 PROMPT.md
 .gemini/
 .agents/

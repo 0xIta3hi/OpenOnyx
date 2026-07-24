@@ -1,20 +1,20 @@
-# OpenObsidian
+# OpenOnyx
 
 <p align="center">
   <strong>The Open-Source, Local-First, AI-Grounded Knowledge Management Ecosystem.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/OpenObsidian/OpenObsidian"><img alt="Main Repository" src="https://img.shields.io/badge/Repository-OpenObsidian-111827?style=for-the-badge&logo=github"></a>
-  <a href="https://github.com/OpenObsidian/OpenObsidian/releases"><img alt="Latest Release" src="https://img.shields.io/badge/Release-v1.0.3-47848F?style=for-the-badge&logo=electron"></a>
-  <a href="https://github.com/OpenObsidian/OpenObsidian/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge"></a>
+  <a href="https://github.com/OpenOnyx/OpenOnyx"><img alt="Main Repository" src="https://img.shields.io/badge/Repository-OpenOnyx-111827?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/OpenOnyx/OpenOnyx/releases"><img alt="Latest Release" src="https://img.shields.io/badge/Release-v1.0.3-47848F?style=for-the-badge&logo=electron"></a>
+  <a href="https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge"></a>
 </p>
 
 ---
 
 ## Overview
 
-OpenObsidian is an open-source organization dedicated to building state-of-the-art knowledge tools centered around user privacy, local file ownership, and modern AI intelligence. 
+OpenOnyx is an open-source organization dedicated to building state-of-the-art knowledge tools centered around user privacy, local file ownership, and modern AI intelligence. 
 
 Our core philosophy is simple: **Your thoughts belong to you.** Notes should reside in open Markdown files on your local drive, unencumbered by proprietary lock-in, while still benefiting from cutting-edge graph visualizations, semantic search, local vector embeddings, and Obsidian plugin ecosystem compatibility.
 
@@ -34,7 +34,7 @@ Our core philosophy is simple: **Your thoughts belong to you.** Notes should res
 
 ## Featured Repositories
 
-### [OpenObsidian/OpenObsidian](https://github.com/OpenObsidian/OpenObsidian)
+### [OpenOnyx/OpenOnyx](https://github.com/OpenOnyx/OpenOnyx)
 The flagship desktop application built with Electron, React 19, TypeScript, CodeMirror 6, D3.js, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
 
 - **Markdown Workspace**: Live preview, split panes, tab groups, backlinks, tags, and Vim keybindings.
@@ -48,7 +48,7 @@ The flagship desktop application built with Electron, React 19, TypeScript, Code
 
 ```
            +-------------------------------------------------------+
-           |               OpenObsidian Ecosystem                  |
+           |               OpenOnyx Ecosystem                  |
            +-------------------------------------------------------+
                                       |
      +--------------------------------+--------------------------------+
@@ -69,16 +69,16 @@ The flagship desktop application built with Electron, React 19, TypeScript, Code
 ## Getting Started
 
 ### Installation
-Download the latest binaries for Linux, macOS, or Windows directly from our [Releases Page](https://github.com/OpenObsidian/OpenObsidian/releases).
+Download the latest binaries for Linux, macOS, or Windows directly from our [Releases Page](https://github.com/OpenOnyx/OpenOnyx/releases).
 
 ### Building from Source
 
 ```bash
 # Clone the main repository
-git clone https://github.com/OpenObsidian/OpenObsidian.git
+git clone https://github.com/OpenOnyx/OpenOnyx.git
 
 # Navigate into the project folder
-cd OpenObsidian
+cd OpenOnyx
 
 # Install dependencies
 npm install
@@ -93,15 +93,14 @@ npm run dev
 
 We welcome contributions from developers, researchers, and writers. Whether you are adding features, refining plugin compatibility, fixing bugs, or improving documentation:
 
-- Read our [Contribution Guidelines](https://github.com/OpenObsidian/OpenObsidian/blob/main/README.md#contributing).
-- Explore open issues in the [OpenObsidian Issue Tracker](https://github.com/OpenObsidian/OpenObsidian/issues).
-- Check the project [Architecture Documentation](https://github.com/OpenObsidian/OpenObsidian/tree/main/docs).
+- Read our [Contribution Guidelines](https://github.com/OpenOnyx/OpenOnyx/blob/main/README.md#contributing).
+- Explore open issues in the [OpenOnyx Issue Tracker](https://github.com/OpenOnyx/OpenOnyx/issues).
+- Check the project [Architecture Documentation](https://github.com/OpenOnyx/OpenOnyx/tree/main/docs).
 
 ---
 
 ## Contact & Links
 
-- **Organization Homepage**: [https://github.com/OpenObsidian](https://github.com/OpenObsidian)
-- **Main Repository**: [OpenObsidian/OpenObsidian](https://github.com/OpenObsidian/OpenObsidian)
-- **Email Contact**: openobsidian@gmail.com
-- **License**: [MIT License](https://github.com/OpenObsidian/OpenObsidian/blob/main/LICENSE)
+- **Organization Homepage**: [https://github.com/OpenOnyx](https://github.com/OpenOnyx)
+- **Main Repository**: [OpenOnyx/OpenOnyx](https://github.com/OpenOnyx/OpenOnyx)
+- **License**: [MIT License](https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE)

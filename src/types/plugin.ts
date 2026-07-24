@@ -1,7 +1,7 @@
 /**
  * Plugin System Type Definitions
  *
- * Types for the OpenObsidian plugin ecosystem.
+ * Types for the OpenOnyx plugin ecosystem.
  * The PluginManifest interface matches Obsidian's format exactly
  * so existing community plugin manifests work without modification.
  */
@@ -76,7 +76,7 @@ export interface PluginManifest {
   fundingUrl?: string | Record<string, string>;
   /** Vault-relative path to plugin folder (injected at load time) */
   dir?: string;
-  /** Requested permissions (OpenObsidian extension) */
+  /** Requested permissions (OpenOnyx extension) */
   permissions?: PluginPermission[];
 }
 

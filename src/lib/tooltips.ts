@@ -7,9 +7,9 @@ let activeTarget: Element | null = null;
 let showTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TooltipWindow = Window & {
-  __openObsidianTooltipCleanup?: () => void;
-  __openObsidianTooltipOriginalSetAttribute?: typeof Element.prototype.setAttribute;
-  __openObsidianTooltipOriginalTitleDescriptor?: PropertyDescriptor;
+  __openOnyxTooltipCleanup?: () => void;
+  __openOnyxTooltipOriginalSetAttribute?: typeof Element.prototype.setAttribute;
+  __openOnyxTooltipOriginalTitleDescriptor?: PropertyDescriptor;
 };
 
 function getTooltipText(target: Element): string {
@@ -59,13 +59,13 @@ function suppressNativeTooltipsIn(element: Element) {
 }
 
 function installNativeTooltipBlocker(tooltipWindow: TooltipWindow) {
-  if (tooltipWindow.__openObsidianTooltipOriginalSetAttribute) return;
+  if (tooltipWindow.__openOnyxTooltipOriginalSetAttribute) return;
 
   const originalSetAttribute = Element.prototype.setAttribute;
   const originalTitleDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "title");
 
-  tooltipWindow.__openObsidianTooltipOriginalSetAttribute = originalSetAttribute;
-  tooltipWindow.__openObsidianTooltipOriginalTitleDescriptor = originalTitleDescriptor;
+  tooltipWindow.__openOnyxTooltipOriginalSetAttribute = originalSetAttribute;
+  tooltipWindow.__openOnyxTooltipOriginalTitleDescriptor = originalTitleDescriptor;
 
   Element.prototype.setAttribute = function setAttributeWithoutNativeTooltip(name: string, value: string) {
     if (name.toLowerCase() === "title") {
@@ -100,32 +100,32 @@ function installNativeTooltipBlocker(tooltipWindow: TooltipWindow) {
 }
 
 function uninstallNativeTooltipBlocker(tooltipWindow: TooltipWindow) {
-  if (tooltipWindow.__openObsidianTooltipOriginalSetAttribute) {
-    Element.prototype.setAttribute = tooltipWindow.__openObsidianTooltipOriginalSetAttribute;
-    delete tooltipWindow.__openObsidianTooltipOriginalSetAttribute;
+  if (tooltipWindow.__openOnyxTooltipOriginalSetAttribute) {
+    Element.prototype.setAttribute = tooltipWindow.__openOnyxTooltipOriginalSetAttribute;
+    delete tooltipWindow.__openOnyxTooltipOriginalSetAttribute;
   }
 
-  if (tooltipWindow.__openObsidianTooltipOriginalTitleDescriptor) {
+  if (tooltipWindow.__openOnyxTooltipOriginalTitleDescriptor) {
     Object.defineProperty(
       HTMLElement.prototype,
       "title",
-      tooltipWindow.__openObsidianTooltipOriginalTitleDescriptor,
+      tooltipWindow.__openOnyxTooltipOriginalTitleDescriptor,
     );
-    delete tooltipWindow.__openObsidianTooltipOriginalTitleDescriptor;
+    delete tooltipWindow.__openOnyxTooltipOriginalTitleDescriptor;
   }
 }
 
 function removeLegacyTooltipElements() {
   document.querySelectorAll(".app-tooltip, .titlebar-tooltip, [role='tooltip']").forEach((element) => {
-    if (element.id !== "openobsidian-tooltip") element.remove();
+    if (element.id !== "openonyx-tooltip") element.remove();
   });
 }
 
 function ensureTooltip(): HTMLDivElement {
   if (tooltipEl) return tooltipEl;
-  const existing = document.getElementById("openobsidian-tooltip");
+  const existing = document.getElementById("openonyx-tooltip");
   tooltipEl = existing instanceof HTMLDivElement ? existing : document.createElement("div");
-  tooltipEl.id = "openobsidian-tooltip";
+  tooltipEl.id = "openonyx-tooltip";
   tooltipEl.className = "app-tooltip";
   tooltipEl.setAttribute("role", "tooltip");
   if (!tooltipEl.isConnected) document.body.appendChild(tooltipEl);
@@ -227,7 +227,7 @@ function queueTooltip(target: Element) {
 
 export function installGlobalTooltips(): () => void {
   const tooltipWindow = window as TooltipWindow;
-  tooltipWindow.__openObsidianTooltipCleanup?.();
+  tooltipWindow.__openOnyxTooltipCleanup?.();
   installNativeTooltipBlocker(tooltipWindow);
   document.querySelectorAll(".app-tooltip, .titlebar-tooltip, [role='tooltip']").forEach((element) => element.remove());
   tooltipEl = null;
@@ -307,10 +307,10 @@ export function installGlobalTooltips(): () => void {
     tooltipEl?.remove();
     tooltipEl = null;
     uninstallNativeTooltipBlocker(tooltipWindow);
-    if (tooltipWindow.__openObsidianTooltipCleanup === cleanup) {
-      delete tooltipWindow.__openObsidianTooltipCleanup;
+    if (tooltipWindow.__openOnyxTooltipCleanup === cleanup) {
+      delete tooltipWindow.__openOnyxTooltipCleanup;
     }
   };
-  tooltipWindow.__openObsidianTooltipCleanup = cleanup;
+  tooltipWindow.__openOnyxTooltipCleanup = cleanup;
   return cleanup;
 }

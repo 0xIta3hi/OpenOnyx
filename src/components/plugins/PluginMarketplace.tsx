@@ -622,7 +622,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
             </p>
             
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Community plugins are not vetted by Obsidian or OpenObsidian. They can access files on your device and make network requests. Only install plugins from developers you trust.
+              Community plugins are not vetted by Obsidian or OpenOnyx. They can access files on your device and make network requests. Only install plugins from developers you trust.
             </p>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>

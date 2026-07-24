@@ -1,7 +1,7 @@
 /**
- * Disk Store — Unified storage abstraction for .openobsidian/ data
+ * Disk Store — Unified storage abstraction for .openonyx/ data
  *
- * In Electron: reads/writes files to .openobsidian/ directory in vault
+ * In Electron: reads/writes files to .openonyx/ directory in vault
  * In Browser:  falls back to localStorage with matching API
  *
  * Used by: embeddings, annotations, synthesis, queue
@@ -15,7 +15,7 @@ const api = getAPI();
 // ── Core Operations ──────────────────────────────────────────────────────────
 
 /**
- * Read a JSON file from .openobsidian/<relativePath>
+ * Read a JSON file from .openonyx/<relativePath>
  */
 export async function readData<T>(relativePath: string): Promise<T | null> {
   try {
@@ -28,7 +28,7 @@ export async function readData<T>(relativePath: string): Promise<T | null> {
 }
 
 /**
- * Write a JSON file to .openobsidian/<relativePath>
+ * Write a JSON file to .openonyx/<relativePath>
  */
 export async function writeData<T>(relativePath: string, data: T): Promise<void> {
   try {
@@ -39,7 +39,7 @@ export async function writeData<T>(relativePath: string, data: T): Promise<void>
 }
 
 /**
- * Delete a file from .openobsidian/<relativePath>
+ * Delete a file from .openonyx/<relativePath>
  */
 export async function deleteData(relativePath: string): Promise<void> {
   try {
@@ -48,7 +48,7 @@ export async function deleteData(relativePath: string): Promise<void> {
 }
 
 /**
- * List files in .openobsidian/<subDir>
+ * List files in .openonyx/<subDir>
  */
 export async function listData(subDir: string): Promise<string[]> {
   try {

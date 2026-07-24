@@ -141,7 +141,7 @@ const electronAPI = {
   saveImageDedup: (fileName: string, base64Data: string): Promise<{ relativePath: string; isDuplicate: boolean }> =>
     ipcRenderer.invoke('attachments:saveImageDedup', fileName, base64Data),
 
-  // ── .openobsidian Data Storage ────────────────────
+  // ── .openonyx Data Storage ────────────────────
   dataRead: (relativePath: string): Promise<string | null> =>
     ipcRenderer.invoke('data:read', relativePath),
 

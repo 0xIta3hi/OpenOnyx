@@ -1,6 +1,13 @@
-# OpenObsidian Changelog
+# OpenOnyx Changelog
 
-A comprehensive chronological record of all features, improvements, optimizations, and bug fixes implemented in OpenObsidian.
+A comprehensive chronological record of all features, improvements, optimizations, and bug fixes implemented in OpenOnyx.
+
+---
+
+## 2026-07-24
+
+### OpenOnyx Rebrand
+* **Rebrand**: Rebranded project and organization to OpenOnyx (`github.com/OpenOnyx/OpenOnyx`), updating package manifests, desktop metadata, storage keys, environment variables, database schemas, and documentation while retaining nominative fair-use references to Obsidian plugin API compatibility.
 
 ---
 
@@ -409,8 +416,8 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ## 2026-04-03
 
-### OpenObsidian Rebrand
-* **Rebrand**: Rebranded project to OpenObsidian.
+### OpenOnyx Rebrand
+* **Rebrand**: Rebranded project to OpenOnyx.
 * **Console Warnings**: Resolved extensive console warnings and optimized bright layout components for better contrast.
 
 ---

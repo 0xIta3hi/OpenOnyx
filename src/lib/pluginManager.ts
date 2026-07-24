@@ -138,7 +138,7 @@ export class PluginManager {
     appPlugins.unloadPlugin = (id: string) => this.unloadPlugin(id);
     appPlugins.uninstallPlugin = (id: string) => this.uninstallPlugin(id);
     appPlugins.getPluginFolder = (manifest: PluginManifest) =>
-      manifest?.dir || `.openobsidian/plugins/${manifest?.id || ''}`;
+      manifest?.dir || `.openonyx/plugins/${manifest?.id || ''}`;
     this._setupGlobalHooks();
     (window as any).__oo_cm_commands = cmCommands;
     (window as any).__oo_cm_editor_view = cmView.EditorView;
@@ -319,7 +319,7 @@ export class PluginManager {
             const manifestJson = await api().dataRead(`plugins/${dir}/manifest.json`);
             if (!manifestJson) continue;
             manifest = JSON.parse(manifestJson) as PluginManifest;
-            manifest.dir = `.openobsidian/plugins/${manifest.id}`;
+            manifest.dir = `.openonyx/plugins/${manifest.id}`;
             this._manifestCache.set(dir, manifest);
           }
 
@@ -764,7 +764,7 @@ window["${globalKey}"].__done = true;
     if (!this._plugins.has(pluginId)) return false;
 
     await this.disablePlugin(pluginId);
-    await api().deleteDirectory(`.openobsidian/plugins/${pluginId}`);
+    await api().deleteDirectory(`.openonyx/plugins/${pluginId}`);
     await api().dataDelete(`plugins/${pluginId}/data.json`).catch(() => {});
 
     this._plugins.delete(pluginId);
@@ -1015,7 +1015,7 @@ window["${globalKey}"].__done = true;
       const manifestJson = await api().dataRead(`plugins/${pluginId}/manifest.json`);
       if (manifestJson) {
         const manifest = JSON.parse(manifestJson) as PluginManifest;
-        manifest.dir = `.openobsidian/plugins/${manifest.id}`;
+        manifest.dir = `.openonyx/plugins/${manifest.id}`;
         this._manifestCache.set(pluginId, manifest);
         const reg = this._plugins.get(pluginId);
         if (reg) reg.manifest = manifest;

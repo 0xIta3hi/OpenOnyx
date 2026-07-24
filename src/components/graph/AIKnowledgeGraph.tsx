@@ -178,7 +178,7 @@ function getDefaultSettings(theme: Theme): AIGraphSettings {
 }
 
 function getManualGraphSettingsKey(theme: Theme, vaultHash: string): string {
-  return `openobsidian-graph-settings-v8-${theme}-${vaultHash}`;
+  return `openonyx-graph-settings-v8-${theme}-${vaultHash}`;
 }
 
 function getManualGraphSettings(
@@ -568,11 +568,11 @@ export function AIKnowledgeGraph({
     };
   }, []);
 
-  let settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-dark`;
-  if (theme === "light") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-light`;
-  if (theme === "oceanic") settingsKey = `openobsidian-ai-graph-settings-v3-${vaultHash}-oceanic`;
+  let settingsKey = `openonyx-ai-graph-settings-v3-${vaultHash}-dark`;
+  if (theme === "light") settingsKey = `openonyx-ai-graph-settings-v3-${vaultHash}-light`;
+  if (theme === "oceanic") settingsKey = `openonyx-ai-graph-settings-v3-${vaultHash}-oceanic`;
   
-  const positionsKey = `openobsidian-ai-graph-positions-v4-${vaultHash}`;
+  const positionsKey = `openonyx-ai-graph-positions-v4-${vaultHash}`;
 
   const [settings, setSettings] = useState<AIGraphSettings>(() => {
     try {
@@ -628,7 +628,7 @@ export function AIKnowledgeGraph({
   const [aiExplainLoading, setAiExplainLoading] = useState<boolean>(false);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem(`openobsidian-ai-dismissed-links-${vaultHash}`);
+      const saved = localStorage.getItem(`openonyx-ai-dismissed-links-${vaultHash}`);
       if (saved) return new Set(JSON.parse(saved));
     } catch {}
     return new Set<string>();
@@ -691,7 +691,7 @@ export function AIKnowledgeGraph({
 
   useEffect(() => {
     try {
-      localStorage.setItem(`openobsidian-ai-dismissed-links-${vaultHash}`, JSON.stringify(Array.from(dismissedSuggestions)));
+      localStorage.setItem(`openonyx-ai-dismissed-links-${vaultHash}`, JSON.stringify(Array.from(dismissedSuggestions)));
     } catch {}
   }, [dismissedSuggestions, vaultHash]);
 

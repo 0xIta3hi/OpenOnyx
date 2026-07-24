@@ -1,5 +1,5 @@
 -- ============================================================================
--- OpenObsidian Schema v2
+-- OpenOnyx Schema v2
 -- Self-contained migration for user-owned Supabase databases
 --
 -- PREREQUISITES:
@@ -967,4 +967,4 @@ END $$;
 -- DONE
 -- ════════════════════════════════════════════════════════════════════════════
 -- Schema installation complete. Your Supabase project is now ready for
--- OpenObsidian. Configure the app with your project URL and anon key.
+-- OpenOnyx. Configure the app with your project URL and anon key.

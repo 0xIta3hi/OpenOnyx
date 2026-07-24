@@ -57,7 +57,7 @@ window.onunhandledrejection = (event) => {
   console.log(`[REJECTION]`, event.reason);
 };
 
-console.log('[OpenObsidian] Main entry point executing');
+console.log('[OpenOnyx] Main entry point executing');
 
 const rootEl = document.getElementById("root");
 if (rootEl) {
@@ -68,5 +68,5 @@ if (rootEl) {
     </React.StrictMode>,
   );
 } else {
-  console.error('[OpenObsidian] Root element not found!');
+  console.error('[OpenOnyx] Root element not found!');
 }

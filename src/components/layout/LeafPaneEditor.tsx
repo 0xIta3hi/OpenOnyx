@@ -208,7 +208,7 @@ export function LeafPaneEditor({
         try {
           await api.writeFile(path, content);
           window.dispatchEvent(
-            new CustomEvent("openobsidian:note-saved", {
+            new CustomEvent("openonyx:note-saved", {
               detail: { path },
             })
           );
@@ -408,7 +408,7 @@ export function LeafPaneEditor({
       try {
         await api.writeFile(pending.path, pending.content);
         window.dispatchEvent(
-          new CustomEvent("openobsidian:note-saved", {
+          new CustomEvent("openonyx:note-saved", {
             detail: { path: pending.path },
           }),
         );

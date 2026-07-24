@@ -391,7 +391,7 @@ if (!(HTMLElement.prototype as any).__oo_dom_patched) {
 
   // Mark as patched
   (HTMLElement.prototype as any).__oo_dom_patched = true;
-  console.log('[OpenObsidian] DOM extensions patched');
+  console.log('[OpenOnyx] DOM extensions patched');
 }
 
 // ── Node-level patches ──────────────────────────────

@@ -1,8 +1,8 @@
 /**
  * Embeddings — Local semantic embeddings via Transformers.js
  *
- * Storage: .openobsidian/embeddings/ (one JSON file per note, NOT localStorage)
- * Index:   .openobsidian/embeddings/_index.json (path→hash map for quick checks)
+ * Storage: .openonyx/embeddings/ (one JSON file per note, NOT localStorage)
+ * Index:   .openonyx/embeddings/_index.json (path→hash map for quick checks)
  *
  * Features:
  *  - Auto-embeds notes on create/update (hash-based change detection)
@@ -295,7 +295,7 @@ async function ensureLoaded(): Promise<void> {
  */
 function tryMigrateFromLocalStorage(): void {
   try {
-    const raw = localStorage.getItem("openobsidian-embeddings-v2");
+    const raw = localStorage.getItem("openonyx-embeddings-v2");
     if (!raw) return;
     const data: { entries: StoredEmbedding[] } = JSON.parse(raw);
     for (const e of data.entries) {
@@ -304,7 +304,7 @@ function tryMigrateFromLocalStorage(): void {
     // Persist to disk
     persistAllToDisk();
     // Remove from localStorage after migration
-    localStorage.removeItem("openobsidian-embeddings-v2");
+    localStorage.removeItem("openonyx-embeddings-v2");
     console.log(`[Embeddings] Migrated ${data.entries.length} entries from localStorage to disk`);
   } catch { /* silent */ }
 }
@@ -614,8 +614,8 @@ export interface TransitionMap {
 }
 
 // Suggestion history is small — keep in localStorage for now
-const SUGGESTION_HISTORY_KEY = "openobsidian-suggestion-history-v1";
-const TRANSITION_MAP_KEY = "openobsidian-suggestion-transitions-v1";
+const SUGGESTION_HISTORY_KEY = "openonyx-suggestion-history-v1";
+const TRANSITION_MAP_KEY = "openonyx-suggestion-transitions-v1";
 
 function normalizeTransitionConcept(value: string): string {
   return value

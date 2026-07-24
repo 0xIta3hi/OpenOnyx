@@ -39,6 +39,19 @@ export class FileSystemManager {
       }
     }
     this.vaultPath = vaultPath;
+
+    // Auto-migrate legacy .openobsidian vault data folder to .openonyx if present
+    try {
+      const oldDataDir = path.join(vaultPath, '.openobsidian');
+      const newDataDir = path.join(vaultPath, '.openonyx');
+      if (fs.existsSync(oldDataDir) && !fs.existsSync(newDataDir)) {
+        fs.renameSync(oldDataDir, newDataDir);
+        console.log('[FileSystemManager] Successfully migrated vault data directory from .openobsidian to .openonyx');
+      }
+    } catch (err) {
+      console.warn('[FileSystemManager] Failed to migrate .openobsidian directory:', err);
+    }
+
     return true;
   }
 
@@ -434,21 +447,21 @@ export class FileSystemManager {
     return `attachments/${uniqueName}`;
   }
 
-  // ── .openobsidian/ Data Directory Operations ──────
+  // ── .openonyx/ Data Directory Operations ──────
 
-  /** Ensure .openobsidian/ directory structure exists */
+  /** Ensure .openonyx/ directory structure exists */
   private ensureDataDir(subDir?: string): string {
     if (!this.vaultPath) throw new Error('No vault path set');
     const dataDir = subDir
-      ? path.join(this.vaultPath, '.openobsidian', subDir)
-      : path.join(this.vaultPath, '.openobsidian');
+      ? path.join(this.vaultPath, '.openonyx', subDir)
+      : path.join(this.vaultPath, '.openonyx');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     return dataDir;
   }
 
-  /** Read a JSON file from .openobsidian/ */
+  /** Read a JSON file from .openonyx/ */
   async readDataFile(relativePath: string): Promise<string | null> {
     try {
       const dir = this.ensureDataDir();
@@ -461,7 +474,7 @@ export class FileSystemManager {
     }
   }
 
-  /** Write a JSON file to .openobsidian/ */
+  /** Write a JSON file to .openonyx/ */
   async writeDataFile(relativePath: string, content: string): Promise<void> {
     const dir = this.ensureDataDir();
     const filePath = path.join(dir, relativePath);
@@ -473,7 +486,7 @@ export class FileSystemManager {
     await fs.promises.writeFile(filePath, content, 'utf-8');
   }
 
-  /** Delete a file from .openobsidian/ */
+  /** Delete a file from .openonyx/ */
   async deleteDataFile(relativePath: string): Promise<void> {
     try {
       const dir = this.ensureDataDir();
@@ -485,7 +498,7 @@ export class FileSystemManager {
     } catch { /* silent */ }
   }
 
-  /** List files in a .openobsidian/ subdirectory */
+  /** List files in a .openonyx/ subdirectory */
   async listDataDir(subDir: string): Promise<string[]> {
     try {
       const dir = this.ensureDataDir(subDir);

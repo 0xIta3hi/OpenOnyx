@@ -1,10 +1,10 @@
 [Desktop Entry]
-Name=OpenObsidian
+Name=OpenOnyx
 Comment=Local-first knowledge management app
-Exec=openobsidian %U
+Exec=openonyx %U
 Terminal=false
 Type=Application
-Icon=openobsidian
-StartupWMClass=OpenObsidian
+Icon=openonyx
+StartupWMClass=OpenOnyx
 Categories=Office;Utility;
 MimeType=text/markdown;text/plain;

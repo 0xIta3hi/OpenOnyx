@@ -32,21 +32,21 @@ function observeFileChanges(api: API): API {
       await api.createFile(filePath, content);
       if (existed) return;
       const detail = { path: filePath, content: content || "", created: true };
-      dispatchFileChange("openobsidian:file-created", detail);
-      dispatchFileChange("openobsidian:file-written", detail);
+      dispatchFileChange("openonyx:file-created", detail);
+      dispatchFileChange("openonyx:file-written", detail);
     },
     async writeFile(filePath: string, content: string): Promise<void> {
       const existed = await api.fileExists(filePath).catch(() => true);
       await api.writeFile(filePath, content);
       const detail = { path: filePath, content, created: !existed };
       if (!existed) {
-        dispatchFileChange("openobsidian:file-created", detail);
+        dispatchFileChange("openonyx:file-created", detail);
       }
-      dispatchFileChange("openobsidian:file-written", detail);
+      dispatchFileChange("openonyx:file-written", detail);
     },
     async createDirectory(dirPath: string): Promise<void> {
       await api.createDirectory(dirPath);
-      dispatchFileChange("openobsidian:directory-created", { path: dirPath, created: true });
+      dispatchFileChange("openonyx:directory-created", { path: dirPath, created: true });
     },
   } as API;
 }
@@ -66,7 +66,7 @@ export function getAPI(): API {
   if (!_api) {
     // Running in browser — use mock API
     console.log(
-      "%c[OpenObsidian] Running in browser mode with mock API",
+      "%c[OpenOnyx] Running in browser mode with mock API",
       "color: #6c63ff; font-weight: bold;",
     );
     _rawApi = createMockAPI();

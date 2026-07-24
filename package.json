@@ -1,5 +1,5 @@
 {
-  "name": "openobsidian",
+  "name": "openonyx",
   "version": "1.0.3",
   "description": "A local-first knowledge management tool with graph-based note linking",
   "main": "dist-electron/main.js",
@@ -36,16 +36,16 @@
     "graph"
   ],
   "author": {
-    "name": "OpenObsidian",
-    "email": "openobsidian@gmail.com"
+    "name": "OpenOnyx",
+    "email": "openonyx@gmail.com"
   },
-  "homepage": "https://github.com/OpenObsidian/OpenObsidian",
+  "homepage": "https://github.com/OpenOnyx/OpenOnyx",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OpenObsidian/OpenObsidian.git"
+    "url": "https://github.com/OpenOnyx/OpenOnyx.git"
   },
   "bugs": {
-    "url": "https://github.com/OpenObsidian/OpenObsidian/issues"
+    "url": "https://github.com/OpenOnyx/OpenOnyx/issues"
   },
   "license": "MIT",
   "dependencies": {
@@ -111,9 +111,9 @@
     "wait-on": "^8.0.3"
   },
   "build": {
-    "appId": "com.openobsidian.app",
-    "productName": "OpenObsidian",
-    "copyright": "Copyright © 2026 OpenObsidian",
+    "appId": "com.openonyx.app",
+    "productName": "OpenOnyx",
+    "copyright": "Copyright © 2026 OpenOnyx",
     "directories": {
       "output": "release"
     },
@@ -141,7 +141,7 @@
       "runAfterFinish": true
     },
     "linux": {
-      "executableName": "openobsidian",
+      "executableName": "openonyx",
       "target": [
         "AppImage",
         "deb",

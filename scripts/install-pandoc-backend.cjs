@@ -7,17 +7,22 @@ const JSZip = require('jszip');
 
 const PANDOC_VERSION = '3.10';
 const PANDOC_URL = `https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}.wasm.zip`;
-const installDir = process.env.OPENOBSIDIAN_PANDOC_DIR
-  || path.join(os.homedir(), '.local', 'share', 'openobsidian', 'tools', 'pandoc');
+const installDir = process.env.OPENONYX_PANDOC_DIR
+  || path.join(os.homedir(), '.local', 'share', 'openonyx', 'tools', 'pandoc');
 const wasmPath = path.join(installDir, 'pandoc.wasm');
 const runnerPath = path.join(installDir, process.platform === 'win32' ? 'pandoc.cjs' : 'pandoc');
 
+function getDownloadUrl(targetPlatform, targetArch) {
+  const version = '3.6.3';
+  return `https://github.com/jgm/pandoc/releases/download/${version}/pandoc-${version}-${targetPlatform}-${targetArch}.tar.gz`;
+}
+
 async function downloadPandoc() {
-  const archivePath = process.env.OPENOBSIDIAN_PANDOC_ARCHIVE;
+  const archivePath = process.env.OPENONYX_PANDOC_ARCHIVE;
   if (archivePath) return fs.readFileSync(archivePath);
 
   const response = await fetch(PANDOC_URL, {
-    headers: { 'user-agent': 'OpenObsidian Pandoc backend installer' },
+    headers: { 'user-agent': 'OpenOnyx Pandoc backend installer' },
   });
   if (!response.ok) {
     throw new Error(`Failed to download Pandoc ${PANDOC_VERSION}: ${response.status} ${response.statusText}`);

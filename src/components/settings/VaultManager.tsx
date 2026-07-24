@@ -257,7 +257,7 @@ export function VaultManager({
               />
             </div>
             <div className="mb-1 text-[30px] font-bold leading-none tracking-normal text-[var(--text-primary)]">
-              OpenObsidian
+              OpenOnyx
             </div>
             <div className="mb-8 text-sm text-[var(--text-muted)]">
               Vault Manager

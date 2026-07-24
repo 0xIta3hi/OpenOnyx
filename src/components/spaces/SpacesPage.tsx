@@ -2901,7 +2901,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
                     <div className="mr-3 flex items-center justify-center p-2 rounded-xl bg-[#18181b] border border-neutral-800 h-14 w-14 shadow-sm">
                       <img
                         src="logos/logo-dark.png"
-                        alt="OpenObsidian"
+                        alt="OpenOnyx"
                         className="h-full w-full object-contain"
                       />
                     </div>

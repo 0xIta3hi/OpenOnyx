@@ -1,7 +1,7 @@
 import { Theme } from "../types";
 
 /**
- * Utility helpers for OpenObsidian
+ * Utility helpers for OpenOnyx
  */
 
 /** Extract the display name from a file path (without extension) */

@@ -104,7 +104,7 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     expect(style?.textContent).toContain('.plain-plugin-button { color: red; }');
     expect(style?.textContent).toContain('body.theme-dark .plain-plugin-button');
     expect(style?.textContent).not.toContain('oo-plugin-scope-plain-plugin .plain-plugin-button');
-    expect(style?.textContent).toContain('vault://local/.openobsidian/plugins/plain-plugin/icons/action.svg#mark');
+    expect(style?.textContent).toContain('vault://local/.openonyx/plugins/plain-plugin/icons/action.svg#mark');
 
     removePluginStyles('plain-plugin');
   });
@@ -116,9 +116,9 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
 .local { background: url(assets/icon file.svg?version=1); }
 `);
 
-    expect(css).toContain('@import "vault://local/.openobsidian/plugins/asset-plugin/base.css"');
+    expect(css).toContain('@import "vault://local/.openonyx/plugins/asset-plugin/base.css"');
     expect(css).toContain('url("https://example.com/remote.svg")');
-    expect(css).toContain('vault://local/.openobsidian/plugins/asset-plugin/assets/icon%20file.svg?version=1');
+    expect(css).toContain('vault://local/.openonyx/plugins/asset-plugin/assets/icon%20file.svg?version=1');
   });
 
   it('provides the legacy global Electron remote contract to plugins', () => {
@@ -413,7 +413,7 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     app.plugins.manifests['remove-fixture'] = { ...manifest, id: 'remove-fixture' };
 
     await expect(manager.uninstallPlugin('remove-fixture')).resolves.toBe(true);
-    expect((window as any).electronAPI.deleteDirectory).toHaveBeenCalledWith('.openobsidian/plugins/remove-fixture');
+    expect((window as any).electronAPI.deleteDirectory).toHaveBeenCalledWith('.openonyx/plugins/remove-fixture');
     expect(manager.getPlugin('remove-fixture')).toBeUndefined();
     expect(app.plugins.manifests['remove-fixture']).toBeUndefined();
   });
@@ -697,7 +697,7 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     await app.vault.create('Old/Note.md', '# Note');
     const folder = app.vault.getFolderByPath('Old');
     const renamed = vi.fn();
-    window.addEventListener('openobsidian:file-renamed', renamed);
+    window.addEventListener('openonyx:file-renamed', renamed);
 
     await app.vault.rename(folder!, 'New');
 
@@ -713,7 +713,7 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
       isDirectory: true,
     });
 
-    window.removeEventListener('openobsidian:file-renamed', renamed);
+    window.removeEventListener('openonyx:file-renamed', renamed);
   });
 
   it('opens registered file extensions in their plugin view with file state', async () => {

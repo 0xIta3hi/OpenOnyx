@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 
 const nativePath = process.argv[2] || '/tmp/obsidian-runtime-shape.json';
-const compatiblePath = process.argv[3] || '/tmp/openobsidian-runtime-shape.json';
+const compatiblePath = process.argv[3] || '/tmp/openonyx-runtime-shape.json';
 const nativeShape = JSON.parse(fs.readFileSync(nativePath, 'utf8'));
 const compatibleShape = JSON.parse(fs.readFileSync(compatiblePath, 'utf8'));
 

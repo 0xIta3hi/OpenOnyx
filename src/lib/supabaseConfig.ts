@@ -3,8 +3,8 @@ export interface LocalSupabaseConfig {
   anonKey: string;
 }
 
-export const LOCAL_SUPABASE_CONFIG_KEY = "openobsidian-local-supabase-config-v1";
-export const SUPABASE_CONFIG_CHANGED_EVENT = "openobsidian-supabase-config-changed";
+export const LOCAL_SUPABASE_CONFIG_KEY = "openonyx-local-supabase-config-v1";
+export const SUPABASE_CONFIG_CHANGED_EVENT = "openonyx-supabase-config-changed";
 
 function normalizeConfig(config: Partial<LocalSupabaseConfig> | null | undefined): LocalSupabaseConfig | null {
   const supabaseUrl = config?.supabaseUrl?.trim() || "";

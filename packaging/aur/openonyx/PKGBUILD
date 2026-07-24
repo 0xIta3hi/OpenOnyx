@@ -1,0 +1,34 @@
+# Maintainer: OpenOnyx <openonyx@gmail.com>
+
+pkgname=openonyx
+pkgver=1.0.3
+pkgrel=1
+pkgdesc="Local-first knowledge management app built around Markdown, graph navigation, and optional cloud collaboration"
+arch=("x86_64")
+url="https://github.com/OpenOnyx/OpenOnyx"
+license=("MIT")
+depends=("fuse2" "gtk3" "nss" "libxss" "libxtst" "libsecret" "xdg-utils")
+options=("!strip")
+
+_appimage="OpenOnyx-${pkgver}.AppImage"
+
+source_x86_64=(
+  "${_appimage}::${url}/releases/download/v${pkgver}/${_appimage}"
+  "openonyx.png::${url}/raw/v${pkgver}/build/icon.png"
+  "openonyx.desktop"
+)
+
+# Replace SKIP values with real hashes before publishing:
+# makepkg -g
+sha256sums_x86_64=("SKIP" "SKIP" "SKIP")
+
+package() {
+  install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/openonyx/openonyx.AppImage"
+  install -Dm644 "${srcdir}/openonyx.png" "${pkgdir}/usr/share/pixmaps/openonyx.png"
+  install -Dm644 "${srcdir}/openonyx.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/openonyx.png"
+  install -Dm644 "${srcdir}/openonyx.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/openonyx.png"
+  install -Dm644 "${srcdir}/openonyx.desktop" "${pkgdir}/usr/share/applications/openonyx.desktop"
+
+  install -dm755 "${pkgdir}/usr/bin"
+  ln -s "/opt/openonyx/openonyx.AppImage" "${pkgdir}/usr/bin/openonyx"
+}

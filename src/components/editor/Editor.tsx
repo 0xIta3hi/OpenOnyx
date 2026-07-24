@@ -2528,7 +2528,7 @@ function cleanInlineAIResponse(text: string): string {
     .replace(/```(?:analysis|reasoning|thinking)[\s\S]*?```/gi, "")
     .trim();
 
-  const finalTagMatch = cleaned.match(/<openobsidian_final>([\s\S]*?)<\/openobsidian_final>/i);
+  const finalTagMatch = cleaned.match(/<openonyx_final>([\s\S]*?)<\/openonyx_final>/i);
   if (finalTagMatch?.[1]) {
     cleaned = finalTagMatch[1].trim();
   } else {
@@ -2794,16 +2794,16 @@ INSTRUCTIONS:
   const finalOnlyPrompt = `${prompt}
 
 Return the final replacement only inside these exact tags:
-<openobsidian_final>
+<openonyx_final>
 ...
-</openobsidian_final>
+</openonyx_final>
 Do not include analysis, reasoning, planning, explanations, labels, or commentary outside those tags.`;
   const requestBody: Record<string, unknown> = {
     model: config.modelId,
     max_tokens: 4096,
     temperature: 0.3,
     messages: [
-      { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. Never reveal reasoning, analysis, chain-of-thought, planning, or explanations. Respond only with the final requested replacement text inside <openobsidian_final> tags, preserving list styles, indentation, headings, tables, and markdown markup exactly." },
+      { role: "system", content: "You are a precise writing assistant inside a local-first markdown editor. Never reveal reasoning, analysis, chain-of-thought, planning, or explanations. Respond only with the final requested replacement text inside <openonyx_final> tags, preserving list styles, indentation, headings, tables, and markdown markup exactly." },
       { role: "user", content: finalOnlyPrompt },
     ],
   };
@@ -3018,7 +3018,7 @@ export function Editor({
 
   const readVimModeSetting = useCallback((): boolean => {
     try {
-      const saved = localStorage.getItem("openobsidian-settings");
+      const saved = localStorage.getItem("openonyx-settings");
       if (!saved) return false;
       const parsed = JSON.parse(saved) as { vimMode?: boolean };
       return !!parsed.vimMode;
@@ -3029,7 +3029,7 @@ export function Editor({
 
   const readSpellcheckSetting = useCallback((): boolean => {
     try {
-      const saved = localStorage.getItem("openobsidian-settings");
+      const saved = localStorage.getItem("openonyx-settings");
       if (!saved) return false;
       const parsed = JSON.parse(saved) as { spellcheck?: boolean };
       return !!parsed.spellcheck;
@@ -4578,7 +4578,7 @@ export function Editor({
 
     const getSettings = () => {
       try {
-        const saved = localStorage.getItem("openobsidian-settings");
+        const saved = localStorage.getItem("openonyx-settings");
         if (saved) return JSON.parse(saved);
       } catch (err) {}
       return null;

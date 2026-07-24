@@ -7,7 +7,7 @@ function createSupabaseClient(config: LocalSupabaseConfig | null) {
   // These loopback placeholders prevent import-time crashes and are never contacted:
   // every cloud/auth entry point checks isSupabaseConfigured first.
   const clientUrl = config?.supabaseUrl || "http://127.0.0.1:54321";
-  const clientAnonKey = config?.anonKey || "openobsidian-local-only";
+  const clientAnonKey = config?.anonKey || "openonyx-local-only";
 
   return createClient<Database>(
     clientUrl,
@@ -33,7 +33,7 @@ let activeConfig = getInitialSupabaseConfig();
 export let isSupabaseConfigured = Boolean(activeConfig);
 
 if (!isSupabaseConfigured) {
-  console.info("[OpenObsidian] Supabase is not configured; running in local-only mode.");
+  console.info("[OpenOnyx] Supabase is not configured; running in local-only mode.");
 }
 
 export let supabase = createSupabaseClient(activeConfig);
@@ -44,6 +44,6 @@ export function configureSupabaseClient(config: LocalSupabaseConfig | null = get
   supabase = createSupabaseClient(activeConfig);
 
   if (!isSupabaseConfigured) {
-    console.info("[OpenObsidian] Supabase is not configured; running in local-only mode.");
+    console.info("[OpenOnyx] Supabase is not configured; running in local-only mode.");
   }
 }

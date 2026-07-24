@@ -11,7 +11,7 @@ import { OOApp } from '../src/lib/obsidian-api/app';
 
 const nodeRequire = createRequire(import.meta.url);
 const fixtureRoot = process.env.OO_PLUGIN_FIXTURE_DIR
-  || path.join(os.tmpdir(), 'openobsidian-plugin-fixtures');
+  || path.join(os.tmpdir(), 'openonyx-plugin-fixtures');
 const bundlePaths = {
   dataview: path.join(fixtureRoot, 'dataview-main.js'),
   templater: path.join(fixtureRoot, 'templater-main.js'),
@@ -30,10 +30,10 @@ const installedBundles = {
   'reading-time': path.join(fixtureRoot, 'reading-time-main.js'),
 };
 const originalCwd = process.cwd();
-const pluginTestCwd = path.join(os.tmpdir(), 'openobsidian-plugin-test-vault');
+const pluginTestCwd = path.join(os.tmpdir(), 'openonyx-plugin-test-vault');
 
 beforeAll(() => {
-  fs.mkdirSync(path.join(pluginTestCwd, '.openobsidian/plugins/obsidian-git'), { recursive: true });
+  fs.mkdirSync(path.join(pluginTestCwd, '.openonyx/plugins/obsidian-git'), { recursive: true });
   process.chdir(pluginTestCwd);
 });
 
@@ -80,7 +80,7 @@ function createApp(): OOApp {
 function createManifest(id: string, name = id, version = 'test') {
   return {
     id,
-    dir: `.openobsidian/plugins/${id}`,
+    dir: `.openonyx/plugins/${id}`,
     name,
     version,
     minAppVersion: '1.0.0',

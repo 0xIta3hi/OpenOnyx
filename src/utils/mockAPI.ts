@@ -13,9 +13,9 @@ const mockFiles: Record<string, string> = {};
 let mockVaultPath: string | null = null;
 
 const SAMPLE_NOTES: Record<string, string> = {
-  "Welcome.md": `# Welcome to OpenObsidian
+  "Welcome.md": `# Welcome to OpenOnyx
 
-OpenObsidian is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
+OpenOnyx is your **local-first knowledge management tool**. Think of it as a second brain — all your notes, connected.
 
 ## Getting Started
 
@@ -36,17 +36,17 @@ Check out [[Getting Started]] to learn more, or explore [[Markdown Guide]] for f
 `,
   "Getting Started.md": `# Getting Started
 
-Welcome to your OpenObsidian vault! Here's everything you need to know.
+Welcome to your OpenOnyx vault! Here's everything you need to know.
 
-## Creating Notes
+### Core Features
 
-- Click the ✚ button in the sidebar
-- Use \`Ctrl+N\` keyboard shortcut
-- Click on a [[Wiki Links|broken wiki link]] to auto-create a note
+- 📝 **Markdown Editor** — Full GitHub Flavored Markdown support with Live Preview
+- 🔗 **Wikilinks & Backlinks** — Connect notes with \`[[Note Name]]\` syntax
+- 🕸️ **Interactive Graph View** — Visualize your knowledge graph
+- 🔍 **Full-Text & Fuzzy Search** — Instant search across all your notes
+- 🤖 **Semantic AI Intelligence** — Auto-suggestions, insights, and RAG Q&A (100% optional)
 
-## Linking Notes
-
-The power of OpenObsidian lies in connecting your ideas:
+The power of OpenOnyx lies in connecting your ideas:
 
 \`\`\`
 [[Note Name]]
@@ -75,7 +75,7 @@ This creates a bidirectional link. The linked note will show this note in its **
 `,
   "Markdown Guide.md": `# Markdown Guide
 
-OpenObsidian supports full **GitHub Flavored Markdown**. Here's a quick reference.
+OpenOnyx supports full **GitHub Flavored Markdown**. Here's a quick reference.
 
 ## Text Formatting
 
@@ -509,21 +509,26 @@ export function createMockAPI(): ElectronAPI {
       return { relativePath: `attachments/${fileName}`, isDuplicate: false };
     },
 
-    // .openobsidian Data Storage (localStorage fallback in browser mode)
-    dataRead: async (relativePath: string): Promise<string | null> => {
-      return localStorage.getItem(`openobsidian-data:${relativePath}`);
+    // .openonyx Data Storage (localStorage fallback in browser mode)
+    dataRead: async (relativePath: string) => {
+      let content = localStorage.getItem(`openonyx-data:${relativePath}`);
+      if (content === null) {
+        content = localStorage.getItem(`openobsidian-data:${relativePath}`);
+        if (content !== null) {
+          localStorage.setItem(`openonyx-data:${relativePath}`, content);
+          localStorage.removeItem(`openobsidian-data:${relativePath}`);
+        }
+      }
+      return content;
     },
-
     dataWrite: async (relativePath: string, content: string) => {
-      localStorage.setItem(`openobsidian-data:${relativePath}`, content);
+      localStorage.setItem(`openonyx-data:${relativePath}`, content);
     },
-
     dataDelete: async (relativePath: string) => {
-      localStorage.removeItem(`openobsidian-data:${relativePath}`);
+      localStorage.removeItem(`openonyx-data:${relativePath}`);
     },
-
-    dataList: async (subDir: string): Promise<string[]> => {
-      const prefix = `openobsidian-data:${subDir}/`;
+    dataList: async (subDir: string) => {
+      const prefix = `openonyx-data:${subDir}/`;
       const files: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -652,7 +657,7 @@ export function createMockAPI(): ElectronAPI {
                   note_path: "Markdown Guide.md",
                   note_title: "Markdown Guide",
                   chunk_text:
-                    "OpenObsidian supports full GitHub Flavored Markdown. Here's a quick reference.",
+                    "OpenOnyx supports full GitHub Flavored Markdown. Here's a quick reference.",
                 },
               ],
               note_count: 1,
@@ -673,7 +678,7 @@ export function createMockAPI(): ElectronAPI {
                   note_path: "Getting Started.md",
                   note_title: "Getting Started",
                   chunk_text:
-                    "Welcome to your OpenObsidian vault! Here's everything you need to know.",
+                    "Welcome to your OpenOnyx vault! Here's everything you need to know.",
                 },
               ],
               note_count: 2,

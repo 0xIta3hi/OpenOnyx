@@ -1,5 +1,5 @@
 /**
- * Core type definitions for OpenObsidian
+ * Core type definitions for OpenOnyx
  */
 
 export interface FileEntry {

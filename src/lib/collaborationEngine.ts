@@ -781,7 +781,7 @@ class CollaborationEngine {
         throw new Error('Unlock this private space before inviting collaborators.');
       }
       if (!invite.receiver_id) {
-        throw new Error('Private space invites require an existing OpenObsidian user so the space key can be encrypted for them.');
+        throw new Error('Private space invites require an existing OpenOnyx user so the space key can be encrypted for them.');
       }
       memberWrappedKey = await privateCrypto.wrapSpaceKeyForUser(rawSpaceKey, invite.receiver_id);
     }

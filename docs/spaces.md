@@ -1,6 +1,6 @@
-# OpenObsidian Spaces Feature Specification
+# OpenOnyx Spaces Feature Specification
 
-This document provides a comprehensive, pin-to-pin description of the **Spaces** feature in OpenObsidian. It outlines the core architecture, data pipelines, database schemas, synchronization engine, and the visual/interactive design systems that power this local-first knowledge management system.
+This document provides a comprehensive, pin-to-pin description of the **Spaces** feature in OpenOnyx. It outlines the core architecture, data pipelines, database schemas, synchronization engine, and the visual/interactive design systems that power this local-first knowledge management system.
 
 ---
 
@@ -8,10 +8,10 @@ This document provides a comprehensive, pin-to-pin description of the **Spaces**
 
 A **Space** is a context-aware, queryable knowledge layer constructed over a user's vault notes. Unlike generic folder architectures or tag groupings that require manual organization, a Space automatically indexes and synthesizes notes, allowing the user to converse with their thoughts via an AI-assisted "thinking layer."
 
-OpenObsidian spaces support three visibility levels:
+OpenOnyx spaces support three visibility levels:
 1. **Local**: Stored strictly on the current device within IndexedDB. All AI embedding, indexing, and chat reasoning occur completely offline.
 2. **Private**: Automatically backed up to the cloud (Supabase) in the background. Content is fully secure and only accessible by the authenticated owner.
-3. **Public**: Synced to the cloud and published to the Explore Marketplace, allowing other OpenObsidian users to discover, upvote, read, and "Remix" (fork) the space into their own vaults.
+3. **Public**: Synced to the cloud and published to the Explore Marketplace, allowing other OpenOnyx users to discover, upvote, read, and "Remix" (fork) the space into their own vaults.
 
 ---
 
@@ -43,7 +43,7 @@ When a user asks a question inside a Space, the AI uses a local-first retrieval 
 
 To ensure seamless coordination between offline and online states, both the local database (IndexedDB) and the remote database (Supabase) share structurally symmetric schemas.
 
-### A. Local IndexedDB Schema (`openobsidian-local`)
+### A. Local IndexedDB Schema (`openonyx-local`)
 Defined in [localdb.ts](file:///home/varshith/VOLT/notework/src/lib/localdb.ts), the database consists of several primary object stores:
 * **`spaces`**: Keyed by `id` (UUID). Contains `title`, `description`, `helps_with` (tags), `note_count`, `visibility` ('local' | 'private' | 'public'), `owner_id`, `created_at`, and `updated_at`.
 * **`notes`**: Keyed by `id` (UUID). Tracks note-level metadata, including the parent `space_id`, `title`, `pinned`, `is_canvas`, and `deleted` (for soft-deletions).

@@ -717,7 +717,7 @@ export function SettingsPage({
     setUpdateStatus("Checking for updates...");
 
     try {
-      const response = await fetch("https://api.github.com/repos/OpenObsidian/OpenObsidian/releases/latest");
+      const response = await fetch("https://api.github.com/repos/OpenOnyx/OpenOnyx/releases/latest");
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error("Repository not found (HTTP 404). If the GitHub repository is private, the update checker cannot access it.");
@@ -894,7 +894,7 @@ export function SettingsPage({
             <aside className={sidebarClass}>
               <div className={navHeaderClass}>Options</div>
               {renderNavSection(optionSections)}
-              <div className={navHeaderClass}>OpenObsidian</div>
+              <div className={navHeaderClass}>OpenOnyx</div>
               {renderNavSection(appSections)}
               <div className={navHeaderClass}>Core plugins</div>
               {renderNavSection(coreSections)}
@@ -925,7 +925,7 @@ export function SettingsPage({
                         <option>English</option>
                       </select>
                     </SettingRow>
-                    <SettingRow title="Help" description="Learn how to use OpenObsidian and get help from the community.">
+                    <SettingRow title="Help" description="Learn how to use OpenOnyx and get help from the community.">
                       <button className={buttonClass} onClick={() => window.open("https://github.com", "_blank", "noopener,noreferrer")}>Open</button>
                     </SettingRow>
                   </SettingGroup>
@@ -1085,7 +1085,7 @@ export function SettingsPage({
               {activeSection === "appearance" && (
                 <div className={sectionClass}>
                   <SettingGroup>
-                    <SettingRow title="Base color scheme" description="Choose OpenObsidian's default color scheme.">
+                    <SettingRow title="Base color scheme" description="Choose OpenOnyx's default color scheme.">
                       <select className={selectClass} value={localSettings.theme} onChange={(e) => updateSetting("theme", e.target.value as AppSettings["theme"])}>
                         <option value="dark">Dark</option>
                         <option value="light">Light</option>
@@ -1163,7 +1163,7 @@ export function SettingsPage({
 
                   <h3 className={groupTitleClass}>Font</h3>
                   <SettingGroup>
-                    <SettingRow title="Interface font" description="Set base font for all of OpenObsidian.">
+                    <SettingRow title="Interface font" description="Set base font for all of OpenOnyx.">
                       <select className={selectClass} value={localSettings.fontFamily} onChange={(e) => updateSetting("fontFamily", e.target.value)}>
                         <option value="Inter, system-ui, sans-serif">Inter</option>
                         <option value="'SF Pro Display', system-ui, sans-serif">SF Pro</option>
@@ -1517,10 +1517,10 @@ export function SettingsPage({
                   <div className="flex flex-col items-center py-8">
                     {/* Logo container with static contrast background (no hover scale animation) */}
                     <div className={`mb-6 flex items-center justify-center p-4 rounded-2xl shadow-sm border ${isDark ? "bg-[#18181b] border-neutral-800/80" : "bg-white border-neutral-200/60"} h-24 w-24`}>
-                      <img src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"} alt="OpenObsidian logo" className="h-full w-full object-contain" />
+                      <img src={isDark ? "logos/logo-dark.png" : "logos/logo-light.png"} alt="OpenOnyx logo" className="h-full w-full object-contain" />
                     </div>
 
-                    <h2 className="mb-1 text-2xl font-bold tracking-tight text-[var(--text-primary)]">OpenObsidian</h2>
+                    <h2 className="mb-1 text-2xl font-bold tracking-tight text-[var(--text-primary)]">OpenOnyx</h2>
                     <div className="mb-6 flex items-center gap-2">
                       <span className="rounded-full bg-[var(--bg-tertiary)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)] border border-[var(--border-subtle)]">
                         v{APP_VERSION}
@@ -1555,17 +1555,15 @@ export function SettingsPage({
                       <h4 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">
                         Useful Links & Resources
                       </h4>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs">
-                        <a href="https://github.com/OpenObsidian/OpenObsidian" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                      <div className="flex items-center gap-6">
+                        <a href="https://github.com/OpenOnyx/OpenOnyx" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                           GitHub Repository
                         </a>
-                        <span className="hidden sm:inline text-[var(--border-subtle)]">|</span>
-                        <a href="https://github.com/OpenObsidian/OpenObsidian/wiki" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                          User Documentation
+                        <a href="https://github.com/OpenOnyx/OpenOnyx/wiki" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                          Documentation
                         </a>
-                        <span className="hidden sm:inline text-[var(--border-subtle)]">|</span>
-                        <a href="https://github.com/OpenObsidian/OpenObsidian/issues" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                          Report an Issue
+                        <a href="https://github.com/OpenOnyx/OpenOnyx/issues" target="_blank" rel="noopener noreferrer" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                          Report Issue
                         </a>
                       </div>
                     </div>

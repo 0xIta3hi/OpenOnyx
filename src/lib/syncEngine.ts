@@ -57,7 +57,7 @@ export function normalizeSyncPath(filePath: string): string {
 
 /**
  * Get the active Supabase client -- either the user's own instance
- * or the default OpenObsidian instance.
+ * or the default OpenOnyx instance.
  */
 function getActiveClient() {
   return supabase;

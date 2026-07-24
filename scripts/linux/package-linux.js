@@ -31,13 +31,13 @@ function installIcons(targetPkgDir) {
   fs.mkdirSync(path.join(targetPkgDir, "usr/share/pixmaps"), { recursive: true });
   fs.copyFileSync(
     path.join(buildDir, "icon.png"),
-    path.join(targetPkgDir, "usr/share/pixmaps/openobsidian.png")
+    path.join(targetPkgDir, "usr/share/pixmaps/openonyx.png")
   );
 
   // Also copy icon directly into app root for fallback
   fs.copyFileSync(
     path.join(buildDir, "icon.png"),
-    path.join(targetPkgDir, "opt/OpenObsidian/icon.png")
+    path.join(targetPkgDir, "opt/OpenOnyx/icon.png")
   );
 
   for (const size of iconSizes) {
@@ -45,7 +45,7 @@ function installIcons(targetPkgDir) {
     fs.mkdirSync(dir, { recursive: true });
     fs.copyFileSync(
       path.join(buildDir, "icon.png"),
-      path.join(dir, "openobsidian.png")
+      path.join(dir, "openonyx.png")
     );
   }
 }
@@ -57,32 +57,32 @@ async function buildDeb() {
   // Clean & recreate structure
   fs.rmSync(debPkgDir, { recursive: true, force: true });
   fs.mkdirSync(path.join(debPkgDir, "DEBIAN"), { recursive: true });
-  fs.mkdirSync(path.join(debPkgDir, "opt/OpenObsidian"), { recursive: true });
+  fs.mkdirSync(path.join(debPkgDir, "opt/OpenOnyx"), { recursive: true });
   fs.mkdirSync(path.join(debPkgDir, "usr/share/applications"), { recursive: true });
 
   // Copy files
-  execSync(`cp -r "${unpackedDir}"/* "${path.join(debPkgDir, "opt/OpenObsidian")}"`);
+  execSync(`cp -r "${unpackedDir}"/* "${path.join(debPkgDir, "opt/OpenOnyx")}"`);
   installIcons(debPkgDir);
 
   fs.copyFileSync(
-    path.join(root, "packaging/aur/openobsidian/openobsidian.desktop"),
-    path.join(debPkgDir, "usr/share/applications/openobsidian.desktop")
+    path.join(root, "packaging/aur/openonyx/openonyx.desktop"),
+    path.join(debPkgDir, "usr/share/applications/openonyx.desktop")
   );
 
   // Write control file
-  const control = `Package: openobsidian
+  const control = `Package: openonyx
 Version: ${version}
 Section: utils
 Priority: optional
 Architecture: amd64
-Maintainer: OpenObsidian <openobsidian@gmail.com>
+Maintainer: OpenOnyx <openonyx@gmail.com>
 Depends: gtk3, libnss3, libasound2, libxss1, libxtst6, libsecret-1-0, xdg-utils
 Description: A local-first knowledge management tool with graph-based note linking
 `;
   fs.writeFileSync(path.join(debPkgDir, "DEBIAN/control"), control);
 
   // Build
-  execSync(`dpkg-deb --root-owner-group --build "${debPkgDir}" "${path.join(releaseDir, `openobsidian_${version}_amd64.deb`)}"`);
+  execSync(`dpkg-deb --root-owner-group --build "${debPkgDir}" "${path.join(releaseDir, `openonyx_${version}_amd64.deb`)}"`);
   console.log("Debian package built successfully!");
 }
 
@@ -92,22 +92,22 @@ async function buildPacman() {
   
   // Clean & recreate structure
   fs.rmSync(pacmanPkgDir, { recursive: true, force: true });
-  fs.mkdirSync(path.join(pacmanPkgDir, "opt/OpenObsidian"), { recursive: true });
+  fs.mkdirSync(path.join(pacmanPkgDir, "opt/OpenOnyx"), { recursive: true });
   fs.mkdirSync(path.join(pacmanPkgDir, "usr/bin"), { recursive: true });
   fs.mkdirSync(path.join(pacmanPkgDir, "usr/share/applications"), { recursive: true });
 
   // Copy files
-  execSync(`cp -r "${unpackedDir}"/* "${path.join(pacmanPkgDir, "opt/OpenObsidian")}"`);
+  execSync(`cp -r "${unpackedDir}"/* "${path.join(pacmanPkgDir, "opt/OpenOnyx")}"`);
   installIcons(pacmanPkgDir);
 
   fs.copyFileSync(
-    path.join(root, "packaging/aur/openobsidian/openobsidian.desktop"),
-    path.join(pacmanPkgDir, "usr/share/applications/openobsidian.desktop")
+    path.join(root, "packaging/aur/openonyx/openonyx.desktop"),
+    path.join(pacmanPkgDir, "usr/share/applications/openonyx.desktop")
   );
 
   // Create symlink
   try {
-    fs.symlinkSync("/opt/OpenObsidian/openobsidian", path.join(pacmanPkgDir, "usr/bin/openobsidian"));
+    fs.symlinkSync("/opt/OpenOnyx/openonyx", path.join(pacmanPkgDir, "usr/bin/openonyx"));
   } catch (err) {
     if (err.code !== "EEXIST") throw err;
   }
@@ -116,12 +116,12 @@ async function buildPacman() {
   const size = getDirectorySize(pacmanPkgDir);
 
   // Write .PKGINFO
-  const pkginfo = `pkgname = openobsidian
+  const pkginfo = `pkgname = openonyx
 pkgver = ${version}-1
 pkgdesc = A local-first knowledge management tool with graph-based note linking
-url = https://github.com/OpenObsidian/OpenObsidian
+url = https://github.com/OpenOnyx/OpenOnyx
 builddate = ${Math.floor(Date.now() / 1000)}
-packager = OpenObsidian <openobsidian@gmail.com>
+packager = OpenOnyx <openonyx@gmail.com>
 arch = x86_64
 size = ${size}
 license = MIT
@@ -136,7 +136,7 @@ depend = xdg-utils
   fs.writeFileSync(path.join(pacmanPkgDir, ".PKGINFO"), pkginfo);
 
   // Build
-  execSync(`tar --owner=0 --group=0 --numeric-owner --zstd -cf "${path.join(releaseDir, `openobsidian-${version}-1-x86_64.pkg.tar.zst`)}" -C "${pacmanPkgDir}" .PKGINFO opt usr`);
+  execSync(`tar --owner=0 --group=0 --numeric-owner --zstd -cf "${path.join(releaseDir, `openonyx-${version}-1-x86_64.pkg.tar.zst`)}" -C "${pacmanPkgDir}" .PKGINFO opt usr`);
   console.log("Pacman package built successfully!");
 }
 

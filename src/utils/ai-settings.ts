@@ -1,7 +1,7 @@
 /**
  * AI Settings - Configuration for AI providers and models
  * 
- * Adapted from nodepad's ai-settings to work within the OpenObsidian
+ * Adapted from nodepad's ai-settings to work within the OpenOnyx
  * Electron + Vite architecture. Uses localStorage for persistence.
  */
 
@@ -156,7 +156,7 @@ export interface AISettings {
   customModelId?: string;
 }
 
-const STORAGE_KEY = "openobsidian-ai-settings";
+const STORAGE_KEY = "openonyx-ai-settings";
 
 export function loadSettings(): AISettings {
   try {
@@ -204,8 +204,8 @@ export function getProviderHeaders(config: AIConfig): Record<string, string> {
     Authorization: `Bearer ${config.apiKey}`,
   };
   if (config.provider === "openrouter") {
-    base["HTTP-Referer"] = typeof window !== 'undefined' ? window.location.origin : "https://openobsidian.app";
-    base["X-Title"] = "OpenObsidian";
+    base["HTTP-Referer"] = typeof window !== 'undefined' ? window.location.origin : "https://openonyx.app";
+    base["X-Title"] = "OpenOnyx";
   }
   return base;
 }

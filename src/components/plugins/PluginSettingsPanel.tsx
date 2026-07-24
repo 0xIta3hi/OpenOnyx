@@ -175,7 +175,7 @@ export function PluginSettingsPanel({
             <div className={settingDescriptionClass}>
               Install plugins from the marketplace or place plugin folders containing manifest.json and main.js in{' '}
               <code className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">
-                .openobsidian/plugins/
+                .openonyx/plugins/
               </code>
             </div>
           </div>

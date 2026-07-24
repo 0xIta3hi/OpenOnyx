@@ -7,7 +7,7 @@
  */
 
 const PLUGIN_STYLE_ATTR = 'data-plugin-id';
-const PLUGIN_ASSET_ROOT = 'vault://local/.openobsidian/plugins';
+const PLUGIN_ASSET_ROOT = 'vault://local/.openonyx/plugins';
 const ABSOLUTE_CSS_URL_RE = /^(?:[a-z][a-z0-9+.-]*:|#|\/)/i;
 
 function splitUrlSuffix(rawUrl: string): { path: string; suffix: string } {

@@ -2,7 +2,7 @@ export interface FTUXState {
   notesCount: number;
 }
 
-const FTUX_STORAGE_KEY = "openobsidian-ftux";
+const FTUX_STORAGE_KEY = "openonyx-ftux";
 
 const DEFAULT_FTUX_STATE: FTUXState = {
   notesCount: 0,
