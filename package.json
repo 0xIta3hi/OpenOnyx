@@ -88,8 +88,10 @@
     "@protobufjs/utf8": "1.1.1",
     "@codemirror/state": "$@codemirror/state",
     "sharp": "^0.35.0",
-    "builder-util-runtime": "^9.7.0",
-    "app-builder-lib": "^26.14.1"
+    "electron-builder": "^26.15.3",
+    "app-builder-lib": "^26.15.3",
+    "dmg-builder": "^26.15.3",
+    "builder-util-runtime": "^9.7.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -103,7 +105,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^9.1.2",
     "electron": "^41.2.0",
-    "electron-builder": "^26.0.12",
+    "electron-builder": "^26.15.3",
     "fake-indexeddb": "^6.2.4",
     "jsdom": "^26.1.0",
     "obsidian": "^1.13.1",
