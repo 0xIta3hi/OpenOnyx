@@ -30,7 +30,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ViewMode } from "../../types";
-import { FormattingToolbar } from "../layout/FormattingToolbar";
 
 interface EditorHeaderProps {
   filePath: string;
@@ -62,6 +61,7 @@ interface EditorHeaderProps {
   showFormattingToolbar?: boolean;
   modifiedAt?: number | null;
   createdAt?: number | null;
+  isFocused?: boolean;
 }
 
 const editorChromeClass =
@@ -166,8 +166,8 @@ export function EditorHeader({
   showFormattingToolbar = true,
   modifiedAt,
   createdAt,
+  isFocused,
 }: EditorHeaderProps) {
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -179,6 +179,23 @@ export function EditorHeader({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [menuPosition]);
 
+  useEffect(() => {
+    const handleFormat = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (isFocused && customEvent.detail?.command === "more") {
+        const toolbarMoreBtn = document.querySelector('.trilium-toolbar [title="More"]');
+        if (toolbarMoreBtn) {
+          const rect = toolbarMoreBtn.getBoundingClientRect();
+          setMenuPosition(clampMenuPosition(rect.right - 205, rect.bottom + 4));
+        } else {
+          setMenuPosition({ x: window.innerWidth - 250, y: 50 });
+        }
+      }
+    };
+    document.addEventListener("editor:format", handleFormat);
+    return () => document.removeEventListener("editor:format", handleFormat);
+  }, [isFocused]);
+
   const pathParts = filePath.split("/").filter(Boolean);
   const fileName =
     filePath === "__new_tab__"
@@ -187,11 +204,6 @@ export function EditorHeader({
   const isReadingView = viewMode === "preview";
   const isSpecial = filePath === "__new_tab__" || filePath.startsWith("__");
 
-  const openMenu = () => {
-    const rect = moreButtonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setMenuPosition(clampMenuPosition(rect.right - 205, rect.bottom + 4));
-  };
 
   const runAction = (action?: () => void) => {
     if (!action) return;
@@ -228,10 +240,6 @@ export function EditorHeader({
 
   return (
     <div className={editorChromeClass}>
-      {showFormattingToolbar && !isSpecial && viewMode !== "preview" && (
-        <FormattingToolbar />
-      )}
-
       <div className={editorHeaderClass}>
         <div className={editorHeaderSideClass}>
           <button
@@ -244,17 +252,11 @@ export function EditorHeader({
         </div>
 
         <div className={editorHeaderCenterClass}>
-          <div className={breadcrumbsClass}>
-            {pathParts.map((part, index) => (
-              <React.Fragment key={index}>
-                <span className={breadcrumbPartClass}>{part}</span>
-                <ChevronRight size={14} className={breadcrumbSeparatorClass} />
-              </React.Fragment>
-            ))}
-            <span className={`${breadcrumbPartClass} ${activeBreadcrumbPartClass}`}>
+          {!isSpecial && (
+            <span className="font-medium text-[var(--text-secondary)] text-[13px] max-w-[250px] overflow-hidden text-ellipsis whitespace-nowrap">
               {fileName}
             </span>
-          </div>
+          )}
         </div>
 
         <div className={editorHeaderRightClass}>
@@ -271,36 +273,10 @@ export function EditorHeader({
               <PenLine size={16} strokeWidth={1.5} />
             )}
           </button>
-          <button
-            ref={moreButtonRef}
-            className={editorHeaderBtnClass}
-            onClick={openMenu}
-            title="More options"
-          >
-            <MoreVertical size={16} strokeWidth={1.5} />
-          </button>
         </div>
       </div>
 
-      {!isSpecial && (
-        <div className={noteTitleBandClass}>
-          <div className={noteIconBadgeClass} aria-hidden="true">
-            <FileText size={20} strokeWidth={1.6} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className={noteTitleTextClass}>{fileName}</h1>
-            {(createdLabel || modifiedLabel) && (
-              <div className={noteMetaClass}>
-                {createdLabel && <span>Created on {createdLabel}</span>}
-                {createdLabel && modifiedLabel && (
-                  <span className="mx-1.5 opacity-50">·</span>
-                )}
-                {modifiedLabel && <span>Modified on {modifiedLabel}</span>}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+
 
       {menuPosition && (
         <div
@@ -324,19 +300,9 @@ export function EditorHeader({
               { checked: isReadingView },
             )}
             <div className={menuSeparatorClass} />
-            {renderItem("Split right", SplitSquareHorizontal, onSplitRight)}
-            {renderItem("Split down", SplitSquareVertical, onSplitDown)}
-            {renderItem("Open in new window", PanelRightOpen, onOpenInNewWindow, {
-              disabled: !onOpenInNewWindow,
-            })}
-            <div className={menuSeparatorClass} />
             {renderItem("Rename...", Pencil, onRename)}
             {renderItem("Move file to...", FolderInput, onMoveFile)}
             {renderItem("Bookmark...", Bookmark, onBookmark)}
-            {renderItem("Merge entire file with...", GitMerge, onMergeFile, {
-              disabled: !onMergeFile,
-            })}
-            {renderItem("Add file property", CirclePlus, onAddProperty)}
             {renderItem("Export to PDF...", FileDown, onExportPdf)}
             <div className={menuSeparatorClass} />
             {renderItem("Find...", Search, onFind)}
@@ -355,14 +321,6 @@ export function EditorHeader({
                 })}
               </div>
             </div>
-            <div className={menuSeparatorClass} />
-            {renderItem("Open version history", History, onOpenVersionHistory, {
-              disabled: !onOpenVersionHistory,
-            })}
-            {renderItem("Open linked view", Code2, onOpenLinkedView, {
-              disabled: !onOpenLinkedView,
-              trailing: <ChevronRight size={14} strokeWidth={1.6} />,
-            })}
             <div className={menuSeparatorClass} />
             {renderItem("Open in default app", ExternalLink, onOpenInDefaultApp)}
             {renderItem("Show in system explorer", FolderOpen, onShowInSystemExplorer)}

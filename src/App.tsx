@@ -19,6 +19,7 @@ import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Editor } from "./components/editor/Editor";
 import { EditorHeader } from "./components/editor/EditorHeader";
+import { FormattingToolbar } from "./components/layout/FormattingToolbar";
 import { LeafPaneEditor } from "./components/layout/LeafPaneEditor";
 import { NewTabView } from "./components/layout/NewTabView";
 import { GraphView } from "./components/graph/GraphView";
@@ -1373,12 +1374,6 @@ export default function App() {
       sidebarWidthRef.current = newWidth;
       if (shell) {
         shell.style.width = `${newWidth}px`;
-      }
-      const tbLeft = document.querySelector('.titlebar-left') as HTMLElement;
-      if (tbLeft) {
-        const w = 44 + newWidth;
-        tbLeft.style.width = `${w}px`;
-        tbLeft.style.minWidth = `${w}px`;
       }
     };
 
@@ -7295,90 +7290,25 @@ export default function App() {
 
   return (
     <DragCtx.Provider value={{ dragCtx, setDragCtx }}>
-      <div className="app">
-        <TitleBar
-          theme={theme}
-          onToggleSidebar={() => setShowSidebar((s) => !s)}
-          showSidebar={showSidebar}
-          onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
-          showRightSidebar={showRightSidebar}
-          leftWidth={(settings.showRibbon === false ? 0 : 48) + (showSidebar ? sidebarWidth : 0)}
-          onSearch={() => {
-            setShowSidebar(true);
-            setSearchInitialMode("search");
-            setShowBookmarks(false);
-            setShowSearch(true);
-          }}
-          onToggleExplorer={() => {
-            setShowSidebar(true);
-            setShowSearch(false);
-            setShowBookmarks(false);
-            ooAppRef.current?.workspace?.revealDefaultView?.('left');
-          }}
-          onToggleBookmarks={() => {
-            setShowSidebar(true);
-            setShowSearch(false);
-            setShowBookmarks(true);
-          }}
-          bookmarksActive={showBookmarks}
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onTabSelect={handleTabSelect}
-          onTabClose={closeTab}
-          onNewTab={handleOpenNewTab}
-          onTabReorder={handleTabReorder}
-          tabScrollRef={tabScrollRef}
-          activeUsers={activeUsers}
-          
-          groups={groups}
-          activeGroupId={activeGroupId}
-          hasUnsavedChanges={hasUnsavedChanges}
-          onRestoreGroup={handleRestoreGroup}
-          onSaveGroup={handleUpdateActiveGroup}
-          onRenameGroup={handleRenameGroup}
-          onChangeGroupColor={handleChangeGroupColor}
-          onToggleGroupAutoSave={handleToggleGroupAutoSave}
-          onDuplicateGroup={handleDuplicateGroup}
-          onDeleteGroup={handleDeleteGroup}
-          onCreateGroupFromTab={handleCreateGroupFromTab}
-          onAddTabToGroup={handleAddTabToGroup}
-          onRemoveTabFromGroup={(tabId) => handleAddTabToGroup(tabId, null)}
-          onMoveTabToGroup={handleAddTabToGroup}
-          collapsedGroupIds={collapsedGroupIds}
-          onToggleGroupCollapse={handleToggleGroupCollapse}
-          activeRightTab={rightSidebarTab}
-          setActiveRightTab={handleSelectRightTab}
-          leftPluginViews={leftPluginViews}
-          activeLeftViewType={activeLeftPluginView?.viewType || null}
-          onSelectLeftPluginView={(viewType) => {
-            const view = leftPluginViews.find(v => v.viewType === viewType);
-            if (view?.leaf) {
-              void ooAppRef.current?.workspace?.revealLeaf?.(view.leaf);
-              setShowSidebar(true);
-              setShowSearch(false);
-              setShowBookmarks(false);
-            }
-          }}
-          rightPluginViews={rightPluginViews}
-          rightSidebarWidth={rightSidebarWidth}
-          isFullScreen={isNativeFullScreen}
-        />
-
-      <div
-        className="app-body"
-        ref={appBodyRef}
-        style={{ 
+      <div 
+        className="app"
+        style={{
           "--sidebar-width": `${sidebarWidth}px`,
           "--right-sidebar-width": `${rightSidebarWidth}px`
         } as any}
       >
+        <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
         {vaultPath && !isFTUXZeroState && settings.showRibbon !== false && (
           <Ribbon
             onToggleExplorer={() => {
-              setShowSidebar(true);
-              setShowSearch(false);
-              setShowBookmarks(false);
-              ooAppRef.current?.workspace?.revealDefaultView?.('left');
+              setShowSidebar((s) => {
+                const next = !s;
+                if (next) {
+                  setShowSearch(false);
+                  setShowBookmarks(false);
+                }
+                return next;
+              });
             }}
             onSearch={() => {
               setShowSidebar(true);
@@ -7398,7 +7328,6 @@ export default function App() {
             onDailyNote={() => {
               if (settings.coreDailyNotes !== false) void handleCreateDailyNote();
             }}
-            onToggleTags={() => setShowTags((t) => !t)}
             onThoughtModel={() => {
               if (showRightSidebar && rightSidebarTab === "ai") {
                 setShowRightSidebar(false);
@@ -7515,9 +7444,85 @@ export default function App() {
           </div>
         )}
 
-        <div
-          className="main-content flex min-w-0 flex-1 overflow-hidden bg-[var(--bg-primary)]"
-          ref={mainContentRef}
+          <div
+            className="app-body flex flex-col flex-1 min-w-0 overflow-hidden"
+            ref={appBodyRef}
+          >
+            <TitleBar
+              theme={theme}
+              onToggleSidebar={() => setShowSidebar((s) => !s)}
+              showSidebar={showSidebar}
+              onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
+              showRightSidebar={showRightSidebar}
+              leftWidth={0}
+              onSearch={() => {
+                setShowSidebar(true);
+                setSearchInitialMode("search");
+                setShowBookmarks(false);
+                setShowSearch(true);
+              }}
+              onToggleExplorer={() => {
+                setShowSidebar(true);
+                setShowSearch(false);
+                setShowBookmarks(false);
+                ooAppRef.current?.workspace?.revealDefaultView?.('left');
+              }}
+              onToggleBookmarks={() => {
+                setShowSidebar(true);
+                setShowSearch(false);
+                setShowBookmarks(true);
+              }}
+              bookmarksActive={showBookmarks}
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onTabSelect={handleTabSelect}
+              onTabClose={closeTab}
+              onNewTab={handleOpenNewTab}
+              onTabReorder={handleTabReorder}
+              tabScrollRef={tabScrollRef}
+              activeUsers={activeUsers}
+              
+              groups={groups}
+              activeGroupId={activeGroupId}
+              hasUnsavedChanges={hasUnsavedChanges}
+              onRestoreGroup={handleRestoreGroup}
+              onSaveGroup={handleUpdateActiveGroup}
+              onRenameGroup={handleRenameGroup}
+              onChangeGroupColor={handleChangeGroupColor}
+              onToggleGroupAutoSave={handleToggleGroupAutoSave}
+              onDuplicateGroup={handleDuplicateGroup}
+              onDeleteGroup={handleDeleteGroup}
+              onCreateGroupFromTab={handleCreateGroupFromTab}
+              onAddTabToGroup={handleAddTabToGroup}
+              onRemoveTabFromGroup={(tabId) => handleAddTabToGroup(tabId, null)}
+              onMoveTabToGroup={handleAddTabToGroup}
+              collapsedGroupIds={collapsedGroupIds}
+              onToggleGroupCollapse={handleToggleGroupCollapse}
+              activeRightTab={rightSidebarTab}
+              setActiveRightTab={handleSelectRightTab}
+              leftPluginViews={leftPluginViews}
+              activeLeftViewType={activeLeftPluginView?.viewType || null}
+              onSelectLeftPluginView={(viewType) => {
+                const view = leftPluginViews.find(v => v.viewType === viewType);
+                if (view?.leaf) {
+                  void ooAppRef.current?.workspace?.revealLeaf?.(view.leaf);
+                  setShowSidebar(true);
+                  setShowSearch(false);
+                  setShowBookmarks(false);
+                }
+              }}
+              rightPluginViews={rightPluginViews}
+              rightSidebarWidth={rightSidebarWidth}
+              isFullScreen={isNativeFullScreen}
+            />
+            <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+              <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-[var(--bg-primary)]">
+                {vaultPath && !isFTUXZeroState && activeTab?.path && activeTab.path !== "__new_tab__" && !activeTab.path.startsWith("__") && viewMode !== "preview" && (
+                  <FormattingToolbar />
+                )}
+                <div
+                  className="main-content flex min-w-0 flex-1 overflow-hidden bg-[var(--bg-primary)]"
+                  ref={mainContentRef}
           style={{
             display: "flex",
             flexDirection: "row",
@@ -7666,6 +7671,7 @@ export default function App() {
             </>
           )}
         </div>
+      </div>
 
         {/* Thought Model Panel - independent of graph */}
         {/* Right Sidebar Container */}
@@ -7713,7 +7719,9 @@ export default function App() {
             </div>
           </div>
         )}
-      </div>
+            </div>
+          </div>
+        </div>
 
       {!isFTUXZeroState && !activeTabIsSpaces && (
         <StatusBar

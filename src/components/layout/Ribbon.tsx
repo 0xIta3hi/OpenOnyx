@@ -5,7 +5,7 @@ import {
   Sparkles,
   Layout,
   Settings,
-  Home,
+  PanelLeft,
   Search,
   Bookmark,
   Shield,
@@ -59,7 +59,6 @@ interface RibbonProps {
   onGraph: () => void;
   onSettings: () => void;
   onDailyNote?: () => void;
-  onToggleTags?: () => void;
   onThoughtModel?: () => void;
   onSpaces?: () => void;
   onCanvas?: () => void;
@@ -74,7 +73,6 @@ export function Ribbon({
   onToggleExplorer,
   onSettings,
   onDailyNote,
-  onToggleTags,
   onThoughtModel,
   onSpaces,
   onCanvas,
@@ -85,6 +83,7 @@ export function Ribbon({
 }: RibbonProps) {
   const ribbonRootRef = useRef<HTMLDivElement | null>(null);
   const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
+  const isMac = typeof window !== "undefined" && navigator.platform.toLowerCase().includes("mac");
 
   const renderPluginIcon = (el: HTMLSpanElement | null, action: PluginRibbonAction) => {
     if (!el) return;
@@ -119,19 +118,18 @@ export function Ribbon({
     <div
       className={ribbonRootClass}
       ref={ribbonRootRef}
+      style={isMac ? { paddingTop: '32px' } : undefined}
     >
       <div className={ribbonGroupClass} ref={ribbonItemsRef}>
-        <div className={ribbonLogoClass} title="OpenOnyx" data-tooltip="OpenOnyx">
-          <TriliumMark size={24} />
-        </div>
+
 
         {onToggleExplorer && (
           <button
             className={`${ribbonBtnClass} ${ribbonBtnActiveClass}`}
             onClick={onToggleExplorer}
-            data-tooltip="Note tree"
+            data-tooltip="Toggle sidebar"
           >
-            <Home size={18} strokeWidth={1.6} />
+            <PanelLeft size={18} strokeWidth={1.6} />
           </button>
         )}
 
@@ -203,15 +201,6 @@ export function Ribbon({
           </button>
         )}
 
-        {onToggleTags && (
-          <button
-            className={ribbonBtnClass}
-            onClick={onToggleTags}
-            data-tooltip="Tags"
-          >
-            <Shield size={18} strokeWidth={1.6} />
-          </button>
-        )}
 
         {pluginRibbonActions.map((action, i) => (
           <button

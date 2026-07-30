@@ -913,3 +913,254 @@ img.emoji {
   background: var(--scrollbar-thumb-hover, rgba(128, 128, 128, 0.4));
 }
 
+/* Hide Notebook Navigator shortcuts button and related container elements */
+.nn-shortcut-pinned,
+.nn-shortcut-header-item,
+.nn-shortcut-item,
+.nn-shortcuts-resize-handle {
+  display: none !important;
+}
+
+/* Apple Notes Explorer Container */
+.nn-explorer-container {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--bg-primary, #1e1e1e);
+}
+
+/* Folders Pane (Left column) */
+.nn-folders-pane {
+  width: 140px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--bg-secondary, #161617);
+  padding: 8px 4px;
+}
+
+/* Resizable Divider between Left/Right panes */
+.nn-pane-divider {
+  width: 4px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  background-color: transparent;
+  transition: background-color 0.2s ease;
+  position: relative;
+  z-index: 10;
+}
+
+.nn-pane-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 1px;
+  background-color: var(--border-subtle, #2a2a2b);
+}
+
+.nn-pane-divider:hover::after,
+.nn-pane-divider:active::after {
+  background-color: var(--accent-primary);
+  width: 2px;
+  left: 1px;
+}
+
+/* Notes Pane (Right column) */
+.nn-notes-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--bg-primary, #1e1e1e);
+  padding: 8px;
+}
+
+/* Special folder / tree item in the left column */
+.nn-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nn-folder-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.nn-folder-item.active {
+  background-color: var(--bg-hover, #2c2c2e);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Note Card in Apple Notes Style */
+.nn-note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle, #2a2a2b);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}
+
+.nn-note-card:hover {
+  background-color: var(--bg-hover);
+}
+
+/* Active State matches Apple Notes premium accent exactly */
+.nn-note-card.active {
+  background-color: #2c2c2e !important;
+  border-radius: 6px;
+  border-bottom-color: transparent;
+}
+
+.nn-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.nn-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.nn-card-date {
+  color: var(--text-muted, #8a8a8f);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.nn-card-snippet {
+  color: var(--text-muted, #8a8a8f);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.nn-card-indicators {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.nn-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.nn-note-card.active .nn-badge {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Collapsible Date Section Headers */
+.nn-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #8a8a8f);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nn-section-header:first-of-type {
+  margin-top: 4px;
+}
+
+.nn-section-header-chevron {
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+}
+
+.nn-explorer-container.nn-is-resizing * {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.nn-explorer-container.nn-is-resizing .nn-pane-divider {
+  pointer-events: auto !important;
+}
+
+/* Folders Back Navigation Header Bar */
+.nn-compact-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  background-color: var(--bg-secondary, #161617);
+  border-bottom: 1px solid var(--border-subtle, #2a2a2b);
+  gap: 8px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.nn-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-primary, #e58e26);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.nn-back-btn:hover {
+  background-color: var(--bg-hover, #2c2c2e);
+}
+
+
+
