@@ -138,7 +138,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 const titlebarClass =
-  "titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--bg-secondary)] text-[length:var(--font-ui-small)] [-webkit-app-region:no-drag]";
+  "titlebar trilium-titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--titlebar-background,var(--bg-secondary))] text-[length:var(--font-ui-small)] border-b border-[var(--divider-color)] [-webkit-app-region:no-drag]";
 const titlebarDragHandleClass =
   "absolute inset-0 z-[1] pointer-events-none [-webkit-app-region:drag]";
 const titlebarLeftClass =
@@ -146,43 +146,43 @@ const titlebarLeftClass =
 const titlebarRibbonSlotClass =
   "flex h-full w-[var(--ribbon-width)] shrink-0 items-center justify-center";
 const titlebarActionBtnClass =
-  "titlebar-action-btn flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-[var(--text-secondary)] transition-all duration-120 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "titlebar-action-btn flex h-8 w-8 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent p-0 text-[var(--text-secondary)] transition-all duration-120 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const titlebarVaultActionsClass = "flex items-center gap-0.5 px-2";
 const titlebarTabsClass =
-  "relative z-[2] flex h-full min-w-0 flex-1 items-end overflow-hidden pl-1 pr-3 pointer-events-none [-webkit-app-region:no-drag]";
+  "relative z-[2] flex h-full min-w-0 flex-1 items-center overflow-hidden pl-1 pr-3 pointer-events-none [-webkit-app-region:no-drag]";
 const titlebarTabScrollClass =
-  "relative z-[1] flex h-full min-w-0 flex-1 items-end overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+  "relative z-[1] flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
 const titlebarTabSlotClass =
-  "flex h-full min-w-[100px] max-w-[200px] shrink items-end border-b";
-const titlebarInactiveTabSlotClass = "border-[var(--border-subtle)]";
-const titlebarActiveTabSlotClass = "border-transparent";
+  "flex h-full min-w-[110px] max-w-[220px] shrink items-center";
+const titlebarInactiveTabSlotClass = "";
+const titlebarActiveTabSlotClass = "";
 const titlebarGroupSlotClass =
-  "flex h-full shrink-0 items-center border-b border-[var(--border-subtle)]";
+  "flex h-full shrink-0 items-center";
 const titlebarTabsRemainderClass =
-  "h-full min-w-0 flex-1 shrink-0 border-b border-[var(--border-subtle)] pointer-events-none";
+  "h-full min-w-0 flex-1 shrink-0 pointer-events-none";
 const titlebarTabClass =
-  "titlebar-tab group relative z-[2] flex h-[30px] w-full min-w-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[background-color,border-color,color,box-shadow,opacity] duration-75 [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing";
+  "titlebar-tab group relative z-[2] flex h-[30px] w-full min-w-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-[8px] border border-transparent bg-transparent px-1 font-[var(--font-sans)] text-[13px] text-[var(--tab-text-color)] transition-[background-color,border-color,color,box-shadow] duration-75 [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing hover:bg-[var(--bg-hover)]";
 const titlebarTabActiveClass =
-  "active z-[4] !border-x !border-t !border-b-0 !border-[var(--border-subtle)] bg-[var(--tab-background-active)] text-[var(--tab-text-color-focused-active-current)] shadow-[inset_0_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_var(--tab-outline-width)_0_0_var(--tab-outline-color),inset_calc(var(--tab-outline-width)*-1)_0_0_var(--tab-outline-color)]";
+  "active z-[4] !border-[var(--border-subtle)] !bg-[var(--tab-background-active)] !text-[var(--tab-text-color-focused-active-current)] shadow-[0_1px_3px_rgba(15,23,42,0.08)]";
 const titlebarTabDropLeftClass =
-  "drop-target-left !shadow-[inset_2px_0_0_var(--accent-color,#7c6ef6)]";
+  "drop-target-left !shadow-[inset_2px_0_0_var(--accent-color,#2563eb)]";
 const titlebarTabDropRightClass =
-  "drop-target-right !shadow-[inset_-2px_0_0_var(--accent-color,#7c6ef6)]";
+  "drop-target-right !shadow-[inset_-2px_0_0_var(--accent-color,#2563eb)]";
 const titlebarGroupedTabClass =
-  "grouped-tab !rounded-t-[var(--radius-sm,4px)] !border-t-2 border-solid opacity-75 transition-[background-color,border-top-color,opacity] duration-75 hover:opacity-95 before:!hidden after:!hidden";
+  "grouped-tab !rounded-[8px] !border-t-2 border-solid opacity-75 transition-[background-color,border-top-color,opacity] duration-75 hover:opacity-95 before:!hidden after:!hidden";
 const titlebarGroupedActiveTabClass =
-  "!border-t-2 !border-t-[var(--tab-group-color)] !bg-[var(--tab-background-active)] !shadow-none opacity-100";
+  "!border-t-2 !border-t-[var(--tab-group-color)] !bg-[var(--tab-background-active)] !shadow-[0_1px_3px_rgba(15,23,42,0.08)] opacity-100";
 const titlebarTabInnerClass =
-  "tab-inner flex h-full w-full items-center gap-1 overflow-hidden rounded-[var(--tab-radius)] px-1.5 group-hover:bg-[var(--bg-hover)] group-[.active]:relative group-[.active]:overflow-visible group-[.active]:bg-transparent";
+  "tab-inner flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[8px] px-2.5";
 const titlebarTabDotClass = "shrink-0 text-[8px] text-[var(--text-muted)]";
 const titlebarTabTitleClass =
   "flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left leading-none";
 const titlebarTabCloseClass =
-  "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent p-0 text-[10px] text-[var(--text-muted)] opacity-0 transition-[var(--transition-fast)] group-hover:opacity-100 group-hover:text-[var(--tab-text-color-focused)] group-[.active]:opacity-100 group-[.active]:text-[var(--tab-text-color-focused)] hover:bg-[var(--bg-hover)] hover:text-[var(--tab-text-color-focused-active-current)]";
+  "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[10px] text-[var(--text-muted)] opacity-0 transition-[var(--transition-fast)] group-hover:opacity-100 group-hover:text-[var(--tab-text-color-focused)] group-[.active]:opacity-100 group-[.active]:text-[var(--tab-text-color-focused)] hover:bg-[var(--bg-hover)] hover:text-[var(--tab-text-color-focused-active-current)]";
 const titlebarNewTabClass =
-  "titlebar-new-tab titlebar-btn mb-0.5 ml-0.5 !h-7 !w-7 shrink-0";
+  "titlebar-new-tab titlebar-btn ml-0.5 !h-7 !w-7 shrink-0 !rounded-[8px]";
 const titlebarNewTabSlotClass =
-  "flex h-full shrink-0 items-end border-b border-[var(--border-subtle)]";
+  "flex h-full shrink-0 items-center";
 const titlebarRightControlsClass =
   "relative z-[2] flex shrink-0 items-center pl-3 pr-4 pointer-events-auto [-webkit-app-region:no-drag]";
 const titlebarControlsClass =
@@ -190,7 +190,6 @@ const titlebarControlsClass =
 const titlebarBtnClass =
   "titlebar-btn flex h-7 w-9 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent text-[var(--text-muted)] transition-[background-color,border-color,color,transform] duration-100 pointer-events-auto [-webkit-app-region:no-drag] hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] active:scale-[0.96]";
 const titlebarCloseBtnClass = "close hover:border-[#ef4444] hover:bg-[#ef4444] hover:text-white";
-
 interface TitlebarTabItemProps {
   tab: Tab;
   tabGroup: LocalGroup | null;

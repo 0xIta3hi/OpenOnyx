@@ -100,7 +100,7 @@ export function RightSidebar({
 
   return (
     <div
-      className="flex flex-col h-full bg-(--bg-secondary) border-l border-(--border-subtle) select-none overflow-hidden"
+      className="flex flex-col h-full bg-[var(--bg-tree,var(--bg-secondary))] border-l border-[var(--divider-color)] select-none overflow-hidden"
       style={{ width: `${width}px` }}
     >
       {/* Active Tab Panel Body */}
