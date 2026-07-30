@@ -138,20 +138,20 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 const titlebarClass =
-  "titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--bg-secondary)] text-[length:var(--font-ui-small)] [-webkit-app-region:no-drag]";
+  "titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--bg-secondary)] text-[length:var(--font-ui-small)] [-webkit-app-region:drag]";
 const titlebarDragHandleClass =
-  "absolute inset-0 z-[1] pointer-events-none [-webkit-app-region:drag]";
+  "absolute inset-0 z-[1] pointer-events-auto [-webkit-app-region:drag]";
 const titlebarLeftClass =
-  "titlebar-left relative z-[2] flex h-full shrink-0 items-center bg-transparent pointer-events-auto [-webkit-app-region:no-drag]";
+  "titlebar-left relative z-[2] flex h-full shrink-0 items-center bg-transparent pointer-events-auto [-webkit-app-region:drag]";
 const titlebarRibbonSlotClass =
   "flex h-full w-[var(--ribbon-width)] shrink-0 items-center justify-center";
 const titlebarActionBtnClass =
   "titlebar-action-btn flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-[var(--text-secondary)] transition-all duration-120 pointer-events-auto [-webkit-app-region:no-drag] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const titlebarVaultActionsClass = "flex items-center gap-0.5 px-2";
 const titlebarTabsClass =
-  "relative z-[2] flex h-full min-w-0 flex-1 items-end overflow-hidden pl-1 pr-3 pointer-events-none [-webkit-app-region:no-drag]";
+  "relative z-[2] flex h-full min-w-0 flex-1 items-end overflow-hidden pl-1 pr-3 pointer-events-auto [-webkit-app-region:drag]";
 const titlebarTabScrollClass =
-  "relative z-[1] flex h-full min-w-0 flex-1 items-end overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+  "relative z-[1] flex h-full min-w-0 flex-1 items-end overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [-webkit-app-region:drag]";
 const titlebarTabSlotClass =
   "flex h-full min-w-[100px] max-w-[200px] shrink items-end border-b";
 const titlebarInactiveTabSlotClass = "border-[var(--border-subtle)]";
@@ -159,7 +159,7 @@ const titlebarActiveTabSlotClass = "border-transparent";
 const titlebarGroupSlotClass =
   "flex h-full shrink-0 items-center border-b border-[var(--border-subtle)]";
 const titlebarTabsRemainderClass =
-  "h-full min-w-0 flex-1 shrink-0 border-b border-[var(--border-subtle)] pointer-events-none";
+  "h-full min-w-0 flex-1 shrink-0 border-b border-[var(--border-subtle)] pointer-events-auto [-webkit-app-region:drag]";
 const titlebarTabClass =
   "titlebar-tab group relative z-[2] flex h-[30px] w-full min-w-0 cursor-grab items-center gap-1 whitespace-nowrap rounded-[var(--tab-radius-active)] border-0 bg-transparent px-1 font-[var(--font-sans)] text-[length:var(--tab-font-size)] text-[var(--tab-text-color)] transition-[background-color,border-color,color,box-shadow,opacity] duration-75 [-webkit-app-region:no-drag] [scroll-margin-inline-start:6px] active:cursor-grabbing";
 const titlebarTabActiveClass =
@@ -276,7 +276,7 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
 });
 
 const titlebarGroupPillClass =
-  "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-none transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97]";
+  "titlebar-group-pill inline-flex h-5 shrink-0 cursor-pointer select-none items-center justify-center self-center rounded border-0 px-1.5 py-0.5 mx-1 ml-1.5 font-sans text-[11px] font-bold shadow-none transition-[transform,filter] duration-120 hover:brightness-115 active:scale-[0.97] pointer-events-auto [-webkit-app-region:no-drag]";
 const titlebarGroupActiveClass =
   "active-group outline outline-1 outline-current";
 const titlebarGroupNameClass =
@@ -621,9 +621,23 @@ export function TitleBar({
   }, [tabScrollRef]);
 
   return (
-    <div className={titlebarClass} ref={titlebarRef}>
+    <div
+      className={titlebarClass}
+      ref={titlebarRef}
+      onDoubleClick={(e) => {
+        if (
+          e.target === e.currentTarget ||
+          (e.target as HTMLElement).classList.contains("titlebar-drag-handle")
+        ) {
+          api.maximizeWindow();
+        }
+      }}
+    >
       {/* Background drag handle for window movement */}
-      <div className={titlebarDragHandleClass} />
+      <div
+        className={cx(titlebarDragHandleClass, "titlebar-drag-handle")}
+        onDoubleClick={() => api.maximizeWindow()}
+      />
 
       {/* Left action icons - spans over ribbon + sidebar */}
       <div
@@ -798,7 +812,7 @@ export function TitleBar({
       </div>
 
       {/* Right: sidebar toggle and right sidebar container */}
-      <div className="relative z-[2] flex h-full shrink-0 items-center pointer-events-auto [-webkit-app-region:no-drag]">
+      <div className="relative z-[2] flex h-full shrink-0 items-center pointer-events-auto [-webkit-app-region:drag]">
         {onToggleRightSidebar && (
           <button
             className={titlebarActionBtnClass}
