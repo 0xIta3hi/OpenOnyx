@@ -825,6 +825,58 @@ img.emoji {
   color: var(--accent-primary) !important;
 }
 
+/* ── Trilium-inspired shell refinements ── */
+.app {
+  background: var(--bg-secondary);
+}
+
+.app-body {
+  background: var(--bg-secondary);
+}
+
+.main-content {
+  background: var(--bg-primary);
+  border-left: 1px solid var(--divider-color);
+}
+
+.trilium-launcher {
+  z-index: 5;
+}
+
+.trilium-tree {
+  border-right: 1px solid var(--divider-color);
+}
+
+.trilium-tree .file-tree-item.active {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.trilium-titlebar {
+  background: var(--titlebar-background, var(--bg-secondary));
+}
+
+.trilium-toolbar {
+  background: var(--bg-toolbar, var(--bg-secondary));
+}
+
+.trilium-note-chrome {
+  background: var(--bg-primary);
+}
+
+.trilium-statusbar {
+  background: var(--status-bar-background);
+}
+
+/* Soften left shell so launcher + tree read as one panel */
+[data-theme="light"] .ribbon.trilium-launcher,
+[data-theme="light"] .sidebar.trilium-tree {
+  background: var(--bg-tree, #eef0f3);
+}
+
+[data-theme="light"] .main-content {
+  box-shadow: -1px 0 0 var(--divider-color);
+}
+
 /* ── Smooth Scrolling & Performance Optimizations ── */
 .overflow-y-auto,
 .overflow-auto,

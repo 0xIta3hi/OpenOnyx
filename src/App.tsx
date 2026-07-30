@@ -1481,7 +1481,7 @@ export default function App() {
     };
 
     const onMove = (ev: MouseEvent) => {
-      const ribbonWidth = 48;
+      const ribbonWidth = 48; // Trilium-style launcher width
       const curLeftWidth = sidebarWidthRef.current;
       const leftUsed = showSidebarRef.current ? curLeftWidth : 0;
       const minCenterWidth = 40;
@@ -7302,7 +7302,7 @@ export default function App() {
           showSidebar={showSidebar}
           onToggleRightSidebar={() => setShowRightSidebar((s) => !s)}
           showRightSidebar={showRightSidebar}
-          leftWidth={(settings.showRibbon === false ? 0 : 44) + (showSidebar ? sidebarWidth : 0)}
+          leftWidth={(settings.showRibbon === false ? 0 : 48) + (showSidebar ? sidebarWidth : 0)}
           onSearch={() => {
             setShowSidebar(true);
             setSearchInitialMode("search");
@@ -7374,6 +7374,23 @@ export default function App() {
       >
         {vaultPath && !isFTUXZeroState && settings.showRibbon !== false && (
           <Ribbon
+            onToggleExplorer={() => {
+              setShowSidebar(true);
+              setShowSearch(false);
+              setShowBookmarks(false);
+              ooAppRef.current?.workspace?.revealDefaultView?.('left');
+            }}
+            onSearch={() => {
+              setShowSidebar(true);
+              setSearchInitialMode("search");
+              setShowBookmarks(false);
+              setShowSearch(true);
+            }}
+            onBookmarks={() => {
+              setShowSidebar(true);
+              setShowSearch(false);
+              setShowBookmarks(true);
+            }}
             onGraph={() => {
               openGraphAsTab();
             }}
@@ -7397,7 +7414,7 @@ export default function App() {
               if (settings.coreCanvas !== false) void handleToggleCanvas();
             }}
             pluginRibbonActions={pluginRibbonActions}
-            showSettingsButton={!showSidebar || showSearch || showBookmarks || activeLeftPluginViews.length > 0}
+            showSettingsButton
           />
         )}
         {vaultPath && !isFTUXZeroState && (

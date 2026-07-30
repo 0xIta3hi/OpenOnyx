@@ -1,7 +1,5 @@
 /**
- * Status Bar
- *
- * Obsidian-style compact status area.
+ * Status Bar — Trilium-style full-width footer with breadcrumbs + stats
  */
 
 import React from "react";
@@ -9,8 +7,11 @@ import type { QueueStatus } from "../../utils/background-queue";
 import {
   Check,
   Circle,
+  Home,
   Link2,
   PencilLine,
+  Paperclip,
+  Tag,
 } from "lucide-react";
 import { Tab, Theme, ViewMode, FileEntry } from "../../types";
 import { countWords, countCharacters } from "../../utils/helpers";
@@ -18,12 +19,13 @@ import type { PluginStatusBarItem } from '../../types/plugin';
 import { VimModeIndicator } from "./VimModeIndicator";
 
 const statusBarClass =
-  "fixed bottom-0 right-0 z-[180] flex h-[30px] w-fit max-w-[calc(100vw-12px)] items-center justify-end overflow-hidden rounded-tl-[var(--radius-md)] border border-b-0 border-r-0 border-(--status-bar-border-color) bg-(--status-bar-background) text-[12px] font-medium text-(--text-primary) shadow-none";
-const statusGroupClass = "flex min-w-0 items-center justify-end gap-0.5";
+  "trilium-statusbar relative z-[180] flex h-[28px] w-full shrink-0 items-center justify-between overflow-hidden border-t border-[var(--divider-color)] bg-[var(--status-bar-background)] px-3 text-[12px] font-medium text-[var(--status-bar-text-color)]";
+const statusGroupClass = "flex min-w-0 items-center gap-1";
 const statusItemClass =
-  "inline-flex h-[29px] shrink-0 items-center gap-1 whitespace-nowrap border-l border-[var(--border-subtle)] px-2 text-[12px] leading-none text-(--text-primary) first:border-l-0";
-const statusIconItemClass =
-  "inline-flex h-[29px] w-[24px] shrink-0 items-center justify-center border-l border-[var(--border-subtle)] text-(--text-primary) first:border-l-0";
+  "inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap px-1.5 text-[12px] leading-none text-[var(--status-bar-text-color)]";
+const crumbClass =
+  "inline-flex max-w-[160px] items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--text-secondary)]";
+const crumbSepClass = "mx-0.5 text-[var(--text-faint)] opacity-70";
 
 interface StatusBarProps {
   activeTab: Tab | null;
@@ -51,8 +53,39 @@ export function StatusBar({
   const wordCount = content ? countWords(content) : 0;
   const charCount = content ? countCharacters(content) : 0;
 
+  const pathParts =
+    activeTab && !activeTab.path.startsWith("__")
+      ? activeTab.path.split("/").filter(Boolean)
+      : [];
+  const noteName =
+    pathParts.length > 0
+      ? pathParts[pathParts.length - 1].replace(/\.md$/, "").replace(/\.canvas$/, "")
+      : activeTab?.name || "";
+
   return (
     <div className={statusBarClass}>
+      <div className={statusGroupClass} aria-label="Breadcrumbs">
+        <span className={statusItemClass} title="Root">
+          <Home size={13} strokeWidth={1.75} />
+        </span>
+        {pathParts.slice(0, -1).map((part, i) => (
+          <React.Fragment key={`${part}-${i}`}>
+            <span className={crumbSepClass}>›</span>
+            <span className={crumbClass} title={part}>
+              {part}
+            </span>
+          </React.Fragment>
+        ))}
+        {noteName && (
+          <>
+            <span className={crumbSepClass}>›</span>
+            <span className={`${crumbClass} font-medium text-[var(--text-primary)]`}>
+              {noteName}
+            </span>
+          </>
+        )}
+      </div>
+
       <div className={statusGroupClass} role="status" aria-label="Status bar">
         {pluginStatusBarItems.map((item, i) => (
           <span
@@ -69,7 +102,7 @@ export function StatusBar({
         {queueStatus && (queueStatus.isRunning || queueStatus.message) && (
           <span className={statusItemClass} title={queueStatus.message}>
             <span className={`h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] ${queueStatus.isRunning ? "animate-pulse" : ""}`} />
-            <span className="max-w-[220px] truncate">{queueStatus.message}</span>
+            <span className="max-w-[180px] truncate">{queueStatus.message}</span>
             {queueStatus.progress > 0 && queueStatus.progress < 100 && (
               <span className="font-semibold [font-variant-numeric:tabular-nums]">{queueStatus.progress}%</span>
             )}
@@ -78,33 +111,47 @@ export function StatusBar({
         {activeTab ? (
           <>
             <span
-              className={statusIconItemClass}
+              className={statusItemClass}
               title={activeTab.isModified ? "Modified" : "Saved"}
             >
               {activeTab.isModified ? (
-                <Circle size={10} fill="currentColor" />
+                <Circle size={9} fill="currentColor" />
               ) : (
                 <Check size={13} />
               )}
             </span>
             {backlinkCount > 0 && (
               <span className={statusItemClass} title="Backlinks">
-                {backlinkCount} backlinks
+                <Link2 size={12} strokeWidth={1.75} />
+                {backlinkCount}
               </span>
             )}
             {showEditingMode && (
               <>
-                <span className={statusIconItemClass} title={viewMode}>
-                  {viewMode === "editor" ? <PencilLine size={14} /> : <Link2 size={14} />}
+                <span className={statusItemClass} title={viewMode}>
+                  {viewMode === "editor" ? (
+                    <PencilLine size={13} strokeWidth={1.75} />
+                  ) : (
+                    <Link2 size={13} strokeWidth={1.75} />
+                  )}
                 </span>
                 <VimModeIndicator vimEnabled={vimEnabled} />
               </>
             )}
+            <span className={statusItemClass} title="Tags / attributes">
+              <Tag size={12} strokeWidth={1.75} />
+              attributes
+            </span>
+            <span className={statusItemClass} title="Attachments">
+              <Paperclip size={12} strokeWidth={1.75} />
+            </span>
             <span className={statusItemClass}>{wordCount} words</span>
-            <span className={statusItemClass}>{charCount} characters</span>
+            <span className={statusItemClass}>{charCount} chars</span>
           </>
         ) : (
-          pluginStatusBarItems.length === 0 && <span className={statusItemClass}>OpenOnyx</span>
+          pluginStatusBarItems.length === 0 && (
+            <span className={statusItemClass}>OpenOnyx</span>
+          )
         )}
       </div>
     </div>
