@@ -4476,11 +4476,107 @@ export function Editor({
     });
   }, [activePath, localClientId, remoteCursors]);
 
-  // Handle custom search event from Ribbon or App
+  // Handle custom search / format events from Ribbon, toolbar, or App
   useEffect(() => {
     if (isSpecialTab) return;
     const handleOpenSearch = () => {
       setIsSearchOpen(true);
+    };
+
+    const wrapSelection = (before: string, after: string = before, placeholder = "text") => {
+      const view = viewRef.current;
+      if (!view) return;
+      const { from, to } = view.state.selection.main;
+      const selected = view.state.sliceDoc(from, to);
+      const insert = selected
+        ? `${before}${selected}${after}`
+        : `${before}${placeholder}${after}`;
+      const cursorFrom = from + before.length;
+      const cursorTo = selected
+        ? from + before.length + selected.length
+        : from + before.length + placeholder.length;
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: { anchor: cursorFrom, head: cursorTo },
+      });
+      view.focus();
+    };
+
+    const prefixLine = (prefix: string) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const { from } = view.state.selection.main;
+      const line = view.state.doc.lineAt(from);
+      const already = line.text.startsWith(prefix);
+      if (already) {
+        view.dispatch({
+          changes: { from: line.from, to: line.from + prefix.length, insert: "" },
+        });
+      } else {
+        view.dispatch({
+          changes: { from: line.from, insert: prefix },
+          selection: { anchor: from + prefix.length },
+        });
+      }
+      view.focus();
+    };
+
+    const handleFormat = (e: Event) => {
+      const command = (e as CustomEvent<{ command: string }>).detail?.command;
+      if (!command) return;
+      switch (command) {
+        case "bold":
+          wrapSelection("**", "**", "bold text");
+          break;
+        case "italic":
+          wrapSelection("*", "*", "italic text");
+          break;
+        case "underline":
+          wrapSelection("<u>", "</u>", "underlined");
+          break;
+        case "strikethrough":
+          wrapSelection("~~", "~~", "struck");
+          break;
+        case "highlight":
+          wrapSelection("==", "==", "highlight");
+          break;
+        case "code":
+          wrapSelection("`", "`", "code");
+          break;
+        case "link":
+          wrapSelection("[", "](url)", "link text");
+          break;
+        case "image":
+          wrapSelection("![", "](url)", "alt");
+          break;
+        case "heading":
+          prefixLine("## ");
+          break;
+        case "bullet-list":
+          prefixLine("- ");
+          break;
+        case "numbered-list":
+          prefixLine("1. ");
+          break;
+        case "blockquote":
+          prefixLine("> ");
+          break;
+        case "table": {
+          const view = viewRef.current;
+          if (!view) break;
+          const { from, to } = view.state.selection.main;
+          const table =
+            "\n| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|  |  |  |\n";
+          view.dispatch({
+            changes: { from, to, insert: table },
+            selection: { anchor: from + table.length },
+          });
+          view.focus();
+          break;
+        }
+        default:
+          break;
+      }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -4498,6 +4594,7 @@ export function Editor({
       "editor:open-search",
       handleOpenSearch as EventListener,
     );
+    document.addEventListener("editor:format", handleFormat as EventListener);
     document.addEventListener("keydown", handleKeyDown);
 
     const handleGotoLine = (e: any) => {
@@ -4528,6 +4625,7 @@ export function Editor({
         "editor:open-search",
         handleOpenSearch as EventListener,
       );
+      document.removeEventListener("editor:format", handleFormat as EventListener);
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener(
         "editor:goto-line",

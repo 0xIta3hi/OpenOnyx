@@ -5,15 +5,54 @@ import {
   Sparkles,
   Layout,
   Settings,
+  Home,
+  Search,
+  Bookmark,
+  Shield,
 } from "lucide-react";
 import type { PluginRibbonAction } from '../../types/plugin';
 import { setIcon } from '../../lib/obsidian-api/utils';
 import { SpacesIcon } from "../spaces/SpacesIcon";
 
-const ribbonRootClass = "ribbon flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-(--bg-secondary) border-r border-(--divider-color) border-t px-1 pt-2 pb-3 shrink-0";
-const ribbonGroupClass = "flex flex-col items-center gap-1";
-const ribbonBtnClass = "flex h-8 w-8 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-hover) hover:text-(--text-primary)";
-const pluginRibbonIconClass = "flex h-5 w-5 items-center justify-center text-current [&_.svg-icon]:block [&_.svg-icon]:h-5 [&_.svg-icon]:w-5 [&_.svg-icon]:shrink-0 [&_.svg-icon]:text-current [&_.svg-icon]:[stroke-width:1.5]";
+/** Trilium-style three-leaf logo mark */
+function TriliumMark({ size = 22 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M24 6c-1.2 6.5-5.2 11.2-12 13.5 4.8 1.4 9.2 5.2 11.2 11.5C25.2 24.7 29.6 20.9 34.4 19.5 27.6 17.2 25.2 12.5 24 6z"
+        fill="#f59e0b"
+      />
+      <path
+        d="M24 18c-1.4 7.2-6.2 12.4-14 14.8 5.6 1.6 10.6 5.8 12.8 12.7 2.2-6.9 7.2-11.1 12.8-12.7C30.2 30.4 25.4 25.2 24 18z"
+        fill="#22c55e"
+        opacity="0.95"
+      />
+      <path
+        d="M24 26c-1.1 5.6-4.8 9.6-10.8 11.6 4.4 1.2 8.3 4.5 10 10 1.7-5.5 5.6-8.8 10-10C28.8 35.6 25.1 31.6 24 26z"
+        fill="#ef4444"
+        opacity="0.95"
+      />
+    </svg>
+  );
+}
+
+const ribbonRootClass =
+  "ribbon trilium-launcher flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-[var(--bg-launcher,var(--bg-secondary))] border-r border-[var(--divider-color)] shrink-0 pt-2.5 pb-3";
+const ribbonGroupClass = "flex flex-col items-center gap-0.5";
+const ribbonBtnClass =
+  "flex h-9 w-9 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+const ribbonBtnActiveClass =
+  "bg-[var(--bg-active)] text-[var(--text-primary)]";
+const ribbonLogoClass =
+  "mb-2 flex h-10 w-10 cursor-default items-center justify-center";
+const pluginRibbonIconClass =
+  "flex h-5 w-5 items-center justify-center text-current [&_.svg-icon]:block [&_.svg-icon]:h-5 [&_.svg-icon]:w-5 [&_.svg-icon]:shrink-0 [&_.svg-icon]:text-current [&_.svg-icon]:[stroke-width:1.5]";
 
 interface RibbonProps {
   onToggleExplorer?: () => void;
@@ -24,6 +63,8 @@ interface RibbonProps {
   onThoughtModel?: () => void;
   onSpaces?: () => void;
   onCanvas?: () => void;
+  onSearch?: () => void;
+  onBookmarks?: () => void;
   pluginRibbonActions?: PluginRibbonAction[];
   showSettingsButton?: boolean;
 }
@@ -37,6 +78,8 @@ export function Ribbon({
   onThoughtModel,
   onSpaces,
   onCanvas,
+  onSearch,
+  onBookmarks,
   pluginRibbonActions = [],
   showSettingsButton = false,
 }: RibbonProps) {
@@ -73,55 +116,103 @@ export function Ribbon({
   }, []);
 
   return (
-    <div 
+    <div
       className={ribbonRootClass}
       ref={ribbonRootRef}
     >
       <div className={ribbonGroupClass} ref={ribbonItemsRef}>
+        <div className={ribbonLogoClass} title="OpenOnyx" data-tooltip="OpenOnyx">
+          <TriliumMark size={24} />
+        </div>
+
+        {onToggleExplorer && (
+          <button
+            className={`${ribbonBtnClass} ${ribbonBtnActiveClass}`}
+            onClick={onToggleExplorer}
+            data-tooltip="Note tree"
+          >
+            <Home size={18} strokeWidth={1.6} />
+          </button>
+        )}
+
+        {onSearch && (
+          <button
+            className={ribbonBtnClass}
+            onClick={onSearch}
+            data-tooltip="Search"
+          >
+            <Search size={18} strokeWidth={1.6} />
+          </button>
+        )}
+
         {onDailyNote && (
           <button
             className={ribbonBtnClass}
             onClick={onDailyNote}
             data-tooltip="Daily Note"
           >
-            <Calendar size={20} strokeWidth={1.5} />
+            <Calendar size={18} strokeWidth={1.6} />
           </button>
         )}
+
         <button
           className={ribbonBtnClass}
           onClick={onGraph}
           data-tooltip="Graph View (Ctrl+G)"
         >
-          <Network size={20} strokeWidth={1.5} />
+          <Network size={18} strokeWidth={1.6} />
         </button>
+
         {onThoughtModel && (
           <button
             className={ribbonBtnClass}
             onClick={onThoughtModel}
             data-tooltip="AI Assistant"
           >
-            <Sparkles size={20} strokeWidth={1.5} />
+            <Sparkles size={18} strokeWidth={1.6} />
           </button>
         )}
+
         {onSpaces && (
           <button
             className={ribbonBtnClass}
             onClick={onSpaces}
             data-tooltip="Spaces"
           >
-            <SpacesIcon size={20} />
+            <SpacesIcon size={18} />
           </button>
         )}
+
         {onCanvas && (
           <button
             className={ribbonBtnClass}
             onClick={onCanvas}
             data-tooltip="Canvas (Ctrl+Shift+C)"
           >
-            <Layout size={20} strokeWidth={1.5} />
+            <Layout size={18} strokeWidth={1.6} />
           </button>
         )}
-        {/* Plugin ribbon actions */}
+
+        {onBookmarks && (
+          <button
+            className={ribbonBtnClass}
+            onClick={onBookmarks}
+            data-tooltip="Bookmarks"
+          >
+            <Bookmark size={18} strokeWidth={1.6} />
+          </button>
+        )}
+
+        {onToggleTags && (
+          <button
+            className={ribbonBtnClass}
+            onClick={onToggleTags}
+            data-tooltip="Tags"
+          >
+            <Shield size={18} strokeWidth={1.6} />
+          </button>
+        )}
+
         {pluginRibbonActions.map((action, i) => (
           <button
             key={`plugin-ribbon-${action.pluginId}-${i}`}
@@ -136,18 +227,19 @@ export function Ribbon({
           </button>
         ))}
       </div>
-      {showSettingsButton && (
-        <div className={ribbonGroupClass}>
+
+      <div className={ribbonGroupClass}>
+        {(showSettingsButton || true) && (
           <button
             className={ribbonBtnClass}
             onClick={onSettings}
             data-tooltip="Settings"
             aria-label="Settings"
           >
-            <Settings size={20} strokeWidth={1.5} />
+            <Settings size={18} strokeWidth={1.6} />
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

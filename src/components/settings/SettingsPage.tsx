@@ -174,8 +174,8 @@ export interface AppSettings {
 type CustomThemeColorKey = "accentColor" | "customBgPrimary" | "customTextPrimary";
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: "dark",
-  accentColor: "#3b82f6",
+  theme: "light",
+  accentColor: "#2563eb",
   fontFamily: "Inter, system-ui, sans-serif",
   customBgPrimary: "#151515",
   customTextPrimary: "#e6e6e6",

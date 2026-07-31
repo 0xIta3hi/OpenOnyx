@@ -31,6 +31,7 @@ import {
   Plus,
   MoreVertical,
   Copy,
+  Home,
 } from "lucide-react";
 import { FileEntry } from "../../types";
 import { getNoteName } from "../../utils/helpers";
@@ -220,37 +221,37 @@ function NewFolderIcon({ size = 18 }: { size?: number }) {
 }
 
 const sidebarRootClass =
-  "sidebar relative flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-t border-[var(--divider-color)] bg-[var(--bg-secondary)] pt-0";
+  "sidebar trilium-tree relative flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden bg-[var(--bg-tree,var(--bg-secondary))] pt-0";
 const sidebarCollapsedClass =
   "collapsed !m-0 hidden !w-0 !min-w-0 !max-w-0 !overflow-hidden !border-x-0 !p-0";
 const sidebarHeaderClass =
-  "flex min-h-9 shrink-0 items-center justify-center gap-1 px-2 py-1";
-const sidebarActionsClass = "flex shrink-0 flex-nowrap items-center justify-center gap-px";
+  "flex min-h-8 shrink-0 items-center justify-end gap-1 px-2 py-1";
+const sidebarActionsClass = "flex shrink-0 flex-nowrap items-center justify-end gap-px";
 const sidebarBtnClass =
-  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-secondary)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[var(--text-secondary)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarBtnActiveClass =
   "bg-[color-mix(in_srgb,var(--accent-primary)_12%,transparent)] text-[var(--accent-primary)]";
 const sidebarFilterClass =
-  "flex items-center gap-1.5 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1";
+  "trilium-quick-search mx-2 mt-2 mb-1.5 flex items-center gap-2 rounded-full bg-[var(--bg-input,var(--bg-tertiary))] px-3 py-1.5 shadow-none";
 const sidebarFilterIconClass = "shrink-0 text-[var(--text-muted)]";
 const sidebarFilterInputClass =
-  "flex-1 border-0 bg-transparent py-1 font-sans text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+  "flex-1 border-0 bg-transparent py-0.5 font-sans text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
 const sidebarFilterClearClass =
   "flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarSortMenuClass =
-  "absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-none";
+  "absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
 const sidebarSortMenuItemClass =
   "flex w-full cursor-pointer items-center border-0 bg-transparent px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarSortMenuItemActiveClass =
   "bg-[var(--bg-active)] text-[var(--text-primary)]";
 const fileExplorerClass =
-  "file-explorer flex-1 overflow-y-auto overflow-x-hidden px-3 pb-6 pt-1 transition-[background-color,box-shadow] duration-200";
+  "file-explorer flex-1 overflow-y-auto overflow-x-hidden px-1.5 pb-6 pt-0.5 transition-[background-color,box-shadow] duration-200";
 const fileExplorerDragClass =
-  "bg-[rgba(var(--accent-color-rgb,108,99,255),0.05)] shadow-[inset_0_0_0_2px_var(--accent-primary)]";
+  "bg-[rgba(var(--accent-color-rgb,37,99,235),0.05)] shadow-[inset_0_0_0_2px_var(--accent-primary)]";
 const fileTreeItemBaseClass =
-  "file-tree-item group relative mb-0 flex min-h-[23px] w-full cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-6 pr-2 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.2] text-[var(--nav-item-color)] transition-[background-color,color,transform,opacity,filter,box-shadow] duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
+  "file-tree-item group relative mb-px flex min-h-[28px] w-full cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius,6px)] border-0 bg-transparent py-0.5 pl-6 pr-2 text-left font-sans text-[13px] leading-[1.3] text-[var(--nav-item-color)] transition-[background-color,color,box-shadow] duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
 const fileTreeItemActiveClass =
-  "active !bg-[var(--nav-item-background-selected)]";
+  "active !bg-[var(--bg-tree-selected,var(--nav-item-background-selected))] !text-[var(--nav-item-color-selected)] shadow-[0_1px_2px_rgba(15,23,42,0.06)] font-medium";
 const fileTreeItemDraggingClass =
   "dragging scale-[0.98] bg-[var(--bg-hover)] opacity-40 grayscale-[0.5] [&_.name]:text-[1.1em] [&_.name]:font-semibold [&_.name]:text-[var(--accent-primary)]";
 const fileTreeItemDragOverClass =
@@ -263,60 +264,60 @@ const folderCountClass =
 const treeChildrenWrapperClass =
   "file-tree-children-wrapper grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)]";
 const treeChildrenClass =
-  "file-tree-children min-h-0 border-l border-[color-mix(in_srgb,var(--text-muted)_22%,transparent)] py-0 pl-2 ml-3.5";
+  "file-tree-children min-h-0 py-0 pl-2 ml-2";
 const emptyFolderHintClass =
   "py-1.5 pl-7 pr-2 text-[11px] italic text-[var(--text-muted)] opacity-60";
 const renameInputClass =
-  "w-full rounded-[var(--radius-sm)] border border-[var(--accent-primary)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 font-sans text-[length:var(--text-sm)] text-[var(--text-primary)] shadow-[0_0_0_3px_var(--accent-glow)] outline-none";
-const sidebarSectionClass = "shrink-0 border-b border-[var(--border-subtle)] px-2 py-1.5";
+  "w-full rounded-[var(--radius-sm)] border border-[var(--accent-primary)] bg-[var(--bg-primary)] px-1.5 py-0.5 font-sans text-[length:var(--text-sm)] text-[var(--text-primary)] shadow-[0_0_0_3px_var(--accent-glow)] outline-none";
+const sidebarSectionClass = "shrink-0 px-2 py-1.5";
 const sectionHeaderClass =
   "flex min-h-7 w-full cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-1.5 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]";
 const sectionChevronClass = "flex h-4 w-4 shrink-0 items-center justify-center text-[var(--text-muted)]";
 const sectionIconClass = "shrink-0 text-[var(--text-muted)]";
 const sectionCountClass =
   "ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--bg-tertiary)] px-1.5 text-[10px] font-semibold text-[var(--text-muted)]";
-const starredListClass = "flex flex-col gap-1 p-[var(--space-1)]";
+const starredListClass = "flex flex-col gap-0.5 p-[var(--space-1)]";
 const starredItemClass =
-  "starred-item min-h-10 items-start gap-2 rounded-[var(--radius-sm)] px-2.5 py-[7px]";
+  "starred-item min-h-9 items-start gap-2 rounded-[var(--nav-item-radius,6px)] px-2.5 py-[6px]";
 const starredActiveClass =
-  "border border-[color-mix(in_srgb,var(--accent-primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--accent-primary)_16%,transparent)]";
+  "!bg-[var(--bg-tree-selected,#fff)] shadow-[0_1px_2px_rgba(15,23,42,0.06)]";
 const starIconClass = "star-icon mt-0.5 shrink-0";
 const starredTextClass = "flex min-w-0 flex-col items-start gap-0.5";
 const starredPathClass =
   "max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--text-muted)]";
 const groupsSectionClass =
-  "groups-section shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] [background-image:none] px-3 py-0.5";
-const groupHeaderWrapperClass = "flex min-h-[23px] items-center gap-px";
+  "groups-section shrink-0 bg-transparent [background-image:none] px-2 py-0.5";
+const groupHeaderWrapperClass = "flex min-h-[28px] items-center gap-px";
 const groupSectionHeaderClass =
-  "flex min-h-[23px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-1.5 pr-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-secondary)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
+  "flex min-h-[28px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-1.5 pr-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-secondary)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
 const sectionHeaderActionClass =
-  "flex h-[23px] w-[23px] shrink-0 cursor-pointer items-center justify-center rounded-[var(--nav-item-radius)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
+  "flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[var(--nav-item-radius)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
 const groupsListWrapperClass =
   "grid grid-rows-[0fr] overflow-hidden transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]";
 const groupsListClass = "min-h-0 overflow-hidden py-0.5";
 const groupItemContainerClass =
-  "group relative flex min-h-[23px] items-center rounded-[var(--nav-item-radius)]";
+  "group relative flex min-h-[28px] items-center rounded-[var(--nav-item-radius)]";
 const groupItemActiveClass =
-  "bg-[var(--nav-item-background-selected)]";
+  "!bg-[var(--bg-tree-selected,#fff)] shadow-[0_1px_2px_rgba(15,23,42,0.06)]";
 const groupItemBtnClass =
-  "flex min-h-[23px] min-w-0 flex-1 cursor-pointer items-center rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-2.5 pr-8 text-left font-sans text-[length:var(--nav-item-size)] leading-[1.2] text-[var(--nav-item-color)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
+  "flex min-h-[28px] min-w-0 flex-1 cursor-pointer items-center rounded-[var(--nav-item-radius)] border-0 bg-transparent py-0.5 pl-2.5 pr-8 text-left font-sans text-[13px] leading-[1.3] text-[var(--nav-item-color)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--nav-item-color-hover)]";
 const groupNameTextClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
 const groupAutoBadgeClass =
   "ml-auto rounded-lg bg-[var(--bg-tertiary)] px-[5px] text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-[var(--text-muted)]";
 const groupItemActionsClass =
   "absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100";
 const groupActionBtnClass =
-  "flex h-[21px] w-[21px] cursor-pointer items-center justify-center rounded-[var(--nav-item-radius)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
+  "flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-[var(--nav-item-radius)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-75 hover:bg-[var(--nav-item-background-hover)] hover:text-[var(--text-primary)]";
 const sidebarFooterClass =
-  "relative mt-auto flex shrink-0 items-center gap-1 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-2";
+  "relative mt-auto flex shrink-0 items-center gap-1 border-t border-[var(--border-subtle)] bg-[var(--bg-tree,var(--bg-secondary))] p-2";
 const vaultSelectorBtnClass =
-  "flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-1.5 py-1 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] [&_.vault-selector-icon]:shrink-0";
+  "flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[6px] border-0 bg-transparent px-1.5 py-1 text-left text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] [&_.vault-selector-icon]:shrink-0";
 const vaultSelectorActiveClass = "bg-[var(--bg-hover)] text-[var(--text-primary)]";
 const vaultSelectorNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap";
 const sidebarSettingsBtnClass =
-  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const vaultMenuClass =
-  "absolute bottom-[calc(100%+6px)] left-2 right-2 z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-none";
+  "absolute bottom-[calc(100%+6px)] left-2 right-2 z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
 const vaultMenuHeaderClass =
   "px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
 const vaultMenuItemClass =
@@ -327,9 +328,9 @@ const vaultNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-
 const vaultCheckIconClass = "shrink-0 text-[var(--accent-primary)]";
 const vaultMenuSeparatorClass = "mx-2 my-1 h-px bg-[var(--border-subtle)]";
 const contextMenuClass =
-  "context-menu fixed z-[3301] flex min-w-[180px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl pointer-events-auto";
+  "context-menu fixed z-[3301] flex min-w-[180px] max-w-[calc(100vw-16px)] flex-col overflow-visible rounded-[8px] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)] pointer-events-auto";
 const contextMenuItemClass =
-  "context-menu-item flex min-h-6 w-full cursor-pointer items-center border-0 bg-transparent px-3 py-0.5 text-left font-sans text-[13px] leading-5 text-[var(--text-secondary,#b0b0bc)] transition-colors duration-150 hover:bg-[var(--bg-hover,rgba(255,255,255,0.08))] hover:text-[var(--text-primary,#ffffff)]";
+  "context-menu-item flex min-h-7 w-full cursor-pointer items-center border-0 bg-transparent px-3 py-1 text-left font-sans text-[13px] leading-5 text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const contextMenuDangerClass =
   "danger text-[var(--danger,#f43f5e)] hover:bg-[rgba(244,63,94,0.12)] hover:text-[var(--danger,#f43f5e)]";
 const contextMenuSeparatorClass =
@@ -337,7 +338,7 @@ const contextMenuSeparatorClass =
 const contextSubmenuContainerClass = "group relative";
 const contextSubmenuHeaderClass = `${contextMenuItemClass} justify-between`;
 const contextSubmenuClass =
-  "absolute top-[-5px] z-[3302] hidden min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-[var(--radius-md,6px)] border border-[var(--border-medium,#2c2c35)] bg-[var(--bg-elevated,#1c1c24)] py-1 shadow-none backdrop-blur-xl group-hover:block";
+  "absolute top-[-5px] z-[3302] hidden min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-[8px] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)] group-hover:block";
 
 const MENU_VIEWPORT_MARGIN = 8;
 const SIDEBAR_CONTEXT_MENU_WIDTH = 220;
@@ -748,6 +749,31 @@ export function Sidebar({
           />
         ) : (
           <>
+        {/* Trilium-style Quick search */}
+        <div className={sidebarFilterClass}>
+          <Home size={14} className={sidebarFilterIconClass} strokeWidth={1.75} />
+          <input
+            type="search"
+            className={sidebarFilterInputClass}
+            placeholder="Quick search"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            aria-label="Quick search"
+          />
+          {filterQuery ? (
+            <button
+              type="button"
+              className={sidebarFilterClearClass}
+              onClick={() => setFilterQuery("")}
+              title="Clear"
+            >
+              <X size={14} />
+            </button>
+          ) : (
+            <Search size={14} className={sidebarFilterIconClass} strokeWidth={1.75} />
+          )}
+        </div>
+
         <div className={`${sidebarHeaderClass} relative`}>
           <div className={sidebarActionsClass}>
             <button
@@ -755,14 +781,14 @@ export function Sidebar({
               onClick={onNewNote}
               title="New Note"
             >
-              <NewFileIcon size={16} />
+              <NewFileIcon size={15} />
             </button>
             <button
               className={sidebarBtnClass}
               onClick={() => onNewFolder("")}
               title="New Folder"
             >
-              <NewFolderIcon size={16} />
+              <NewFolderIcon size={15} />
             </button>
             <button
               ref={sortButtonRef}
@@ -770,10 +796,10 @@ export function Sidebar({
               onClick={() => setShowSortMenu((value) => !value)}
               title={`Sort: ${sortLabel}`}
             >
-              <ArrowUpDown size={18} strokeWidth={1.5} />
+              <ArrowUpDown size={16} strokeWidth={1.5} />
             </button>
             <button className={sidebarBtnClass} onClick={onRefresh} title="Refresh">
-              <RefreshCw size={18} strokeWidth={1.5} />
+              <RefreshCw size={16} strokeWidth={1.5} />
             </button>
           </div>
           {showSortMenu && (
