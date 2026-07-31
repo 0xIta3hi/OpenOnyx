@@ -37,6 +37,7 @@ import { FileEntry } from "../../types";
 import { getNoteName } from "../../utils/helpers";
 import { PluginViewPanel } from "../plugins/PluginViewPanel";
 import { LocalGroup } from "../../lib/localdb";
+import { getAPI } from "../../utils/api";
 
 interface SidebarProps {
   visible: boolean;
@@ -225,8 +226,8 @@ const sidebarRootClass =
 const sidebarCollapsedClass =
   "collapsed !m-0 hidden !w-0 !min-w-0 !max-w-0 !overflow-hidden !border-x-0 !p-0";
 const sidebarHeaderClass =
-  "flex min-h-8 shrink-0 items-center justify-end gap-1 px-2 py-1";
-const sidebarActionsClass = "flex shrink-0 flex-nowrap items-center justify-end gap-px";
+  "flex min-h-8 shrink-0 items-center justify-between gap-1 px-2 py-1";
+const sidebarActionsClass = "flex shrink-0 flex-nowrap items-center justify-end gap-px ml-auto";
 const sidebarBtnClass =
   "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[var(--text-secondary)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarBtnActiveClass =
@@ -235,7 +236,7 @@ const sidebarFilterClass =
   "trilium-quick-search mx-2 mt-2 mb-1.5 flex items-center gap-2 rounded-full bg-[var(--bg-input,var(--bg-tertiary))] px-3 py-1.5 shadow-none";
 const sidebarFilterIconClass = "shrink-0 text-[var(--text-muted)]";
 const sidebarFilterInputClass =
-  "flex-1 border-0 bg-transparent py-0.5 font-sans text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+  "flex-1 min-w-0 border-0 bg-transparent py-0.5 font-sans text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
 const sidebarFilterClearClass =
   "flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarSortMenuClass =
@@ -317,7 +318,7 @@ const vaultSelectorNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whi
 const sidebarSettingsBtnClass =
   "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const vaultMenuClass =
-  "absolute bottom-[calc(100%+6px)] left-2 right-2 z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
+  "absolute top-[calc(100%+2px)] left-0 w-[200px] z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
 const vaultMenuHeaderClass =
   "px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
 const vaultMenuItemClass =
@@ -398,6 +399,16 @@ export function Sidebar({
   onAddFileToGroup = () => {},
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [selectedFolder, setSelectedFolder] = useState<string | null>("all");
+  const [foldersPaneWidth, setFoldersPaneWidth] = useState(140);
+  const isResizingRef = useRef(false);
+  const currentDragWidthRef = useRef(140);
+  const containerLeftRef = useRef(0);
+  const foldersPaneRef = useRef<HTMLDivElement>(null);
+  const rafIdRef = useRef(0);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [isFoldersCollapsed, setIsFoldersCollapsed] = useState(false);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -423,6 +434,7 @@ export function Sidebar({
   const vaultButtonRef = useRef<HTMLButtonElement>(null);
   const renameInFlightRef = useRef(false);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const isMac = typeof window !== "undefined" && navigator.platform.toLowerCase().includes("mac");
   const sortMenuRef = useRef<HTMLDivElement>(null);
 
   // Click outside handler for vault menu
@@ -497,6 +509,22 @@ export function Sidebar({
   useEffect(() => {
     if (!activeFilePath) return;
     const parts = activeFilePath.split("/");
+    const idx = activeFilePath.lastIndexOf("/");
+    const parentPath = idx <= 0 ? "" : activeFilePath.slice(0, idx);
+
+    setSelectedFolder((current) => {
+      if (current === "starred" && starredNotes.includes(activeFilePath)) {
+        return current;
+      }
+      if (current === "all") {
+        return current;
+      }
+      if (current === parentPath) {
+        return current;
+      }
+      return parentPath || "all";
+    });
+
     if (parts.length < 2) return;
     setExpandedDirs((previous) => {
       const next = new Set(previous);
@@ -511,7 +539,7 @@ export function Sidebar({
       }
       return changed ? next : previous;
     });
-  }, [activeFilePath]);
+  }, [activeFilePath, starredNotes]);
 
   const toggleDir = (path: string) => {
     setExpandedDirs((prev) => {
@@ -733,6 +761,230 @@ export function Sidebar({
     return path.slice(0, idx);
   };
 
+  const getNotesForView = useCallback(() => {
+    const allFiles: FileEntry[] = [];
+    const collect = (entries: FileEntry[]) => {
+      for (const entry of entries) {
+        if (entry.isDirectory) {
+          if (entry.children) collect(entry.children);
+        } else {
+          if (showAllFileTypes || entry.extension === ".md" || entry.extension === ".canvas") {
+            allFiles.push(entry);
+          }
+        }
+      }
+    };
+    collect(fileTree);
+
+    let filtered = allFiles;
+    if (selectedFolder === "starred") {
+      filtered = allFiles.filter((f) => starredNotes.includes(f.path));
+    } else if (selectedFolder === "all") {
+      filtered = allFiles;
+    } else {
+      const targetFolder = selectedFolder || "";
+      filtered = allFiles.filter((f) => {
+        const idx = f.path.lastIndexOf("/");
+        const parent = idx <= 0 ? "" : f.path.slice(0, idx);
+        return parent === targetFolder;
+      });
+    }
+
+    if (filterQuery) {
+      const query = filterQuery.toLowerCase();
+      filtered = filtered.filter((f) => f.name.toLowerCase().includes(query));
+    }
+
+    return sortEntries(filtered, sortMode);
+  }, [fileTree, selectedFolder, filterQuery, sortMode, starredNotes, showAllFileTypes]);
+
+  const notesList = useMemo(() => getNotesForView(), [getNotesForView]);
+
+  const groupedNotes = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = startOfToday - 6 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = startOfToday - 29 * 24 * 60 * 60 * 1000;
+
+    const sections: Array<{ id: string; title: string; notes: FileEntry[] }> = [
+      { id: "today", title: "Today", notes: [] },
+      { id: "yesterday", title: "Yesterday", notes: [] },
+      { id: "sevenDays", title: "Previous 7 days", notes: [] },
+      { id: "thirtyDays", title: "Previous 30 days", notes: [] },
+      { id: "older", title: "Older", notes: [] },
+    ];
+
+    for (const note of notesList) {
+      const time = note.modifiedAt || 0;
+      if (time >= startOfToday) {
+        sections[0].notes.push(note);
+      } else if (time >= startOfYesterday) {
+        sections[1].notes.push(note);
+      } else if (time >= sevenDaysAgo) {
+        sections[2].notes.push(note);
+      } else if (time >= thirtyDaysAgo) {
+        sections[3].notes.push(note);
+      } else {
+        sections[4].notes.push(note);
+      }
+    }
+
+    return sections.filter((s) => s.notes.length > 0);
+  }, [notesList]);
+
+  useEffect(() => {
+    const api = getAPI();
+    notesList.forEach((note) => {
+      if (previews[note.path] !== undefined) return;
+      if (note.extension === ".canvas") {
+        setPreviews((prev) => ({ ...prev, [note.path]: "Canvas Document" }));
+        return;
+      }
+      api.readFile(note.path)
+        .then((content) => {
+          let clean = content
+            .replace(/^---\r?\n[\s\S]*?\r?\n---/g, '')
+            .replace(/^#+\s+/gm, '')
+            .replace(/\[\[(.*?)\]\]/g, '$1')
+            .replace(/[*\-_`#]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const snippet = clean.slice(0, 100) || "No additional text";
+          setPreviews((prev) => ({ ...prev, [note.path]: snippet }));
+        })
+        .catch(() => {
+          setPreviews((prev) => ({ ...prev, [note.path]: "No additional text" }));
+        });
+    });
+  }, [notesList, previews]);
+
+  const countDescendantNotes = (entry: FileEntry): number => {
+    if (!entry.isDirectory) return 0;
+    let count = 0;
+    const walk = (children: FileEntry[]) => {
+      for (const child of children) {
+        if (child.isDirectory) {
+          if (child.children) walk(child.children);
+        } else {
+          if (showAllFileTypes || child.extension === ".md" || child.extension === ".canvas") {
+            count++;
+          }
+        }
+      }
+    };
+    if (entry.children) walk(entry.children);
+    return count;
+  };
+
+  const renderFoldersOnlyTree = (entries: FileEntry[], depth: number = 0) => {
+    const dirs = entries.filter((e) => e.isDirectory);
+    return dirs.map((entry) => {
+      const isExpanded = effectiveExpanded.has(entry.path);
+      const isSelected = selectedFolder === entry.path;
+      const childDirs = (entry.children || []).filter((c) => c.isDirectory);
+      const isDragOver = dragOverPath === entry.path;
+      const noteCount = countDescendantNotes(entry);
+
+      return (
+        <React.Fragment key={entry.path}>
+          <button
+            className={cx(
+              "nn-folder-item",
+              isSelected && "active",
+              isDragOver && "bg-[rgba(var(--accent-color-rgb,37,99,235),0.08)] shadow-[inset_0_0_0_1px_var(--accent-primary)]"
+            )}
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedFolder(entry.path);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              toggleDir(entry.path);
+            }}
+            onContextMenu={(e) => handleContextMenu(e, entry.path, true)}
+            onDragOver={(e) => handleDragOver(e, entry.path)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, entry.path)}
+          >
+            <span
+              style={{
+                width: '16px',
+                minWidth: '16px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'transform 0.15s ease',
+                transform: isExpanded ? 'rotate(90deg)' : 'none',
+                visibility: childDirs.length > 0 ? 'visible' : 'hidden',
+                cursor: 'pointer',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleDir(entry.path);
+              }}
+            >
+              <ChevronRight size={12} />
+            </span>
+            <Folder size={14} className="shrink-0 opacity-70" />
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+              {entry.name}
+            </span>
+            {noteCount > 0 && (
+              <span className="text-[11px] text-[var(--text-muted,#8a8a8f)] ml-auto tabular-nums">
+                {noteCount}
+              </span>
+            )}
+          </button>
+          {isExpanded && childDirs.length > 0 && (
+            <div className="file-tree-children">
+              {renderFoldersOnlyTree(sortEntries(entry.children || [], sortMode), depth + 1)}
+            </div>
+          )}
+        </React.Fragment>
+      );
+    });
+  };
+
+  const getRelativeDate = (timestamp: number) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const now = new Date();
+    
+    if (
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear()
+    ) {
+      return date.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    }
+    
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear()
+    ) {
+      return "Yesterday";
+    }
+    
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays < 7) {
+      return date.toLocaleDateString(undefined, { weekday: "long" });
+    }
+    
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   const sortLabel =
     sortOptions.find((option) => option.mode === sortMode)?.label ||
     "File name (A to Z)";
@@ -740,7 +992,10 @@ export function Sidebar({
 
   return (
     <>
-      <div className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}>
+      <div 
+        className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}
+        style={isMac ? { paddingTop: '32px' } : undefined}
+      >
         {hasPrimaryPluginView ? (
           <PluginViewPanel
             views={pluginViews || []}
@@ -749,293 +1004,370 @@ export function Sidebar({
           />
         ) : (
           <>
-        {/* Trilium-style Quick search */}
-        <div className={sidebarFilterClass}>
-          <Home size={14} className={sidebarFilterIconClass} strokeWidth={1.75} />
-          <input
-            type="search"
-            className={sidebarFilterInputClass}
-            placeholder="Quick search"
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            aria-label="Quick search"
-          />
-          {filterQuery ? (
-            <button
-              type="button"
-              className={sidebarFilterClearClass}
-              onClick={() => setFilterQuery("")}
-              title="Clear"
-            >
-              <X size={14} />
-            </button>
-          ) : (
-            <Search size={14} className={sidebarFilterIconClass} strokeWidth={1.75} />
-          )}
-        </div>
-
-        <div className={`${sidebarHeaderClass} relative`}>
-          <div className={sidebarActionsClass}>
-            <button
-              className={sidebarBtnClass}
-              onClick={onNewNote}
-              title="New Note"
-            >
-              <NewFileIcon size={15} />
-            </button>
-            <button
-              className={sidebarBtnClass}
-              onClick={() => onNewFolder("")}
-              title="New Folder"
-            >
-              <NewFolderIcon size={15} />
-            </button>
-            <button
-              ref={sortButtonRef}
-              className={sidebarBtnClass}
-              onClick={() => setShowSortMenu((value) => !value)}
-              title={`Sort: ${sortLabel}`}
-            >
-              <ArrowUpDown size={16} strokeWidth={1.5} />
-            </button>
-            <button className={sidebarBtnClass} onClick={onRefresh} title="Refresh">
-              <RefreshCw size={16} strokeWidth={1.5} />
-            </button>
-          </div>
-          {showSortMenu && (
-            <div ref={sortMenuRef} className={sidebarSortMenuClass}>
-              {sortOptions.map((option) => (
+            {/* Quick search */}
+            <div className={sidebarFilterClass}>
+              <Search size={14} className={sidebarFilterIconClass} strokeWidth={1.75} />
+              <input
+                type="search"
+                className={sidebarFilterInputClass}
+                placeholder="Search notes..."
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                aria-label="Quick search"
+              />
+              {filterQuery && (
                 <button
-                  key={option.mode}
                   type="button"
-                  className={cx(
-                    sidebarSortMenuItemClass,
-                    sortMode === option.mode && sidebarSortMenuItemActiveClass,
-                  )}
-                  aria-pressed={sortMode === option.mode}
-                  onClick={() => {
-                    setSortMode(option.mode);
-                    setShowSortMenu(false);
-                  }}
+                  className={sidebarFilterClearClass}
+                  onClick={() => setFilterQuery("")}
+                  title="Clear"
                 >
-                  <span className="min-w-0">{option.label}</span>
+                  <X size={14} />
                 </button>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Starred Notes Section */}
-        {starredNotes.length > 0 && !filterQuery && (
-          <div className={cx(sidebarSectionClass, "starred-section")}>
-            <button
-              className={sectionHeaderClass}
-              onClick={() => setShowStarred(!showStarred)}
-            >
-              <span className={sectionChevronClass}>
-                {showStarred ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </span>
-              <Star size={14} className={sectionIconClass} fill="currentColor" />
-              <span>Starred</span>
-              <span className={sectionCountClass}>{starredNotes.length}</span>
-            </button>
-            {showStarred && (
-              <div className={starredListClass}>
-                {starredNotes.map((path) => (
+            {/* Top Vault Selector Toolbar */}
+            <div className={`${sidebarHeaderClass} relative`}>
+              {vaultPath && (
+                <div className="relative flex items-center min-w-0 flex-1 mr-2">
                   <button
-                    key={path}
-                    className={cx(
-                      fileTreeItemBaseClass,
-                      starredItemClass,
-                      activeFilePath === path && fileTreeItemActiveClass,
-                      activeFilePath === path && starredActiveClass,
-                      draggingPath === path && fileTreeItemDraggingClass,
-                    )}
-                    onClick={() => onFileSelect(path)}
-                    onContextMenu={(e) => handleContextMenu(e, path, false)}
-                    draggable={true}
-                    onDragStart={(e) => handleDragStart(e, path)}
-                    onDragEnd={handleDragEnd}
+                    ref={vaultButtonRef}
+                    className={cx(vaultSelectorBtnClass, showVaultMenu && vaultSelectorActiveClass)}
+                    onClick={() => setShowVaultMenu(!showVaultMenu)}
+                    title="Switch Vault"
+                    style={{ padding: '2px 6px', height: '28px' }}
                   >
-                    <Star
-                      size={14}
-                      className={starIconClass}
-                      fill="var(--accent-warning)"
-                      stroke="var(--accent-warning)"
-                    />
-                    <span className={starredTextClass}>
-                      <span className={fileNameClass}>{getNoteName(path)}</span>
-                      <span className={starredPathClass}>
-                        {getStarredParentPath(path)}
-                      </span>
-                    </span>
+                    <ChevronsUpDown size={16} className="vault-selector-icon" />
+                    <span className={vaultSelectorNameClass} style={{ fontSize: '12px' }}>{vaultName}</span>
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Layout Groups Section */}
-        {!filterQuery && (
-          <div className={groupsSectionClass}>
-            <div className={groupHeaderWrapperClass}>
-              <button
-                className={groupSectionHeaderClass}
-                onClick={() => setShowGroups(!showGroups)}
-              >
-                <span className={sectionChevronClass}>
-                  {showGroups ? (
-                    <ChevronDown size={14} />
-                  ) : (
-                    <ChevronRight size={14} />
-                  )}
-                </span>
-                <span>Groups</span>
-                <span className={sectionCountClass}>{groups.length}</span>
-              </button>
-              <button 
-                className={sectionHeaderActionClass}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCreateGroup();
-                }}
-                title="Save current layout as group"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-            <div className={cx(groupsListWrapperClass, showGroups && "open grid-rows-[1fr]")}>
-              <div className={groupsListClass}>
-                {groups.map((group) => (
-                  <div key={group.id} className={cx(groupItemContainerClass, activeGroupId === group.id && groupItemActiveClass)}>
-                    <button
-                      className={groupItemBtnClass}
-                      onClick={() => onRestoreGroup(group.id)}
-                      onContextMenu={(e) => handleGroupContextMenu(e, group.id)}
-                    >
-                      <span className={groupNameTextClass}>{group.name}</span>
-                      {group.auto_save_enabled && (
-                        <span className={groupAutoBadgeClass}>
-                          auto
-                        </span>
+                  
+                  {showVaultMenu && (
+                    <div className={vaultMenuClass} ref={vaultMenuRef}>
+                      {[vaultPath, ...otherVaults].filter(Boolean).map((path) => {
+                        const value = path as string;
+                        const name = value.split(/[/\\]/).pop() || value;
+                        const isCurrent = value === vaultPath;
+                        return (
+                          <button
+                            key={value}
+                            className={cx(vaultMenuItemClass, isCurrent && vaultMenuCurrentClass)}
+                            onClick={() => {
+                              setShowVaultMenu(false);
+                              if (!isCurrent) onSwitchVault?.(value);
+                            }}
+                            title={value}
+                          >
+                            <span className={vaultNameClass}>{name}</span>
+                            {isCurrent && <Check size={14} className={vaultCheckIconClass} />}
+                          </button>
+                        );
+                      })}
+                      <div className={vaultMenuSeparatorClass} />
+                      {(onManageVaults || onOpenVault) && (
+                        <button
+                          className={cx(vaultMenuItemClass, vaultMenuActionClass)}
+                          onClick={() => {
+                            setShowVaultMenu(false);
+                            if (onManageVaults) {
+                              onManageVaults();
+                            } else {
+                              onOpenVault?.();
+                            }
+                          }}
+                        >
+                          <Library size={14} className="action-icon" />
+                          <span>Manage vaults...</span>
+                        </button>
                       )}
-                    </button>
-                    <div className={groupItemActionsClass}>
-                      <button
-                        className={groupActionBtnClass}
-                        onClick={(e) => handleGroupContextMenu(e, group.id)}
-                        title="Group Options"
-                      >
-                        <MoreVertical size={14} />
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  )}
+                </div>
+              )}
+              
+              <div className={sidebarActionsClass}>
+                <button
+                  className={sidebarBtnClass}
+                  onClick={onNewNote}
+                  title="New Note"
+                >
+                  <Plus size={15} />
+                </button>
+                <button
+                  className={sidebarBtnClass}
+                  onClick={() => onNewFolder("")}
+                  title="New Folder"
+                >
+                  <Folder size={15} />
+                </button>
+                <button
+                  ref={sortButtonRef}
+                  className={sidebarBtnClass}
+                  onClick={() => setShowSortMenu((value) => !value)}
+                  title={`Sort: ${sortLabel}`}
+                >
+                  <ArrowUpDown size={16} strokeWidth={1.5} />
+                </button>
+                <button className={sidebarBtnClass} onClick={onRefresh} title="Refresh">
+                  <RefreshCw size={16} strokeWidth={1.5} />
+                </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        <div
-          className={cx(fileExplorerClass, dragOverPath === "" && fileExplorerDragClass)}
-          onDragOver={(e) => handleDragOver(e, "")}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, "")}
-        >
-          {processedTree.length > 0 ? (
-            renderFileTree(processedTree)
-          ) : filterQuery ? (
-            <div className="flex h-full flex-col items-center justify-center gap-[var(--space-3)] px-4 py-8 text-center text-[length:var(--text-sm)] text-[var(--text-muted)]">
-              <div className="mb-2 opacity-30">
-                <Search size={36} strokeWidth={1} />
-              </div>
-              <div>
-                No files matching &ldquo;{filterQuery}&rdquo;
-              </div>
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-[var(--space-3)] px-4 py-8 text-center text-[length:var(--text-sm)] leading-normal text-[var(--text-muted)]">
-              <div className="mb-2 opacity-15">
-                <FolderOpen size={48} strokeWidth={1} />
-              </div>
-              <div className="leading-normal">
-                No files yet.
-                <br />
-                Create a new note to get started.
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Sidebar Footer - Vault Selector & Settings */}
-        {vaultPath && (
-          <div className={sidebarFooterClass}>
-            <button
-              ref={vaultButtonRef}
-              className={cx(vaultSelectorBtnClass, showVaultMenu && vaultSelectorActiveClass)}
-              onClick={() => setShowVaultMenu(!showVaultMenu)}
-              title="Switch Vault"
-            >
-              <ChevronsUpDown size={20} className="vault-selector-icon" />
-              <span className={vaultSelectorNameClass}>{vaultName}</span>
-            </button>
-            {onSettings && (
-              <button
-                className={sidebarSettingsBtnClass}
-                onClick={onSettings}
-                title="Settings"
-              >
-                <Settings size={16} />
-              </button>
-            )}
-            
-            {showVaultMenu && (
-              <div className={vaultMenuClass} ref={vaultMenuRef}>
-                {[vaultPath, ...otherVaults].filter(Boolean).map((path) => {
-                  const value = path as string;
-                  const name = value.split(/[/\\]/).pop() || value;
-                  const isCurrent = value === vaultPath;
-                  return (
+              
+              {showSortMenu && (
+                <div ref={sortMenuRef} className={sidebarSortMenuClass}>
+                  {sortOptions.map((option) => (
                     <button
-                      key={value}
-                      className={cx(vaultMenuItemClass, isCurrent && vaultMenuCurrentClass)}
+                      key={option.mode}
+                      type="button"
+                      className={cx(
+                        sidebarSortMenuItemClass,
+                        sortMode === option.mode && sidebarSortMenuItemActiveClass,
+                      )}
+                      aria-pressed={sortMode === option.mode}
                       onClick={() => {
-                        setShowVaultMenu(false);
-                        if (!isCurrent) onSwitchVault?.(value);
+                        setSortMode(option.mode);
+                        setShowSortMenu(false);
                       }}
-                      title={value}
                     >
-                      <span className={vaultNameClass}>{name}</span>
-                      {isCurrent && <Check size={14} className={vaultCheckIconClass} />}
+                      <span className="min-w-0">{option.label}</span>
                     </button>
-                  );
-                })}
-                <div className={vaultMenuSeparatorClass} />
-                {(onManageVaults || onOpenVault) && (
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Apple Notes Dual-Pane Content Wrapper */}
+            <div className="nn-explorer-container flex-1">
+              {/* Left column: Folders, Groups */}
+              {!isFoldersCollapsed && (
+                <div
+                  ref={foldersPaneRef}
+                  className="nn-folders-pane"
+                  style={{ width: `${foldersPaneWidth}px` }}
+                >
+                  {/* Special / virtual views */}
                   <button
-                    className={cx(vaultMenuItemClass, vaultMenuActionClass)}
-                    onClick={() => {
-                      setShowVaultMenu(false);
-                      if (onManageVaults) {
-                        onManageVaults();
-                      } else {
-                        onOpenVault?.();
-                      }
-                    }}
+                    className={cx("nn-folder-item", selectedFolder === "all" && "active")}
+                    onClick={() => setSelectedFolder("all")}
                   >
-                    <Library size={14} className="action-icon" />
-                    <span>Manage vaults...</span>
+                    <Library size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">All Notes</span>
                   </button>
+                  
+                  <div className="mx-2 my-2 h-px bg-[var(--border-subtle)]" />
+                  
+                  {/* Folders tree */}
+                  <div className="sidebar-section">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      Folders
+                    </div>
+                    {processedTree.length > 0 ? (
+                      renderFoldersOnlyTree(processedTree)
+                    ) : (
+                      <div className="px-2 py-1.5 text-xs italic text-[var(--text-muted)]">No folders</div>
+                    )}
+                  </div>
+
+                  <div className="mx-2 my-2 h-px bg-[var(--border-subtle)]" />
+
+                  {/* Groups list */}
+                  {groups.length > 0 && (
+                    <div className="sidebar-section">
+                      <button
+                        className={sectionHeaderClass}
+                        onClick={() => setShowGroups(!showGroups)}
+                      >
+                        <span className={sectionChevronClass}>
+                          {showGroups ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                        </span>
+                        <span>Groups</span>
+                        <span className={sectionCountClass}>{groups.length}</span>
+                      </button>
+                      {showGroups && (
+                        <div className="flex flex-col gap-0.5 mt-1">
+                          {groups.map((group) => (
+                            <div
+                              key={group.id}
+                              className={cx(
+                                "nn-folder-item",
+                                activeGroupId === group.id && "active"
+                              )}
+                            >
+                              <button
+                                className="flex-1 bg-transparent border-0 p-0 m-0 text-left cursor-pointer text-current flex items-center min-w-0"
+                                onClick={() => onRestoreGroup(group.id)}
+                                onContextMenu={(e) => handleGroupContextMenu(e, group.id)}
+                              >
+                                <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{group.name}</span>
+                                {group.auto_save_enabled && (
+                                  <span className={groupAutoBadgeClass}>
+                                    auto
+                                  </span>
+                                )}
+                              </button>
+                              <button
+                                className="p-1 hover:bg-[var(--bg-hover)] rounded border-0 bg-transparent text-[var(--text-muted)]"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleGroupContextMenu(e, group.id);
+                                }}
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Vertical resizable divider line */}
+              {!isFoldersCollapsed && (
+                <div
+                  className="nn-pane-divider"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const divider = e.currentTarget;
+                    const container = divider.closest('.nn-explorer-container') as HTMLElement | null;
+                    if (!container) return;
+
+                    divider.setPointerCapture(e.pointerId);
+                    isResizingRef.current = true;
+                    const containerRect = container.getBoundingClientRect();
+                    containerLeftRef.current = containerRect.left;
+                    const containerWidth = containerRect.width;
+                    container.classList.add('nn-is-resizing');
+
+                    const onPointerMove = (ev: PointerEvent) => {
+                      const rawWidth = ev.clientX - containerLeftRef.current;
+                      const maxWidth = containerWidth * 0.7;
+                      const w = rawWidth < 70 ? 0 : Math.max(70, Math.min(rawWidth, maxWidth));
+                      currentDragWidthRef.current = w;
+                      const pane = foldersPaneRef.current;
+                      if (pane) {
+                        pane.style.width = `${w}px`;
+                      }
+                    };
+
+                    const onPointerUp = (ev: PointerEvent) => {
+                      divider.releasePointerCapture(ev.pointerId);
+                      isResizingRef.current = false;
+                      container.classList.remove('nn-is-resizing');
+                      window.removeEventListener('pointermove', onPointerMove);
+                      window.removeEventListener('pointerup', onPointerUp);
+
+                      const finalWidth = currentDragWidthRef.current;
+                      if (finalWidth === 0) {
+                        setIsFoldersCollapsed(true);
+                      } else {
+                        setFoldersPaneWidth(finalWidth);
+                      }
+                    };
+
+                    window.addEventListener('pointermove', onPointerMove);
+                    window.addEventListener('pointerup', onPointerUp);
+                  }}
+                />
+              )}
+
+              {/* Right column: Notes cards */}
+              <div 
+                className="nn-notes-pane file-explorer"
+                onDragOver={(e) => handleDragOver(e, "")}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, "")}
+              >
+                {isFoldersCollapsed && (
+                  <div className="nn-compact-header">
+                    <button
+                      className="nn-back-btn"
+                      onClick={() => {
+                        setIsFoldersCollapsed(false);
+                        setFoldersPaneWidth(140);
+                      }}
+                      title="Back to Folders"
+                    >
+                      <ChevronLeft size={16} />
+                      <span>Folders</span>
+                    </button>
+                    <span className="text-xs font-semibold text-[var(--text-primary)] ml-auto pr-2">
+                      {selectedFolder === "all" ? "All Notes" : selectedFolder ? selectedFolder.split("/").pop() : "All Notes"}
+                    </span>
+                  </div>
+                )}
+                {groupedNotes.length > 0 ? (
+                  groupedNotes.map((section) => {
+                    const isCollapsed = collapsedSections[section.id];
+                    return (
+                      <React.Fragment key={section.id}>
+                        <button
+                          className="nn-section-header"
+                          onClick={() =>
+                            setCollapsedSections((prev) => ({
+                              ...prev,
+                              [section.id]: !prev[section.id],
+                            }))
+                          }
+                        >
+                          <span>{section.title}</span>
+                          <ChevronDown
+                            size={12}
+                            className="nn-section-header-chevron"
+                            style={{
+                              transform: isCollapsed ? "rotate(-90deg)" : "none",
+                            }}
+                          />
+                        </button>
+                        {!isCollapsed &&
+                          section.notes.map((note) => {
+                            const isActive = note.path === activeFilePath;
+                            const isStarred = starredNotes.includes(note.path);
+                            const snippet = previews[note.path];
+                            const dateStr = getRelativeDate(note.modifiedAt);
+                            const isCanvas = note.extension === ".canvas";
+
+                            return (
+                              <div
+                                key={note.path}
+                                className={cx("nn-note-card", isActive && "active")}
+                                onClick={() => onFileSelect(note.path)}
+                                onContextMenu={(e) => handleContextMenu(e, note.path, false)}
+                                draggable={true}
+                                onDragStart={(e) => handleDragStart(e, note.path)}
+                              >
+                                <div className="nn-card-title">{getNoteName(note.name)}</div>
+                                <div className="nn-card-meta">
+                                  {snippet && snippet !== "No additional text" && (
+                                    <div className="nn-card-snippet">{snippet}</div>
+                                  )}
+                                  <div className="nn-card-date">{dateStr}</div>
+                                </div>
+                                {(isCanvas || isStarred) && (
+                                  <div className="nn-card-indicators">
+                                    {isCanvas && <span className="nn-badge">Canvas</span>}
+                                    {isStarred && <Star size={12} className="text-amber-500 fill-amber-500 shrink-0" />}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-[var(--text-muted)] p-4">
+                    <FileText size={24} className="opacity-30" />
+                    <div>No notes here</div>
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
           </>
         )}
       </div>

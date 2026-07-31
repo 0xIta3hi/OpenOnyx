@@ -2868,6 +2868,13 @@ export function Editor({
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activePath = activeTab?.path;
 
+  const activeTabName = useMemo(() => {
+    if (!activeTab || !activeTab.path) return "";
+    if (activeTab.path === "__new_tab__") return "New tab";
+    const parts = activeTab.path.split("/");
+    return parts[parts.length - 1].replace(/\.md$/, "");
+  }, [activeTab]);
+
   const onViewStateChangeRef = useRef(onViewStateChange);
   useEffect(() => {
     onViewStateChangeRef.current = onViewStateChange;
@@ -3545,7 +3552,6 @@ export function Editor({
     const rafId = window.requestAnimationFrame(updateEndSuggestionProximity);
     return () => window.cancelAnimationFrame(rafId);
   }, [content, isSpecialTab, updateEndSuggestionProximity]);
-
   const handleOpenImageLightbox = useCallback((src: string, alt: string) => {
     setImageLightbox({ src, alt });
   }, []);
@@ -5298,6 +5304,7 @@ export function Editor({
                   backgroundColor: "var(--bg-primary)",
                 }}
               >
+
                 <MarkdownPreview
                   content={content}
                   onLinkClick={onLinkClick}

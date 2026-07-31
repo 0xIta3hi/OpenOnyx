@@ -467,7 +467,7 @@ export function TitleBar({
 }: TitleBarProps) {
   const api = getAPI();
   const isMac = navigator.platform.includes("Mac");
-  const shouldReserveMacTrafficLights = isMac && !isFullScreen;
+  const shouldReserveMacTrafficLights = false;
   const titlebarRef = useRef<HTMLDivElement>(null);
   const { setDragCtx } = React.useContext(DragCtx);
 
@@ -652,51 +652,14 @@ export function TitleBar({
           boxSizing: "border-box",
         }}
       >
-        {onToggleSidebar && (
-          <div className={titlebarRibbonSlotClass}>
-            <button
-              className={titlebarActionBtnClass}
-              onClick={onToggleSidebar}
-              data-tooltip={showSidebar ? "Close left sidebar" : "Open left sidebar"}
-            >
-              <PanelLeft size={20} strokeWidth={1.5} />
-            </button>
-          </div>
+        {onToggleExplorer && (
+          <button
+            title="File Explorer"
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+            onClick={onToggleExplorer}
+          />
         )}
-        
-        {showSidebar && (
-          <div className={titlebarVaultActionsClass}>
-            {onToggleExplorer && (
-              <button
-                className={titlebarActionBtnClass}
-                onClick={onToggleExplorer}
-                data-tooltip="File Explorer"
-              >
-                <FolderOpen size={20} strokeWidth={1.5} />
-              </button>
-            )}
-            {onSearch && (
-              <button
-                className={titlebarActionBtnClass}
-                onClick={onSearch}
-                data-tooltip="Search (Ctrl+F)"
-              >
-                <Search size={20} strokeWidth={1.5} />
-              </button>
-            )}
-            {onToggleBookmarks && (
-              <button
-                className={`${titlebarActionBtnClass} ${
-                  bookmarksActive
-                    ? "bg-(--bg-active) !text-(--text-primary)"
-                    : "text-(--text-muted) hover:text-(--text-secondary)"
-                }`}
-                onClick={onToggleBookmarks}
-                data-tooltip="Bookmarks"
-              >
-                <Bookmark size={20} strokeWidth={1.5} fill={bookmarksActive ? "currentColor" : "none"} />
-              </button>
-            )}
+
             {leftPluginViews.map((view) => (
               <button
                 key={view.viewType}
@@ -721,8 +684,6 @@ export function TitleBar({
                 <PluginIcon iconId={action.icon} />
               </button>
             ))}
-          </div>
-        )}
       </div>
 
       {/* Center: tabs - starts at editor content boundary */}

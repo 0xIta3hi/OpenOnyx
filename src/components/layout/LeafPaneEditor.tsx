@@ -1193,6 +1193,7 @@ export function LeafPaneEditor({
         onRevealInNavigation={() => onRevealInNavigation?.(activeTab.path)}
         onDeleteFile={() => onDeleteFile?.(activeTab.path)}
         canCopyAbsolutePath={canCopyAbsolutePath}
+        isFocused={isFocused}
       />
       {activeTab.path === "__new_tab__" ? (
         <NewTabView

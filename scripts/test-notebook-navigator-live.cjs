@@ -153,6 +153,7 @@ async function main() {
         const extraHostChromeAbsent = !Array.from(document.querySelectorAll('.plugin-view-panel > div')).some(
           (element) => (element.textContent || '').trim() === 'Notebook Navigator×',
         );
+        const fileExplorerHtml = document.querySelector('[title="File Explorer"]')?.outerHTML || 'not found';
         document.querySelector('[title="File Explorer"]')?.click();
         await new Promise((resolve) => setTimeout(resolve, 250));
         const explorerRestored = Boolean(document.querySelector('.file-explorer'));
@@ -168,6 +169,7 @@ async function main() {
           leafExists: Boolean(leaf),
           side: leaf?.side,
           viewType: view?.getViewType?.(),
+          fileExplorerHtml,
           rendered: Boolean(navigatorRoot?.childElementCount || view?.contentEl?.childElementCount),
           mounted: mountedBeforeExplorer,
           activeSidebarView: activeView?.side,
