@@ -2904,6 +2904,12 @@ export function Editor({
   const viewRef = useRef<EditorView | null>(null);
   const obsidianEditorRef = useRef<ObsidianEditor | null>(null);
   const contentRef = useRef(content);
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
 
   // Tracks the timestamp of the last local (user) edit. Used by the content
   // sync effect to avoid replacing the CM document with stale debounced
@@ -3871,6 +3877,24 @@ export function Editor({
               console.error("Error dispatching cursor-line event:", err);
             }
           }
+          if ((update.selectionSet || update.docChanged || update.focusChanged) && activePathRef.current) {
+            try {
+              const pos = update.state.selection.main.head;
+              const lineObj = update.state.doc.lineAt(pos);
+              let headingLevel: number | null = null;
+              const match = lineObj.text.match(/^(#{1,6})\s/);
+              if (match) {
+                headingLevel = match[1].length;
+              }
+              document.dispatchEvent(
+                new CustomEvent("editor:format-state", {
+                  detail: { path: activePathRef.current, heading: headingLevel },
+                })
+              );
+            } catch (err) {
+              // Ignore
+            }
+          }
           if (update.docChanged) {
             // A change is a "user edit" if it changed the doc AND is not
             // explicitly marked as remote (from collaboration) or a
@@ -4551,8 +4575,8 @@ export function Editor({
     };
 
     const handleFormat = (e: Event) => {
-      if (!isFocused) return;
-      if (viewMode === "preview" || readOnly) return;
+      if (!isFocusedRef.current) return;
+      if (viewModeRef.current === "preview" || readOnlyRef.current) return;
 
       const command = (e as CustomEvent<{ command: string }>).detail?.command;
       if (!command) return;
