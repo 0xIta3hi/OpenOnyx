@@ -278,6 +278,7 @@ interface EditorProps {
   readOnly?: boolean;
   onGenerateInsight?: () => void;
   isGeneratingInsight?: boolean;
+  isFocused?: boolean;
 }
 
 function getEditorSettingsExtensions(settings?: AppSettings) {
@@ -2864,6 +2865,7 @@ export function Editor({
   readOnly = false,
   onGenerateInsight,
   isGeneratingInsight = false,
+  isFocused = false,
 }: EditorProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activePath = activeTab?.path;
@@ -4508,26 +4510,50 @@ export function Editor({
       view.focus();
     };
 
-    const prefixLine = (prefix: string) => {
+    const prefixLine = (prefix: string | null) => {
       const view = viewRef.current;
       if (!view) return;
       const { from } = view.state.selection.main;
       const line = view.state.doc.lineAt(from);
-      const already = line.text.startsWith(prefix);
-      if (already) {
+
+      const isHeadingCmd = prefix === null || prefix.startsWith("#");
+
+      if (isHeadingCmd) {
+        const headingMatch = line.text.match(/^(#{1,6}\s+)/);
+        let cleanText = line.text;
+        let offset = 0;
+        if (headingMatch) {
+          cleanText = line.text.substring(headingMatch[1].length);
+          offset = -headingMatch[1].length;
+        }
+        
+        const newText = prefix ? `${prefix}${cleanText}` : cleanText;
+        const newOffset = prefix ? prefix.length : 0;
+        
         view.dispatch({
-          changes: { from: line.from, to: line.from + prefix.length, insert: "" },
+          changes: { from: line.from, to: line.to, insert: newText },
+          selection: { anchor: Math.max(line.from, from + offset + newOffset) },
         });
-      } else {
-        view.dispatch({
-          changes: { from: line.from, insert: prefix },
-          selection: { anchor: from + prefix.length },
-        });
+      } else if (prefix) {
+        const already = line.text.startsWith(prefix);
+        if (already) {
+          view.dispatch({
+            changes: { from: line.from, to: line.from + prefix.length, insert: "" },
+          });
+        } else {
+          view.dispatch({
+            changes: { from: line.from, insert: prefix },
+            selection: { anchor: from + prefix.length },
+          });
+        }
       }
       view.focus();
     };
 
     const handleFormat = (e: Event) => {
+      if (!isFocused) return;
+      if (viewMode === "preview" || readOnly) return;
+
       const command = (e as CustomEvent<{ command: string }>).detail?.command;
       if (!command) return;
       switch (command) {
@@ -4555,8 +4581,20 @@ export function Editor({
         case "image":
           wrapSelection("![", "](url)", "alt");
           break;
-        case "heading":
+        case "heading-1":
+          prefixLine("# ");
+          break;
+        case "heading-2":
           prefixLine("## ");
+          break;
+        case "heading-3":
+          prefixLine("### ");
+          break;
+        case "heading-4":
+          prefixLine("#### ");
+          break;
+        case "heading-normal":
+          prefixLine(null);
           break;
         case "bullet-list":
           prefixLine("- ");
@@ -4567,6 +4605,60 @@ export function Editor({
         case "blockquote":
           prefixLine("> ");
           break;
+        case "font-size-small":
+          wrapSelection('<span style="font-size: 0.85em;">', "</span>", "small text");
+          break;
+        case "font-size-normal":
+          wrapSelection('<span style="font-size: 1.0em;">', "</span>", "normal text");
+          break;
+        case "font-size-medium":
+          wrapSelection('<span style="font-size: 1.2em;">', "</span>", "medium text");
+          break;
+        case "font-size-large":
+          wrapSelection('<span style="font-size: 1.5em;">', "</span>", "large text");
+          break;
+        case "font-size-xl":
+          wrapSelection('<span style="font-size: 2.0em;">', "</span>", "extra large text");
+          break;
+        case "text-color":
+          wrapSelection('<span style="color: #ef4444;">', "</span>", "colored text");
+          break;
+        case "align-left":
+          wrapSelection('<div align="left">', "</div>", "left aligned text");
+          break;
+        case "align-center":
+          wrapSelection('<div align="center">', "</div>", "centered text");
+          break;
+        case "align-right":
+          wrapSelection('<div align="right">', "</div>", "right aligned text");
+          break;
+        case "align-justify":
+          wrapSelection('<div align="justify">', "</div>", "justified text");
+          break;
+        case "clear-format": {
+          const view = viewRef.current;
+          if (!view) break;
+          const { from, to } = view.state.selection.main;
+          const selected = view.state.sliceDoc(from, to);
+          if (selected) {
+            const cleared = selected
+              .replace(/\*\*([^*]+)\*\*/g, "$1")
+              .replace(/\*([^*]+)\*/g, "$1")
+              .replace(/~~([^~]+)~~/g, "$1")
+              .replace(/==([^=]+)==/g, "$1")
+              .replace(/<u>([^<]+)<\/u>/g, "$1")
+              .replace(/`([^`]+)`/g, "$1")
+              .replace(/<span[^>]*>([^<]+)<\/span>/g, "$1")
+              .replace(/<div[^>]*>([^<]+)<\/div>/g, "$1")
+              .replace(/<p[^>]*>([^<]+)<\/p>/g, "$1");
+            view.dispatch({
+              changes: { from, to, insert: cleared },
+              selection: { anchor: from, head: from + cleared.length },
+            });
+          }
+          view.focus();
+          break;
+        }
         case "table": {
           const view = viewRef.current;
           if (!view) break;

@@ -7102,6 +7102,7 @@ export default function App() {
         inlineAnnotation={inlineAnnotationByPath[leafActiveTab.path] || getCachedAnnotation(leafActiveTab.path)}
         showInlineInsight={!!showInlineInsightByTab[leafActiveTab.id]}
         isFocused={isThisFocused}
+        onFocusLeaf={handleFocusLeaf}
         onTabSelect={(leafId, tabId) => handlePaneTabSelect(leafId, tabId)}
         onTabClose={closeTab}
         onLinkClick={handleLinkClick}
