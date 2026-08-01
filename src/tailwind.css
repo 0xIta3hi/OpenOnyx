@@ -1009,13 +1009,9 @@ img.emoji {
 
 /* Active State matches Apple Notes premium accent exactly */
 .nn-note-card.active {
-  background-color: #2c2c2e !important;
+  background-color: var(--nav-item-background-selected, var(--bg-hover)) !important;
   border-radius: 6px;
   border-bottom-color: transparent;
-}
-
-[data-theme="light"] .nn-note-card.active {
-  background-color: var(--bg-hover, #e4e4e6) !important;
 }
 
 .nn-card-title {
@@ -1067,10 +1063,6 @@ img.emoji {
   text-transform: uppercase;
 }
 
-.nn-note-card.active .nn-badge {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-}
 
 /* Collapsible Date Section Headers */
 .nn-section-header {
