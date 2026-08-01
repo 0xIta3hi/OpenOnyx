@@ -122,7 +122,6 @@ export function FormattingToolbar() {
             title="Heading"
             onClick={() => setHeadingOpen(!headingOpen)}
           >
-            <Heading size={14} strokeWidth={1.75} />
             <span>
               {activeHeading === 1
                 ? "Heading 1"

@@ -705,7 +705,7 @@ export function Sidebar({
           >
             {entry.isDirectory && (
               <span className={cx(chevronClass, isExpanded && "open rotate-90")}>
-                <ChevronRight size={14} strokeWidth={2} />
+                <ChevronRight size={16} strokeWidth={2.25} />
               </span>
             )}
 

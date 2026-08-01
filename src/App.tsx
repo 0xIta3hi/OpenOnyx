@@ -4191,6 +4191,53 @@ export default function App() {
     }
   }, [api]);
 
+  // Load content and backlinks when activeTabId changes
+  useEffect(() => {
+    if (!activeTabId) {
+      setCurrentContent("");
+      setBacklinks([]);
+      return;
+    }
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab) return;
+    
+    // Ignore special tabs
+    if (
+      tab.path === "__new_tab__" ||
+      tab.path === GRAPH_TAB_PATH ||
+      tab.path === SPACES_TAB_PATH ||
+      tab.path.startsWith("__plugin__.")
+    ) {
+      setCurrentContent("");
+      setBacklinks([]);
+      return;
+    }
+    if (isCanvasFile(tab.path)) {
+      setCurrentContent("");
+      setBacklinks([]);
+      return;
+    }
+    
+    let active = true;
+    const loadContent = async () => {
+      try {
+        const content = (await api.readFile(tab.path)) || "";
+        if (active) {
+          setCurrentContent(content);
+          currentContentRef.current = content;
+          currentContentPathRef.current = tab.path;
+          loadBacklinks(tab.path);
+        }
+      } catch (err) {
+        console.error("Error loading active tab content:", err);
+      }
+    };
+    void loadContent();
+    return () => {
+      active = false;
+    };
+  }, [activeTabId, tabs, loadBacklinks]);
+
   const rememberRenameRedirect = useCallback((oldPath: string, newPath: string) => {
     const redirects = renameRedirectsRef.current;
     redirects.set(oldPath, newPath);
