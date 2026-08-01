@@ -399,7 +399,7 @@ export function Sidebar({
   onAddFileToGroup = () => {},
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const [selectedFolder, setSelectedFolder] = useState<string | null>("all");
+  const [selectedFolder, setSelectedFolder] = useState<string | null>("");
   const [foldersPaneWidth, setFoldersPaneWidth] = useState(140);
   const isResizingRef = useRef(false);
   const currentDragWidthRef = useRef(140);
@@ -516,13 +516,10 @@ export function Sidebar({
       if (current === "starred" && starredNotes.includes(activeFilePath)) {
         return current;
       }
-      if (current === "all") {
-        return current;
-      }
       if (current === parentPath) {
         return current;
       }
-      return parentPath || "all";
+      return parentPath;
     });
 
     if (parts.length < 2) return;
@@ -779,8 +776,6 @@ export function Sidebar({
     let filtered = allFiles;
     if (selectedFolder === "starred") {
       filtered = allFiles.filter((f) => starredNotes.includes(f.path));
-    } else if (selectedFolder === "all") {
-      filtered = allFiles;
     } else {
       const targetFolder = selectedFolder || "";
       filtered = allFiles.filter((f) => {
@@ -1147,11 +1142,11 @@ export function Sidebar({
                 >
                   {/* Special / virtual views */}
                   <button
-                    className={cx("nn-folder-item", selectedFolder === "all" && "active")}
-                    onClick={() => setSelectedFolder("all")}
+                    className={cx("nn-folder-item", selectedFolder === "" && "active")}
+                    onClick={() => setSelectedFolder("")}
                   >
-                    <Library size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">All Notes</span>
+                    <Home size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Root Directory</span>
                   </button>
                   
                   <div className="mx-2 my-2 h-px bg-[var(--border-subtle)]" />
@@ -1297,7 +1292,7 @@ export function Sidebar({
                       <span>Folders</span>
                     </button>
                     <span className="text-xs font-semibold text-[var(--text-primary)] ml-auto pr-2">
-                      {selectedFolder === "all" ? "All Notes" : selectedFolder ? selectedFolder.split("/").pop() : "All Notes"}
+                      {selectedFolder === "" ? "Root Directory" : selectedFolder ? selectedFolder.split("/").pop() : "Root Directory"}
                     </span>
                   </div>
                 )}
