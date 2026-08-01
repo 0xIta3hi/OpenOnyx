@@ -255,6 +255,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    show: false,
     title: 'OpenOnyx',
     backgroundColor: '#0f0f14',
     titleBarStyle: 'hiddenInset',
@@ -269,6 +270,11 @@ function createWindow(): void {
       sandbox: false,
       plugins: true,
     },
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    mainWindow?.focus();
   });
 
   // In development, load from Vite dev server
@@ -556,10 +562,15 @@ app.whenReady().then(() => {
 
   // Handle vault directory selection dialog
   ipcMain.handle('dialog:openDirectory', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory', 'createDirectory'],
-      title: 'Select Vault Directory',
-    });
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, {
+          properties: ['openDirectory'],
+          title: 'Select Vault Directory',
+        })
+      : await dialog.showOpenDialog({
+          properties: ['openDirectory'],
+          title: 'Select Vault Directory',
+        });
     return result.canceled ? null : result.filePaths[0];
   });
 
