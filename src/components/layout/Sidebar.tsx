@@ -984,7 +984,10 @@ export function Sidebar({
     <>
       <div 
         className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}
-        style={isMac ? { paddingTop: '32px' } : undefined}
+        style={{
+          ...isMac ? { paddingTop: '32px' } : {},
+          backgroundColor: 'var(--bg-tree, var(--bg-secondary))'
+        }}
       >
         {hasPrimaryPluginView ? (
           <PluginViewPanel

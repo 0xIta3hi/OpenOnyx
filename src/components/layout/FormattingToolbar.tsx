@@ -93,7 +93,12 @@ export function FormattingToolbar() {
   }, []);
 
   return (
-    <div className={toolbarClass} role="toolbar" aria-label="Formatting">
+    <div
+      className={toolbarClass}
+      role="toolbar"
+      aria-label="Formatting"
+      style={{ backgroundColor: 'var(--bg-toolbar, var(--bg-secondary))' }}
+    >
       <div className={groupClass}>
         {/* Heading Dropdown */}
         <div className="relative" ref={headingRef}>
