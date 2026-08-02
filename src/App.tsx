@@ -245,6 +245,9 @@ const CUSTOM_THEME_VARIABLES = [
   "--bg-secondary",
   "--bg-tertiary",
   "--bg-elevated",
+  "--bg-launcher",
+  "--bg-tree",
+  "--bg-toolbar",
   "--bg-hover",
   "--bg-active",
   "--bg-glass",
@@ -2164,22 +2167,40 @@ export default function App() {
     root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
     document.body.style.zoom = `${(settings.zoomLevel ?? DEFAULT_SETTINGS.zoomLevel) / 100}`;
 
-    if (theme === "custom") {
-      const bg = hexToRgb(settings.customBgPrimary) ?? { r: 21, g: 21, b: 21 };
-      const text = hexToRgb(settings.customTextPrimary) ?? { r: 230, g: 230, b: 230 };
+    const presetColors: Record<string, { bg: string; text: string }> = {
+      "dark-plus": { bg: "#1e1e1e", text: "#60a5fa" },
+      "blue-night": { bg: "#0f172a", text: "#38bdf8" },
+      "oceanic": { bg: "#0f2027", text: "#2dd4bf" },
+      "ember-night": { bg: "#1c1917", text: "#fb923c" },
+      "aurora-grove": { bg: "#064e3b", text: "#34d399" },
+      "paper-sage": { bg: "#f4f7f4", text: "#059669" },
+      "rose-quartz": { bg: "#fdf2f8", text: "#f472b6" },
+    };
+
+    const isCustomTheme = theme === "custom" || Boolean(presetColors[theme]);
+
+    if (isCustomTheme) {
+      const rawBgHex = theme === "custom" ? settings.customBgPrimary : presetColors[theme].bg;
+      const rawTextHex = theme === "custom" ? settings.customTextPrimary : presetColors[theme].text;
+
+      const bg = hexToRgb(rawBgHex) ?? { r: 21, g: 21, b: 21 };
+      const text = hexToRgb(rawTextHex) ?? { r: 230, g: 230, b: 230 };
       const accent = hexToRgb(settings.accentColor) ?? text;
       const tone = (ratio: number) => rgbToHex(mixRgb(bg, text, ratio));
       const baseBg = rgbToHex(bg);
+      const secondaryBg = tone(0.04);
+      const tertiaryBg = tone(0.08);
+      const elevatedBg = tone(0.12);
 
       root.style.setProperty("--accent-color", settings.accentColor);
 
       root.style.setProperty("--color-base-00", baseBg);
       root.style.setProperty("--color-base-05", baseBg);
-      root.style.setProperty("--color-base-10", baseBg);
-      root.style.setProperty("--color-base-20", baseBg);
-      root.style.setProperty("--color-base-25", baseBg);
-      root.style.setProperty("--color-base-30", baseBg);
-      root.style.setProperty("--color-base-35", baseBg);
+      root.style.setProperty("--color-base-10", secondaryBg);
+      root.style.setProperty("--color-base-20", secondaryBg);
+      root.style.setProperty("--color-base-25", tertiaryBg);
+      root.style.setProperty("--color-base-30", tertiaryBg);
+      root.style.setProperty("--color-base-35", tertiaryBg);
       root.style.setProperty("--color-base-40", tone(0.16));
       root.style.setProperty("--color-base-50", tone(0.34));
       root.style.setProperty("--color-base-60", tone(0.5));
@@ -2187,10 +2208,13 @@ export default function App() {
       root.style.setProperty("--color-base-100", tone(1));
 
       root.style.setProperty("--bg-primary", baseBg);
-      root.style.setProperty("--bg-secondary", baseBg);
-      root.style.setProperty("--bg-tertiary", baseBg);
-      root.style.setProperty("--bg-elevated", baseBg);
-      root.style.setProperty("--bg-input", baseBg);
+      root.style.setProperty("--bg-secondary", secondaryBg);
+      root.style.setProperty("--bg-tertiary", tertiaryBg);
+      root.style.setProperty("--bg-elevated", elevatedBg);
+      root.style.setProperty("--bg-launcher", secondaryBg);
+      root.style.setProperty("--bg-tree", secondaryBg);
+      root.style.setProperty("--bg-toolbar", baseBg);
+      root.style.setProperty("--bg-input", tertiaryBg);
       root.style.setProperty("--bg-hover", rgbToRgba(text, 0.08));
       root.style.setProperty("--bg-active", rgbToRgba(text, 0.14));
       root.style.setProperty("--bg-glass", rgbToRgba(bg, 0.98));
@@ -2217,14 +2241,14 @@ export default function App() {
       root.style.setProperty("--border-strong", rgbToRgba(text, 0.24));
       root.style.setProperty("--divider-color", rgbToRgba(text, 0.1));
 
-      root.style.setProperty("--titlebar-background", baseBg);
-      root.style.setProperty("--titlebar-background-focused", baseBg);
+      root.style.setProperty("--titlebar-background", secondaryBg);
+      root.style.setProperty("--titlebar-background-focused", secondaryBg);
       root.style.setProperty("--titlebar-text-color", tone(0.72));
       root.style.setProperty("--titlebar-text-color-focused", tone(1));
-      root.style.setProperty("--status-bar-background", baseBg);
+      root.style.setProperty("--status-bar-background", secondaryBg);
       root.style.setProperty("--status-bar-text-color", tone(0.48));
 
-      root.style.setProperty("--tab-container-background", baseBg);
+      root.style.setProperty("--tab-container-background", secondaryBg);
       root.style.setProperty("--tab-background-active", baseBg);
       root.style.setProperty("--tab-text-color", tone(0.48));
       root.style.setProperty("--tab-text-color-active", tone(0.72));
@@ -2263,11 +2287,10 @@ export default function App() {
       root.style.setProperty("--graph-node-color", settings.accentColor);
 
       // ── Obsidian-standard CSS variable aliases for plugin compatibility ──
-      // Plugins use Obsidian's own variable names. Map them to our theme.
       root.style.setProperty("--background-primary", baseBg);
-      root.style.setProperty("--background-primary-alt", tone(0.04));
-      root.style.setProperty("--background-secondary", tone(0.04));
-      root.style.setProperty("--background-secondary-alt", tone(0.08));
+      root.style.setProperty("--background-primary-alt", secondaryBg);
+      root.style.setProperty("--background-secondary", secondaryBg);
+      root.style.setProperty("--background-secondary-alt", tertiaryBg);
       root.style.setProperty("--background-modifier-border", rgbToRgba(text, 0.16));
       root.style.setProperty("--background-modifier-form-field", rgbToRgba(text, 0.04));
       root.style.setProperty("--background-modifier-error", "#e05050");
@@ -2276,8 +2299,8 @@ export default function App() {
       root.style.setProperty("--text-normal", tone(1));
       root.style.setProperty("--text-accent", settings.accentColor);
       root.style.setProperty("--text-accent-hover", rgbToHex(mixRgb(accent, text, 0.22)));
-      root.style.setProperty("--interactive-normal", tone(0.04));
-      root.style.setProperty("--interactive-hover", tone(0.08));
+      root.style.setProperty("--interactive-normal", secondaryBg);
+      root.style.setProperty("--interactive-hover", tertiaryBg);
       root.style.setProperty("--interactive-accent", settings.accentColor);
       root.style.setProperty("--interactive-accent-hover", rgbToHex(mixRgb(accent, text, 0.22)));
       root.style.setProperty("--interactive-accent-hsl", (() => { const r = accent.r / 255, g = accent.g / 255, b = accent.b / 255; const max = Math.max(r, g, b), min = Math.min(r, g, b); let h = 0, s = 0; const l = (max + min) / 2; if (max !== min) { const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6 : max === g ? ((b - r) / d + 2) / 6 : ((r - g) / d + 4) / 6; } return `${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%`; })());
