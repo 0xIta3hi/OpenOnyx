@@ -2167,24 +2167,9 @@ export default function App() {
     root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
     document.body.style.zoom = `${(settings.zoomLevel ?? DEFAULT_SETTINGS.zoomLevel) / 100}`;
 
-    const presetColors: Record<string, { bg: string; text: string }> = {
-      "dark-plus": { bg: "#1e1e1e", text: "#60a5fa" },
-      "blue-night": { bg: "#0f172a", text: "#38bdf8" },
-      "oceanic": { bg: "#0f2027", text: "#2dd4bf" },
-      "ember-night": { bg: "#1c1917", text: "#fb923c" },
-      "aurora-grove": { bg: "#064e3b", text: "#34d399" },
-      "paper-sage": { bg: "#f4f7f4", text: "#059669" },
-      "rose-quartz": { bg: "#fdf2f8", text: "#f472b6" },
-    };
-
-    const isCustomTheme = theme === "custom" || Boolean(presetColors[theme]);
-
-    if (isCustomTheme) {
-      const rawBgHex = theme === "custom" ? settings.customBgPrimary : presetColors[theme].bg;
-      const rawTextHex = theme === "custom" ? settings.customTextPrimary : presetColors[theme].text;
-
-      const bg = hexToRgb(rawBgHex) ?? { r: 21, g: 21, b: 21 };
-      const text = hexToRgb(rawTextHex) ?? { r: 230, g: 230, b: 230 };
+    if (theme === "custom") {
+      const bg = hexToRgb(settings.customBgPrimary) ?? { r: 21, g: 21, b: 21 };
+      const text = hexToRgb(settings.customTextPrimary) ?? { r: 230, g: 230, b: 230 };
       const accent = hexToRgb(settings.accentColor) ?? text;
       const tone = (ratio: number) => rgbToHex(mixRgb(bg, text, ratio));
       const baseBg = rgbToHex(bg);
