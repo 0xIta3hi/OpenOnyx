@@ -306,6 +306,42 @@ body.is-dragging svg {
   border-radius: 0 !important;
 }
 
+/* Ensure long links, URLs, inline code snippets, and CodeMirror editor lines wrap to the next line */
+.cm-content,
+.cm-line,
+.cm-scroller,
+.markdown-preview,
+.markdown-rendered,
+.markdown-preview-view,
+.readme-content {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.cm-content a,
+.cm-line a,
+.markdown-preview a,
+.markdown-rendered a,
+.markdown-preview-view a,
+.readme-content a,
+span.cm-url,
+span.cm-link,
+.cm-link {
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
+}
+
+.markdown-preview code,
+.markdown-rendered code,
+.markdown-preview-view code,
+.readme-content code,
+.cm-inline-code,
+span.cm-inline-code {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: pre-wrap !important;
+}
+
 /* Ensure twemoji inline emojis render at text scale and inline flow */
 img.emoji {
   height: 1em !important;
