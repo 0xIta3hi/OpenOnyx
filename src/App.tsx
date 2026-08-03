@@ -2170,54 +2170,61 @@ export default function App() {
     if (theme === "custom") {
       const bg = hexToRgb(settings.customBgPrimary) ?? { r: 21, g: 21, b: 21 };
       const text = hexToRgb(settings.customTextPrimary) ?? { r: 230, g: 230, b: 230 };
-      const accent = hexToRgb(settings.accentColor) ?? text;
-      const tone = (ratio: number) => rgbToHex(mixRgb(bg, text, ratio));
+      const accent = hexToRgb(settings.accentColor) ?? { r: 59, g: 130, b: 246 };
       const baseBg = rgbToHex(bg);
-      const secondaryBg = tone(0.04);
-      const tertiaryBg = tone(0.08);
-      const elevatedBg = tone(0.12);
+      const baseText = rgbToHex(text);
 
+      // Accent color variables (solely dependent on settings.accentColor)
       root.style.setProperty("--accent-color", settings.accentColor);
-
-      root.style.setProperty("--color-base-00", baseBg);
-      root.style.setProperty("--color-base-05", baseBg);
-      root.style.setProperty("--color-base-10", secondaryBg);
-      root.style.setProperty("--color-base-20", secondaryBg);
-      root.style.setProperty("--color-base-25", tertiaryBg);
-      root.style.setProperty("--color-base-30", tertiaryBg);
-      root.style.setProperty("--color-base-35", tertiaryBg);
-      root.style.setProperty("--color-base-40", tone(0.16));
-      root.style.setProperty("--color-base-50", tone(0.34));
-      root.style.setProperty("--color-base-60", tone(0.5));
-      root.style.setProperty("--color-base-70", tone(0.68));
-      root.style.setProperty("--color-base-100", tone(1));
-
-      root.style.setProperty("--bg-primary", baseBg);
-      root.style.setProperty("--bg-secondary", secondaryBg);
-      root.style.setProperty("--bg-tertiary", tertiaryBg);
-      root.style.setProperty("--bg-elevated", elevatedBg);
-      root.style.setProperty("--bg-launcher", secondaryBg);
-      root.style.setProperty("--bg-tree", secondaryBg);
-      root.style.setProperty("--bg-toolbar", baseBg);
-      root.style.setProperty("--bg-input", tertiaryBg);
-      root.style.setProperty("--bg-hover", rgbToRgba(text, 0.08));
-      root.style.setProperty("--bg-active", rgbToRgba(text, 0.14));
-      root.style.setProperty("--bg-glass", rgbToRgba(bg, 0.98));
-
-      root.style.setProperty("--text-primary", tone(1));
-      root.style.setProperty("--text-secondary", tone(0.72));
-      root.style.setProperty("--text-tertiary", tone(0.6));
-      root.style.setProperty("--text-muted", tone(0.48));
-      root.style.setProperty("--text-faint", tone(0.34));
-      root.style.setProperty("--text-link", settings.accentColor);
-
       root.style.setProperty("--color-accent", settings.accentColor);
-      root.style.setProperty("--color-accent-1", rgbToHex(mixRgb(accent, text, 0.22)));
-      root.style.setProperty("--color-accent-2", rgbToHex(mixRgb(accent, text, 0.42)));
+      root.style.setProperty("--color-accent-1", rgbToRgba(accent, 0.85));
+      root.style.setProperty("--color-accent-2", rgbToRgba(accent, 0.7));
       root.style.setProperty("--accent-primary", settings.accentColor);
-      root.style.setProperty("--accent-secondary", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--accent-secondary", rgbToRgba(accent, 0.8));
       root.style.setProperty("--text-on-accent", getReadableTextOn(accent));
       root.style.setProperty("--accent-glow", rgbToRgba(accent, 0.16));
+
+      // Background color variables (solely dependent on customBgPrimary)
+      root.style.setProperty("--color-base-00", baseBg);
+      root.style.setProperty("--color-base-05", baseBg);
+      root.style.setProperty("--color-base-10", baseBg);
+      root.style.setProperty("--color-base-20", baseBg);
+      root.style.setProperty("--color-base-25", baseBg);
+      root.style.setProperty("--color-base-30", baseBg);
+      root.style.setProperty("--color-base-35", baseBg);
+
+      root.style.setProperty("--bg-primary", baseBg);
+      root.style.setProperty("--bg-secondary", baseBg);
+      root.style.setProperty("--bg-tertiary", baseBg);
+      root.style.setProperty("--bg-elevated", baseBg);
+      root.style.setProperty("--bg-launcher", baseBg);
+      root.style.setProperty("--bg-tree", baseBg);
+      root.style.setProperty("--bg-toolbar", baseBg);
+      root.style.setProperty("--bg-input", baseBg);
+      root.style.setProperty("--bg-glass", rgbToRgba(bg, 0.98));
+
+      root.style.setProperty("--titlebar-background", baseBg);
+      root.style.setProperty("--titlebar-background-focused", baseBg);
+      root.style.setProperty("--status-bar-background", baseBg);
+      root.style.setProperty("--tab-container-background", baseBg);
+      root.style.setProperty("--tab-background-active", baseBg);
+
+      // Text color variables (solely dependent on customTextPrimary)
+      root.style.setProperty("--color-base-40", rgbToRgba(text, 0.2));
+      root.style.setProperty("--color-base-50", rgbToRgba(text, 0.35));
+      root.style.setProperty("--color-base-60", rgbToRgba(text, 0.5));
+      root.style.setProperty("--color-base-70", rgbToRgba(text, 0.7));
+      root.style.setProperty("--color-base-100", baseText);
+
+      root.style.setProperty("--bg-hover", rgbToRgba(text, 0.08));
+      root.style.setProperty("--bg-active", rgbToRgba(text, 0.14));
+
+      root.style.setProperty("--text-primary", baseText);
+      root.style.setProperty("--text-secondary", rgbToRgba(text, 0.8));
+      root.style.setProperty("--text-tertiary", rgbToRgba(text, 0.65));
+      root.style.setProperty("--text-muted", rgbToRgba(text, 0.5));
+      root.style.setProperty("--text-faint", rgbToRgba(text, 0.35));
+      root.style.setProperty("--text-link", settings.accentColor);
 
       root.style.setProperty("--scrollbar-thumb", rgbToRgba(text, 0.26));
       root.style.setProperty("--scrollbar-thumb-hover", rgbToRgba(text, 0.42));
@@ -2226,43 +2233,38 @@ export default function App() {
       root.style.setProperty("--border-strong", rgbToRgba(text, 0.24));
       root.style.setProperty("--divider-color", rgbToRgba(text, 0.1));
 
-      root.style.setProperty("--titlebar-background", secondaryBg);
-      root.style.setProperty("--titlebar-background-focused", secondaryBg);
-      root.style.setProperty("--titlebar-text-color", tone(0.72));
-      root.style.setProperty("--titlebar-text-color-focused", tone(1));
-      root.style.setProperty("--status-bar-background", secondaryBg);
-      root.style.setProperty("--status-bar-text-color", tone(0.48));
+      root.style.setProperty("--titlebar-text-color", rgbToRgba(text, 0.8));
+      root.style.setProperty("--titlebar-text-color-focused", baseText);
+      root.style.setProperty("--status-bar-text-color", rgbToRgba(text, 0.5));
 
-      root.style.setProperty("--tab-container-background", secondaryBg);
-      root.style.setProperty("--tab-background-active", baseBg);
-      root.style.setProperty("--tab-text-color", tone(0.48));
-      root.style.setProperty("--tab-text-color-active", tone(0.72));
-      root.style.setProperty("--tab-text-color-focused", tone(0.72));
-      root.style.setProperty("--tab-text-color-focused-active", tone(0.72));
-      root.style.setProperty("--tab-text-color-focused-active-current", tone(1));
+      root.style.setProperty("--tab-text-color", rgbToRgba(text, 0.6));
+      root.style.setProperty("--tab-text-color-active", baseText);
+      root.style.setProperty("--tab-text-color-focused", baseText);
+      root.style.setProperty("--tab-text-color-focused-active", baseText);
+      root.style.setProperty("--tab-text-color-focused-active-current", baseText);
 
-      root.style.setProperty("--nav-item-color", tone(0.72));
-      root.style.setProperty("--nav-item-color-hover", tone(1));
-      root.style.setProperty("--nav-item-color-active", tone(1));
-      root.style.setProperty("--nav-item-color-selected", tone(1));
+      root.style.setProperty("--nav-item-color", rgbToRgba(text, 0.75));
+      root.style.setProperty("--nav-item-color-hover", baseText);
+      root.style.setProperty("--nav-item-color-active", baseText);
+      root.style.setProperty("--nav-item-color-selected", baseText);
       root.style.setProperty("--nav-item-background-hover", rgbToRgba(text, 0.08));
       root.style.setProperty("--nav-item-background-active", rgbToRgba(text, 0.1));
       root.style.setProperty("--nav-item-background-selected", rgbToRgba(text, 0.12));
 
-      root.style.setProperty("--editor-caret", tone(1));
+      root.style.setProperty("--editor-caret", baseText);
       root.style.setProperty("--editor-selection", rgbToRgba(accent, 0.2));
       root.style.setProperty("--editor-selection-focused", rgbToRgba(accent, 0.3));
       root.style.setProperty("--editor-active-line", rgbToRgba(text, 0.04));
       root.style.setProperty("--editor-active-line-border", rgbToRgba(text, 0.1));
-      root.style.setProperty("--editor-heading", tone(1));
-      root.style.setProperty("--editor-heading-marker", tone(0.6));
+      root.style.setProperty("--editor-heading", baseText);
+      root.style.setProperty("--editor-heading-marker", rgbToRgba(text, 0.6));
       root.style.setProperty("--editor-link", settings.accentColor);
-      root.style.setProperty("--editor-link-hover", rgbToHex(mixRgb(accent, text, 0.2)));
+      root.style.setProperty("--editor-link-hover", settings.accentColor);
       root.style.setProperty("--editor-tag", settings.accentColor);
       root.style.setProperty("--editor-tag-bg", rgbToRgba(accent, 0.18));
-      root.style.setProperty("--editor-code", tone(0.66));
-      root.style.setProperty("--editor-muted-token", tone(0.5));
-      root.style.setProperty("--editor-emphasis", tone(1));
+      root.style.setProperty("--editor-code", rgbToRgba(text, 0.85));
+      root.style.setProperty("--editor-muted-token", rgbToRgba(text, 0.5));
+      root.style.setProperty("--editor-emphasis", baseText);
       root.style.setProperty("--editor-search-match", rgbToRgba(accent, 0.24));
       root.style.setProperty("--editor-search-match-border", rgbToRgba(accent, 0.45));
       root.style.setProperty("--editor-search-active", rgbToRgba(accent, 0.34));
@@ -2273,24 +2275,24 @@ export default function App() {
 
       // ── Obsidian-standard CSS variable aliases for plugin compatibility ──
       root.style.setProperty("--background-primary", baseBg);
-      root.style.setProperty("--background-primary-alt", secondaryBg);
-      root.style.setProperty("--background-secondary", secondaryBg);
-      root.style.setProperty("--background-secondary-alt", tertiaryBg);
+      root.style.setProperty("--background-primary-alt", baseBg);
+      root.style.setProperty("--background-secondary", baseBg);
+      root.style.setProperty("--background-secondary-alt", baseBg);
       root.style.setProperty("--background-modifier-border", rgbToRgba(text, 0.16));
-      root.style.setProperty("--background-modifier-form-field", rgbToRgba(text, 0.04));
+      root.style.setProperty("--background-modifier-form-field", rgbToRgba(bg, 0.5));
       root.style.setProperty("--background-modifier-error", "#e05050");
       root.style.setProperty("--background-modifier-success", "#22c55e");
       root.style.setProperty("--background-modifier-box-shadow", rgbToRgba(bg, 0.4));
-      root.style.setProperty("--text-normal", tone(1));
+      root.style.setProperty("--text-normal", baseText);
       root.style.setProperty("--text-accent", settings.accentColor);
-      root.style.setProperty("--text-accent-hover", rgbToHex(mixRgb(accent, text, 0.22)));
-      root.style.setProperty("--interactive-normal", secondaryBg);
-      root.style.setProperty("--interactive-hover", tertiaryBg);
+      root.style.setProperty("--text-accent-hover", settings.accentColor);
+      root.style.setProperty("--interactive-normal", rgbToRgba(text, 0.04));
+      root.style.setProperty("--interactive-hover", rgbToRgba(text, 0.08));
       root.style.setProperty("--interactive-accent", settings.accentColor);
-      root.style.setProperty("--interactive-accent-hover", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--interactive-accent-hover", settings.accentColor);
       root.style.setProperty("--interactive-accent-hsl", (() => { const r = accent.r / 255, g = accent.g / 255, b = accent.b / 255; const max = Math.max(r, g, b), min = Math.min(r, g, b); let h = 0, s = 0; const l = (max + min) / 2; if (max !== min) { const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6 : max === g ? ((b - r) / d + 2) / 6 : ((r - g) / d + 4) / 6; } return `${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%`; })());
       root.style.setProperty("--link-color", settings.accentColor);
-      root.style.setProperty("--link-color-hover", rgbToHex(mixRgb(accent, text, 0.22)));
+      root.style.setProperty("--link-color-hover", settings.accentColor);
     } else {
       for (const variableName of CUSTOM_THEME_VARIABLES) {
         root.style.removeProperty(variableName);

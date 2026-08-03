@@ -2160,14 +2160,14 @@ function buildSectionScopedSuggestions(
 
       const fallbackRelevance = resetBias
         ? contextOverlap * 0.38 +
-          intentOverlap * 0.28 +
-          keywordOverlap * 0.2 +
-          candidate.similarity * 0.14
+        intentOverlap * 0.28 +
+        keywordOverlap * 0.2 +
+        candidate.similarity * 0.14
         : recentListOverlap * 0.52 +
-          contextOverlap * 0.24 +
-          intentOverlap * 0.12 +
-          keywordOverlap * 0.08 +
-          candidate.similarity * 0.04;
+        contextOverlap * 0.24 +
+        intentOverlap * 0.12 +
+        keywordOverlap * 0.08 +
+        candidate.similarity * 0.04;
 
       // Fallback exploration should only nudge rank order, never dominate strong matches.
       const explorationBoost = Math.max(0, 1 - recentListOverlap) * SECTION_EXPLORATION_BOOST_WEIGHT;
@@ -2407,7 +2407,7 @@ function buildSuggestionsDecorations(
     sectionContext,
   );
   const currentContextVector = buildTokenFrequencyMap(contextSnapshot);
-  
+
   const intentShiftUntil = options.getIntentShiftUntil();
   let resetBiasForThisPass = now < intentShiftUntil;
 
@@ -2443,7 +2443,7 @@ function buildSuggestionsDecorations(
           !resetBiasForThisPass &&
           topIncomingSimilarity <=
           stableEnd.topSimilarity +
-            SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
+          SUGGESTION_SIGNIFICANT_IMPROVEMENT_DELTA;
 
         if (shouldKeepStableSuggestions) {
           const stableSuggestions = stableEnd.paths
@@ -2555,7 +2555,7 @@ function cleanInlineAIResponse(text: string): string {
     } else {
       cleaned = cleaned.substring(3);
     }
-    
+
     // Strip trailing code block marker if present
     if (cleaned.endsWith("```")) {
       cleaned = cleaned.substring(0, cleaned.length - 3);
@@ -3216,7 +3216,7 @@ export function Editor({
   ) => {
     if (!selectionRange) return;
     const { text } = selectionRange;
-    
+
     setIsInlineQuerying(true);
     setExplanation(null);
     setExplanationCoords(null);
@@ -3467,11 +3467,11 @@ export function Editor({
     // Case 2: We are currently showing suggestions, but we should now hide them
     else if (renderedShowEndSuggestions && !isClosingSuggestions) {
       setIsClosingSuggestions(true);
-      
+
       if (closingTimeoutRef.current) {
         window.clearTimeout(closingTimeoutRef.current);
       }
-      
+
       closingTimeoutRef.current = window.setTimeout(() => {
         setIsClosingSuggestions(false);
         setRenderedShowEndSuggestions(false);
@@ -4029,9 +4029,9 @@ export function Editor({
             backgroundColor: "var(--editor-selection)",
           },
           ".cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
-            {
-              backgroundColor: "var(--editor-selection-focused)",
-            },
+          {
+            backgroundColor: "var(--editor-selection-focused)",
+          },
           ".cm-gutters": {
             backgroundColor: "transparent",
             border: "none",
@@ -4459,14 +4459,14 @@ export function Editor({
       const clampedHead = Math.min(oldSel.main.head, maxPos);
 
       viewRef.current.dispatch({
-         changes: { from: 0, to: currentDoc.length, insert: newContent },
-         selection: { anchor: clampedAnchor, head: clampedHead },
-         annotations: [
-           Transaction.remote.of(true),
-           Transaction.userEvent.of("setContent"),
-           Transaction.addToHistory.of(false),
-         ],
-       });
+        changes: { from: 0, to: currentDoc.length, insert: newContent },
+        selection: { anchor: clampedAnchor, head: clampedHead },
+        annotations: [
+          Transaction.remote.of(true),
+          Transaction.userEvent.of("setContent"),
+          Transaction.addToHistory.of(false),
+        ],
+      });
     }
   }, [content, isSpecialTab]);
 
@@ -4550,10 +4550,10 @@ export function Editor({
           cleanText = line.text.substring(headingMatch[1].length);
           offset = -headingMatch[1].length;
         }
-        
+
         const newText = prefix ? `${prefix}${cleanText}` : cleanText;
         const newOffset = prefix ? prefix.length : 0;
-        
+
         view.dispatch({
           changes: { from: line.from, to: line.to, insert: newText },
           selection: { anchor: Math.max(line.from, from + offset + newOffset) },
@@ -4800,7 +4800,7 @@ export function Editor({
       try {
         const saved = localStorage.getItem("openonyx-settings");
         if (saved) return JSON.parse(saved);
-      } catch (err) {}
+      } catch (err) { }
       return null;
     };
 
@@ -4811,11 +4811,11 @@ export function Editor({
       const main = state.selection.main;
       const selectedText = state.sliceDoc(main.from, main.to);
       const isWrapped = selectedText.startsWith(prefix) && selectedText.endsWith(suffix);
-      
+
       let newText = '';
       let newAnchor = main.from;
       let newHead = main.to;
-      
+
       if (isWrapped) {
         newText = selectedText.slice(prefix.length, selectedText.length - suffix.length);
         newAnchor = main.from;
@@ -4825,7 +4825,7 @@ export function Editor({
         newAnchor = main.from + prefix.length;
         newHead = main.to + prefix.length;
       }
-      
+
       view.dispatch({
         changes: { from: main.from, to: main.to, insert: newText },
         selection: { anchor: isWrapped ? main.from : newAnchor, head: isWrapped ? newHead : newHead }
@@ -4841,14 +4841,14 @@ export function Editor({
       const line = state.doc.lineAt(main.from);
       const lineText = line.text;
       const hasPrefix = lineText.startsWith(blockPrefix);
-      
+
       let newText = '';
       if (hasPrefix) {
         newText = lineText.slice(blockPrefix.length);
       } else {
         newText = blockPrefix + lineText;
       }
-      
+
       view.dispatch({
         changes: { from: line.from, to: line.to, insert: newText },
         selection: { anchor: Math.max(line.from, main.from + (hasPrefix ? -blockPrefix.length : blockPrefix.length)) }
@@ -4860,7 +4860,7 @@ export function Editor({
       const view = viewRef.current;
       if (!view) return;
       const main = view.state.selection.main;
-      
+
       view.dispatch({
         changes: { from: main.from, to: main.to, insert: content },
         selection: { anchor: main.from + cursorOffset }
@@ -4875,14 +4875,14 @@ export function Editor({
       const useWikiLinks = settings ? settings.useWikiLinks !== false : true;
       const main = view.state.selection.main;
       const selectedText = view.state.sliceDoc(main.from, main.to);
-      
+
       let clipboardText = '';
       try {
         clipboardText = await navigator.clipboard.readText();
-      } catch (err) {}
-      
+      } catch (err) { }
+
       const isUrl = /^(https?:\/\/|www\.)\S+$/i.test(clipboardText.trim());
-      
+
       let insertText = '';
       let newAnchor = main.from;
       if (isUrl) {
@@ -4895,7 +4895,7 @@ export function Editor({
         insertText = `[${selectedText}]()`;
         newAnchor = main.from + selectedText.length + 3;
       }
-      
+
       view.dispatch({
         changes: { from: main.from, to: main.to, insert: insertText },
         selection: { anchor: newAnchor }
@@ -4908,14 +4908,14 @@ export function Editor({
       if (!view) return;
       const main = view.state.selection.main;
       const selectedText = view.state.sliceDoc(main.from, main.to);
-      
+
       let clipboardText = '';
       try {
         clipboardText = await navigator.clipboard.readText();
-      } catch (err) {}
-      
+      } catch (err) { }
+
       const isUrl = /^(https?:\/\/|www\.)\S+$/i.test(clipboardText.trim());
-      
+
       let insertText = '';
       let newAnchor = main.from;
       if (isUrl) {
@@ -4925,7 +4925,7 @@ export function Editor({
         insertText = `[${selectedText}]()`;
         newAnchor = main.from + selectedText.length + 3;
       }
-      
+
       view.dispatch({
         changes: { from: main.from, to: main.to, insert: insertText },
         selection: { anchor: newAnchor }
@@ -4947,7 +4947,7 @@ export function Editor({
     const extractSelection = () => {
       const view = viewRef.current;
       if (!view || !selection) return;
-      
+
       const event = new CustomEvent('oo:show-prompt', {
         detail: {
           title: 'Extract Selection to Note',
@@ -4957,12 +4957,12 @@ export function Editor({
             if (!fileName || !fileName.trim()) return;
             const cleanName = fileName.trim();
             const notePath = cleanName.endsWith('.md') ? cleanName : `${cleanName}.md`;
-            
+
             try {
               await getAPI().createFile(notePath, selection);
-              
+
               window.dispatchEvent(new CustomEvent('oo:refresh-file-tree'));
-              
+
               const main = view.state.selection.main;
               const linkText = `[[${cleanName}]]`;
               view.dispatch({
@@ -4985,7 +4985,7 @@ export function Editor({
       viewRef.current.state.selection.main.from,
       viewRef.current.state.selection.main.to
     ) || '';
-    const searchTitle = selection 
+    const searchTitle = selection
       ? `Search for "${selection.length > 20 ? selection.substring(0, 20) + '...' : selection}"`
       : 'Search for selection';
 
@@ -4995,7 +4995,7 @@ export function Editor({
     menu.addItem((item: any) => item.setTitle(searchTitle).setIcon('search').onClick(() => { searchSelection(); }));
     menu.addItem((item: any) => item.setTitle('Extract current selection...').setIcon('scissors').onClick(() => { extractSelection(); }));
     menu.addSeparator();
-    
+
     // Submenus for Format, Paragraph, Insert
     let formatItem: any;
     menu.addItem((item: any) => {
@@ -5046,117 +5046,117 @@ export function Editor({
     });
 
     menu.addSeparator();
-    
+
     menu.addItem((item: any) => item.setTitle('Cut').setIcon('scissors').onClick(() => { document.execCommand('cut'); }));
     menu.addItem((item: any) => item.setTitle('Copy').setIcon('copy').onClick(() => { document.execCommand('copy'); }));
     menu.addItem((item: any) => item.setTitle('Paste').setIcon('clipboard').onClick(async () => {
-       try {
-         const text = await navigator.clipboard.readText();
-         if (viewRef.current) {
-           const main = viewRef.current.state.selection.main;
-           viewRef.current.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
-         }
-       } catch (err) {}
+      try {
+        const text = await navigator.clipboard.readText();
+        if (viewRef.current) {
+          const main = viewRef.current.state.selection.main;
+          viewRef.current.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
+        }
+      } catch (err) { }
     }));
     menu.addItem((item: any) => item.setTitle('Paste as plain text').setIcon('clipboard-type').onClick(async () => {
-       try {
-         const text = await navigator.clipboard.readText();
-         if (viewRef.current) {
-           const main = viewRef.current.state.selection.main;
-           viewRef.current.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
-         }
-       } catch (err) {}
+      try {
+        const text = await navigator.clipboard.readText();
+        if (viewRef.current) {
+          const main = viewRef.current.state.selection.main;
+          viewRef.current.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
+        }
+      } catch (err) { }
     }));
     menu.addSeparator();
     menu.addItem((item: any) => item.setTitle('Select all').setIcon('check-square').onClick(() => {
-       if (viewRef.current) {
-         viewRef.current.dispatch({ selection: { anchor: 0, head: viewRef.current.state.doc.length }});
-       }
-     }));
- 
-     // Sync real editor state to the API mock before triggering event
-     const activeLeaf = app.workspace.activeLeaf;
-     if (activeLeaf?.view?.getViewType?.() === 'markdown' && viewRef.current) {
-       // Ensure this leaf is considered the active one during the event trigger
-       if (activeLeaf.view) {
-         const view = activeLeaf.view;
-         let editorDescriptor: PropertyDescriptor | undefined;
-         for (let target: any = view; target && !editorDescriptor; target = Object.getPrototypeOf(target)) {
-           editorDescriptor = Object.getOwnPropertyDescriptor(target, 'editor');
-         }
-         // Excalidraw subclasses the Markdown-compatible view surface but
-         // exposes a getter-only editor property. Its own editor bridge must
-         // remain untouched by the host Markdown context-menu bridge.
-         if (editorDescriptor && !editorDescriptor.writable && !editorDescriptor.set) {
-           menu.showAtMouseEvent(e.nativeEvent);
-           return;
-         }
-         const cmView = viewRef.current;
-         const state = cmView.state;
-         
-         // Sync the file info
-         const activeTab = tabs.find(t => t.id === activeTabId);
-         if (activeTab) {
-           setWritableViewProperty(activeLeaf.view, 'file', new TFile(activeTab.path));
-         }
- 
-         // Initialize editor mocks if needed
-         const editor = view.editor || {};
-         view.editor = editor;
-         
-         // Update the mock methods with real data from CodeMirror 6
-         editor.getValue = () => state.doc.toString();
-         editor.getSelection = () => state.sliceDoc(state.selection.main.from, state.selection.main.to);
-         editor.somethingSelected = () => !state.selection.main.empty;
-         editor.getCursor = () => {
-           const pos = state.selection.main.head;
-           const line = state.doc.lineAt(pos);
-           return { line: line.number - 1, ch: pos - line.from };
-         };
-         editor.replaceSelection = (text: string) => {
-           const main = state.selection.main;
-           cmView.dispatch({
-             changes: { from: main.from, to: main.to, insert: text },
-             selection: { anchor: main.from + text.length }
-           });
-         };
-         
-         // Add more standard Obsidian editor methods for compatibility
-         editor.getLine = (n: number) => state.doc.line(n + 1).text;
-         editor.lineCount = () => state.doc.lines;
-         editor.getDoc = () => editor;
-         editor.cm = editor;
-         
-         // Ensure sourceMode shim is present as expected by many plugins
-         view.sourceMode = view.sourceMode || {};
-         view.sourceMode.cmEditor = editor;
- 
-         console.log(`[Editor] Triggering editor-menu for ${activeTab?.path}. Selection: "${editor.getSelection()}"`);
-         app.workspace.trigger('editor-menu', menu, editor, view);
-       }
-     }
- 
-     menu.showAtMouseEvent(e.nativeEvent);
-   }, [activeTabId, tabs]);
+      if (viewRef.current) {
+        viewRef.current.dispatch({ selection: { anchor: 0, head: viewRef.current.state.doc.length } });
+      }
+    }));
+
+    // Sync real editor state to the API mock before triggering event
+    const activeLeaf = app.workspace.activeLeaf;
+    if (activeLeaf?.view?.getViewType?.() === 'markdown' && viewRef.current) {
+      // Ensure this leaf is considered the active one during the event trigger
+      if (activeLeaf.view) {
+        const view = activeLeaf.view;
+        let editorDescriptor: PropertyDescriptor | undefined;
+        for (let target: any = view; target && !editorDescriptor; target = Object.getPrototypeOf(target)) {
+          editorDescriptor = Object.getOwnPropertyDescriptor(target, 'editor');
+        }
+        // Excalidraw subclasses the Markdown-compatible view surface but
+        // exposes a getter-only editor property. Its own editor bridge must
+        // remain untouched by the host Markdown context-menu bridge.
+        if (editorDescriptor && !editorDescriptor.writable && !editorDescriptor.set) {
+          menu.showAtMouseEvent(e.nativeEvent);
+          return;
+        }
+        const cmView = viewRef.current;
+        const state = cmView.state;
+
+        // Sync the file info
+        const activeTab = tabs.find(t => t.id === activeTabId);
+        if (activeTab) {
+          setWritableViewProperty(activeLeaf.view, 'file', new TFile(activeTab.path));
+        }
+
+        // Initialize editor mocks if needed
+        const editor = view.editor || {};
+        view.editor = editor;
+
+        // Update the mock methods with real data from CodeMirror 6
+        editor.getValue = () => state.doc.toString();
+        editor.getSelection = () => state.sliceDoc(state.selection.main.from, state.selection.main.to);
+        editor.somethingSelected = () => !state.selection.main.empty;
+        editor.getCursor = () => {
+          const pos = state.selection.main.head;
+          const line = state.doc.lineAt(pos);
+          return { line: line.number - 1, ch: pos - line.from };
+        };
+        editor.replaceSelection = (text: string) => {
+          const main = state.selection.main;
+          cmView.dispatch({
+            changes: { from: main.from, to: main.to, insert: text },
+            selection: { anchor: main.from + text.length }
+          });
+        };
+
+        // Add more standard Obsidian editor methods for compatibility
+        editor.getLine = (n: number) => state.doc.line(n + 1).text;
+        editor.lineCount = () => state.doc.lines;
+        editor.getDoc = () => editor;
+        editor.cm = editor;
+
+        // Ensure sourceMode shim is present as expected by many plugins
+        view.sourceMode = view.sourceMode || {};
+        view.sourceMode.cmEditor = editor;
+
+        console.log(`[Editor] Triggering editor-menu for ${activeTab?.path}. Selection: "${editor.getSelection()}"`);
+        app.workspace.trigger('editor-menu', menu, editor, view);
+      }
+    }
+
+    menu.showAtMouseEvent(e.nativeEvent);
+  }, [activeTabId, tabs]);
 
   const getClampedToolbarCoords = () => {
     if (!selectionRange) return { top: 0, left: 0 };
     const toolbarHeight = showPromptInput ? 84 : 40;
     const toolbarWidth = 400;
-    
+
     const y = selectionRange.rect.top < (showPromptInput ? 110 : 70)
       ? selectionRange.rect.bottom + 8
       : selectionRange.rect.top - (showPromptInput ? 92 : 46);
-      
+
     const minY = 50;
     const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 40);
     const clampedY = Math.max(minY, Math.min(maxY, y));
-    
+
     const x = selectionRange.rect.left + (selectionRange.rect.width / 2) - (toolbarWidth / 2);
     const minX = 10;
     const maxX = Math.max(minX, window.innerWidth - toolbarWidth - 10);
     const clampedX = Math.max(minX, Math.min(maxX, x));
-    
+
     return {
       top: clampedY + window.scrollY,
       left: clampedX + window.scrollX
@@ -5167,20 +5167,20 @@ export function Editor({
     if (!selectionRange) return { top: 0, left: 0 };
     const toolbarHeight = 40;
     const toolbarWidth = 200;
-    
+
     const y = selectionRange.rect.top < 70
       ? selectionRange.rect.bottom + 8
       : selectionRange.rect.top - 46;
-      
+
     const minY = 50;
     const maxY = Math.max(minY, window.innerHeight - toolbarHeight - 40);
     const clampedY = Math.max(minY, Math.min(maxY, y));
-    
+
     const x = selectionRange.rect.left + (selectionRange.rect.width / 2) - (toolbarWidth / 2);
     const minX = 10;
     const maxX = Math.max(minX, window.innerWidth - toolbarWidth - 10);
     const clampedX = Math.max(minX, Math.min(maxX, x));
-    
+
     return {
       top: clampedY + window.scrollY,
       left: clampedX + window.scrollX

@@ -176,7 +176,7 @@ export function LiveThemeStudio({ settings, onUpdateSetting }: LiveThemeStudioPr
           <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
             Custom Colors
           </h4>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">
                 Workspace Background Color
@@ -196,6 +196,17 @@ export function LiveThemeStudio({ settings, onUpdateSetting }: LiveThemeStudioPr
                 type="color"
                 value={settings.customTextPrimary}
                 onChange={(e) => onUpdateSetting("customTextPrimary", e.target.value)}
+                className="h-9 w-full cursor-pointer rounded-lg border border-[var(--border-medium)] bg-transparent p-1"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">
+                Accent Color
+              </label>
+              <input
+                type="color"
+                value={settings.accentColor || "#3b82f6"}
+                onChange={(e) => onUpdateSetting("accentColor", e.target.value)}
                 className="h-9 w-full cursor-pointer rounded-lg border border-[var(--border-medium)] bg-transparent p-1"
               />
             </div>
