@@ -7,8 +7,9 @@
  *   Right: window controls (minimize, maximize, close)
  */
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Tab, Theme } from "../../types";
+import { TabPreviewCard } from "./TabPreviewCard";
 import { getAPI } from "../../utils/api";
 import { DragCtx } from "../../context/DragContext";
 import { LocalGroup } from "../../lib/localdb";
@@ -221,6 +222,32 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
   onDrop,
   onContextMenu,
 }: TitlebarTabItemProps) {
+  const tabRef = useRef<HTMLDivElement>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewRect, setPreviewRect] = useState<DOMRect | null>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    hoverTimer.current = setTimeout(() => {
+      if (tabRef.current) {
+        setPreviewRect(tabRef.current.getBoundingClientRect());
+        setShowPreview(true);
+      }
+    }, 180);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    setShowPreview(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    };
+  }, []);
+
   return (
     <div
       className={cx(
@@ -231,8 +258,9 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
       )}
     >
       <div
+        ref={tabRef}
         data-tab-id={tab.id}
-        data-tooltip={tab.name}
+        data-tooltip={showPreview ? undefined : tab.name}
         className={cx(
           titlebarTabClass,
           isActive && titlebarTabActiveClass,
@@ -253,6 +281,8 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
         onDragEnd={onDragEnd}
         onDrop={(event) => onDrop(event, tab.id)}
         onContextMenu={(event) => onContextMenu(event, tab)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <div className={titlebarTabInnerClass}>
           {tab.isModified && (
@@ -270,6 +300,12 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
           </button>
         </div>
       </div>
+      <TabPreviewCard
+        tabName={tab.name}
+        tabPath={tab.path}
+        targetRect={previewRect}
+        visible={showPreview}
+      />
     </div>
   );
 });
