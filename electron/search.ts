@@ -7,7 +7,7 @@
  */
 
 import Fuse from 'fuse.js';
-import { FileSystemManager } from './fileSystem';
+import { FileSystemManager } from './fileSystem.js';
 
 interface SearchDocument {
   path: string;
