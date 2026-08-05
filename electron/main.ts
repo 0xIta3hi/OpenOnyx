@@ -9,9 +9,13 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { FileSystemManager } from './fileSystem';
-import { SearchEngine } from './search';
-import { registerIpcHandlers } from './ipc';
+import { fileURLToPath } from 'url';
+import { FileSystemManager } from './fileSystem.js';
+import { SearchEngine } from './search.js';
+import { registerIpcHandlers } from './ipc.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let fsManager: FileSystemManager | null = null;
