@@ -229,5 +229,6 @@
     "dmg": {
       "backgroundColor": "#121212"
     }
-  }
+  },
+  "type": "module"
 }
