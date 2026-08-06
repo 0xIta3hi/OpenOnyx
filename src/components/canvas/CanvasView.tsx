@@ -1295,9 +1295,12 @@ export function CanvasView({
           ? (parsed.data.edges as CanvasEdge[])
           : [];
         const metadata = { ...parsed.metadata };
-        const nextScribbles = sanitizeCanvasScribbles(
-          metadata[CANVAS_SCRIBBLES_KEY],
-        );
+        const rawScribbles =
+          metadata[CANVAS_SCRIBBLES_KEY] ??
+          metadata["openobsidianScribblesV1"] ??
+          metadata["noteworkScribblesV1"] ??
+          metadata["scribbles"];
+        const nextScribbles = sanitizeCanvasScribbles(rawScribbles);
         const customization = sanitizeCanvasCustomization(
           metadata[CANVAS_CUSTOMIZATION_KEY],
         );
@@ -1305,6 +1308,9 @@ export function CanvasView({
           metadata[CANVAS_VIEWPORT_KEY],
         );
         delete metadata[CANVAS_SCRIBBLES_KEY];
+        delete metadata["openobsidianScribblesV1"];
+        delete metadata["noteworkScribblesV1"];
+        delete metadata["scribbles"];
         delete metadata[CANVAS_CUSTOMIZATION_KEY];
         delete metadata[CANVAS_VIEWPORT_KEY];
         const normalizedMetadata: Record<string, unknown> = {
