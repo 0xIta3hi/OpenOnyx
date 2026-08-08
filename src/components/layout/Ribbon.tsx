@@ -9,6 +9,7 @@ import {
   Search,
   Bookmark,
   Shield,
+  Home,
 } from "lucide-react";
 import type { PluginRibbonAction } from '../../types/plugin';
 import { setIcon } from '../../lib/obsidian-api/utils';
@@ -56,6 +57,7 @@ const pluginRibbonIconClass =
 
 interface RibbonProps {
   onToggleExplorer?: () => void;
+  onHome?: () => void;
   onGraph: () => void;
   onSettings: () => void;
   onDailyNote?: () => void;
@@ -67,11 +69,13 @@ interface RibbonProps {
   pluginRibbonActions?: PluginRibbonAction[];
   showSettingsButton?: boolean;
   hasWallpaper?: boolean;
+  activeLeftPluginView?: { pluginId?: string; viewType?: string } | null;
 }
 
 export function Ribbon({
   onGraph,
   onToggleExplorer,
+  onHome,
   onSettings,
   onDailyNote,
   onThoughtModel,
@@ -82,6 +86,7 @@ export function Ribbon({
   pluginRibbonActions = [],
   showSettingsButton = false,
   hasWallpaper = false,
+  activeLeftPluginView = null,
 }: RibbonProps) {
   const ribbonRootRef = useRef<HTMLDivElement | null>(null);
   const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
@@ -135,6 +140,16 @@ export function Ribbon({
             data-tooltip="Toggle sidebar"
           >
             <PanelLeft size={18} strokeWidth={1.6} />
+          </button>
+        )}
+
+        {onHome && (
+          <button
+            className={ribbonBtnClass}
+            onClick={onHome}
+            data-tooltip="Home"
+          >
+            <Home size={18} strokeWidth={1.6} />
           </button>
         )}
 
@@ -207,19 +222,21 @@ export function Ribbon({
         )}
 
 
-        {pluginRibbonActions.map((action, i) => (
-          <button
-            key={`plugin-ribbon-${action.pluginId}-${i}`}
-            className={`${ribbonBtnClass} oo-plugin-ribbon-btn`}
-            onClick={(e) => action.callback(e.nativeEvent)}
-            data-tooltip={action.title}
-          >
-            <span
-              className={pluginRibbonIconClass}
-              ref={(el) => renderPluginIcon(el, action)}
-            />
-          </button>
-        ))}
+        {pluginRibbonActions
+          .filter((action) => activeLeftPluginView && activeLeftPluginView.pluginId === action.pluginId)
+          .map((action, i) => (
+            <button
+              key={`plugin-ribbon-${action.pluginId}-${i}`}
+              className={`${ribbonBtnClass} oo-plugin-ribbon-btn`}
+              onClick={(e) => action.callback(e.nativeEvent)}
+              data-tooltip={action.title}
+            >
+              <span
+                className={pluginRibbonIconClass}
+                ref={(el) => renderPluginIcon(el, action)}
+              />
+            </button>
+          ))}
       </div>
 
       <div className={ribbonGroupClass}>

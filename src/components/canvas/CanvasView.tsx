@@ -41,6 +41,7 @@ import {
   SlidersHorizontal,
   Lock,
   Unlock,
+  Map as MapIcon,
 } from "lucide-react";
 import {
   CanvasNode,
@@ -625,6 +626,7 @@ export function CanvasView({
   const [edges, setEdges] = useState<CanvasEdge[]>([]);
   const [vp, setVp] = useState<CanvasViewport>({ x: 0, y: 0, zoom: 1 });
   const [tool, setTool] = useState<CanvasToolMode>("select");
+  const [showMinimap, setShowMinimap] = useState(true);
   const [selNodes, setSelNodes] = useState<Set<string>>(new Set());
   const [selEdges, setSelEdges] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<DragState>({
@@ -4493,6 +4495,13 @@ export function CanvasView({
           >
             <Grid3X3 size={15} />
           </button>
+          <button
+            className={`cv-ctrl${showMinimap ? " on" : ""}`}
+            title="Toggle minimap"
+            onClick={() => setShowMinimap(!showMinimap)}
+          >
+            <MapIcon size={15} />
+          </button>
         </div>
         <div className="cv-ctrl-group">
           <button
@@ -4520,18 +4529,20 @@ export function CanvasView({
         </div>
       </div>
 
-      <CanvasMiniMap
-        nodes={nodes}
-        world={minimapWorldBounds}
-        viewport={visibleWorldRect}
-        onNavigate={(x, y) => {
-          setViewportImmediate((prev) => ({
-            ...prev,
-            x: areaSize.width / 2 - x * prev.zoom,
-            y: areaSize.height / 2 - y * prev.zoom,
-          }));
-        }}
-      />
+      {showMinimap && (
+        <CanvasMiniMap
+          nodes={nodes}
+          world={minimapWorldBounds}
+          viewport={visibleWorldRect}
+          onNavigate={(x, y) => {
+            setViewportImmediate((prev) => ({
+              ...prev,
+              x: areaSize.width / 2 - x * prev.zoom,
+              y: areaSize.height / 2 - y * prev.zoom,
+            }));
+          }}
+        />
+      )}
 
       {/* ══ Bottom toolbar (add row) ══ */}
       <div className="cv-add-bar">
@@ -4563,6 +4574,14 @@ export function CanvasView({
           title="Add group"
         >
           <SquareDashed size={18} />
+        </button>
+        <button
+          className="cv-add-btn"
+          style={showMinimap ? { color: "var(--accent-primary)", background: "var(--bg-active)" } : undefined}
+          onClick={() => setShowMinimap(!showMinimap)}
+          title="Toggle minimap"
+        >
+          <MapIcon size={18} />
         </button>
       </div>
 

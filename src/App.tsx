@@ -7414,6 +7414,12 @@ export default function App() {
                 return next;
               });
             }}
+            onHome={() => {
+              setShowSearch(false);
+              setShowBookmarks(false);
+              setShowSidebar(true);
+              ooAppRef.current?.workspace?.revealDefaultView?.('left');
+            }}
             onSearch={() => {
               setShowSidebar(true);
               setSearchInitialMode("search");
@@ -7449,6 +7455,7 @@ export default function App() {
             pluginRibbonActions={pluginRibbonActions}
             showSettingsButton
             hasWallpaper={Boolean(settings.backgroundImage)}
+            activeLeftPluginView={activeLeftPluginView}
           />
         )}
         {vaultPath && !isFTUXZeroState && (
@@ -7843,6 +7850,7 @@ export default function App() {
           backlinkCount={backlinks.length}
         />
       )}
+    </div>
 
       {showCommandPalette && (
         <CommandPalette
@@ -8120,7 +8128,6 @@ export default function App() {
           </div>
         </div>
       )}
-    </div>
     </DragCtx.Provider>
   );
 }

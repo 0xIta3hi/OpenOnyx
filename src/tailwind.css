@@ -417,6 +417,8 @@ html[data-theme-mode="light"] .app.has-wallpaper {
 .app.has-wallpaper .titlebar,
 .app.has-wallpaper .trilium-toolbar,
 .app.has-wallpaper .editor-container > div,
+.app.has-wallpaper .cv,
+.app.has-wallpaper .graph-view-container,
 .app.has-wallpaper .trilium-statusbar,
 .app.has-wallpaper .right-sidebar-panel,
 .app.has-wallpaper .trilium-new-tab-view,
@@ -448,6 +450,8 @@ html[data-theme="light"] .app.has-wallpaper .sidebar,
 html[data-theme="light"] .app.has-wallpaper .titlebar,
 html[data-theme="light"] .app.has-wallpaper .trilium-toolbar,
 html[data-theme="light"] .app.has-wallpaper .editor-container > div,
+html[data-theme="light"] .app.has-wallpaper .cv,
+html[data-theme="light"] .app.has-wallpaper .graph-view-container,
 html[data-theme="light"] .app.has-wallpaper .trilium-statusbar,
 html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel,
 html[data-theme="light"] .app.has-wallpaper .trilium-new-tab-view,
@@ -467,6 +471,16 @@ html[data-theme="light"] .app.has-wallpaper .editor-column,
 html[data-theme="light"] .app.has-wallpaper .cm-editor,
 html[data-theme="light"] .app.has-wallpaper .trilium-note-chrome > div {
   background: transparent !important;
+}
+
+/* Ensure full-screen graphs have a calm translucent background overlay in wallpaper mode */
+.app.has-wallpaper .graph-view-container.fullscreen {
+  background: rgba(15, 15, 18, 0.70) !important;
+  backdrop-filter: blur(16px) !important;
+}
+html[data-theme="light"] .app.has-wallpaper .graph-view-container.fullscreen {
+  background: rgba(255, 255, 255, 0.76) !important;
+  backdrop-filter: blur(16px) !important;
 }
 html[data-theme="light"] body:has(.has-wallpaper) {
   background: #e8e8ec !important;
@@ -1538,6 +1552,23 @@ img.emoji {
 .nn-back-btn:hover {
   background-color: transparent;
   color: var(--text-primary);
+}
+
+/* Ensure dropdowns and context menus have solid backgrounds in wallpaper mode */
+.app.has-wallpaper .context-menu,
+.app.has-wallpaper .context-submenu,
+.app.has-wallpaper .vault-menu,
+.app.has-wallpaper .sort-menu {
+  background: #18181c !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="light"] .app.has-wallpaper .context-menu,
+html[data-theme="light"] .app.has-wallpaper .context-submenu,
+html[data-theme="light"] .app.has-wallpaper .vault-menu,
+html[data-theme="light"] .app.has-wallpaper .sort-menu {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
 

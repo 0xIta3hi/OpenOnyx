@@ -170,9 +170,9 @@ const titlebarTabDropLeftClass =
 const titlebarTabDropRightClass =
   "drop-target-right !shadow-[inset_-2px_0_0_var(--accent-color,#2563eb)]";
 const titlebarGroupedTabClass =
-  "grouped-tab !rounded-[8px] !border-t-2 border-solid opacity-75 transition-[background-color,border-top-color,opacity] duration-75 hover:opacity-95 before:!hidden after:!hidden";
+  "grouped-tab !rounded-[8px] opacity-75 transition-[background-color,opacity] duration-75 hover:opacity-95 before:!hidden after:!hidden";
 const titlebarGroupedActiveTabClass =
-  "!border-t-2 !border-t-[var(--tab-group-color)] !bg-[var(--tab-background-active)] !shadow-[0_1px_3px_rgba(15,23,42,0.08)] opacity-100";
+  "!bg-[var(--tab-background-active)] !shadow-[0_1px_3px_rgba(15,23,42,0.08)] opacity-100";
 const titlebarTabInnerClass =
   "tab-inner flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[8px] px-2.5";
 const titlebarTabDotClass = "shrink-0 text-[8px] text-[var(--text-muted)]";
@@ -269,7 +269,6 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
           tabGroup && isActive && titlebarGroupedActiveTabClass,
         )}
         style={{
-          borderTop: tabGroup ? `2px solid ${tabGroup.color}` : undefined,
           "--tab-group-color": tabGroup?.color,
         } as React.CSSProperties}
         onClick={() => onClick(tab.id)}
@@ -283,6 +282,12 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
+        {tabGroup && (
+          <div
+            className="absolute top-0 left-0 right-0 h-[2px] pointer-events-none z-[5]"
+            style={{ backgroundColor: tabGroup.color }}
+          />
+        )}
         <div className={titlebarTabInnerClass}>
           {tab.isModified && (
             <span className={titlebarTabDotClass}>{"\u25CF"}</span>

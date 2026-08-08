@@ -241,7 +241,7 @@ const sidebarFilterInputClass =
 const sidebarFilterClearClass =
   "flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-[var(--text-muted)] transition-[var(--transition-fast)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarSortMenuClass =
-  "absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
+  "sort-menu absolute right-2 top-9 z-[2500] min-w-[184px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
 const sidebarSortMenuItemClass =
   "flex w-full cursor-pointer items-center border-0 bg-transparent px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const sidebarSortMenuItemActiveClass =
@@ -319,7 +319,7 @@ const vaultSelectorNameClass = "min-w-0 flex-1 overflow-hidden text-ellipsis whi
 const sidebarSettingsBtnClass =
   "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[var(--text-muted)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 const vaultMenuClass =
-  "absolute top-[calc(100%+2px)] left-0 w-[200px] z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
+  "vault-menu absolute top-[calc(100%+2px)] left-0 w-[200px] z-[2200] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-medium)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]";
 const vaultMenuHeaderClass =
   "px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]";
 const vaultMenuItemClass =
@@ -871,9 +871,13 @@ export function Sidebar({
   const renderFoldersOnlyTree = (entries: FileEntry[], depth: number = 0) => {
     const dirs = entries.filter((e) => e.isDirectory);
     return dirs.map((entry) => {
+      const childDirs = (entry.children || []).filter((c) => c.isDirectory);
+      const directNotes = (entry.children || []).filter(
+        (c) => !c.isDirectory && (showAllFileTypes || c.extension === ".md" || c.extension === ".canvas")
+      );
+      const hasNoNotesButHasSubfolders = directNotes.length === 0 && childDirs.length > 0;
       const isExpanded = effectiveExpanded.has(entry.path);
       const isSelected = selectedFolder === entry.path;
-      const childDirs = (entry.children || []).filter((c) => c.isDirectory);
       const isDragOver = dragOverPath === entry.path;
       const noteCount = countDescendantNotes(entry);
 
@@ -888,8 +892,12 @@ export function Sidebar({
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedFolder(entry.path);
-              setIsFoldersCollapsed(true);
+              if (hasNoNotesButHasSubfolders) {
+                toggleDir(entry.path);
+              } else {
+                setSelectedFolder(entry.path);
+                setIsFoldersCollapsed(true);
+              }
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
@@ -917,7 +925,7 @@ export function Sidebar({
                 toggleDir(entry.path);
               }}
             >
-              <ChevronRight size={12} />
+              <ChevronRight size={14} strokeWidth={2.25} />
             </span>
             <Folder size={14} className="shrink-0 opacity-70" />
             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
