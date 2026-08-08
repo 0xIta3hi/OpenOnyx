@@ -189,13 +189,32 @@ The interface is built for long working sessions: quiet surfaces, readable typog
 Key capabilities:
 
 - Dark, light, oceanic, and custom theme support
-- Custom wallpaper backgrounds supporting uploaded images with adjustable background blur and opacity sliders to balance depth and text readability.
 - Theme-aware graph and editor surfaces
 - Responsive pane layout
 - Command palette, modals, settings pages, and status bar
 - Logo and icon assets in `public/`
 
-### 11. Export and Compatibility Tooling
+<p align="center">
+  <img width="1200" alt="Plugin marketplace" src="docs/images/themes.png" />
+</p>
+
+
+### 11. Custom Wallpaper Backgrounds
+
+Customize your environment by uploading any custom image to serve as the application-level wallpaper. Panel translucency overlays automatically adjust to blend with your background.
+
+Key capabilities:
+
+- Upload and apply any custom image files as the application background
+- Adjustable background blur controller to soften the wallpaper details
+- Adjustable background opacity controller to maintain perfect typography contrast
+- Fully translucent panel options for the editor, left sidebar, and right sidebar panels
+
+<p align="center">
+  <img width="1200" alt="Wallpaper Background" src="docs/images/wallpaper-background.png" />
+</p>
+
+### 12. Export and Compatibility Tooling
 
 OpenOnyx includes compatibility infrastructure for export plugins and plugin runtimes that expect desktop APIs.
 
