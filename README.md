@@ -47,6 +47,7 @@ Key capabilities:
 - Backlinks, outgoing links, unlinked mentions, tags, outline, and properties panels
 - Split panes, multi-tab workspaces, tab groups, and recent vault history
 - Vim mode support with editor commands for common workflows
+- Interactive WYSIWYG table editor that replaces raw pipe-syntax markdown with an inline-editable table, complete with row/column insertion tools and cell caret synchronization.
 
 <p align="center">
   <img width="1200" alt="Markdown workspace" src="docs/images/markdown-workspace.png" />
@@ -188,6 +189,7 @@ The interface is built for long working sessions: quiet surfaces, readable typog
 Key capabilities:
 
 - Dark, light, oceanic, and custom theme support
+- Custom wallpaper backgrounds supporting uploaded images with adjustable background blur and opacity sliders to balance depth and text readability.
 - Theme-aware graph and editor surfaces
 - Responsive pane layout
 - Command palette, modals, settings pages, and status bar
@@ -328,19 +330,28 @@ Useful development environment variables:
 
 ## Testing
 
+### All-in-One Verification
+Contributors can verify their changes against compilation, API definitions, document processors, unit tests, integration sandboxes, and build integrity configurations using a single command. This command automatically sets up any missing prerequisites (like Pandoc WASM and plugin fixtures) to ensure execution succeeds:
+
 ```bash
-npm run lint
-npm run test:canvas-compat
-npm run test:obsidian-api
-npm run test:plugin-runtime
-npm run test:plugin-compat
+npm run test:all-checks
 ```
 
-Plugin compatibility tests can fetch real plugin fixtures:
+### Running Specific Tests
+You can also trigger individual test runs manually:
 
 ```bash
-npm run fetch:plugin-fixtures
-npm run test:plugin-bundles
+# Compilation check / Type check
+npm run lint
+
+# Test the settings and build installer packaging configuration
+npx vitest run tests/build-integrity.test.ts
+
+# Test general features (tab groups, embedding cache, etc.)
+npx vitest run tests/tab-groups.test.ts tests/embedding-cache.test.ts
+
+# Test Obsidian API sandbox compatibility runtime layer
+npm run test:plugin-runtime
 ```
 
 Pandoc-backed export compatibility:
