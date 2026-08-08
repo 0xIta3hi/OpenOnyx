@@ -152,9 +152,9 @@ const titlebarVaultActionsClass = "flex items-center gap-0.5 px-2";
 const titlebarTabsClass =
   "relative z-[2] flex h-full min-w-0 flex-1 items-center overflow-hidden pl-1 pr-3 pointer-events-auto [-webkit-app-region:drag]";
 const titlebarTabScrollClass =
-  "relative z-[1] flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [-webkit-app-region:drag]";
+  "relative z-[1] flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden px-1 pointer-events-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [-webkit-app-region:drag]";
 const titlebarTabSlotClass =
-  "flex h-full min-w-[110px] max-w-[220px] shrink items-center";
+  "flex h-full min-w-[80px] max-w-[180px] shrink items-center";
 const titlebarInactiveTabSlotClass = "";
 const titlebarActiveTabSlotClass = "";
 const titlebarGroupSlotClass =
@@ -174,7 +174,7 @@ const titlebarGroupedTabClass =
 const titlebarGroupedActiveTabClass =
   "!bg-[var(--tab-background-active)] !shadow-[0_1px_3px_rgba(15,23,42,0.08)] opacity-100";
 const titlebarTabInnerClass =
-  "tab-inner flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[8px] px-2.5";
+  "tab-inner flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[8px] px-2";
 const titlebarTabDotClass = "shrink-0 text-[8px] text-[var(--text-muted)]";
 const titlebarTabTitleClass =
   "flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left leading-none";
