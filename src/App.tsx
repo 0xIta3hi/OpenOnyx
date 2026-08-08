@@ -2300,6 +2300,7 @@ export default function App() {
     }
 
     (window as any).__oo_sync_theme_variables_to_body?.();
+
     window.dispatchEvent(
       new CustomEvent("oo:theme-settings-changed", {
         detail: { theme },
@@ -7363,13 +7364,44 @@ export default function App() {
   return (
     <DragCtx.Provider value={{ dragCtx, setDragCtx }}>
       <div 
-        className="app"
+        className={`app${settings.backgroundImage ? " has-wallpaper" : ""}`}
         style={{
           "--sidebar-width": `${sidebarWidth}px`,
-          "--right-sidebar-width": `${rightSidebarWidth}px`
+          "--right-sidebar-width": `${rightSidebarWidth}px`,
+          ...(settings.backgroundImage ? {
+            "--inner-panel-bg": "transparent",
+            "--bg-primary": "rgba(0, 0, 0, 0.40)",
+            "--bg-secondary": "rgba(0, 0, 0, 0.40)",
+            "--bg-tertiary": "rgba(0, 0, 0, 0.40)",
+            "--bg-elevated": "rgba(0, 0, 0, 0.55)",
+            "--bg-tree": "rgba(0, 0, 0, 0.40)",
+            "--bg-launcher": "rgba(0, 0, 0, 0.40)",
+            "--bg-toolbar": "rgba(0, 0, 0, 0.40)",
+            "--bg-input": "rgba(0, 0, 0, 0.40)",
+            "--bg-glass": "rgba(0, 0, 0, 0.55)",
+            "--titlebar-background": "rgba(0, 0, 0, 0.40)",
+            "--titlebar-background-focused": "rgba(0, 0, 0, 0.40)",
+            "--status-bar-background": "rgba(0, 0, 0, 0.40)",
+            "--tab-container-background": "rgba(0, 0, 0, 0.40)",
+            "--tab-background-active": "rgba(0, 0, 0, 0.55)",
+            "--background-primary": "rgba(0, 0, 0, 0.40)",
+            "--background-primary-alt": "rgba(0, 0, 0, 0.40)",
+            "--background-secondary": "rgba(0, 0, 0, 0.40)",
+            "--background-secondary-alt": "rgba(0, 0, 0, 0.40)",
+          } : {})
         } as any}
       >
-        <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+        {settings.backgroundImage && (
+          <div
+            className="app-wallpaper-layer"
+            style={{
+              backgroundImage: `url(${settings.backgroundImage})`,
+              filter: settings.backgroundBlur ? `blur(${settings.backgroundBlur}px)` : undefined,
+              opacity: (settings.backgroundOpacity ?? 40) / 100,
+            }}
+          />
+        )}
+        <div className="relative z-[1] flex flex-row flex-1 min-h-0 overflow-hidden">
         {vaultPath && !isFTUXZeroState && settings.showRibbon !== false && (
           <Ribbon
             onToggleExplorer={() => {
@@ -7416,6 +7448,7 @@ export default function App() {
             }}
             pluginRibbonActions={pluginRibbonActions}
             showSettingsButton
+            hasWallpaper={Boolean(settings.backgroundImage)}
           />
         )}
         {vaultPath && !isFTUXZeroState && (
@@ -7497,6 +7530,7 @@ export default function App() {
                   onDuplicateGroup={handleDuplicateGroup}
                   onToggleGroupAutoSave={handleToggleGroupAutoSave}
                   onAddFileToGroup={handleAddFileToGroup}
+                  hasWallpaper={Boolean(settings.backgroundImage)}
                 />
               )}
             </div>
@@ -7588,12 +7622,12 @@ export default function App() {
               isFullScreen={isNativeFullScreen}
             />
             <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
-              <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-[var(--bg-primary)]">
+              <div className={`editor-column flex flex-col flex-1 min-w-0 overflow-hidden ${settings.backgroundImage ? '' : 'bg-[var(--bg-primary)]'}`}>
                 {vaultPath && !isFTUXZeroState && activeTab?.path && activeTab.path !== "__new_tab__" && !activeTab.path.startsWith("__") && viewMode !== "preview" && (
                   <FormattingToolbar />
                 )}
                 <div
-                  className="main-content flex min-w-0 flex-1 overflow-hidden bg-[var(--bg-primary)]"
+                  className={`main-content flex min-w-0 flex-1 overflow-hidden ${settings.backgroundImage ? '' : 'bg-[var(--bg-primary)]'}`}
                   ref={mainContentRef}
           style={{
             display: "flex",

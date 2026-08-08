@@ -75,6 +75,7 @@ interface SidebarProps {
   onDeleteGroup?: (id: string) => void;
   onDuplicateGroup?: (id: string) => void;
   onToggleGroupAutoSave?: (id: string) => void;
+  hasWallpaper?: boolean;
 }
 
 type SortMode =
@@ -397,6 +398,7 @@ export function Sidebar({
   onDuplicateGroup = () => {},
   onToggleGroupAutoSave = () => {},
   onAddFileToGroup = () => {},
+  hasWallpaper = false,
 }: SidebarProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedFolder, setSelectedFolder] = useState<string | null>("");
@@ -986,7 +988,7 @@ export function Sidebar({
         className={cx(sidebarRootClass, !visible && sidebarCollapsedClass)}
         style={{
           ...isMac ? { paddingTop: '32px' } : {},
-          backgroundColor: 'var(--bg-tree, var(--bg-secondary))'
+          ...(hasWallpaper ? {} : { backgroundColor: 'var(--bg-tree, var(--bg-secondary))' })
         }}
       >
         {hasPrimaryPluginView ? (

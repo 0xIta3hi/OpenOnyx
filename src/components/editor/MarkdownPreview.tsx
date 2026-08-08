@@ -667,14 +667,9 @@ export function MarkdownPreview({
     processed = protectedCode.text;
     processed = normalizeMarkdownTables(processed);
 
-    // Convert url to preview (iframe) - standalone URLs or markdown links to ANY URL
+    // Convert url to preview (iframe) - standalone URLs to ANY URL
     processed = processed.replace(
       /^(?:[ \t]*)(https?:\/\/[^\s]+)(?:[ \t]*)$/gm,
-      (match, url) => `<div class="url-preview-placeholder" data-url="${url.trim()}"></div>`
-    );
-
-    processed = processed.replace(
-      /^(?:[ \t]*)\[[^\]]*\]\((https?:\/\/[^\s)]+)\)(?:[ \t]*)$/gm,
       (match, url) => `<div class="url-preview-placeholder" data-url="${url.trim()}"></div>`
     );
 

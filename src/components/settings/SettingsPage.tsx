@@ -78,6 +78,10 @@ export interface AppSettings {
   windowFrameStyle: "hidden" | "native";
   hardwareAcceleration: boolean;
 
+  backgroundImage: string;
+  backgroundBlur: number;
+  backgroundOpacity: number;
+
   coreBacklinks: boolean;
   coreCanvas: boolean;
   coreCommandPalette: boolean;
@@ -173,6 +177,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   nativeMenus: false,
   windowFrameStyle: "hidden",
   hardwareAcceleration: true,
+
+  backgroundImage: "",
+  backgroundBlur: 0,
+  backgroundOpacity: 40,
 
   coreBacklinks: true,
   coreCanvas: true,

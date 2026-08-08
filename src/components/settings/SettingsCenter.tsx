@@ -94,7 +94,7 @@ export function SettingsCenter({
 
     if (q.includes("font") || q.includes("size") || q.includes("wikilink") || q.includes("line") || q.includes("vim") || q.includes("editor") || q.includes("text")) {
       setActiveTab("editor");
-    } else if (q.includes("theme") || q.includes("color") || q.includes("dark") || q.includes("light") || q.includes("zoom") || q.includes("ribbon")) {
+    } else if (q.includes("theme") || q.includes("color") || q.includes("dark") || q.includes("light") || q.includes("zoom") || q.includes("ribbon") || q.includes("wallpaper") || q.includes("background")) {
       setActiveTab("appearance");
     } else if (q.includes("ai") || q.includes("model") || q.includes("openai") || q.includes("openrouter") || q.includes("claude") || q.includes("key")) {
       setActiveTab("ai");

@@ -66,6 +66,7 @@ interface RibbonProps {
   onBookmarks?: () => void;
   pluginRibbonActions?: PluginRibbonAction[];
   showSettingsButton?: boolean;
+  hasWallpaper?: boolean;
 }
 
 export function Ribbon({
@@ -80,6 +81,7 @@ export function Ribbon({
   onBookmarks,
   pluginRibbonActions = [],
   showSettingsButton = false,
+  hasWallpaper = false,
 }: RibbonProps) {
   const ribbonRootRef = useRef<HTMLDivElement | null>(null);
   const ribbonItemsRef = useRef<HTMLDivElement | null>(null);
@@ -120,7 +122,7 @@ export function Ribbon({
       ref={ribbonRootRef}
       style={{
         ...isMac ? { paddingTop: '32px' } : {},
-        backgroundColor: 'var(--bg-launcher, var(--bg-secondary))'
+        ...(hasWallpaper ? {} : { backgroundColor: 'var(--bg-launcher, var(--bg-secondary))' })
       }}
     >
       <div className={ribbonGroupClass} ref={ribbonItemsRef}>

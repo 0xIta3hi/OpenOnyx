@@ -342,7 +342,140 @@ button:focus-visible,
   min-height: 0;
   overflow: hidden;
   flex-direction: column;
+  position: relative;
 }
+
+/* ── Background Wallpaper Layer ──────────────────────── */
+.app-wallpaper-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  will-change: filter;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+body:has(.has-wallpaper) {
+  background: #09090b !important;
+}
+
+/* ── Wallpaper translucency: CSS variable overrides ──────────────────────
+   Override key background variables with semi-transparent rgba values
+   so panels using bg-[var(--bg-tree,...)] etc. become translucent. */
+.app.has-wallpaper {
+  --bg-primary: rgba(15, 15, 18, 0.50) !important;
+  --bg-secondary: rgba(15, 15, 18, 0.50) !important;
+  --bg-tertiary: rgba(15, 15, 18, 0.50) !important;
+  --bg-elevated: rgba(20, 20, 24, 0.70) !important;
+  --bg-tree: rgba(15, 15, 18, 0.50) !important;
+  --bg-launcher: rgba(15, 15, 18, 0.50) !important;
+  --bg-toolbar: rgba(15, 15, 18, 0.50) !important;
+  --bg-input: rgba(0, 0, 0, 0.40) !important;
+  --bg-glass: rgba(15, 15, 18, 0.70) !important;
+  --titlebar-background: rgba(15, 15, 18, 0.50) !important;
+  --titlebar-background-focused: rgba(15, 15, 18, 0.50) !important;
+  --status-bar-background: rgba(15, 15, 18, 0.50) !important;
+  --tab-container-background: rgba(15, 15, 18, 0.50) !important;
+  --tab-background-active: rgba(22, 22, 26, 0.70) !important;
+  --background-primary: rgba(15, 15, 18, 0.50) !important;
+  --background-primary-alt: rgba(15, 15, 18, 0.50) !important;
+  --background-secondary: rgba(15, 15, 18, 0.50) !important;
+  --background-secondary-alt: rgba(15, 15, 18, 0.50) !important;
+}
+
+/* Light theme translucency overrides */
+html[data-theme="light"] .app.has-wallpaper,
+html[data-theme-mode="light"] .app.has-wallpaper {
+  --bg-primary: rgba(255, 255, 255, 0.76) !important;
+  --bg-secondary: rgba(255, 255, 255, 0.76) !important;
+  --bg-tertiary: rgba(255, 255, 255, 0.76) !important;
+  --bg-elevated: rgba(255, 255, 255, 0.88) !important;
+  --bg-tree: rgba(255, 255, 255, 0.76) !important;
+  --bg-launcher: rgba(255, 255, 255, 0.76) !important;
+  --bg-toolbar: rgba(255, 255, 255, 0.76) !important;
+  --bg-input: rgba(255, 255, 255, 0.60) !important;
+  --bg-glass: rgba(255, 255, 255, 0.88) !important;
+  --titlebar-background: rgba(255, 255, 255, 0.76) !important;
+  --status-bar-background: rgba(255, 255, 255, 0.76) !important;
+  --tab-container-background: rgba(255, 255, 255, 0.76) !important;
+  --tab-background-active: rgba(255, 255, 255, 0.85) !important;
+  --background-primary: rgba(255, 255, 255, 0.76) !important;
+  --background-secondary: rgba(255, 255, 255, 0.76) !important;
+}
+
+/* ── Direct element overrides for panels with React inline styles ────────
+   CSS !important overrides inline style={{ backgroundColor: "..." }}.
+   Uses `background` shorthand (not `background-color`) to fully override
+   any `background: var(...)` shorthand rules elsewhere in the stylesheet.
+   All use the same rgba value for uniform appearance across the app. */
+
+.app.has-wallpaper .ribbon,
+.app.has-wallpaper .sidebar,
+.app.has-wallpaper .titlebar,
+.app.has-wallpaper .trilium-toolbar,
+.app.has-wallpaper .editor-container > div,
+.app.has-wallpaper .trilium-statusbar,
+.app.has-wallpaper .right-sidebar-panel,
+.app.has-wallpaper .trilium-new-tab-view,
+.app.has-wallpaper .trilium-note-chrome {
+  background: rgba(15, 15, 18, 0.70) !important;
+}
+
+/* Inner structural wrappers — transparent so only the main panel background
+   layer is rendered. Uses `background` shorthand to fully override rules like
+   `.app { background: var(--bg-secondary); }` and
+   `.main-content { background: var(--bg-primary); }`. */
+.app.has-wallpaper,
+.app.has-wallpaper .app-body,
+.app.has-wallpaper .nn-explorer-container,
+.app.has-wallpaper .nn-folders-pane,
+.app.has-wallpaper .nn-notes-pane,
+.app.has-wallpaper .nn-compact-header,
+.app.has-wallpaper .file-explorer,
+.app.has-wallpaper .sidebar-section,
+.app.has-wallpaper .main-content,
+.app.has-wallpaper .editor-column,
+.app.has-wallpaper .cm-editor,
+.app.has-wallpaper .trilium-note-chrome > div {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .app.has-wallpaper .ribbon,
+html[data-theme="light"] .app.has-wallpaper .sidebar,
+html[data-theme="light"] .app.has-wallpaper .titlebar,
+html[data-theme="light"] .app.has-wallpaper .trilium-toolbar,
+html[data-theme="light"] .app.has-wallpaper .editor-container > div,
+html[data-theme="light"] .app.has-wallpaper .trilium-statusbar,
+html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel,
+html[data-theme="light"] .app.has-wallpaper .trilium-new-tab-view,
+html[data-theme="light"] .app.has-wallpaper .trilium-note-chrome {
+  background: rgba(255, 255, 255, 0.76) !important;
+}
+html[data-theme="light"] .app.has-wallpaper,
+html[data-theme="light"] .app.has-wallpaper .app-body,
+html[data-theme="light"] .app.has-wallpaper .nn-explorer-container,
+html[data-theme="light"] .app.has-wallpaper .nn-folders-pane,
+html[data-theme="light"] .app.has-wallpaper .nn-notes-pane,
+html[data-theme="light"] .app.has-wallpaper .nn-compact-header,
+html[data-theme="light"] .app.has-wallpaper .file-explorer,
+html[data-theme="light"] .app.has-wallpaper .sidebar-section,
+html[data-theme="light"] .app.has-wallpaper .main-content,
+html[data-theme="light"] .app.has-wallpaper .editor-column,
+html[data-theme="light"] .app.has-wallpaper .cm-editor,
+html[data-theme="light"] .app.has-wallpaper .trilium-note-chrome > div {
+  background: transparent !important;
+}
+html[data-theme="light"] body:has(.has-wallpaper) {
+  background: #e8e8ec !important;
+}
+
+
+
+
+
 
 .app-body {
   display: flex;
@@ -1112,7 +1245,6 @@ img.emoji {
 
 .main-content {
   background: var(--bg-primary);
-  border-left: 1px solid var(--divider-color);
 }
 
 .trilium-launcher {
@@ -1120,7 +1252,6 @@ img.emoji {
 }
 
 .trilium-tree {
-  border-right: 1px solid var(--divider-color);
 }
 
 .trilium-tree .file-tree-item.active {
@@ -1150,7 +1281,6 @@ img.emoji {
 }
 
 [data-theme="light"] .main-content {
-  box-shadow: -1px 0 0 var(--divider-color);
 }
 
 /* ── Smooth Scrolling & Performance Optimizations ── */
@@ -1204,7 +1334,7 @@ img.emoji {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background-color: var(--bg-primary, #1e1e1e);
+  background-color: var(--inner-panel-bg, var(--bg-primary, #1e1e1e));
 }
 
 /* Folders Pane (Left column) */
@@ -1216,7 +1346,7 @@ img.emoji {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  background-color: var(--bg-secondary, #161617);
+  background-color: var(--inner-panel-bg, var(--bg-secondary, #161617));
   padding: 8px 4px;
 }
 
@@ -1229,7 +1359,7 @@ img.emoji {
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
-  background-color: var(--bg-primary, #1e1e1e);
+  background-color: var(--inner-panel-bg, var(--bg-primary, #1e1e1e));
   padding: 8px;
 }
 
@@ -1383,7 +1513,7 @@ img.emoji {
   align-items: center;
   width: 100%;
   padding: 8px 8px 8px 4px;
-  background-color: var(--bg-secondary, #161617);
+  background-color: var(--inner-panel-bg, var(--bg-secondary, #161617));
   border-bottom: 1px solid var(--border-subtle, #2a2a2b);
   gap: 8px;
   flex-shrink: 0;

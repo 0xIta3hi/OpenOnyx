@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useCallback } from "react";
 import type { AppSettings } from "../SettingsPage";
 import { PreferenceCard, SliderControl, CustomToggle, SegmentedControl } from "./PreferenceCard";
 
@@ -21,11 +21,71 @@ const THEME_PRESETS = [
   { id: "custom", label: "Custom", bg: "#18181b", text: "#ffffff" },
 ];
 
+const MAX_WALLPAPER_WIDTH = 1920;
+const MAX_WALLPAPER_HEIGHT = 1080;
+const WALLPAPER_QUALITY = 0.8;
+
+/**
+ * Compress an image file to a JPEG data URL, capped at 1920x1080.
+ * This keeps localStorage usage reasonable (~200-500KB per wallpaper).
+ */
+function compressImageToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        // Scale down if exceeds max dimensions
+        if (width > MAX_WALLPAPER_WIDTH || height > MAX_WALLPAPER_HEIGHT) {
+          const ratio = Math.min(MAX_WALLPAPER_WIDTH / width, MAX_WALLPAPER_HEIGHT / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas context unavailable"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", WALLPAPER_QUALITY);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function LiveThemeStudio({ settings, onUpdateSetting }: LiveThemeStudioProps) {
   const activePreset = THEME_PRESETS.find((p) => p.id === settings.theme) || THEME_PRESETS[0];
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentBg = settings.theme === "custom" ? settings.customBgPrimary : activePreset.bg;
   const currentText = settings.theme === "custom" ? settings.customTextPrimary : activePreset.text;
+
+  const handleWallpaperSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      onUpdateSetting("backgroundImage", dataUrl);
+    } catch (err) {
+      console.warn("[Wallpaper] Failed to process image:", err);
+    }
+    // Reset the input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [onUpdateSetting]);
+
+  const handleRemoveWallpaper = useCallback(() => {
+    onUpdateSetting("backgroundImage", "");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [onUpdateSetting]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -213,6 +273,105 @@ export function LiveThemeStudio({ settings, onUpdateSetting }: LiveThemeStudioPr
           </div>
         </div>
       )}
+
+      {/* ── Background Wallpaper Section ────────────────────────────── */}
+      <div>
+        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          Background Wallpaper
+        </h3>
+        <div className="rounded-xl border border-[var(--border-medium)] bg-[var(--bg-secondary)] p-5">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleWallpaperSelect}
+            className="hidden"
+            id="wallpaper-file-input"
+          />
+
+          {/* Preview + Actions */}
+          <div className="flex items-start gap-5">
+            {/* Thumbnail / Placeholder */}
+            <div
+              className="relative flex h-28 w-48 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)]"
+              style={
+                settings.backgroundImage
+                  ? {
+                      backgroundImage: `url(${settings.backgroundImage})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : { backgroundColor: "var(--bg-tertiary)" }
+              }
+            >
+              {!settings.backgroundImage && (
+                <span className="text-[11px] font-medium text-[var(--text-muted)] text-center px-3">
+                  No wallpaper set
+                </span>
+              )}
+            </div>
+
+            {/* Actions + Info */}
+            <div className="flex flex-1 flex-col gap-3">
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                Set an image as your workspace background. The wallpaper renders behind all panels with adjustable blur and opacity.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-8 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-4 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+                >
+                  Choose Image
+                </button>
+                {settings.backgroundImage && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveWallpaper}
+                    className="h-8 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-tertiary)] px-4 text-xs font-semibold text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Blur & Opacity sliders (only shown when a wallpaper is set) */}
+          {settings.backgroundImage && (
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <PreferenceCard
+                title="Blur Amount"
+                description="Apply a gaussian blur to the background image."
+              >
+                <SliderControl
+                  value={settings.backgroundBlur ?? 0}
+                  min={0}
+                  max={40}
+                  step={1}
+                  unit="px"
+                  onChange={(val) => onUpdateSetting("backgroundBlur", val)}
+                />
+              </PreferenceCard>
+
+              <PreferenceCard
+                title="Wallpaper Opacity"
+                description="Controls the visibility of the background wallpaper."
+              >
+                <SliderControl
+                  value={settings.backgroundOpacity ?? 40}
+                  min={5}
+                  max={100}
+                  step={5}
+                  unit="%"
+                  onChange={(val) => onUpdateSetting("backgroundOpacity", val)}
+                />
+              </PreferenceCard>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Interface Layout Controls */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

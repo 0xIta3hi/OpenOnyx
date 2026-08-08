@@ -39,6 +39,7 @@ import { tags as t } from "@lezer/highlight";
 import { Tab, ViewMode } from "../../types";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SearchReplace } from "./SearchReplace";
+import { getDisplayDomain } from "../../utils/urlHelper";
 import {
   Editor as ObsidianEditor,
   MarkdownView,
@@ -4981,6 +4982,179 @@ export function Editor({
 
     const menu = new Menu();
 
+    const findLinkOrEmbedAtCursor = (lineText: string, posInLine: number) => {
+      const mdLinkRegex = /\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+      let match;
+      while ((match = mdLinkRegex.exec(lineText)) !== null) {
+        const start = match.index;
+        const end = mdLinkRegex.lastIndex;
+        if (posInLine >= start && posInLine <= end) {
+          return {
+            type: 'md-link',
+            text: match[0],
+            label: match[1],
+            url: match[2],
+            start,
+            end
+          };
+        }
+      }
+
+      const iframeRegex = /<iframe[^>]+src=(["'])(.*?)\1[^>]*>.*?<\/iframe>/gi;
+      iframeRegex.lastIndex = 0;
+      while ((match = iframeRegex.exec(lineText)) !== null) {
+        const start = match.index;
+        const end = iframeRegex.lastIndex;
+        if (posInLine >= start && posInLine <= end) {
+          return {
+            type: 'iframe',
+            text: match[0],
+            url: match[2],
+            start,
+            end
+          };
+        }
+      }
+
+      const urlRegex = /https?:\/\/[^\s\)\>]+/g;
+      while ((match = urlRegex.exec(lineText)) !== null) {
+        const start = match.index;
+        const end = urlRegex.lastIndex;
+        if (posInLine >= start && posInLine <= end) {
+          return {
+            type: 'raw-url',
+            text: match[0],
+            url: match[0],
+            start,
+            end
+          };
+        }
+      }
+
+      return null;
+    };
+
+    const cmView = viewRef.current;
+    let detected = null;
+    let targetFrom = 0;
+    let targetTo = 0;
+
+    if (cmView) {
+      const state = cmView.state;
+      const main = state.selection.main;
+      const line = state.doc.lineAt(main.from);
+      const lineText = line.text;
+      const posInLine = main.from - line.from;
+
+      if (!main.empty) {
+        const selectionText = state.sliceDoc(main.from, main.to).trim();
+        const mdLinkMatch = selectionText.match(/^\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)$/i);
+        if (mdLinkMatch) {
+          detected = {
+            type: 'md-link',
+            text: selectionText,
+            label: mdLinkMatch[1],
+            url: mdLinkMatch[2]
+          };
+          targetFrom = main.from;
+          targetTo = main.to;
+        } else {
+          const iframeMatch = selectionText.match(/^<iframe[^>]+src=(["'])(.*?)\1[^>]*>.*?<\/iframe>$/i);
+          if (iframeMatch) {
+            detected = {
+              type: 'iframe',
+              text: selectionText,
+              url: iframeMatch[2]
+            };
+            targetFrom = main.from;
+            targetTo = main.to;
+          } else {
+            const urlMatch = selectionText.match(/^https?:\/\/[^\s\)\>]+$/i);
+            if (urlMatch) {
+              detected = {
+                type: 'raw-url',
+                text: selectionText,
+                url: selectionText
+              };
+              targetFrom = main.from;
+              targetTo = main.to;
+            }
+          }
+        }
+      } else {
+        const cursorDetect = findLinkOrEmbedAtCursor(lineText, posInLine);
+        if (cursorDetect) {
+          detected = cursorDetect;
+          targetFrom = line.from + cursorDetect.start;
+          targetTo = line.from + cursorDetect.end;
+        }
+      }
+    }
+
+    if (detected && cmView) {
+      if (detected.type === 'md-link') {
+        menu.addItem((item: any) =>
+          item
+            .setTitle('Convert link to iframe embed')
+            .setIcon('video')
+            .onClick(() => {
+              const replacement = `<iframe src="${detected.url}"></iframe>`;
+              cmView.dispatch({
+                changes: { from: targetFrom, to: targetTo, insert: replacement },
+                selection: { anchor: targetFrom + replacement.length }
+              });
+              cmView.focus();
+            })
+        );
+        menu.addSeparator();
+      } else if (detected.type === 'iframe') {
+        menu.addItem((item: any) =>
+          item
+            .setTitle('Convert embed to text link')
+            .setIcon('link')
+            .onClick(() => {
+              const domain = getDisplayDomain(detected.url);
+              const replacement = `[${domain}](${detected.url})`;
+              cmView.dispatch({
+                changes: { from: targetFrom, to: targetTo, insert: replacement },
+                selection: { anchor: targetFrom + replacement.length }
+              });
+              cmView.focus();
+            })
+        );
+        menu.addSeparator();
+      } else if (detected.type === 'raw-url') {
+        menu.addItem((item: any) =>
+          item
+            .setTitle('Convert URL to iframe embed')
+            .setIcon('video')
+            .onClick(() => {
+              const replacement = `<iframe src="${detected.url}"></iframe>`;
+              cmView.dispatch({
+                changes: { from: targetFrom, to: targetTo, insert: replacement },
+                selection: { anchor: targetFrom + replacement.length }
+              });
+              cmView.focus();
+            })
+        );
+        menu.addItem((item: any) =>
+          item
+            .setTitle('Convert URL to text link')
+            .setIcon('link')
+            .onClick(() => {
+              const domain = getDisplayDomain(detected.url);
+              const replacement = `[${domain}](${detected.url})`;
+              cmView.dispatch({
+                changes: { from: targetFrom, to: targetTo, insert: replacement },
+                selection: { anchor: targetFrom + replacement.length }
+              });
+              cmView.focus();
+            })
+        );
+        menu.addSeparator();
+      }
+    }
+
     const selection = viewRef.current?.state.sliceDoc(
       viewRef.current.state.selection.main.from,
       viewRef.current.state.selection.main.to
@@ -5398,7 +5572,7 @@ export function Editor({
                   viewMode === "editor" || viewMode === "split"
                     ? "block"
                     : "none",
-                backgroundColor: "var(--bg-primary)",
+                ...(settings?.backgroundImage ? {} : { backgroundColor: "var(--bg-primary)" }),
               }}
             />
 
@@ -5417,7 +5591,7 @@ export function Editor({
                       : 1,
                   overflow: "auto",
                   height: "100%",
-                  backgroundColor: "var(--bg-primary)",
+                  ...(settings?.backgroundImage ? {} : { backgroundColor: "var(--bg-primary)" }),
                 }}
               >
 
