@@ -7,7 +7,10 @@ interface PluginLibraryHubProps {
   settings: AppSettings;
   plugins: PluginRegistration[];
   pluginSettingTabs: PluginSettingTabRegistration[];
-  onUpdateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  onUpdateSetting: <K extends keyof AppSettings>(
+    keyOrUpdates: K | Partial<AppSettings>,
+    value?: AppSettings[K],
+  ) => void;
   onEnablePlugin?: (pluginId: string) => Promise<void>;
   onDisablePlugin?: (pluginId: string) => Promise<void>;
   onRefreshPlugins?: () => Promise<void>;

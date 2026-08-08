@@ -81,9 +81,15 @@ export function SettingsCenter({
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
 
-  const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-    const updated = { ...settings, [key]: value };
-    onSettingsChange(updated);
+  const updateSetting = <K extends keyof AppSettings>(
+    keyOrUpdates: K | Partial<AppSettings>,
+    value?: AppSettings[K],
+  ) => {
+    if (typeof keyOrUpdates === "object" && keyOrUpdates !== null) {
+      onSettingsChange({ ...settings, ...keyOrUpdates });
+    } else {
+      onSettingsChange({ ...settings, [keyOrUpdates as K]: value });
+    }
   };
 
   // Natural Language Search Router
@@ -114,7 +120,7 @@ export function SettingsCenter({
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
       {/* Compact, Flat, Simple Settings Modal (900px wide x 640px high) */}
-      <div className="relative flex h-[640px] w-[900px] overflow-hidden rounded-xl border border-[var(--border-medium)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-xl">
+      <div className="relative flex h-[min(95vh,920px)] w-[min(98vw,1360px)] overflow-hidden rounded-xl border border-[var(--border-medium)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-xl">
         
         {/* Plugin Marketplace Overlay Mode */}
         {isBrowsingPlugins ? (
@@ -126,7 +132,7 @@ export function SettingsCenter({
         ) : (
           <>
             {/* Left Sidebar Navigation */}
-            <aside className="w-[220px] shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] flex flex-col">
+            <aside className="w-[240px] shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] flex flex-col">
               {/* Sidebar Search & Title */}
               <div className="p-4 border-b border-[var(--border-subtle)] flex flex-col gap-3">
                 <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
@@ -231,7 +237,7 @@ export function SettingsCenter({
 
               {/* Scrollable Content Body */}
               <main className="flex-1 overflow-y-auto p-6 bg-[var(--bg-primary)]">
-                <div className="mx-auto max-w-[760px]">
+                <div className="mx-auto max-w-[1020px]">
                   
                   {/* 0. Settings Home */}
                   {activeTab === "home" && (

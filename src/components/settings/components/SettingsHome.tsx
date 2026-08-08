@@ -4,7 +4,10 @@ import { SliderControl, SegmentedControl } from "./PreferenceCard";
 
 interface SettingsHomeProps {
   settings: AppSettings;
-  onUpdateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  onUpdateSetting: <K extends keyof AppSettings>(
+    keyOrUpdates: K | Partial<AppSettings>,
+    value?: AppSettings[K],
+  ) => void;
   onNavigate: (category: string) => void;
 }
 
@@ -64,9 +67,11 @@ export function SettingsHome({ settings, onUpdateSetting, onNavigate }: Settings
               unit="px"
               showValue={false}
               onChange={(val) => {
-                onUpdateSetting("fontSize", val);
-                onUpdateSetting("editorFontSize", val);
-                onUpdateSetting("previewFontSize", val);
+                onUpdateSetting({
+                  fontSize: val,
+                  editorFontSize: val,
+                  previewFontSize: val,
+                });
               }}
             />
           </div>

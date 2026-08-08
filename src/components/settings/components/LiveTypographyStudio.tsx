@@ -4,7 +4,10 @@ import { PreferenceCard, SegmentedControl, SliderControl, CustomToggle } from ".
 
 interface LiveTypographyStudioProps {
   settings: AppSettings;
-  onUpdateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  onUpdateSetting: <K extends keyof AppSettings>(
+    keyOrUpdates: K | Partial<AppSettings>,
+    value?: AppSettings[K],
+  ) => void;
 }
 
 export function LiveTypographyStudio({ settings, onUpdateSetting }: LiveTypographyStudioProps) {
@@ -106,9 +109,11 @@ export function LiveTypographyStudio({ settings, onUpdateSetting }: LiveTypograp
             max={24}
             unit="px"
             onChange={(val) => {
-              onUpdateSetting("fontSize", val);
-              onUpdateSetting("editorFontSize", val);
-              onUpdateSetting("previewFontSize", val);
+              onUpdateSetting({
+                fontSize: val,
+                editorFontSize: val,
+                previewFontSize: val,
+              });
             }}
           />
         </PreferenceCard>

@@ -4,7 +4,10 @@ import { PreferenceCard, SliderControl, CustomToggle, SegmentedControl } from ".
 
 interface LiveThemeStudioProps {
   settings: AppSettings;
-  onUpdateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  onUpdateSetting: <K extends keyof AppSettings>(
+    keyOrUpdates: K | Partial<AppSettings>,
+    value?: AppSettings[K],
+  ) => void;
 }
 
 const THEME_PRESETS = [
