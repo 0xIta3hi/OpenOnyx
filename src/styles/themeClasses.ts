@@ -1,5 +1,5 @@
 /** Tailwind arbitrary properties for the built-in application themes. */
-/* Trilium-inspired light theme (default) */
+/* Onyx-inspired light theme (default) */
 const calmWhiteThemeClasses = [
   "[&[data-theme=light][data-theme=light]]:[color-scheme:light]",
   "[&[data-theme=light][data-theme=light]]:[--color-base-00:#ffffff]",

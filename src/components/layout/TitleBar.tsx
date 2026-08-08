@@ -139,7 +139,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 const titlebarClass =
-  "titlebar trilium-titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--titlebar-background,var(--bg-secondary))] text-[length:var(--font-ui-small)] border-b border-[var(--divider-color)] [-webkit-app-region:drag]";
+  "titlebar onyx-titlebar relative z-[3200] flex h-[var(--titlebar-height)] min-h-[var(--titlebar-height)] w-full shrink-0 select-none items-center bg-[var(--titlebar-background,var(--bg-secondary))] text-[length:var(--font-ui-small)] border-b border-[var(--divider-color)] [-webkit-app-region:drag]";
 const titlebarDragHandleClass =
   "absolute inset-0 z-[1] pointer-events-auto [-webkit-app-region:drag]";
 const titlebarLeftClass =

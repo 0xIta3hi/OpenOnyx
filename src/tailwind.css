@@ -415,15 +415,22 @@ html[data-theme-mode="light"] .app.has-wallpaper {
 .app.has-wallpaper .ribbon,
 .app.has-wallpaper .sidebar,
 .app.has-wallpaper .titlebar,
-.app.has-wallpaper .trilium-toolbar,
+.app.has-wallpaper .onyx-toolbar,
 .app.has-wallpaper .editor-container > div,
 .app.has-wallpaper .cv,
 .app.has-wallpaper .graph-view-container,
-.app.has-wallpaper .trilium-statusbar,
+.app.has-wallpaper .onyx-statusbar,
 .app.has-wallpaper .right-sidebar-panel,
-.app.has-wallpaper .trilium-new-tab-view,
-.app.has-wallpaper .trilium-note-chrome {
+.app.has-wallpaper .onyx-new-tab-view,
+.app.has-wallpaper .onyx-note-chrome {
   background: rgba(15, 15, 18, 0.70) !important;
+}
+
+.app.has-wallpaper .right-sidebar-panel .bg-\(--bg-secondary\),
+.app.has-wallpaper .right-sidebar-panel .bg-\(--bg-primary\),
+.app.has-wallpaper .right-sidebar-panel .bg-\[var\(--bg-secondary\)\],
+.app.has-wallpaper .right-sidebar-panel .bg-\[var\(--bg-primary\)\] {
+  background: transparent !important;
 }
 
 /* Inner structural wrappers — transparent so only the main panel background
@@ -441,22 +448,29 @@ html[data-theme-mode="light"] .app.has-wallpaper {
 .app.has-wallpaper .main-content,
 .app.has-wallpaper .editor-column,
 .app.has-wallpaper .cm-editor,
-.app.has-wallpaper .trilium-note-chrome > div {
+.app.has-wallpaper .onyx-note-chrome > div {
   background: transparent !important;
 }
 
 html[data-theme="light"] .app.has-wallpaper .ribbon,
 html[data-theme="light"] .app.has-wallpaper .sidebar,
 html[data-theme="light"] .app.has-wallpaper .titlebar,
-html[data-theme="light"] .app.has-wallpaper .trilium-toolbar,
+html[data-theme="light"] .app.has-wallpaper .onyx-toolbar,
 html[data-theme="light"] .app.has-wallpaper .editor-container > div,
 html[data-theme="light"] .app.has-wallpaper .cv,
 html[data-theme="light"] .app.has-wallpaper .graph-view-container,
-html[data-theme="light"] .app.has-wallpaper .trilium-statusbar,
+html[data-theme="light"] .app.has-wallpaper .onyx-statusbar,
 html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel,
-html[data-theme="light"] .app.has-wallpaper .trilium-new-tab-view,
-html[data-theme="light"] .app.has-wallpaper .trilium-note-chrome {
+html[data-theme="light"] .app.has-wallpaper .onyx-new-tab-view,
+html[data-theme="light"] .app.has-wallpaper .onyx-note-chrome {
   background: rgba(255, 255, 255, 0.76) !important;
+}
+
+html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel .bg-\(--bg-secondary\),
+html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel .bg-\(--bg-primary\),
+html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel .bg-\[var\(--bg-secondary\)\],
+html[data-theme="light"] .app.has-wallpaper .right-sidebar-panel .bg-\[var\(--bg-primary\)\] {
+  background: transparent !important;
 }
 html[data-theme="light"] .app.has-wallpaper,
 html[data-theme="light"] .app.has-wallpaper .app-body,
@@ -469,7 +483,7 @@ html[data-theme="light"] .app.has-wallpaper .sidebar-section,
 html[data-theme="light"] .app.has-wallpaper .main-content,
 html[data-theme="light"] .app.has-wallpaper .editor-column,
 html[data-theme="light"] .app.has-wallpaper .cm-editor,
-html[data-theme="light"] .app.has-wallpaper .trilium-note-chrome > div {
+html[data-theme="light"] .app.has-wallpaper .onyx-note-chrome > div {
   background: transparent !important;
 }
 
@@ -1248,7 +1262,7 @@ img.emoji {
   color: var(--accent-primary) !important;
 }
 
-/* ── Trilium-inspired shell refinements ── */
+/* ── Onyx-inspired shell refinements ── */
 .app {
   background: var(--bg-secondary);
 }
@@ -1261,36 +1275,36 @@ img.emoji {
   background: var(--bg-primary);
 }
 
-.trilium-launcher {
+.onyx-launcher {
   z-index: 5;
 }
 
-.trilium-tree {
+.onyx-tree {
 }
 
-.trilium-tree .file-tree-item.active {
+.onyx-tree .file-tree-item.active {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
-.trilium-titlebar {
+.onyx-titlebar {
   background: var(--titlebar-background, var(--bg-secondary));
 }
 
-.trilium-toolbar {
+.onyx-toolbar {
   background: var(--bg-toolbar, var(--bg-secondary));
 }
 
-.trilium-note-chrome {
+.onyx-note-chrome {
   background: var(--bg-primary);
 }
 
-.trilium-statusbar {
+.onyx-statusbar {
   background: var(--status-bar-background);
 }
 
 /* Soften left shell so launcher + tree read as one panel */
-[data-theme="light"] .ribbon.trilium-launcher,
-[data-theme="light"] .sidebar.trilium-tree {
+[data-theme="light"] .ribbon.onyx-launcher,
+[data-theme="light"] .sidebar.onyx-tree {
   background: var(--bg-tree, #eef0f3);
 }
 

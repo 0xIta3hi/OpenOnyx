@@ -223,7 +223,7 @@ function NewFolderIcon({ size = 18 }: { size?: number }) {
 }
 
 const sidebarRootClass =
-  "sidebar trilium-tree relative flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden bg-[var(--bg-tree,var(--bg-secondary))] pt-0";
+  "sidebar onyx-tree relative flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden bg-[var(--bg-tree,var(--bg-secondary))] pt-0";
 const sidebarCollapsedClass =
   "collapsed !m-0 hidden !w-0 !min-w-0 !max-w-0 !overflow-hidden !border-x-0 !p-0";
 const sidebarHeaderClass =
@@ -234,7 +234,7 @@ const sidebarBtnClass =
 const sidebarBtnActiveClass =
   "bg-[color-mix(in_srgb,var(--accent-primary)_12%,transparent)] text-[var(--accent-primary)]";
 const sidebarFilterClass =
-  "trilium-quick-search mx-2 mt-2 mb-1.5 flex items-center gap-2 rounded-full bg-[var(--bg-input,var(--bg-tertiary))] px-3 py-1.5 shadow-none";
+  "onyx-quick-search mx-2 mt-2 mb-1.5 flex items-center gap-2 rounded-full bg-[var(--bg-input,var(--bg-tertiary))] px-3 py-1.5 shadow-none";
 const sidebarFilterIconClass = "shrink-0 text-[var(--text-muted)]";
 const sidebarFilterInputClass =
   "flex-1 min-w-0 border-0 bg-transparent py-0.5 font-sans text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";

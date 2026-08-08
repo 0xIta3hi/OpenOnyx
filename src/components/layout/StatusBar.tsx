@@ -1,5 +1,5 @@
 /**
- * Status Bar — Trilium-style full-width footer with breadcrumbs + stats
+ * Status Bar — Onyx-style full-width footer with breadcrumbs + stats
  */
 
 import React from "react";
@@ -19,7 +19,7 @@ import type { PluginStatusBarItem } from '../../types/plugin';
 import { VimModeIndicator } from "./VimModeIndicator";
 
 const statusBarClass =
-  "trilium-statusbar relative z-[180] flex h-[28px] w-full shrink-0 items-center justify-between overflow-hidden border-t border-[var(--divider-color)] bg-[var(--status-bar-background)] px-3 text-[12px] font-medium text-[var(--status-bar-text-color)]";
+  "onyx-statusbar relative z-[180] flex h-[28px] w-full shrink-0 items-center justify-between overflow-hidden border-t border-[var(--divider-color)] bg-[var(--status-bar-background)] px-3 text-[12px] font-medium text-[var(--status-bar-text-color)]";
 const statusGroupClass = "flex min-w-0 items-center gap-1";
 const statusItemClass =
   "inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap px-1.5 text-[12px] leading-none text-[var(--status-bar-text-color)]";

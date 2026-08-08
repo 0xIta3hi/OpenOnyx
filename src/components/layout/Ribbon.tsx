@@ -15,8 +15,8 @@ import type { PluginRibbonAction } from '../../types/plugin';
 import { setIcon } from '../../lib/obsidian-api/utils';
 import { SpacesIcon } from "../spaces/SpacesIcon";
 
-/** Trilium-style three-leaf logo mark */
-function TriliumMark({ size = 22 }: { size?: number }) {
+/** Onyx-style three-leaf logo mark */
+function OnyxMark({ size = 22 }: { size?: number }) {
   return (
     <svg
       width={size}
@@ -44,7 +44,7 @@ function TriliumMark({ size = 22 }: { size?: number }) {
 }
 
 const ribbonRootClass =
-  "ribbon trilium-launcher flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-[var(--bg-launcher,var(--bg-secondary))] border-r border-[var(--divider-color)] shrink-0 pt-2.5 pb-3";
+  "ribbon onyx-launcher flex flex-col justify-between items-center w-[var(--ribbon-width)] bg-[var(--bg-launcher,var(--bg-secondary))] border-r border-[var(--divider-color)] shrink-0 pt-2.5 pb-3";
 const ribbonGroupClass = "flex flex-col items-center gap-0.5";
 const ribbonBtnClass =
   "flex h-9 w-9 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";

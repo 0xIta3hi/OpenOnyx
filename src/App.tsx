@@ -1479,7 +1479,7 @@ export default function App() {
     };
 
     const onMove = (ev: MouseEvent) => {
-      const ribbonWidth = 48; // Trilium-style launcher width
+      const ribbonWidth = 48; // Onyx-style launcher width
       const curLeftWidth = sidebarWidthRef.current;
       const leftUsed = showSidebarRef.current ? curLeftWidth : 0;
       const minCenterWidth = 40;

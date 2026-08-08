@@ -1,5 +1,5 @@
 /**
- * FormattingToolbar — Trilium-style rich-text formatting strip
+ * FormattingToolbar — Onyx-style rich-text formatting strip
  * Dispatches markdown formatting commands to the active CodeMirror editor.
  */
 
@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 
 const toolbarClass =
-  "trilium-toolbar flex h-9 min-h-9 shrink-0 items-center gap-0.5 overflow-visible border-b border-[var(--divider-color)] bg-[var(--bg-toolbar,var(--bg-secondary))] px-2";
+  "onyx-toolbar flex h-9 min-h-9 shrink-0 items-center gap-0.5 overflow-visible border-b border-[var(--divider-color)] bg-[var(--bg-toolbar,var(--bg-secondary))] px-2";
 const groupClass = "flex items-center gap-0.5";
 const sepClass = "mx-1 h-4 w-px shrink-0 bg-[var(--border-subtle)]";
 const btnClass =
