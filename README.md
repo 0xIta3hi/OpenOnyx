@@ -1,7 +1,7 @@
 # OpenOnyx
 
 <p align="center">
-  <img width="1600" alt="OpenOnyx desktop workspace" src="docs/images/banner.png" />
+  <img width="1600" alt="OpenOnyx desktop workspace" src="docs/images/banner.webp" />
 </p>
 
 <p align="center">
