@@ -1110,16 +1110,33 @@ class MarkdownTableWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement("div");
     wrapper.className = "cm-live-table-wrapper";
-    wrapper.title = "Click to edit table";
-    wrapper.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      const line = view.state.doc.line(this.startLine);
-      view.dispatch({ selection: { anchor: line.from } });
-      view.focus();
+    wrapper.title = "Edit table";
+    
+    wrapper.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
     });
+
     const table = document.createElement("table");
     table.className = "cm-live-table";
     wrapper.appendChild(table);
+
+    const saveTable = () => {
+      const pos = view.posAtDOM(wrapper);
+      if (pos < 0) return;
+      const startLine = view.state.doc.lineAt(pos).number;
+      const range = getTableRange(view.state.doc, startLine);
+      if (!range) return;
+      const from = view.state.doc.line(range.start).from;
+      const to = view.state.doc.line(range.end).to;
+      const newMarkdown = serializeTableDOMToMarkdown(table);
+      const currentMarkdown = view.state.sliceDoc(from, to);
+      if (currentMarkdown !== newMarkdown) {
+        view.dispatch({
+          changes: { from, to, insert: newMarkdown },
+          userEvent: "input",
+        });
+      }
+    };
 
     const parsedRows = this.rows.map(parseTableCells);
     const separatorIndex = parsedRows.findIndex((cells) =>
@@ -1147,6 +1164,7 @@ class MarkdownTableWidget extends WidgetType {
           const th = document.createElement("th");
           renderTableCellMarkdown(th, cell);
           tr.appendChild(th);
+          setupEditableCell(th, view, saveTable, wrapper);
         }
       }
     }
@@ -1160,10 +1178,112 @@ class MarkdownTableWidget extends WidgetType {
         const td = document.createElement("td");
         renderTableCellMarkdown(td, cell);
         tr.appendChild(td);
+        setupEditableCell(td, view, saveTable, wrapper);
       }
     }
 
+    const controls = document.createElement("div");
+    controls.className = "cm-live-table-controls";
+    controls.setAttribute("contenteditable", "false");
+
+    const addRowBtn = document.createElement("button");
+    addRowBtn.type = "button";
+    addRowBtn.className = "cm-live-table-control";
+    addRowBtn.textContent = "+ Row";
+    addRowBtn.title = "Add row below";
+    addRowBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const cols = table.rows[0]?.cells.length || 1;
+      const tBody = table.querySelector("tbody") || table;
+      const tr = document.createElement("tr");
+      tBody.appendChild(tr);
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement("td");
+        tr.appendChild(td);
+        setupEditableCell(td, view, saveTable, wrapper);
+      }
+      (tr.cells[0] as HTMLElement).focus();
+      saveTable();
+    });
+    controls.appendChild(addRowBtn);
+
+    const deleteRowBtn = document.createElement("button");
+    deleteRowBtn.type = "button";
+    deleteRowBtn.className = "cm-live-table-control";
+    deleteRowBtn.textContent = "- Row";
+    deleteRowBtn.title = "Delete last row";
+    deleteRowBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const tBody = table.querySelector("tbody");
+      if (tBody && tBody.rows.length > 1) {
+        tBody.deleteRow(tBody.rows.length - 1);
+        saveTable();
+      }
+    });
+    controls.appendChild(deleteRowBtn);
+
+    const addColBtn = document.createElement("button");
+    addColBtn.type = "button";
+    addColBtn.className = "cm-live-table-control";
+    addColBtn.textContent = "+ Col";
+    addColBtn.title = "Add column to the right";
+    addColBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const theadTrs = table.querySelectorAll("thead tr");
+      theadTrs.forEach((tr) => {
+        const th = document.createElement("th");
+        tr.appendChild(th);
+        setupEditableCell(th, view, saveTable, wrapper);
+      });
+      
+      const tbodyTrs = table.querySelectorAll("tbody tr");
+      tbodyTrs.forEach((tr) => {
+        const td = document.createElement("td");
+        tr.appendChild(td);
+        setupEditableCell(td, view, saveTable, wrapper);
+      });
+      
+      const firstRow = table.rows[0];
+      if (firstRow) {
+        (firstRow.cells[firstRow.cells.length - 1] as HTMLElement).focus();
+      }
+      saveTable();
+    });
+    controls.appendChild(addColBtn);
+
+    const deleteColBtn = document.createElement("button");
+    deleteColBtn.type = "button";
+    deleteColBtn.className = "cm-live-table-control";
+    deleteColBtn.textContent = "- Col";
+    deleteColBtn.title = "Delete last column";
+    deleteColBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rows = table.rows;
+      if (rows.length > 0 && rows[0].cells.length > 1) {
+        for (let r = 0; r < rows.length; r++) {
+          rows[r].deleteCell(rows[r].cells.length - 1);
+        }
+        saveTable();
+      }
+    });
+    controls.appendChild(deleteColBtn);
+
+    wrapper.appendChild(controls);
+
     return wrapper;
+  }
+
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    const activeEl = document.activeElement;
+    if (activeEl && dom.contains(activeEl)) {
+      return true;
+    }
+    return false;
   }
 }
 
@@ -1222,6 +1342,177 @@ class MarkdownTableControlsWidget extends WidgetType {
 function parseTableCells(row: string): string[] {
   const trimmed = row.trim().replace(/^\|/, "").replace(/\|$/, "");
   return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function htmlToMarkdown(html: string): string {
+  let text = html;
+  text = text.replace(/<code>(.*?)<\/code>/gi, "`$1`");
+  text = text.replace(/<strong>(.*?)<\/strong>/gi, "**$1**");
+  text = text.replace(/<b>(.*?)<\/b>/gi, "**$1**");
+  text = text.replace(/<em>(.*?)<\/em>/gi, "*$1*");
+  text = text.replace(/<i>(.*?)<\/i>/gi, "*$1*");
+  text = text.replace(/<del>(.*?)<\/del>/gi, "~~$1~~");
+  text = text.replace(/<s>(.*?)<\/s>/gi, "~~$1~~");
+  text = text.replace(/<[^>]+>/g, "");
+  text = text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+  return text.trim();
+}
+
+function serializeTableDOMToMarkdown(tableEl: HTMLTableElement): string {
+  const rows: string[][] = [];
+  const thead = tableEl.querySelector("thead");
+  if (thead) {
+    thead.querySelectorAll("tr").forEach((tr) => {
+      const cells: string[] = [];
+      tr.querySelectorAll("th").forEach((th) => {
+        cells.push(htmlToMarkdown(th.innerHTML));
+      });
+      rows.push(cells);
+    });
+  }
+  const columnCount = rows[0]?.length || tableEl.querySelector("tbody tr")?.querySelectorAll("td").length || 1;
+  const separatorRow = Array.from({ length: columnCount }, () => "---");
+  rows.push(separatorRow);
+  const tbody = tableEl.querySelector("tbody");
+  if (tbody) {
+    tbody.querySelectorAll("tr").forEach((tr) => {
+      const cells: string[] = [];
+      tr.querySelectorAll("td").forEach((td) => {
+        cells.push(htmlToMarkdown(td.innerHTML));
+      });
+      rows.push(cells);
+    });
+  }
+  return rows.map((cells) => `| ${cells.join(" | ")} |`).join("\n");
+}
+
+function setupEditableCell(
+  cell: HTMLTableCellElement,
+  view: EditorView,
+  saveTable: () => void,
+  wrapper: HTMLElement,
+) {
+  cell.contentEditable = "true";
+  cell.style.outline = "none";
+  const stopProp = (e: Event) => e.stopPropagation();
+
+  cell.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      const cells = Array.from(cell.closest("table")?.querySelectorAll("th, td") || []);
+      const index = cells.indexOf(cell);
+      if (index >= 0) {
+        const nextCell = cells[index + (e.shiftKey ? -1 : 1)] as HTMLElement;
+        if (nextCell) {
+          nextCell.focus();
+          const range = document.createRange();
+          range.selectNodeContents(nextCell);
+          range.collapse(false);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+      }
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const tr = cell.parentElement;
+      const table = tr?.closest("table");
+      if (tr && table) {
+        const colIndex = Array.from(tr.children).indexOf(cell);
+        const trs = Array.from(table.querySelectorAll("tr")) as Element[];
+        const rowIndex = trs.indexOf(tr as Element);
+        const nextTr = trs[rowIndex + 1];
+        if (nextTr) {
+          const nextCell = nextTr.children[colIndex] as HTMLElement;
+          if (nextCell) nextCell.focus();
+        } else {
+          const columnCount = table.rows[0]?.cells.length || 1;
+          const tbody = table.querySelector("tbody") || table;
+          const newTr = document.createElement("tr");
+          tbody.appendChild(newTr);
+          for (let c = 0; c < columnCount; c++) {
+            const td = document.createElement("td");
+            newTr.appendChild(td);
+            setupEditableCell(td, view, saveTable, wrapper);
+          }
+          (newTr.cells[colIndex] as HTMLElement || newTr.cells[0]).focus();
+          saveTable();
+        }
+      }
+    } else if (e.key === "ArrowUp") {
+      const tr = cell.parentElement;
+      const table = tr?.closest("table");
+      if (tr && table) {
+        const trs = Array.from(table.querySelectorAll("tr")) as Element[];
+        const rowIndex = trs.indexOf(tr as Element);
+        if (rowIndex > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const colIndex = Array.from(tr.children).indexOf(cell);
+          const prevTr = trs[rowIndex - 1];
+          const prevCell = prevTr.children[colIndex] as HTMLElement;
+          if (prevCell) prevCell.focus();
+        } else {
+          const pos = view.posAtDOM(wrapper);
+          if (pos >= 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            view.dispatch({ selection: { anchor: pos } });
+            view.focus();
+          }
+        }
+      }
+    } else if (e.key === "ArrowDown") {
+      const tr = cell.parentElement;
+      const table = tr?.closest("table");
+      if (tr && table) {
+        const trs = Array.from(table.querySelectorAll("tr")) as Element[];
+        const rowIndex = trs.indexOf(tr as Element);
+        if (rowIndex < trs.length - 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          const colIndex = Array.from(tr.children).indexOf(cell);
+          const nextTr = trs[rowIndex + 1];
+          const nextCell = nextTr.children[colIndex] as HTMLElement;
+          if (nextCell) nextCell.focus();
+        } else {
+          const pos = view.posAtDOM(wrapper);
+          if (pos >= 0) {
+            const startLine = view.state.doc.lineAt(pos).number;
+            const range = getTableRange(view.state.doc, startLine);
+            if (range) {
+              e.preventDefault();
+              e.stopPropagation();
+              const endLinePos = view.state.doc.line(range.end).to;
+              const targetPos = Math.min(view.state.doc.length, endLinePos + 1);
+              view.dispatch({ selection: { anchor: targetPos } });
+              view.focus();
+            }
+          }
+        }
+      }
+    } else {
+      e.stopPropagation();
+    }
+  });
+
+  cell.addEventListener("keyup", stopProp);
+  cell.addEventListener("keypress", stopProp);
+  cell.addEventListener("mousedown", stopProp);
+  cell.addEventListener("mouseup", stopProp);
+  cell.addEventListener("click", stopProp);
+
+  cell.addEventListener("input", () => {
+    saveTable();
+  });
 }
 
 function isTableRow(text: string): boolean {
@@ -1551,45 +1842,13 @@ function markdownLivePreviewPlugin() {
           tableEnd++;
           tableRows.push(doc.line(tableEnd).text);
         }
-        const tableHasActiveLine = Array.from({ length: tableEnd - tableStart + 1 }, (_, index) => tableStart + index)
-          .some((lineNumber) => activeLinesSet.has(lineNumber));
 
-        if (!tableHasActiveLine) {
-          decorations.push(
-            Decoration.replace({
-              widget: new MarkdownTableWidget(tableRows, tableStart),
-              block: true,
-            }).range(line.from, doc.line(tableEnd).to),
-          );
-          i = tableEnd;
-          continue;
-        }
-
-        for (let tableLine = tableStart; tableLine <= tableEnd; tableLine++) {
-          const targetLine = doc.line(tableLine);
-          decorations.push(
-            Decoration.line({
-              attributes: {
-                class: isTableSeparator(targetLine.text)
-                  ? "cm-live-table-source-separator"
-                  : "cm-live-table-source-row",
-              },
-            }).range(targetLine.from),
-          );
-          if (tableLine !== tableStart + 1 && !activeLinesSet.has(tableLine)) {
-            addInactiveInlinePreviewDecorations(decorations, targetLine.from, targetLine.text);
-          }
-        }
-
-        if (tableHasActiveLine) {
-          decorations.push(
-            Decoration.widget({
-              widget: new MarkdownTableControlsWidget(selection.main.head === doc.line(tableEnd).to ? tableEnd : doc.lineAt(selection.main.head).number),
-              side: 1,
-              block: true,
-            }).range(doc.line(tableEnd).to),
-          );
-        }
+        decorations.push(
+          Decoration.replace({
+            widget: new MarkdownTableWidget(tableRows, tableStart),
+            block: true,
+          }).range(line.from, doc.line(tableEnd).to),
+        );
 
         i = tableEnd;
         continue;
