@@ -2293,9 +2293,6 @@ class EndOfNoteSuggestionsWidget extends WidgetType {
     root.setAttribute("contenteditable", "false");
     root.style.userSelect = "none";
     root.style.caretColor = "transparent";
-    root.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
 
     const uniqueNextSteps = this.nextStepSuggestions.filter(
       (candidate, index, list) =>
@@ -2476,7 +2473,7 @@ function buildSuggestionsDecorations(
             options.isClosing || false,
           ),
           side: 1,
-          block: true,
+          block: false,
         }).range(doc.length),
       );
     }
@@ -2496,7 +2493,7 @@ function buildSuggestionsDecorations(
           options.isClosing || false,
         ),
         side: 1,
-        block: true,
+        block: false,
       }).range(doc.length),
     );
   }
