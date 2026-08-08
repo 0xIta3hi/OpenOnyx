@@ -6570,7 +6570,10 @@ export default function App() {
     {
       id: "settings",
       label: "Open Settings",
-      action: () => setShowSettings(true),
+      action: () => {
+        setSettingsSection("general");
+        setShowSettings(true);
+      },
       category: "Settings",
     },
     {
@@ -7434,7 +7437,10 @@ export default function App() {
             onGraph={() => {
               openGraphAsTab();
             }}
-            onSettings={() => setShowSettings(true)}
+            onSettings={() => {
+              setSettingsSection("general");
+              setShowSettings(true);
+            }}
             onDailyNote={() => {
               if (settings.coreDailyNotes !== false) void handleCreateDailyNote();
             }}
@@ -7518,7 +7524,10 @@ export default function App() {
                   }}
                   previouslyOpenedVaults={previouslyOpenedVaults}
                   onSwitchVault={handleSwitchVault}
-                  onSettings={() => setShowSettings(true)}
+                  onSettings={() => {
+                    setSettingsSection("general");
+                    setShowSettings(true);
+                  }}
                   pluginViews={activeLeftPluginViews}
                   onClosePluginView={(viewType) => {
                     const app = ooAppRef.current;
@@ -7882,7 +7891,10 @@ export default function App() {
         <SettingsPage
           settings={settings}
           onSettingsChange={setSettings}
-          onClose={() => setShowSettings(false)}
+          onClose={() => {
+            setShowSettings(false);
+            setSettingsSection("general");
+          }}
           initialSection={settingsSection as any}
           commands={[
             ...commands,
