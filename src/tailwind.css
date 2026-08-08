@@ -1525,8 +1525,11 @@ img.emoji {
 .nn-compact-header {
   display: flex;
   align-items: center;
-  width: 100%;
-  padding: 8px 8px 8px 4px;
+  margin-top: -2px;
+  margin-left: -6px;
+  margin-right: -6px;
+  margin-bottom: 8px;
+  padding: 8px 8px 8px 10px;
   background-color: var(--inner-panel-bg, var(--bg-secondary, #161617));
   border-bottom: 1px solid var(--border-subtle, #2a2a2b);
   gap: 8px;

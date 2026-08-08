@@ -89,7 +89,7 @@ export class FileSystemManager {
     for (const entry of entries) {
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
 
-      const relativePath = path.join(dirPath, entry.name);
+      const relativePath = path.join(dirPath, entry.name).replace(/\\/g, '/');
       const absolutePath = path.join(absoluteDir, entry.name);
       
       try {
@@ -388,7 +388,7 @@ export class FileSystemManager {
     for (const entry of entries) {
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
       
-      const relativePath = dirPath ? path.join(dirPath, entry.name) : entry.name;
+      const relativePath = (dirPath ? path.join(dirPath, entry.name) : entry.name).replace(/\\/g, '/');
       
       if (entry.isDirectory()) {
         const subFiles = await this.getAllMarkdownFiles(relativePath);
