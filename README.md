@@ -20,22 +20,6 @@ OpenOnyx is a professional desktop knowledge management app built around plain M
 
 The app is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
 
-## Contents
-
-- [Why OpenOnyx](#why-openonyx)
-- [Feature Tour](#feature-tour)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Development](#development)
-- [Testing](#testing)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Plugin Compatibility](#plugin-compatibility)
-- [Privacy and Security](#privacy-and-security)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Why OpenOnyx
 
