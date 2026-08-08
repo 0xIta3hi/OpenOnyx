@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useLayoutEffect, useRef } from "react";
 import type { AppSettings } from "./SettingsPage";
 import type { PluginRegistration, PluginSettingTabRegistration } from "../../types/plugin";
 import type { Command as AppCommand } from "../../types";
@@ -81,6 +81,21 @@ export function SettingsCenter({
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
 
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const [activeTabRect, setActiveTabRect] = useState<{ top: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const activeElement = sidebarRef.current?.querySelector(`[data-tab-id="${activeTab}"]`) as HTMLElement;
+    if (activeElement) {
+      setActiveTabRect({
+        top: activeElement.offsetTop,
+        height: activeElement.offsetHeight,
+      });
+    } else {
+      setActiveTabRect(null);
+    }
+  }, [activeTab]);
+
   const updateSetting = <K extends keyof AppSettings>(
     keyOrUpdates: K | Partial<AppSettings>,
     value?: AppSettings[K],
@@ -161,8 +176,19 @@ export function SettingsCenter({
               </div>
 
               {/* Sidebar Menu Scroll Area */}
-              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-0.5">
-                <div className="px-2 pb-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <div ref={sidebarRef} className="flex-1 overflow-y-auto p-3 flex flex-col gap-0.5 relative">
+                {/* Sliding Background Highlight */}
+                {activeTabRect && (
+                  <div
+                    className="absolute left-3 right-3 rounded-md bg-[var(--bg-elevated)] transition-all duration-200 ease-out pointer-events-none z-0"
+                    style={{
+                      top: `${activeTabRect.top}px`,
+                      height: `${activeTabRect.height}px`,
+                    }}
+                  />
+                )}
+
+                <div className="px-2 pb-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-muted)] z-10">
                   Categories
                 </div>
                 {STUDIOS.map((studio) => {
@@ -170,12 +196,13 @@ export function SettingsCenter({
                   return (
                     <button
                       key={studio.id}
+                      data-tab-id={studio.id}
                       type="button"
                       onClick={() => setActiveTab(studio.id)}
-                      className={`flex items-center justify-between rounded-md px-3 py-1.5 text-left transition-colors duration-100 ${
+                      className={`relative z-10 flex items-center justify-between rounded-md px-3 py-1.5 text-left transition-colors duration-200 ${
                         isActive
-                          ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold border border-[var(--border-subtle)] shadow-xs"
-                          : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          ? "text-[var(--text-primary)] font-semibold"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                       }`}
                     >
                       <span className="text-[12px]">{studio.label}</span>
@@ -183,18 +210,19 @@ export function SettingsCenter({
                   );
                 })}
 
-                <div className="my-2 border-t border-[var(--border-subtle)]" />
+                <div className="my-2 border-t border-[var(--border-subtle)] z-10" />
 
-                <div className="px-2 pb-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <div className="px-2 pb-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-muted)] z-10">
                   Tooling
                 </div>
                 <button
                   type="button"
+                  data-tab-id="hotkeys"
                   onClick={() => setActiveTab("hotkeys")}
-                  className={`flex items-center justify-between rounded-md px-3 py-1.5 text-left transition-colors duration-100 ${
+                  className={`relative z-10 flex items-center justify-between rounded-md px-3 py-1.5 text-left transition-colors duration-200 ${
                     activeTab === "hotkeys"
-                      ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold border border-[var(--border-subtle)] shadow-xs"
-                      : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      ? "text-[var(--text-primary)] font-semibold"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   }`}
                 >
                   <span className="text-[12px]">Shortcuts Registry</span>
@@ -202,11 +230,12 @@ export function SettingsCenter({
 
                 <button
                   type="button"
+                  data-tab-id="collaboration"
                   onClick={() => setActiveTab("collaboration")}
-                  className={`flex items-center justify-between rounded-md px-3 py-1.5 text-left transition-colors duration-100 ${
+                  className={`relative z-10 flex items-center justify-between rounded-md px-3 py-1.5 text-left transition-colors duration-200 ${
                     activeTab === "collaboration"
-                      ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold border border-[var(--border-subtle)] shadow-xs"
-                      : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                      ? "text-[var(--text-primary)] font-semibold"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   }`}
                 >
                   <span className="text-[12px]">Cloud Workspaces</span>

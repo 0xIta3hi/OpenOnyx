@@ -69,10 +69,23 @@ export function SegmentedControl<T extends string | number>({
   onChange,
   className = "",
 }: SegmentedControlProps<T>) {
+  const activeIndex = options.findIndex((opt) => opt.value === value);
+
   return (
     <div
-      className={`inline-flex items-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-0.5 ${className}`}
+      className={`relative inline-flex items-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-0.5 ${className}`}
     >
+      {/* Sliding Highlight Indicator */}
+      {activeIndex !== -1 && (
+        <div
+          className="absolute bottom-0.5 top-0.5 rounded bg-[var(--bg-primary)] transition-all duration-200 ease-out z-0"
+          style={{
+            left: `calc(${(activeIndex * 100) / options.length}% + 2px)`,
+            width: `calc(${100 / options.length}% - 4px)`,
+          }}
+        />
+      )}
+
       {options.map((opt) => {
         const isSelected = opt.value === value;
         return (
@@ -80,11 +93,12 @@ export function SegmentedControl<T extends string | number>({
             key={String(opt.value)}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={`flex items-center justify-center rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            className={`relative z-10 flex flex-1 items-center justify-center rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
               isSelected
-                ? "bg-[var(--bg-primary)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-xs"
-                : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                ? "text-[var(--text-primary)] font-semibold"
+                : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`}
+            style={{ minWidth: "60px" }}
             title={opt.description}
           >
             {opt.label}
