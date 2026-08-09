@@ -343,7 +343,7 @@ export class SyncEngine {
         }
         continue;
       }
-      if (isPrivateSpace && !privateCrypto.isUnlocked(this.activeSpaceId)) {
+      if (isPrivateSpace && !(await privateCrypto.ensureSpaceUnlocked(this.activeSpaceId))) {
         this.notifyStatus({ state: 'error', error: 'Unlock this private space before syncing encrypted content.' });
         continue;
       }
