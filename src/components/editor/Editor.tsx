@@ -280,6 +280,14 @@ interface EditorProps {
   onGenerateInsight?: () => void;
   isGeneratingInsight?: boolean;
   isFocused?: boolean;
+  /**
+   * When provided, the editor uses Yjs CRDT collaboration instead of the legacy
+   * operation-based system. This Extension array should contain the output of
+   * yCollab() and yUndoManagerKeymap from y-codemirror.next.
+   * When set, history() and remoteCursorsExtension() are omitted, and
+   * extractOperations / onCollabOperations are not called.
+   */
+  yCollabExtension?: import("@codemirror/state").Extension;
 }
 
 function getEditorSettingsExtensions(settings?: AppSettings) {
@@ -508,9 +516,9 @@ interface MarkdownImageMatch {
 }
 
 const MARKDOWN_IMAGE_GLOBAL_REGEX =
-  /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
+  /!\[([^\]]*)\]\((<[^>]+>|[^)\n]+)(?:\s+"([^"]*)")?\)|!\[\[([^\n\]|]+)(?:\|([^\n\]]+))?\]\]/g;
 const MARKDOWN_IMAGE_SINGLE_REGEX =
-  /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/;
+  /^!\[([^\]]*)\]\((<[^>]+>|[^)\n]+)(?:\s+"([^"]*)")?\)$/;
 
 function parseImageMeta(title?: string): {
   width?: number;
@@ -543,12 +551,50 @@ function parseMarkdownImage(
   from: number,
   to: number,
 ): MarkdownImageMatch | null {
-  const match = markdown.match(MARKDOWN_IMAGE_SINGLE_REGEX);
-  if (!match) return null;
+  // Standard markdown image: ![alt](src "title")
+  const stdMatch = markdown.match(MARKDOWN_IMAGE_SINGLE_REGEX);
+  if (stdMatch) {
+    let [, alt, src, title] = stdMatch;
+    if (src.startsWith("<") && src.endsWith(">")) {
+      src = src.slice(1, -1).trim();
+    }
+    const { width, crop, offsetX, offsetY } = parseImageMeta(title);
+    return { from, to, alt: alt || "", src, width, crop, offsetX, offsetY };
+  }
 
-  const [, alt, src, title] = match;
-  const { width, crop, offsetX, offsetY } = parseImageMeta(title);
-  return { from, to, alt, src, width, crop, offsetX, offsetY };
+  // Wiki embed image: ![[filename.png]] or ![[filename.png|400]]
+  const wikiMatch = markdown.match(/^!\[\[([^\n\]|]+)(?:\|([^\n\]]+))?\]\]$/);
+  if (wikiMatch) {
+    const [, rawSrc, rawOpt] = wikiMatch;
+    let src = rawSrc.trim();
+    let alt = "";
+    let width: number | undefined = undefined;
+
+    if (rawOpt) {
+      const parts = rawOpt.split("|");
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (/^\d{2,4}$/.test(trimmed)) {
+          width = Number(trimmed);
+        } else {
+          alt = trimmed;
+        }
+      }
+    }
+
+    return {
+      from,
+      to,
+      alt,
+      src,
+      width: width ? Math.max(120, Math.min(1400, width)) : undefined,
+      crop: "contain",
+      offsetX: 0,
+      offsetY: 0,
+    };
+  }
+
+  return null;
 }
 
 function buildMarkdownImage(
@@ -589,8 +635,15 @@ function applyWidgetImageStyles(
 }
 
 class MarkdownImageWidget extends WidgetType {
-  constructor(private readonly image: MarkdownImageMatch) {
+  constructor(
+    private readonly image: MarkdownImageMatch,
+    private readonly view?: EditorView,
+  ) {
     super();
+  }
+
+  get estimatedHeight(): number {
+    return 240;
   }
 
   eq(other: MarkdownImageWidget): boolean {
@@ -627,6 +680,11 @@ class MarkdownImageWidget extends WidgetType {
     img.className = "cm-image-widget-image";
     img.src = resolveVaultImageSrc(this.image.src);
     img.alt = this.image.alt || "Image";
+    img.addEventListener("load", () => {
+      if (this.view) {
+        try { this.view.requestMeasure(); } catch { }
+      }
+    });
     applyWidgetImageStyles(img, this.image);
     stage.appendChild(img);
 
@@ -752,7 +810,7 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
 
             decorations.push(
               Decoration.replace({
-                widget: new MarkdownImageWidget(parsed),
+                widget: new MarkdownImageWidget(parsed, view),
               }).range(from, to),
             );
           }
@@ -3123,6 +3181,7 @@ export function Editor({
   onGenerateInsight,
   isGeneratingInsight = false,
   isFocused = false,
+  yCollabExtension,
 }: EditorProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activePath = activeTab?.path;
@@ -3207,6 +3266,14 @@ export function Editor({
     onCursorChangeRef.current = onCursorChange;
     localClientIdRef.current = localClientId;
   });
+
+  // Ref for the Yjs CRDT collaboration extension. Stored as a ref so the
+  // CodeMirror extension array (created once per EditorState) reads the
+  // value that was current at view-creation time.
+  const yCollabExtensionRef = useRef(yCollabExtension);
+  useEffect(() => {
+    yCollabExtensionRef.current = yCollabExtension;
+  }, [yCollabExtension]);
 
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -4074,7 +4141,10 @@ export function Editor({
       selection: { anchor: Math.min(initialCursor, content.length) },
       extensions: [
         codeMirrorPluginExceptionSink,
-        history(),
+        // When Yjs CRDT collaboration is active, history() is replaced by
+        // Y.UndoManager (provided via yCollabExtension). Using both would
+        // cause double-undo and undo-other-users'-edits bugs.
+        ...(yCollabExtensionRef.current ? [] : [history()]),
         search(),
         highlightSelectionMatches(),
         editorKeymapCompartmentRef.current.of(getEditorKeymapExtensions(settings)),
@@ -4173,13 +4243,17 @@ export function Editor({
               // effect knows not to overwrite the CM doc with stale content.
               lastLocalEditTsRef.current = Date.now();
 
-              // Extract granular operations for collaboration broadcast
-              const collabOps = onCollabOperationsRef.current;
-              const cid = localClientIdRef.current;
-              if (collabOps && cid) {
-                const allOps = extractOperations(update.changes, cid, authManager.getUserId() || undefined);
-                if (allOps.length > 0) {
-                  collabOps(allOps);
+              // Extract granular operations for legacy collaboration broadcast.
+              // Skip when Yjs CRDT is active -- Yjs handles update propagation
+              // via its own doc.on('update') listener, not through extracted ops.
+              if (!yCollabExtensionRef.current) {
+                const collabOps = onCollabOperationsRef.current;
+                const cid = localClientIdRef.current;
+                if (collabOps && cid) {
+                  const allOps = extractOperations(update.changes, cid, authManager.getUserId() || undefined);
+                  if (allOps.length > 0) {
+                    collabOps(allOps);
+                  }
                 }
               }
 
@@ -4230,8 +4304,12 @@ export function Editor({
             return false;
           },
         }),
-        // Remote collaborator cursor decorations
-        remoteCursorsExtension(),
+        // Remote collaborator cursor decorations.
+        // When Yjs CRDT collaboration is active, cursor rendering is handled
+        // by y-codemirror.next's awareness integration (yRemoteSelectionsTheme).
+        ...(yCollabExtensionRef.current ? [] : [remoteCursorsExtension()]),
+        // Yjs CRDT collaboration extension (yCollab + yUndoManagerKeymap)
+        ...(yCollabExtensionRef.current ? [yCollabExtensionRef.current] : []),
         EditorView.editable.of(!readOnly),
         EditorView.theme({
           "&": {
@@ -4502,6 +4580,43 @@ export function Editor({
             color: "#bbf7d0",
             fontFamily: "var(--font-family)",
             lineHeight: "var(--editor-line-height)",
+          },
+          ".cm-collab-cursor-wrapper": {
+            position: "relative",
+            display: "inline-block",
+            width: "0",
+            height: "0",
+            verticalAlign: "text-top",
+            pointerEvents: "none",
+            userSelect: "none",
+          },
+          ".cm-collab-cursor": {
+            position: "absolute",
+            top: "0",
+            left: "-1px",
+            width: "0",
+            height: "1.2em",
+            pointerEvents: "none",
+            zIndex: "10",
+          },
+          ".cm-collab-cursor-label": {
+            position: "absolute",
+            bottom: "100%",
+            left: "-1px",
+            transform: "translateY(-2px)",
+            whiteSpace: "nowrap",
+            fontSize: "10px",
+            fontWeight: "600",
+            lineHeight: "1",
+            color: "#ffffff",
+            padding: "2px 6px",
+            borderRadius: "4px 4px 4px 0",
+            pointerEvents: "none",
+            zIndex: "11",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+          },
+          ".cm-collab-selection": {
+            borderRadius: "2px",
           },
         }),
       ],

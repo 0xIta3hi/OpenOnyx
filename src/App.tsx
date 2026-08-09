@@ -1032,7 +1032,7 @@ function getTransitionLikelihood(
   return best;
 }
 
-import { syncEngine } from "./lib/syncEngine";
+import { syncEngine, type SyncStatus } from "./lib/syncEngine";
 import { collaborationEngine, type CollabStatus } from "./lib/collaborationEngine";
 import { localDB, LocalGroup } from "./lib/localdb";
 import { authManager } from "./lib/auth";
@@ -1049,6 +1049,7 @@ export default function App() {
   const [previouslyOpenedVaults, setPreviouslyOpenedVaults] = useState<string[]>([]);
   const [showVaultManager, setShowVaultManager] = useState(false);
   const [collabStatus, setCollabStatus] = useState<CollabStatus>({ state: 'idle' });
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [isNativeFullScreen, setIsNativeFullScreen] = useState(false);
@@ -4377,6 +4378,10 @@ export default function App() {
       const noteTitle = getNoteName(path);
       const fallback = `# ${noteTitle}\n\n`;
       await api.createFile(path, fallback);
+      if (collaborationEngine.activeSpaceId) {
+        await collaborationEngine.persistNoteEdit(path, fallback);
+        syncEngine.triggerPush();
+      }
       await refreshFileTree();
       return fallback;
     };
@@ -4668,6 +4673,10 @@ export default function App() {
 
     const content = `# ${heading}\n\n${thought}\n`;
     await api.createFile(candidatePath, content);
+    if (collaborationEngine.activeSpaceId) {
+      await collaborationEngine.persistNoteEdit(candidatePath, content);
+      syncEngine.triggerPush();
+    }
     await refreshFileTree();
     await openFile(candidatePath, "editor");
     setFirstThoughtDraft("");
@@ -4805,6 +4814,10 @@ export default function App() {
           : `# ${trimmed.replace(".md", "")}\n\n`;
 
         await api.createFile(targetPath, content);
+        if (collaborationEngine.activeSpaceId && !isCanvasFile(fileName)) {
+          await collaborationEngine.persistNoteEdit(targetPath, content);
+          syncEngine.triggerPush();
+        }
         await refreshFileTree();
         await openFile(targetPath);
       },
@@ -4829,6 +4842,10 @@ export default function App() {
         : `# ${trimmed.replace(/\.md$/i, "")}` + "\n\n";
 
       await api.createFile(fileName, content);
+      if (collaborationEngine.activeSpaceId && !isCanvasFile(fileName)) {
+        await collaborationEngine.persistNoteEdit(fileName, content);
+        syncEngine.triggerPush();
+      }
       await refreshFileTree();
       await openFile(fileName);
     },
@@ -5828,6 +5845,11 @@ export default function App() {
         : (activeDir ? `${activeDir}/${newPath}` : newPath);
       const content = `# ${rawLink.split("/").pop()?.replace(/\.(md|canvas)$/i, "") || rawLink}\n\n`;
       await api.createFile(targetPath, content);
+      // Sync newly auto-created note to cloud
+      if (collaborationEngine.activeSpaceId) {
+        await collaborationEngine.persistNoteEdit(targetPath, content);
+        syncEngine.triggerPush();
+      }
       await refreshFileTree();
       await openFile(targetPath, "preview");
     }
@@ -6273,6 +6295,10 @@ export default function App() {
 
     if (!(await api.fileExists(filePath))) {
       await api.createFile(filePath, content);
+      if (collaborationEngine.activeSpaceId) {
+        await collaborationEngine.persistNoteEdit(filePath, content);
+        syncEngine.triggerPush();
+      }
       await refreshFileTree();
     }
     await openFile(filePath);
@@ -6783,6 +6809,26 @@ export default function App() {
     });
     return unsub;
   }, [vaultPath]);
+
+  // Listen to sync engine status for the status bar indicator
+  useEffect(() => {
+    const unsub = syncEngine.onStatusChange((status) => {
+      setSyncStatus(status);
+      // Auto-clear the "N synced" idle indicator after 5 seconds
+      if (status.state === 'idle' && (status.pushed || status.pulled)) {
+        const timer = setTimeout(() => {
+          setSyncStatus((prev) => {
+            if (prev && prev.state === 'idle') {
+              return { state: 'idle', lastSync: prev.lastSync };
+            }
+            return prev;
+          });
+        }, 5000);
+        return () => clearTimeout(timer);
+      }
+    });
+    return unsub;
+  }, []);
 
   // Update presence when active note changes
   useEffect(() => {
@@ -7857,6 +7903,7 @@ export default function App() {
           vimEnabled={settings.vimMode}
           showEditingMode={settings.showEditingModeStatusBar !== false}
           backlinkCount={backlinks.length}
+          syncStatus={syncStatus}
         />
       )}
     </div>

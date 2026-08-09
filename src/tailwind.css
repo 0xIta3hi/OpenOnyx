@@ -803,6 +803,49 @@ img.emoji {
   transition: transform 120ms ease-out !important;
 }
 
+/* ── Remote Collaborator Cursors ────────────────────────────── */
+.cm-collab-cursor-wrapper {
+  position: relative !important;
+  display: inline-block !important;
+  width: 0 !important;
+  height: 0 !important;
+  vertical-align: text-top !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.cm-collab-cursor {
+  position: absolute !important;
+  top: 0 !important;
+  left: -1px !important;
+  width: 0 !important;
+  height: 1.2em !important;
+  border-left: 2px solid var(--color-accent) !important;
+  pointer-events: none !important;
+  z-index: 10 !important;
+}
+
+.cm-collab-cursor-label {
+  position: absolute !important;
+  bottom: 100% !important;
+  left: -1px !important;
+  transform: translateY(-2px) !important;
+  white-space: nowrap !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  color: #ffffff !important;
+  padding: 2px 6px !important;
+  border-radius: 4px 4px 4px 0 !important;
+  pointer-events: none !important;
+  z-index: 11 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+.cm-collab-selection {
+  border-radius: 2px !important;
+}
+
 .markdown-preview input[type="checkbox"]:checked::after,
 .markdown-rendered input[type="checkbox"]:checked::after,
 .task-checkbox:checked::after {

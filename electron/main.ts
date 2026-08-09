@@ -6,13 +6,28 @@
  * exposed to the renderer via secure IPC channels.
  */
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, shell, session, protocol, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { FileSystemManager } from './fileSystem.js';
 import { SearchEngine } from './search.js';
 import { registerIpcHandlers } from './ipc.js';
+
+// Register vault:// protocol as privileged before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'vault',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+      bypassCSP: true,
+    },
+  },
+]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -412,6 +427,37 @@ function buildMenu(): void {
 }
 
 app.whenReady().then(() => {
+  // Register custom protocol handler for vault:// local asset loading
+  protocol.handle('vault', async (request) => {
+    try {
+      const url = new URL(request.url);
+      let relativePath = decodeURIComponent(url.pathname);
+      if (relativePath.startsWith('/')) relativePath = relativePath.slice(1);
+
+      const vaultPath = fsManager?.getVaultPath();
+      if (!vaultPath) {
+        return new Response('Vault path not set', { status: 404 });
+      }
+
+      let targetPath = path.resolve(vaultPath, relativePath);
+      if (!fs.existsSync(targetPath)) {
+        // Fallback: search for file by basename in vault
+        const fileName = path.basename(relativePath);
+        const found = searchEngine?.findFileByName?.(fileName);
+        if (found && fs.existsSync(found)) {
+          targetPath = found;
+        } else {
+          return new Response('File not found', { status: 404 });
+        }
+      }
+
+      return net.fetch(pathToFileURL(targetPath).toString());
+    } catch (err) {
+      console.error('[Vault Protocol Error]', err);
+      return new Response('Internal error', { status: 500 });
+    }
+  });
+
   // Set a clean User Agent for the session to bypass login blocks on services like Apple and Spotify
   const originalUserAgent = session.defaultSession.getUserAgent();
   const cleanUserAgent = originalUserAgent

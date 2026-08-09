@@ -108,7 +108,16 @@ export class SyncEngine {
   private listeners: Set<(status: SyncStatus) => void> = new Set();
   private authUnsubscribe: (() => void) | null = null;
 
-  private activeSpaceId: string | null = null;
+  private _activeSpaceId: string | null = null;
+
+  public get activeSpaceId(): string | null {
+    return collaborationEngine.activeSpaceId || this._activeSpaceId;
+  }
+
+  public set activeSpaceId(id: string | null) {
+    this._activeSpaceId = id;
+  }
+
   private activeVaultPath: string | null = null;
   private clientId: string = '';
   private lastLocalScanTime = 0;
@@ -136,12 +145,12 @@ export class SyncEngine {
     if (vaultPath) {
       try {
         const space = await collaborationEngine.getSpaceForVault(vaultPath);
-        this.activeSpaceId = space?.id || null;
+        this._activeSpaceId = space?.id || null;
       } catch {
-        this.activeSpaceId = null;
+        this._activeSpaceId = null;
       }
     } else {
-      this.activeSpaceId = null;
+      this._activeSpaceId = null;
     }
 
     // If there's an active space, do an initial sync (push + pull)

@@ -4,6 +4,7 @@
 
 import React from "react";
 import type { QueueStatus } from "../../utils/background-queue";
+import type { SyncStatus } from "../../lib/syncEngine";
 import {
   Check,
   Circle,
@@ -12,6 +13,9 @@ import {
   PencilLine,
   Paperclip,
   Tag,
+  CloudUpload,
+  CloudOff,
+  RefreshCw,
 } from "lucide-react";
 import { Tab, Theme, ViewMode, FileEntry } from "../../types";
 import { countWords, countCharacters } from "../../utils/helpers";
@@ -38,6 +42,7 @@ interface StatusBarProps {
   vimEnabled?: boolean;
   showEditingMode?: boolean;
   backlinkCount?: number;
+  syncStatus?: SyncStatus | null;
 }
 
 export function StatusBar({
@@ -49,6 +54,7 @@ export function StatusBar({
   vimEnabled = false,
   showEditingMode = true,
   backlinkCount = 0,
+  syncStatus = null,
 }: StatusBarProps) {
   const wordCount = content ? countWords(content) : 0;
   const charCount = content ? countCharacters(content) : 0;
@@ -99,6 +105,25 @@ export function StatusBar({
             }}
           />
         ))}
+        {/* Sync status indicator */}
+        {syncStatus && syncStatus.state === 'syncing' && (
+          <span className={statusItemClass} title="Syncing changes...">
+            <RefreshCw size={12} strokeWidth={1.75} style={{ animation: 'spin 1.2s linear infinite' }} />
+            <span className="max-w-[120px] truncate" style={{ opacity: 0.8 }}>Syncing...</span>
+          </span>
+        )}
+        {syncStatus && syncStatus.state === 'idle' && (syncStatus.pushed || syncStatus.pulled) && (
+          <span className={statusItemClass} title={`Pushed ${syncStatus.pushed || 0}, pulled ${syncStatus.pulled || 0}`}>
+            <CloudUpload size={12} strokeWidth={1.75} style={{ opacity: 0.7 }} />
+            <span style={{ opacity: 0.7 }}>{(syncStatus.pushed || 0) + (syncStatus.pulled || 0)} synced</span>
+          </span>
+        )}
+        {syncStatus && syncStatus.state === 'error' && (
+          <span className={statusItemClass} title={syncStatus.error || 'Sync error'}>
+            <CloudOff size={12} strokeWidth={1.75} style={{ color: 'var(--text-error, #ef4444)' }} />
+            <span className="max-w-[140px] truncate" style={{ color: 'var(--text-error, #ef4444)', opacity: 0.9 }}>Sync error</span>
+          </span>
+        )}
         {queueStatus && (queueStatus.isRunning || queueStatus.message) && (
           <span className={statusItemClass} title={queueStatus.message}>
             <span className={`h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] ${queueStatus.isRunning ? "animate-pulse" : ""}`} />

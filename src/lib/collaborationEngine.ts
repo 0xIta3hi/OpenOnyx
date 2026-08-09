@@ -1303,7 +1303,7 @@ class CollaborationEngine {
     if (
       this.realtimeChannel &&
       this._activeSpaceId === spaceId &&
-      (currentState === 'joined' || currentState === 'joining')
+      this.isChannelConnectedOrConnecting(this.realtimeChannel)
     ) {
       return;
     }
@@ -1311,20 +1311,48 @@ class CollaborationEngine {
     this.unsubscribeFromSpace();
     this._activeSpaceId = spaceId;
 
+    // Auto-restore private space unlock key if stored locally
+    try {
+      await privateCrypto.ensureSpaceUnlocked(spaceId);
+    } catch { /* best-effort */ }
+
     // Guarantee clientId is loaded before any broadcast/filter logic runs.
     if (!this.clientId) {
       this.clientId = await localDB.getClientId();
     }
 
     const client = getClient();
+    const session = authManager.getState().session;
+    if (session?.access_token && (client as any).realtime?.setAuth) {
+      try {
+        (client as any).realtime.setAuth(session.access_token);
+      } catch { /* best-effort */ }
+    }
 
-    this.realtimeChannel = client
+    // Defensive cleanup: remove ALL channels matching this topic from the
+    // Supabase client's internal list. This catches zombies that survived
+    // HMR reloads or failed subscribe attempts.
+    const channelTopic = `realtime:space:${spaceId}`;
+    try {
+      const existingChannels = client.getChannels();
+      for (const ch of existingChannels) {
+        if ((ch as any).topic === channelTopic || (ch as any).topic === `space:${spaceId}`) {
+          try { client.removeChannel(ch); } catch { /* best-effort */ }
+        }
+      }
+    } catch { /* getChannels not available in some versions */ }
+
+    const channel = client
       .channel(`space:${spaceId}`, {
         config: {
           presence: { key: userId },
           broadcast: { self: false },
         },
-      })
+      });
+
+    this.realtimeChannel = channel;
+
+    channel
       // Listen for note changes via Postgres replication (fallback / persistence)
       .on(
         'postgres_changes',
@@ -1335,38 +1363,44 @@ class CollaborationEngine {
           filter: `space_id=eq.${spaceId}`,
         },
         (payload) => {
-          if (this._collabPaused) return;
+          if (this._collabPaused || this.realtimeChannel !== channel) return;
           this.handleRemoteNoteChange(payload);
         },
       )
       // Listen for granular editing operations via Broadcast
       .on('broadcast', { event: 'doc-ops' }, (msg) => {
-        if (this._collabPaused) return;
+        if (this._collabPaused || this.realtimeChannel !== channel) return;
         void this.handleDocOpsBroadcast(msg.payload || {});
       })
       // Listen for full-document sync via Broadcast (fallback for large edits)
       .on('broadcast', { event: 'doc-full' }, (msg) => {
-        if (this._collabPaused) return;
+        if (this._collabPaused || this.realtimeChannel !== channel) return;
         void this.handleDocFullBroadcast(msg.payload || {});
       })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
-        if (this._collabPaused) return;
+        if (this._collabPaused || this.realtimeChannel !== channel) return;
         const presence = msg.payload as CursorPresence | undefined;
         if (!presence || presence.user_id === userId) return;
         this.remoteCursorListeners.forEach(fn => fn(presence));
       })
       // Track presence
       .on('presence', { event: 'sync' }, () => {
+        if (this.realtimeChannel !== channel) return;
         this.handlePresenceSync();
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status, err) => {
+        // Ignore status events from stale / unsubscribed channel instances
+        if (this.realtimeChannel !== channel) {
+          return;
+        }
+
         if (status === 'SUBSCRIBED' && !this._collabPaused) {
           this.realtimeReconnectAttempt = 0;
           this.reconnectingSpaceId = null;
           const user = authManager.getUser();
           try {
-            await this.realtimeChannel?.track({
+            await channel.track({
               user_id: userId,
               email: user?.email || '',
               active_note_id: this.lastPresenceNoteId,
@@ -1374,13 +1408,30 @@ class CollaborationEngine {
               online_at: new Date().toISOString(),
             });
             this.dispatchRealtimeEvent('connected', spaceId);
-          } catch (err) {
-            console.error('[Collab] Failed to track presence after subscribe:', err);
+
+            // Trigger a full push+pull sync so any edits made while
+            // the channel was down are exchanged immediately.
+            // Use lazy import to avoid circular dependency.
+            try {
+              const { syncEngine } = await import('./syncEngine');
+              syncEngine.sync();
+            } catch { /* best-effort */ }
+          } catch (trackErr) {
+            console.error('[Collab] Failed to track presence after subscribe:', trackErr);
             this.scheduleRealtimeReconnect(spaceId);
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           this.dispatchRealtimeEvent('disconnected', spaceId);
-          console.warn('[Collab] Realtime channel status:', status);
+          const channelState = (channel as any).state || 'no-channel';
+          const connState = (client as any)?.realtime?.conn?.readyState;
+          const wsStates = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+          const errMsg = err ? (err.message || JSON.stringify(err)) : 'none';
+          console.warn(`[Collab] Realtime channel status: ${status} (err: ${errMsg}) info: ${JSON.stringify({
+            channelState,
+            wsConnection: connState !== undefined ? (wsStates[connState] || connState) : 'unknown',
+            spaceId,
+            hasAuth: !!authManager.getUserId(),
+          })}`);
           this.scheduleRealtimeReconnect(spaceId);
         }
       });
@@ -1495,13 +1546,23 @@ class CollaborationEngine {
 
   unsubscribeFromSpace() {
     if (this.realtimeChannel) {
+      const channel = this.realtimeChannel;
+      this.realtimeChannel = null;
       // Clean up our presence entry before destroying the channel
       // to prevent ghost avatar lingering.
       try {
-        this.realtimeChannel.untrack();
+        channel.untrack();
       } catch { /* best-effort */ }
-      this.realtimeChannel.unsubscribe();
-      this.realtimeChannel = null;
+      // CRITICAL: removeChannel() fully deregisters the channel from the
+      // Supabase client's internal list. Without this, the old zombie
+      // channel stays registered and blocks new channels with the same
+      // topic name, causing an infinite CLOSED loop on reconnect.
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Fallback: at minimum unsubscribe the channel
+        try { channel.unsubscribe(); } catch { /* best-effort */ }
+      }
     }
     // NOTE: we intentionally do NOT clear _activeSpaceId here.
     // The space ID is metadata about which space this vault is linked to,
@@ -1520,28 +1581,52 @@ class CollaborationEngine {
     this._activeSpaceId = null;
   }
 
+  private isChannelJoined(channel: any): boolean {
+    if (!channel) return false;
+    const s = (channel as any).state;
+    return s === 'joined' || s === 'subscribed';
+  }
+
+  private isChannelConnectedOrConnecting(channel: any): boolean {
+    if (!channel) return false;
+    const s = (channel as any).state;
+    return s === 'joined' || s === 'subscribed' || s === 'joining' || s === 'subscribing';
+  }
+
   private ensureRealtimeConnected() {
     if (this._collabPaused) return;
     if (!this._activeSpaceId) return;
     if (!authManager.getUserId()) return;
 
-    const state = this.realtimeChannel ? (this.realtimeChannel as any).state : null;
-    if (state === 'joined' || state === 'joining') return;
+    if (this.isChannelConnectedOrConnecting(this.realtimeChannel)) return;
     this.scheduleRealtimeReconnect(this._activeSpaceId, 0);
   }
 
+  private static readonly MAX_RECONNECT_ATTEMPTS = 10;
+
   private scheduleRealtimeReconnect(spaceId: string, overrideDelay?: number) {
     if (this._collabPaused) return;
-    if (!authManager.getUserId()) return;
     if (this.realtimeReconnectTimer && this.reconnectingSpaceId === spaceId) return;
 
     this.reconnectingSpaceId = spaceId;
-    const delay = overrideDelay ?? Math.min(30_000, 1_000 * Math.pow(2, this.realtimeReconnectAttempt));
+
+    // Enforce a minimum backoff of 1000ms so 0ms loops don't burn retry limits instantly
+    const baseDelay = Math.max(1_000, 1_000 * Math.pow(2, Math.min(6, this.realtimeReconnectAttempt)));
+    const delay = overrideDelay !== undefined && overrideDelay > 0 ? overrideDelay : baseDelay;
+
     this.realtimeReconnectAttempt += 1;
+    console.info(`[Collab] Scheduling reconnect attempt ${this.realtimeReconnectAttempt} in ${delay}ms`);
 
     this.realtimeReconnectTimer = setTimeout(() => {
       this.realtimeReconnectTimer = null;
       if (this._activeSpaceId !== spaceId || this._collabPaused) return;
+
+      // Reset retry counter backoff after 10 attempts so it doesn't give up permanently
+      if (this.realtimeReconnectAttempt >= CollaborationEngine.MAX_RECONNECT_ATTEMPTS) {
+        console.warn('[Collab] Resetting reconnect attempt counter to continue background retries.');
+        this.realtimeReconnectAttempt = 1;
+      }
+
       this.subscribeToSpace(spaceId).catch((err) => {
         console.error('[Collab] Realtime reconnect failed:', err);
         this.scheduleRealtimeReconnect(spaceId);
@@ -1875,7 +1960,7 @@ class CollaborationEngine {
   broadcastOperations(path: string, ops: CollabOperation[]) {
     if (this._collabPaused) return;
     if (ops.length === 0) return;
-    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') {
+    if (!this.realtimeChannel || !this.isChannelJoined(this.realtimeChannel)) {
       this.ensureRealtimeConnected();
       return;
     }
@@ -1896,7 +1981,7 @@ class CollaborationEngine {
 
   private async flushOpBatch() {
     this.opBatchTimer = null;
-    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) {
+    if (!this.realtimeChannel || !this.isChannelJoined(this.realtimeChannel) || this._collabPaused) {
       this.opBatchBuffer.clear();
       this.ensureRealtimeConnected();
       return;
@@ -1960,9 +2045,12 @@ class CollaborationEngine {
    * Used as a fallback for large edits (paste, AI generation) where
    * granular operations may fail to apply cleanly on diverged documents.
    */
+  /** Supabase Realtime broadcast has a ~1MB message size limit. */
+  private static readonly MAX_BROADCAST_PAYLOAD_BYTES = 900_000;
+
   async broadcastFullDocument(path: string, content: string, meta?: Partial<RemoteDocumentMeta>) {
     if (this._collabPaused) return;
-    if (!this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined') {
+    if (!this.realtimeChannel || !this.isChannelJoined(this.realtimeChannel)) {
       this.ensureRealtimeConnected();
       return;
     }
@@ -1972,6 +2060,15 @@ class CollaborationEngine {
 
     // Clear any pending ops for this path -- the full doc supersedes them
     this.opBatchBuffer.delete(cleanPath);
+
+    // Skip broadcast for oversized payloads. The edit will still reach
+    // peers through the postgres_changes listener after persistNoteEdit
+    // writes to the database.
+    const estimatedSize = new Blob([content]).size;
+    if (estimatedSize > CollaborationEngine.MAX_BROADCAST_PAYLOAD_BYTES) {
+      console.warn(`[Collab] Skipping doc-full broadcast for ${cleanPath}: payload too large (${(estimatedSize / 1024).toFixed(0)}KB). Will sync via DB.`);
+      return;
+    }
     const isPrivate = await this.isActivePrivateSpace();
     const spaceId = this._activeSpaceId;
     if (isPrivate && (!spaceId || !privateCrypto.isUnlocked(spaceId))) return;
@@ -2050,7 +2147,7 @@ class CollaborationEngine {
 
   private sendCursorPresence() {
     this.cursorThrottleTimer = null;
-    if (!this.pendingCursorPresence || !this.realtimeChannel || (this.realtimeChannel as any).state !== 'joined' || this._collabPaused) {
+    if (!this.pendingCursorPresence || !this.realtimeChannel || !this.isChannelJoined(this.realtimeChannel) || this._collabPaused) {
       this.ensureRealtimeConnected();
       return;
     }
