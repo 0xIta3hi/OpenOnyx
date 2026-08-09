@@ -8,6 +8,7 @@
  *   - SupabaseProvider connection for real-time sync
  *   - Y.UndoManager creation scoped to local edits
  *   - Cleanup when tabs are closed
+ *   - Deduplication of concurrent openDoc() calls (React Strict Mode safe)
  *
  * Instrumentation: Every event logs with [YJS] prefix for full observability.
  */
@@ -63,16 +64,28 @@ class YDocManagerImpl {
   private clientId: string | null = null;
 
   /**
+   * In-flight openDoc promises, keyed by `${spaceId}:${cleanPath}`.
+   * Prevents React Strict Mode double-mount from creating two Y.Doc
+   * instances for the same note. The second call coalesces onto the
+   * first call's Promise and increments refCount when it resolves.
+   */
+  private pendingOpens = new Map<string, Promise<OpenDocResult>>();
+  private pendingRefCounts = new Map<string, number>();
+
+  /**
    * Open (or reuse) a Y.Doc for the given note path.
    *
    * If a doc is already open for this path, its reference count is incremented
    * and the same doc is returned. This supports split panes viewing the same note.
+   *
+   * If an openDoc call is already in-flight for this key (e.g. React Strict Mode
+   * double-mount), the second call coalesces onto the first call's Promise.
    */
   async openDoc(notePath: string, spaceId: string): Promise<OpenDocResult> {
     const cleanPath = normalizeSyncPath(notePath) || notePath;
     const key = `${spaceId}:${cleanPath}`;
 
-    // Reuse existing doc if already open (split panes)
+    // 1. Reuse existing doc if already fully open (split panes)
     const existing = this.entries.get(key);
     if (existing) {
       existing.refCount++;
@@ -86,6 +99,40 @@ class YDocManagerImpl {
       };
     }
 
+    // 2. Coalesce onto in-flight open if one exists (React Strict Mode guard)
+    const pending = this.pendingOpens.get(key);
+    if (pending) {
+      console.log(`[YJS] Coalescing onto in-flight openDoc for note: ${cleanPath}`);
+      this.pendingRefCounts.set(key, (this.pendingRefCounts.get(key) || 0) + 1);
+      return pending;
+    }
+
+    // 3. Create a new doc -- store the Promise immediately to prevent races
+    const openPromise = this._createDoc(key, cleanPath, spaceId);
+    this.pendingOpens.set(key, openPromise);
+
+    try {
+      const result = await openPromise;
+      // Add any pending ref counts accumulated while creating the doc
+      const pendingCount = this.pendingRefCounts.get(key) || 0;
+      if (pendingCount > 0) {
+        const entry = this.entries.get(key);
+        if (entry) {
+          entry.refCount += pendingCount;
+          console.log(`[YJS] Applied pending ref counts (${pendingCount}) to note: ${cleanPath} (new refCount: ${entry.refCount})`);
+        }
+      }
+      return result;
+    } finally {
+      this.pendingOpens.delete(key);
+      this.pendingRefCounts.delete(key);
+    }
+  }
+
+  /**
+   * Internal: actually creates the Y.Doc, hydrates it, connects the provider.
+   */
+  private async _createDoc(key: string, cleanPath: string, spaceId: string): Promise<OpenDocResult> {
     // Ensure client ID is loaded
     if (!this.clientId) {
       this.clientId = await localDB.getClientId();
@@ -232,6 +279,7 @@ class YDocManagerImpl {
       entry.doc.destroy();
     }
     this.entries.clear();
+    this.pendingOpens.clear();
   }
 
   /**
