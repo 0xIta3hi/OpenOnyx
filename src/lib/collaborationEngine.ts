@@ -1353,31 +1353,9 @@ class CollaborationEngine {
 
     this.realtimeChannel = channel;
 
+    console.log(`[Collab] Subscribing to space channel space:${spaceId} (userId=${userId})`);
+
     channel
-      // Listen for note changes via Postgres replication (fallback / persistence)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notes',
-          filter: `space_id=eq.${spaceId}`,
-        },
-        (payload) => {
-          if (this._collabPaused || this.realtimeChannel !== channel) return;
-          this.handleRemoteNoteChange(payload);
-        },
-      )
-      // Listen for granular editing operations via Broadcast
-      .on('broadcast', { event: 'doc-ops' }, (msg) => {
-        if (this._collabPaused || this.realtimeChannel !== channel) return;
-        void this.handleDocOpsBroadcast(msg.payload || {});
-      })
-      // Listen for full-document sync via Broadcast (fallback for large edits)
-      .on('broadcast', { event: 'doc-full' }, (msg) => {
-        if (this._collabPaused || this.realtimeChannel !== channel) return;
-        void this.handleDocFullBroadcast(msg.payload || {});
-      })
       // Listen for cursor presence updates via Broadcast
       .on('broadcast', { event: 'cursor-presence' }, (msg) => {
         if (this._collabPaused || this.realtimeChannel !== channel) return;
@@ -1396,6 +1374,8 @@ class CollaborationEngine {
           return;
         }
 
+        console.log(`[Collab] Channel status: ${status} for space ${spaceId}`);
+
         if (status === 'SUBSCRIBED' && !this._collabPaused) {
           this.realtimeReconnectAttempt = 0;
           this.reconnectingSpaceId = null;
@@ -1408,6 +1388,7 @@ class CollaborationEngine {
               is_typing: this.lastPresenceTyping,
               online_at: new Date().toISOString(),
             });
+            console.log(`[Collab] Presence tracked successfully for space ${spaceId}`);
             this.dispatchRealtimeEvent('connected', spaceId);
 
             // Trigger a full push+pull sync so any edits made while
@@ -1435,6 +1416,7 @@ class CollaborationEngine {
           })}`);
           this.scheduleRealtimeReconnect(spaceId);
         } else if (status === 'CLOSED') {
+          console.log(`[Collab] Channel closed cleanly for space ${spaceId} (no reconnect triggered)`);
           this.dispatchRealtimeEvent('disconnected', spaceId);
         }
       });

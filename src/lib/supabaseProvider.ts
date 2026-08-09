@@ -121,6 +121,8 @@ export class SupabaseProvider {
     this.isPrivate = await this._checkPrivate();
 
     const channelName = `yjs:${this.spaceId}`;
+    console.log(`[YJS] Provider connecting to channel ${channelName} for note: ${this.notePath} (isPrivate=${this.isPrivate})`);
+
     const channel = supabase.channel(channelName, {
       config: {
         broadcast: { self: false },
@@ -135,6 +137,7 @@ export class SupabaseProvider {
         const payload = msg.payload;
         if (!payload || payload.client_id === this.clientId) return;
         if (payload.note_path !== this.notePath) return;
+        console.log(`[YJS] Received update from client ${payload.client_id} for ${this.notePath}`);
         void this._handleRemoteUpdate(payload);
       })
       .on('broadcast', { event: 'yjs-awareness' }, (msg) => {
@@ -149,6 +152,7 @@ export class SupabaseProvider {
         const payload = msg.payload;
         if (!payload || payload.client_id === this.clientId) return;
         if (payload.note_path !== this.notePath) return;
+        console.log(`[YJS] Received sync-step1 from client ${payload.client_id}`);
         void this._handleSyncStep1(payload);
       })
       .on('broadcast', { event: 'yjs-sync-step2' }, (msg) => {
@@ -157,6 +161,7 @@ export class SupabaseProvider {
         if (!payload) return;
         if (payload.target_client_id !== this.clientId) return;
         if (payload.note_path !== this.notePath) return;
+        console.log(`[YJS] Received sync-step2 from client ${payload.client_id}`);
         void this._handleSyncStep2(payload);
       })
       .on('broadcast', { event: 'yjs-snapshot-request' }, (msg) => {
@@ -177,13 +182,16 @@ export class SupabaseProvider {
       .subscribe(async (status) => {
         if (this.destroyed || this.channel !== channel) return;
 
+        console.log(`[YJS] Provider channel status: ${status} for ${this.notePath}`);
+
         if (status === 'SUBSCRIBED') {
           this.connected = true;
+          console.log(`[YJS] Provider subscribed successfully for ${this.notePath}, sending sync-step1`);
           // Request missing updates from peers via state vector exchange
           this._sendSyncStep1();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           this.connected = false;
-          console.warn(`[YjsProvider] Channel status: ${status} for ${this.notePath}`);
+          console.warn(`[YJS] Provider channel failed: ${status} for ${this.notePath}`);
         }
       });
   }
@@ -257,8 +265,9 @@ export class SupabaseProvider {
         event: 'yjs-update',
         payload,
       });
+      console.log(`[YJS] Broadcast sent (${merged.byteLength} bytes) for ${this.notePath}`);
     } catch (err) {
-      console.warn('[YjsProvider] Failed to broadcast update:', err);
+      console.warn('[YJS] Failed to broadcast update:', err);
     }
   }
 
