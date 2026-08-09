@@ -196,6 +196,7 @@ export function LeafPaneEditor({
           yCollab(result.text, result.awareness, { undoManager: result.undoManager }),
           keymap.of(yUndoManagerKeymap),
         ];
+        console.log(`[YJS] Bound CodeMirror for note: ${activeTab.path}`);
         setYCollabExtension(ext);
       } catch (err) {
         console.error('[CRDT] Failed to open Y.Doc:', err);

@@ -9,10 +9,7 @@
  *   - Y.UndoManager creation scoped to local edits
  *   - Cleanup when tabs are closed
  *
- * Usage:
- *   const { doc, text, awareness, undoManager } = await yDocManager.openDoc(notePath, spaceId);
- *   // ... pass text + awareness to y-codemirror.next's yCollab extension
- *   yDocManager.closeDoc(notePath);
+ * Instrumentation: Every event logs with [YJS] prefix for full observability.
  */
 
 import * as Y from 'yjs';
@@ -75,10 +72,11 @@ class YDocManagerImpl {
     const cleanPath = normalizeSyncPath(notePath) || notePath;
     const key = `${spaceId}:${cleanPath}`;
 
-    // Reuse existing doc if already open
+    // Reuse existing doc if already open (split panes)
     const existing = this.entries.get(key);
     if (existing) {
       existing.refCount++;
+      console.log(`[YJS] Reused document for note: ${cleanPath} (refCount: ${existing.refCount})`);
       return {
         doc: existing.doc,
         text: existing.text,
@@ -96,11 +94,13 @@ class YDocManagerImpl {
     // Create a new Y.Doc
     const doc = new Y.Doc();
     const text = doc.getText('content');
+    console.log(`[YJS] Created document for note: ${cleanPath}`);
 
     // 1. Restore from IndexedDB (offline state)
     const idbKey = `yjs-${spaceId}-${cleanPath.replace(/[/\\:]/g, '_')}`;
     const idbPersistence = new IndexeddbPersistence(idbKey, doc);
     await idbPersistence.whenSynced;
+    console.log(`[YJS] Hydrated document from IndexedDB (${text.length} chars)`);
 
     // 2. If doc is empty after IndexedDB restore, initialize from local filesystem
     if (text.length === 0) {
@@ -111,6 +111,7 @@ class YDocManagerImpl {
           doc.transact(() => {
             text.insert(0, fileContent);
           }, 'init');
+          console.log(`[YJS] Hydrated document from filesystem (.md) (${fileContent.length} chars)`);
         }
       } catch {
         // File may not exist yet (new note)
@@ -142,8 +143,6 @@ class YDocManagerImpl {
     }
 
     // 5. Create undo manager scoped to local edits
-    // The y-codemirror.next binding dispatches transactions with a specific origin.
-    // We track `null` (default CodeMirror origin) and the binding's own origin.
     const undoManager = new Y.UndoManager(text, {
       trackedOrigins: new Set([null]),
       captureTimeout: 500,
@@ -181,9 +180,13 @@ class YDocManagerImpl {
     if (!entry) return;
 
     entry.refCount--;
-    if (entry.refCount > 0) return;
+    if (entry.refCount > 0) {
+      console.log(`[YJS] Decremented refCount for note: ${cleanPath} (remaining: ${entry.refCount})`);
+      return;
+    }
 
     // Fully clean up
+    console.log(`[YJS] Destroyed document for note: ${cleanPath}`);
     entry.provider.disconnect();
     entry.undoManager.destroy();
     entry.idbPersistence.destroy();
@@ -222,6 +225,7 @@ class YDocManagerImpl {
    */
   closeAll(): void {
     for (const [key, entry] of this.entries) {
+      console.log(`[YJS] Destroying open document on closeAll: ${key}`);
       entry.provider.disconnect();
       entry.undoManager.destroy();
       entry.idbPersistence.destroy();

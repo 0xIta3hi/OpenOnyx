@@ -3,9 +3,12 @@
  *   - Local filesystem (.md files)
  *   - IndexedDB (via notes table for sync)
  *
- * This layer is decoupled from transport. It listens to Y.Doc 'update' events
- * and writes content at appropriate intervals. It also handles filesystem
- * race condition detection by checking file mtime before writing.
+ * Responsibilities:
+ *   - Flushes Y.Text content to disk file at 500ms debounced intervals.
+ *   - Flushes snapshot to IndexedDB and Supabase notes table at 3s debounced intervals.
+ *   - Handles file existence check before writing.
+ *
+ * Instrumentation: Uses [YJS] prefix for full observability.
  */
 
 import * as Y from 'yjs';
@@ -39,10 +42,6 @@ export class YjsPersistence {
   // ── Snapshot persistence ──────────────────────────────────────────────
   private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly SNAPSHOT_DEBOUNCE_MS = 3000;
-
-  // ── External modification tracking ────────────────────────────────────
-  /** Timestamp of our last filesystem write. Used to detect external modifications. */
-  private lastOwnWriteTime = 0;
 
   constructor(doc: Y.Doc, options: YjsPersistenceOptions) {
     this.doc = doc;
@@ -80,7 +79,7 @@ export class YjsPersistence {
     this._scheduleSnapshotPersist();
   };
 
-  // ── Filesystem write (debounced, with race condition protection) ─────
+  // ── Filesystem write (debounced) ───────────────────────────────────────
 
   private _scheduleFilesystemWrite(): void {
     if (this.fsWriteTimer) clearTimeout(this.fsWriteTimer);
@@ -97,14 +96,8 @@ export class YjsPersistence {
       const api = getAPI();
       if (!this.cleanPath) return;
 
-      // Race condition protection: check if the file was modified externally
-      // after our last write. If so, skip this write -- the external change
-      // should be loaded into the Y.Doc via a separate reconciliation path.
       try {
-        const exists = await api.fileExists(this.cleanPath);
-        if (!exists) {
-          // File does not exist yet -- create directory if needed
-        }
+        await api.fileExists(this.cleanPath);
       } catch {
         // File system check failed -- proceed with write
       }
@@ -116,10 +109,10 @@ export class YjsPersistence {
       }
 
       await api.writeFile(this.cleanPath, content);
-      this.lastOwnWriteTime = Date.now();
       this.lastFsWriteTime = Date.now();
+      console.log(`[YJS] Filesystem flush (${content.length} chars) for ${this.cleanPath}`);
     } catch (err) {
-      console.warn('[YjsPersistence] Filesystem write failed:', err);
+      console.warn('[YJS] Filesystem write failed:', err);
     }
   }
 
@@ -175,15 +168,12 @@ export class YjsPersistence {
         };
         await localDB.putNote(newNote, true);
       }
+      console.log(`[YJS] Snapshot saved to IndexedDB/sync_queue for ${this.cleanPath}`);
     } catch (err) {
-      console.warn('[YjsPersistence] Snapshot persistence failed:', err);
+      console.warn('[YJS] Snapshot persistence failed:', err);
     }
   }
 
-  /**
-   * Get the timestamp of the last filesystem write performed by this instance.
-   * Useful for external reconciliation to know if a file change came from us.
-   */
   get lastWriteTime(): number {
     return this.lastFsWriteTime;
   }

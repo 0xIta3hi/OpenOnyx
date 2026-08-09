@@ -28,6 +28,7 @@ import { localDB } from './localdb';
 import { normalizeSyncPath } from './syncEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
+import { yDocManager } from './yDocManager';
 import type { CollabOperation, CursorPresence } from '../utils/collabOperations';
 import { normalizeVersion, sha256Hex } from '../utils/collabDocument';
 import {
@@ -1420,7 +1421,7 @@ class CollaborationEngine {
             console.error('[Collab] Failed to track presence after subscribe:', trackErr);
             this.scheduleRealtimeReconnect(spaceId);
           }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           this.dispatchRealtimeEvent('disconnected', spaceId);
           const channelState = (channel as any).state || 'no-channel';
           const connState = (client as any)?.realtime?.conn?.readyState;
@@ -1433,6 +1434,8 @@ class CollaborationEngine {
             hasAuth: !!authManager.getUserId(),
           })}`);
           this.scheduleRealtimeReconnect(spaceId);
+        } else if (status === 'CLOSED') {
+          this.dispatchRealtimeEvent('disconnected', spaceId);
         }
       });
   }
@@ -1846,6 +1849,12 @@ class CollaborationEngine {
 
     const cleanPath = normalizeSyncPath(remoteNote.path);
     if (!cleanPath) return;
+
+    // When Yjs CRDT is actively managing this note, Yjs is the single source of truth for text.
+    // Skip legacy Postgres LWW version comparisons and overwrite_prevented logs.
+    if (yDocManager.hasDoc(cleanPath, remoteNote.space_id)) {
+      return;
+    }
     let remoteContent = remoteNote.content || '';
     if (remoteNote.content_encrypted) {
       try {

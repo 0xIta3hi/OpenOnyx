@@ -2,17 +2,14 @@
  * YjsTransport -- Handles sending/receiving Yjs binary updates and
  * awareness data over Supabase Realtime Broadcast.
  *
- * This layer is ONLY responsible for:
+ * Responsibilities:
  *   - Channel management (subscribe, reconnect, cleanup)
- *   - Sending Yjs updates (with batching)
- *   - Receiving Yjs updates from peers
- *   - State vector exchange on reconnect
- *   - Snapshot request/response for cold-start peers
- *   - Awareness relay
+ *   - Sending Yjs updates (with 50ms batching via Y.mergeUpdates)
+ *   - Receiving Yjs updates from peers (applied via Y.applyUpdate)
+ *   - State vector exchange on connection/reconnection
+ *   - Awareness relay for cursor/presence
  *
- * It does NOT know about encryption, persistence, filesystem, or IndexedDB.
- * All payloads are raw Uint8Array. The caller is responsible for
- * encryption/decryption before passing data to this layer.
+ * Instrumentation: Every event logs with [YJS] prefix for full observability.
  */
 
 import * as Y from 'yjs';
@@ -98,6 +95,7 @@ export class YjsTransport {
 
   async connect(): Promise<void> {
     if (this.destroyed) return;
+    console.log(`[YJS] Transport connecting to channel ${this.channelName} for note: ${this.notePath}`);
 
     const channel = supabase.channel(this.channelName, {
       config: { broadcast: { self: false } },
@@ -110,6 +108,7 @@ export class YjsTransport {
         if (this.destroyed) return;
         const p = msg.payload;
         if (!p || p.client_id === this.clientId || p.note_path !== this.notePath) return;
+        console.log(`[YJS] Broadcast received (update, ${p.data?.length || 0} chars) from client ${p.client_id}`);
         void this._handleRemoteUpdate(p);
       })
       .on('broadcast', { event: 'yjs-awareness' }, (msg) => {
@@ -122,12 +121,14 @@ export class YjsTransport {
         if (this.destroyed) return;
         const p = msg.payload;
         if (!p || p.client_id === this.clientId || p.note_path !== this.notePath) return;
+        console.log(`[YJS] Broadcast received (sync-step1) from client ${p.client_id}`);
         void this._handleSyncStep1(p);
       })
       .on('broadcast', { event: 'yjs-sync-step2' }, (msg) => {
         if (this.destroyed) return;
         const p = msg.payload;
         if (!p || p.target_client_id !== this.clientId || p.note_path !== this.notePath) return;
+        console.log(`[YJS] Broadcast received (sync-step2) from client ${p.client_id}`);
         void this._handleSyncStep2(p);
       })
       .on('broadcast', { event: 'yjs-snapshot-request' }, (msg) => {
@@ -146,15 +147,20 @@ export class YjsTransport {
         if (this.destroyed || this.channel !== channel) return;
         if (status === 'SUBSCRIBED') {
           this.connected = true;
+          console.log(`[YJS] Subscribed to channel ${this.channelName}`);
           this._sendSyncStep1();
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           this.connected = false;
-          console.warn(`[YjsTransport] Channel ${status} for ${this.notePath}`);
+          console.warn(`[YJS] Channel subscription error (${status}) for ${this.notePath}`);
+        } else if (status === 'CLOSED') {
+          this.connected = false;
+          console.log(`[YJS] Channel closed cleanly for ${this.notePath}`);
         }
       });
   }
 
   disconnect(): void {
+    console.log(`[YJS] Transport disconnecting for ${this.notePath}`);
     this.destroyed = true;
     this.connected = false;
 
@@ -179,11 +185,12 @@ export class YjsTransport {
 
   requestSnapshot(): void {
     if (!this.channel || !this.connected || this.destroyed) return;
+    console.log(`[YJS] Requesting snapshot for ${this.notePath}`);
     this.channel.send({
       type: 'broadcast',
       event: 'yjs-snapshot-request',
       payload: { note_path: this.notePath, client_id: this.clientId },
-    }).catch(err => console.warn('[YjsTransport] Snapshot request failed:', err));
+    }).catch(err => console.warn('[YJS] Snapshot request failed:', err));
   }
 
   get isConnected(): boolean {
@@ -194,6 +201,7 @@ export class YjsTransport {
 
   private _onDocUpdate = (update: Uint8Array, origin: any): void => {
     if (origin === 'remote' || this.destroyed) return;
+    console.log(`[YJS] Local update detected (${update.byteLength} bytes)`);
     this.pendingUpdates.push(update);
     if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => void this._flush(), YjsTransport.BATCH_INTERVAL_MS);
@@ -206,6 +214,7 @@ export class YjsTransport {
 
     const merged = Y.mergeUpdates(this.pendingUpdates);
     this.pendingUpdates = [];
+    console.log(`[YJS] Merged update (${merged.byteLength} bytes)`);
 
     try {
       const encoded = await this.callbacks.encodePayload(merged, 'update');
@@ -219,8 +228,9 @@ export class YjsTransport {
           timestamp: Date.now(),
         },
       });
+      console.log(`[YJS] Broadcast sent (${merged.byteLength} bytes merged update)`);
     } catch (err) {
-      console.warn('[YjsTransport] Broadcast update failed:', err);
+      console.warn('[YJS] Broadcast update failed:', err);
     }
   }
 
@@ -248,8 +258,9 @@ export class YjsTransport {
     try {
       const update = await this.callbacks.decodePayload(payload.data, 'update');
       this.callbacks.onRemoteUpdate(update);
+      console.log(`[YJS] Applied update (${update.byteLength} bytes) from client ${payload.client_id}`);
     } catch (err) {
-      console.warn('[YjsTransport] Failed to apply remote update:', err);
+      console.warn('[YJS] Failed to apply remote update:', err);
     }
   }
 
@@ -258,6 +269,7 @@ export class YjsTransport {
   private _sendSyncStep1(): void {
     if (!this.channel || !this.connected || this.destroyed) return;
     const sv = Y.encodeStateVector(this.doc);
+    console.log(`[YJS] Reconnect - sending sync-step1 with state vector (${sv.byteLength} bytes)`);
     this.channel.send({
       type: 'broadcast',
       event: 'yjs-sync-step1',
@@ -266,7 +278,7 @@ export class YjsTransport {
         state_vector: bytesToBase64(sv),
         client_id: this.clientId,
       },
-    }).catch(err => console.warn('[YjsTransport] sync-step1 failed:', err));
+    }).catch(err => console.warn('[YJS] sync-step1 failed:', err));
   }
 
   private async _handleSyncStep1(payload: any): Promise<void> {
@@ -277,6 +289,7 @@ export class YjsTransport {
       const mySv = Y.encodeStateVector(this.doc);
       const encoded = await this.callbacks.encodePayload(update, 'sync');
 
+      console.log(`[YJS] Handling sync-step1 from ${payload.client_id}, sending sync-step2 (${update.byteLength} bytes diff)`);
       this.channel.send({
         type: 'broadcast',
         event: 'yjs-sync-step2',
@@ -287,9 +300,9 @@ export class YjsTransport {
           client_id: this.clientId,
           target_client_id: payload.client_id,
         },
-      }).catch(err => console.warn('[YjsTransport] sync-step2 failed:', err));
+      }).catch(err => console.warn('[YJS] sync-step2 failed:', err));
     } catch (err) {
-      console.warn('[YjsTransport] Failed to handle sync-step1:', err);
+      console.warn('[YJS] Failed to handle sync-step1:', err);
     }
   }
 
@@ -297,6 +310,7 @@ export class YjsTransport {
     try {
       const update = await this.callbacks.decodePayload(payload.data, 'sync');
       Y.applyUpdate(this.doc, update, 'remote');
+      console.log(`[YJS] State vector exchange complete - applied ${update.byteLength} bytes diff from peer`);
 
       // Send back our own diff so the responder also gets our updates
       if (payload.state_vector) {
@@ -317,7 +331,7 @@ export class YjsTransport {
         }
       }
     } catch (err) {
-      console.warn('[YjsTransport] Failed to handle sync-step2:', err);
+      console.warn('[YJS] Failed to handle sync-step2:', err);
     }
   }
 
@@ -328,6 +342,7 @@ export class YjsTransport {
     try {
       const fullState = Y.encodeStateAsUpdate(this.doc);
       const encoded = await this.callbacks.encodePayload(fullState, 'sync');
+      console.log(`[YJS] Responding to snapshot request from ${payload.client_id} (${fullState.byteLength} bytes)`);
       this.channel.send({
         type: 'broadcast',
         event: 'yjs-snapshot-response',
@@ -337,9 +352,9 @@ export class YjsTransport {
           client_id: this.clientId,
           target_client_id: payload.client_id,
         },
-      }).catch(err => console.warn('[YjsTransport] Snapshot response failed:', err));
+      }).catch(err => console.warn('[YJS] Snapshot response failed:', err));
     } catch (err) {
-      console.warn('[YjsTransport] Failed to handle snapshot request:', err);
+      console.warn('[YJS] Failed to handle snapshot request:', err);
     }
   }
 
@@ -347,8 +362,9 @@ export class YjsTransport {
     try {
       const state = await this.callbacks.decodePayload(payload.data, 'sync');
       Y.applyUpdate(this.doc, state, 'remote');
+      console.log(`[YJS] Snapshot applied (${state.byteLength} bytes) from ${payload.client_id}`);
     } catch (err) {
-      console.warn('[YjsTransport] Failed to handle snapshot response:', err);
+      console.warn('[YJS] Failed to handle snapshot response:', err);
     }
   }
 
@@ -394,7 +410,7 @@ export class YjsTransport {
         update: bytesToBase64(update),
         client_id: this.clientId,
       },
-    }).catch(err => console.warn('[YjsTransport] Awareness broadcast failed:', err));
+    }).catch(err => console.warn('[YJS] Awareness broadcast failed:', err));
   }
 
   private _handleRemoteAwareness(payload: any): void {
@@ -402,7 +418,7 @@ export class YjsTransport {
       const update = base64ToBytes(payload.update);
       applyAwarenessUpdate(this.awareness, update, 'remote');
     } catch (err) {
-      console.warn('[YjsTransport] Failed to apply remote awareness:', err);
+      console.warn('[YJS] Failed to apply remote awareness:', err);
     }
   }
 }
