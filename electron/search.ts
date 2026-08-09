@@ -88,15 +88,4 @@ export class SearchEngine {
       score: result.score || 0,
     }));
   }
-
-  /** Find a file by exact or matching filename */
-  findFileByName(fileName: string): string | null {
-    if (!fileName) return null;
-    const target = fileName.toLowerCase();
-    const doc = this.documents.find(d => {
-      const base = d.path.split(/[/\\\\]/).pop()?.toLowerCase();
-      return base === target || base === `${target}.md`;
-    });
-    return doc?.path || null;
-  }
 }

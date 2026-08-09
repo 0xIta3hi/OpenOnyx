@@ -1606,27 +1606,23 @@ class CollaborationEngine {
 
   private scheduleRealtimeReconnect(spaceId: string, overrideDelay?: number) {
     if (this._collabPaused) return;
+    if (!authManager.getUserId()) return;
     if (this.realtimeReconnectTimer && this.reconnectingSpaceId === spaceId) return;
 
+    if (this.realtimeReconnectAttempt >= CollaborationEngine.MAX_RECONNECT_ATTEMPTS) {
+      console.error('[Collab] Max reconnect attempts reached. Call subscribeToSpace() manually to retry.');
+      this.realtimeReconnectAttempt = 0;
+      return;
+    }
+
     this.reconnectingSpaceId = spaceId;
-
-    // Enforce a minimum backoff of 1000ms so 0ms loops don't burn retry limits instantly
-    const baseDelay = Math.max(1_000, 1_000 * Math.pow(2, Math.min(6, this.realtimeReconnectAttempt)));
-    const delay = overrideDelay !== undefined && overrideDelay > 0 ? overrideDelay : baseDelay;
-
+    const delay = overrideDelay ?? Math.min(30_000, 1_000 * Math.pow(2, this.realtimeReconnectAttempt));
     this.realtimeReconnectAttempt += 1;
-    console.info(`[Collab] Scheduling reconnect attempt ${this.realtimeReconnectAttempt} in ${delay}ms`);
+    console.info(`[Collab] Scheduling reconnect attempt ${this.realtimeReconnectAttempt}/${CollaborationEngine.MAX_RECONNECT_ATTEMPTS} in ${delay}ms`);
 
     this.realtimeReconnectTimer = setTimeout(() => {
       this.realtimeReconnectTimer = null;
       if (this._activeSpaceId !== spaceId || this._collabPaused) return;
-
-      // Reset retry counter backoff after 10 attempts so it doesn't give up permanently
-      if (this.realtimeReconnectAttempt >= CollaborationEngine.MAX_RECONNECT_ATTEMPTS) {
-        console.warn('[Collab] Resetting reconnect attempt counter to continue background retries.');
-        this.realtimeReconnectAttempt = 1;
-      }
-
       this.subscribeToSpace(spaceId).catch((err) => {
         console.error('[Collab] Realtime reconnect failed:', err);
         this.scheduleRealtimeReconnect(spaceId);

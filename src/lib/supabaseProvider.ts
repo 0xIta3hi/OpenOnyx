@@ -117,14 +117,6 @@ export class SupabaseProvider {
   async connect(): Promise<void> {
     if (this.destroyed) return;
 
-    // Refresh realtime auth token if session is available
-    const session = authManager.getState().session;
-    if (session?.access_token && (supabase as any).realtime?.setAuth) {
-      try {
-        (supabase as any).realtime.setAuth(session.access_token);
-      } catch { /* best-effort */ }
-    }
-
     // Resolve encryption status
     this.isPrivate = await this._checkPrivate();
 

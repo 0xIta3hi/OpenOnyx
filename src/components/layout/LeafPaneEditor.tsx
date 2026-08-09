@@ -149,11 +149,13 @@ export function LeafPaneEditor({
   // directly without going through React state (which would cause full-doc replace).
   const editorViewRef = useRef<EditorView | null>(null);
 
-  // ── Yjs CRDT Engine Flag ────────────────────────────────────────────────────
-  // Enabled by default for all collaboration spaces (unless explicitly set to 'false')
+  // ── Yjs CRDT Feature Flag ───────────────────────────────────────────────────
+  // When enabled AND a collab space is active, use Yjs for sync instead of
+  // the legacy operation-based broadcast system.
   const useCRDT = typeof localStorage !== 'undefined'
-    ? localStorage.getItem('experimentalCRDT') !== 'false' && !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused
-    : !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused;
+    && localStorage.getItem('experimentalCRDT') === 'true'
+    && !!collaborationEngine.activeSpaceId
+    && !collaborationEngine.collabPaused;
 
   const [yCollabExtension, setYCollabExtension] = useState<Extension | undefined>(undefined);
   const yDocResultRef = useRef<OpenDocResult | null>(null);
@@ -419,7 +421,7 @@ export function LeafPaneEditor({
     // Presence: mark as typing
     const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused && !collabFailSafe;
     let localEditMeta: RemoteDocumentMeta | null = null;
-    if (isCollabSpace && !useCRDT && !collabFailSafe) {
+    if (isCollabSpace && !collabFailSafe) {
       const base = docVersionRef.current;
       const next = base + 1;
       docVersionRef.current = next;
@@ -489,8 +491,8 @@ export function LeafPaneEditor({
     }, 2000);
 
     // Persist to IndexedDB + enqueue for sync to Supabase (debounced).
-    // Skip legacy DB sync timer when CRDT is active (yjsPersistence handles it)
-    if (isCollabSpace && !useCRDT && !collabFailSafe && sourcePath && sourcePath !== "__new_tab__") {
+    // Lower debounce than disk save so cloud sync starts sooner.
+    if (isCollabSpace && !collabFailSafe && sourcePath && sourcePath !== "__new_tab__") {
       if (dbSyncTimer.current) {
         clearTimeout(dbSyncTimer.current);
       }
@@ -522,7 +524,7 @@ export function LeafPaneEditor({
   }, [activeTab.path, onContentChangeGlobal, collabFailSafe]);
 
   const scheduleFullDocumentBroadcast = useCallback((contentToBroadcast: string, delay = 400) => {
-    if (useCRDT || !collaborationEngine.activeSpaceId) return;
+    if (!collaborationEngine.activeSpaceId) return;
     if (collabFailSafe) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
 
@@ -551,7 +553,7 @@ export function LeafPaneEditor({
    * We broadcast them to all peers immediately.
    */
   const handleCollabOperations = useCallback((ops: CollabOperation[]) => {
-    if (useCRDT || !collaborationEngine.activeSpaceId) return;
+    if (!collaborationEngine.activeSpaceId) return;
     if (collabFailSafe) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
 
@@ -601,7 +603,7 @@ export function LeafPaneEditor({
   // ── Cursor Presence Broadcast ───────────────────────────────────────────────
 
   const handleCursorChange = useCallback((cursor: { from: number; to: number }) => {
-    if (useCRDT || !collaborationEngine.activeSpaceId) return;
+    if (!collaborationEngine.activeSpaceId) return;
     if (collabFailSafe) return;
     if (!activeTab.path || activeTab.path === "__new_tab__") return;
 
@@ -690,7 +692,7 @@ export function LeafPaneEditor({
     if (activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteOperation((path, ops) => {
-      if (useCRDT || path !== activeTab.path) return;
+      if (path !== activeTab.path) return;
       if (collabFailSafe) return;
 
       const view = editorViewRef.current;
@@ -842,7 +844,7 @@ export function LeafPaneEditor({
     if (activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId, isBroadcast, meta) => {
-      if (useCRDT || path !== activeTab.path) return;
+      if (path !== activeTab.path) return;
       if (collabFailSafe) return;
 
       // Allow remote full-doc updates even while the user is typing. Previously
@@ -935,7 +937,7 @@ export function LeafPaneEditor({
 
   // Re-sync active note upon network reconnection or page focus
   useEffect(() => {
-    if (useCRDT || activeTab.path === "__new_tab__") return;
+    if (activeTab.path === "__new_tab__") return;
     if (!collaborationEngine.activeSpaceId) return;
 
     const handleReSync = async () => {
