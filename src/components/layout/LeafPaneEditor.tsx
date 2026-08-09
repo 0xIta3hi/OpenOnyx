@@ -11,7 +11,7 @@ import { type LinkType } from "../ai/SuggestionBanner";
 import type { EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 import { authManager } from "../../lib/auth";
 import { collaborationEngine, type RemoteDocumentMeta } from "../../lib/collaborationEngine";
-import { syncEngine } from "../../lib/syncEngine";
+import { syncEngine, normalizeSyncPath } from "../../lib/syncEngine";
 import { localDB } from "../../lib/localdb";
 import { supabase } from "../../lib/supabase";
 import type { CollabOperation, CursorPresence } from "../../utils/collabOperations";
@@ -150,10 +150,10 @@ export function LeafPaneEditor({
   const editorViewRef = useRef<EditorView | null>(null);
 
   // ── Yjs CRDT Feature Flag ───────────────────────────────────────────────────
-  // When enabled AND a collab space is active, use Yjs for sync instead of
-  // the legacy operation-based broadcast system.
+  // Enabled by default for all collaborative spaces. Can be disabled only if
+  // explicitly set to 'false' in localStorage.
   const useCRDT = typeof localStorage !== 'undefined'
-    && localStorage.getItem('experimentalCRDT') === 'true'
+    && localStorage.getItem('experimentalCRDT') !== 'false'
     && !!collaborationEngine.activeSpaceId
     && !collaborationEngine.collabPaused;
 
@@ -689,7 +689,7 @@ export function LeafPaneEditor({
   // ── Receive Remote Operations ───────────────────────────────────────────────
 
   useEffect(() => {
-    if (activeTab.path === "__new_tab__") return;
+    if (useCRDT || activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteOperation((path, ops) => {
       if (path !== activeTab.path) return;
@@ -841,7 +841,7 @@ export function LeafPaneEditor({
   // ── Full-Content Fallback (DB-level sync via postgres_changes) ──────────────
 
   useEffect(() => {
-    if (activeTab.path === "__new_tab__") return;
+    if (useCRDT || activeTab.path === "__new_tab__") return;
 
     const unsub = collaborationEngine.onRemoteDocumentUpdate((path, remoteContent, _senderClientId, isBroadcast, meta) => {
       if (path !== activeTab.path) return;
@@ -1164,13 +1164,17 @@ export function LeafPaneEditor({
   const currentUserId = currentUser?.id;
   const isCollabSpace = !!collaborationEngine.activeSpaceId && !collaborationEngine.collabPaused && !collabFailSafe;
 
-  const activeEditors = [...(activeUsers || []).filter(u => u.activeNoteId === activeTab.path && u.isEditing)];
+  const normalizedActivePath = normalizeSyncPath(activeTab.path);
+  const activeEditors = [...(activeUsers || []).filter(u => {
+    if (!u.activeNoteId) return true;
+    return normalizeSyncPath(u.activeNoteId) === normalizedActivePath;
+  })];
   const editorContent =
     contentPath === activeTab.path
       ? content
       : contentCacheRef.current.get(activeTab.path) ?? "";
   
-  if (isCollabSpace && currentUser && activeTab.path !== "__new_tab__" && isSelfTyping) {
+  if (isCollabSpace && currentUser && activeTab.path !== "__new_tab__") {
     const hasSelf = activeEditors.some(u => u.id === currentUserId);
     if (!hasSelf) {
       const username = currentUser.email?.split('@')[0] || 'Guest';
@@ -1179,7 +1183,7 @@ export function LeafPaneEditor({
         email: currentUser.email || '',
         name: `You (${username})`,
         color: '#10b981',
-        isEditing: true,
+        isEditing: isSelfTyping,
         activeNoteId: activeTab.path,
       });
     }

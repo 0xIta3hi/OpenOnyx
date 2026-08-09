@@ -1764,30 +1764,41 @@ class CollaborationEngine {
     const presenceState = this.realtimeChannel.presenceState();
     const currentUserId = authManager.getUserId();
 
-    // Collect ALL presence entries, then deduplicate by user_id.
-    // A single user can have multiple presence entries from reconnections,
-    // multiple tabs, or presence key drift. Without deduplication this
-    // causes the "10 avatars for 2 users" bug.
     const byUserId = new Map<string, any>();
+
+    // 1. Include self if logged in
+    const currentUser = authManager.getUser();
+    if (currentUser) {
+      byUserId.set(currentUser.id, {
+        user_id: currentUser.id,
+        email: currentUser.email || '',
+        is_typing: this.lastPresenceTyping,
+        active_note_id: this.lastPresenceNoteId,
+        is_self: true,
+      });
+    }
 
     for (const [_key, presences] of Object.entries(presenceState)) {
       for (const p of presences as any[]) {
-        if (!p.user_id) continue; // Skip entries without a user_id
-        if (p.user_id === currentUserId) continue; // Skip self
+        if (!p.user_id) continue;
 
         const existing = byUserId.get(p.user_id);
-        if (!existing || (p.online_at && (!existing.online_at || p.online_at > existing.online_at))) {
-          byUserId.set(p.user_id, p);
+        if (!existing || existing.is_self || (p.online_at && (!existing.online_at || p.online_at > existing.online_at))) {
+          byUserId.set(p.user_id, {
+            ...p,
+            is_self: p.user_id === currentUserId,
+          });
         }
       }
     }
 
     const users: ActiveUser[] = [];
     for (const p of byUserId.values()) {
+      const isSelf = p.user_id === currentUserId;
       users.push({
         id: p.user_id,
         email: p.email || '',
-        name: p.email?.split('@')[0] || '',
+        name: isSelf ? `You (${p.email?.split('@')[0] || 'User'})` : (p.email?.split('@')[0] || ''),
         color: getColorForUser(p.user_id),
         isEditing: !!p.is_typing,
         activeNoteId: p.active_note_id || null,
