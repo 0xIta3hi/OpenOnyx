@@ -236,7 +236,22 @@ function configureChromiumRuntime(): void {
   ]);
 }
 
-configureChromiumRuntime();
+function findFileInVault(dir: string, fileName: string): string | null {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findFileInVault(fullPath, fileName);
+        if (found) return found;
+      } else if (entry.name.toLowerCase() === fileName.toLowerCase()) {
+        return fullPath;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
 
 function isExternalHttpUrl(url: string): boolean {
   try {
@@ -443,7 +458,7 @@ app.whenReady().then(() => {
       if (!fs.existsSync(targetPath)) {
         // Fallback: search for file by basename in vault
         const fileName = path.basename(relativePath);
-        const found = searchEngine?.findFileByName?.(fileName);
+        const found = findFileInVault(vaultPath, fileName);
         if (found && fs.existsSync(found)) {
           targetPath = found;
         } else {
