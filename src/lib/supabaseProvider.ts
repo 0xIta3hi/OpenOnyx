@@ -121,7 +121,7 @@ export class SupabaseProvider {
     this.isPrivate = await this._checkPrivate();
 
     const channelName = `yjs:${this.spaceId}`;
-    console.log(`[YJS] Provider connecting to channel ${channelName} for note: ${this.notePath} (isPrivate=${this.isPrivate})`);
+    console.log(`[YJS] Provider connecting to channel ${channelName} for note: ${this.notePath} (guid: ${this.doc.guid}, isPrivate=${this.isPrivate})`);
 
     const channel = supabase.channel(channelName, {
       config: {

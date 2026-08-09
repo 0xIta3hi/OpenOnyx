@@ -3244,6 +3244,7 @@ export function Editor({
   const editorSettingsCompartmentRef = useRef(new Compartment());
   const editorKeymapCompartmentRef = useRef(new Compartment());
   const editorBehaviorCompartmentRef = useRef(new Compartment());
+  const collabCompartmentRef = useRef(new Compartment());
   const typingPauseTimerRef = useRef<number | null>(null);
   const flowTriggerDelayTimerRef = useRef<number | null>(null);
   const flowTriggerWindowTimerRef = useRef<number | null>(null);
@@ -3273,6 +3274,16 @@ export function Editor({
   const yCollabExtensionRef = useRef(yCollabExtension);
   useEffect(() => {
     yCollabExtensionRef.current = yCollabExtension;
+    if (viewRef.current) {
+      viewRef.current.dispatch({
+        effects: collabCompartmentRef.current.reconfigure(
+          yCollabExtension
+            ? [yCollabExtension]
+            : [history(), remoteCursorsExtension()]
+        ),
+      });
+      console.log(`[YJS] Reconfigured editor collaboration compartment (yCollabExtension is ${yCollabExtension ? "defined" : "undefined"})`);
+    }
   }, [yCollabExtension]);
 
   const [editorWidth, setEditorWidth] = useState(50); // percentage
@@ -4141,10 +4152,12 @@ export function Editor({
       selection: { anchor: Math.min(initialCursor, content.length) },
       extensions: [
         codeMirrorPluginExceptionSink,
-        // When Yjs CRDT collaboration is active, history() is replaced by
-        // Y.UndoManager (provided via yCollabExtension). Using both would
-        // cause double-undo and undo-other-users'-edits bugs.
-        ...(yCollabExtensionRef.current ? [] : [history()]),
+        // Dynamically configured collaboration compartment (Yjs yCollab vs legacy history/cursors)
+        collabCompartmentRef.current.of(
+          yCollabExtensionRef.current
+            ? [yCollabExtensionRef.current]
+            : [history(), remoteCursorsExtension()]
+        ),
         search(),
         highlightSelectionMatches(),
         editorKeymapCompartmentRef.current.of(getEditorKeymapExtensions(settings)),
@@ -4304,12 +4317,6 @@ export function Editor({
             return false;
           },
         }),
-        // Remote collaborator cursor decorations.
-        // When Yjs CRDT collaboration is active, cursor rendering is handled
-        // by y-codemirror.next's awareness integration (yRemoteSelectionsTheme).
-        ...(yCollabExtensionRef.current ? [] : [remoteCursorsExtension()]),
-        // Yjs CRDT collaboration extension (yCollab + yUndoManagerKeymap)
-        ...(yCollabExtensionRef.current ? [yCollabExtensionRef.current] : []),
         EditorView.editable.of(!readOnly),
         EditorView.theme({
           "&": {

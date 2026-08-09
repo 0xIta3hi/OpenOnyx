@@ -89,7 +89,7 @@ class YDocManagerImpl {
     const existing = this.entries.get(key);
     if (existing) {
       existing.refCount++;
-      console.log(`[YJS] Reused document for note: ${cleanPath} (refCount: ${existing.refCount})`);
+      console.log(`[YJS] Reused document for note: ${cleanPath} (guid: ${existing.doc.guid}, refCount: ${existing.refCount})`);
       return {
         doc: existing.doc,
         text: existing.text,
@@ -141,7 +141,7 @@ class YDocManagerImpl {
     // Create a new Y.Doc
     const doc = new Y.Doc();
     const text = doc.getText('content');
-    console.log(`[YJS] Created document for note: ${cleanPath}`);
+    console.log(`[YJS] Created document for note: ${cleanPath} (guid: ${doc.guid})`);
 
     // 1. Restore from IndexedDB (offline state)
     const idbKey = `yjs-${spaceId}-${cleanPath.replace(/[/\\:]/g, '_')}`;
@@ -233,7 +233,7 @@ class YDocManagerImpl {
     }
 
     // Fully clean up
-    console.log(`[YJS] Destroyed document for note: ${cleanPath}`);
+    console.log(`[YJS] Destroyed document for note: ${cleanPath} (guid: ${entry.doc.guid})`);
     entry.provider.disconnect();
     entry.undoManager.destroy();
     entry.idbPersistence.destroy();
