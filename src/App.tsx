@@ -4787,7 +4787,7 @@ export default function App() {
     openFile,
   ]);
 
-  const handleNewNote = async () => {
+  const handleNewNote = async (parentPath?: string) => {
     if (!vaultPath) return;
 
     setModal({
@@ -4801,13 +4801,19 @@ export default function App() {
         const fileName = /\.(md|canvas)$/i.test(trimmed)
           ? trimmed
           : `${trimmed}.md`;
-        const activeFolder =
-          settings.defaultNoteLocation === "same-folder" &&
-          activeTab?.path &&
-          !activeTab.path.startsWith("__") &&
-          activeTab.path.includes("/")
-            ? activeTab.path.slice(0, activeTab.path.lastIndexOf("/") + 1)
-            : "";
+        
+        let activeFolder = "";
+        if (parentPath) {
+          activeFolder = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
+        } else {
+          activeFolder =
+            settings.defaultNoteLocation === "same-folder" &&
+            activeTab?.path &&
+            !activeTab.path.startsWith("__") &&
+            activeTab.path.includes("/")
+              ? activeTab.path.slice(0, activeTab.path.lastIndexOf("/") + 1)
+              : "";
+        }
         const targetPath = fileName.includes("/") ? fileName : `${activeFolder}${fileName}`;
         const content = isCanvasFile(fileName)
           ? JSON.stringify({ nodes: [], edges: [] }, null, 2)

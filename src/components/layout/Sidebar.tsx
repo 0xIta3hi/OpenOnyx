@@ -46,7 +46,7 @@ interface SidebarProps {
   activeFilePath: string | null;
   starredNotes: string[];
   onFileSelect: (path: string) => void;
-  onNewNote: () => void;
+  onNewNote: (parentPath?: string) => void;
   onNewFolder: (parentPath: string) => void;
   onDeleteFile: (path: string, isDir: boolean) => void;
   onRenameFile: (oldPath: string, newName: string) => void;
@@ -1121,14 +1121,14 @@ export function Sidebar({
               <div className={sidebarActionsClass}>
                 <button
                   className={sidebarBtnClass}
-                  onClick={onNewNote}
+                  onClick={() => onNewNote(selectedFolder && selectedFolder !== "starred" ? selectedFolder : "")}
                   title="New Note"
                 >
                   <Plus size={15} />
                 </button>
                 <button
                   className={sidebarBtnClass}
-                  onClick={() => onNewFolder("")}
+                  onClick={() => onNewFolder(selectedFolder && selectedFolder !== "starred" ? selectedFolder : "")}
                   title="New Folder"
                 >
                   <Folder size={15} />
