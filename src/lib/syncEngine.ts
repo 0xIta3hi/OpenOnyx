@@ -371,6 +371,13 @@ export class SyncEngine {
         if (payload.path) {
           payload.path = normalizeSyncPath(payload.path);
         }
+        if (payload.is_canvas && payload.content) {
+          try {
+            const parsed = JSON.parse(payload.content);
+            delete parsed.openonyxCanvasViewportV1;
+            payload.content = JSON.stringify(parsed);
+          } catch {}
+        }
         return payload;
       });
 
@@ -568,9 +575,23 @@ export class SyncEngine {
                 const parentDir = cleanPath.split('/').slice(0, -1).join('/');
                 try { await api.createDirectory(parentDir); } catch { /* exists */ }
               }
-              await api.writeFile(cleanPath, remoteNote.content || '');
+              let finalContent = remoteNote.content || '';
+              if (cleanPath.toLowerCase().endsWith('.canvas') && finalContent) {
+                try {
+                  const existingRaw = await api.readFile(cleanPath);
+                  if (existingRaw) {
+                    const existingParsed = JSON.parse(existingRaw);
+                    if (existingParsed.openonyxCanvasViewportV1) {
+                      const remoteParsed = JSON.parse(finalContent);
+                      remoteParsed.openonyxCanvasViewportV1 = existingParsed.openonyxCanvasViewportV1;
+                      finalContent = JSON.stringify(remoteParsed, null, 2);
+                    }
+                  }
+                } catch {}
+              }
+              await api.writeFile(cleanPath, finalContent);
               window.dispatchEvent(new CustomEvent('openonyx:file-written', {
-                detail: { path: cleanPath, content: remoteNote.content || '' }
+                detail: { path: cleanPath, content: finalContent }
               }));
               if (isRename && oldPath) {
                 window.dispatchEvent(new CustomEvent('openonyx:file-renamed', {

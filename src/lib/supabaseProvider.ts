@@ -24,7 +24,7 @@ import { localDB } from './localdb';
 import { isPrivateCloudSpace, privateCrypto } from './privateCrypto';
 import { getAPI } from '../utils/api';
 import { normalizeSyncPath } from './syncEngine';
-import { sha256Hex } from '../utils/collabDocument';
+import { sha256Hex, getYDocContent } from '../utils/collabDocument';
 import { v4 as uuidv4 } from 'uuid';
 
 // ── Base64 helpers ──────────────────────────────────────────────────────────
@@ -598,10 +598,11 @@ export class SupabaseProvider {
   private async _writeToFilesystem(): Promise<void> {
     if (this.destroyed) return;
     try {
-      const content = this.doc.getText('content').toString();
-      const api = getAPI();
       const cleanPath = normalizeSyncPath(this.notePath);
       if (!cleanPath) return;
+      const isCanvas = cleanPath.toLowerCase().endsWith('.canvas');
+      const content = getYDocContent(this.doc, isCanvas);
+      const api = getAPI();
 
       // Ensure parent directory exists
       if (cleanPath.includes('/')) {
@@ -628,13 +629,13 @@ export class SupabaseProvider {
   private async _persistSnapshot(): Promise<void> {
     if (this.destroyed) return;
     try {
-      const content = this.doc.getText('content').toString();
       const cleanPath = normalizeSyncPath(this.notePath);
       if (!cleanPath) return;
+      const isCanvas = cleanPath.toLowerCase().endsWith('.canvas');
+      const content = getYDocContent(this.doc, isCanvas);
 
       const contentHash = await sha256Hex(content);
       const title = cleanPath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || cleanPath;
-      const isCanvas = cleanPath.endsWith('.canvas');
       const now = new Date().toISOString();
 
       // Look up existing note record

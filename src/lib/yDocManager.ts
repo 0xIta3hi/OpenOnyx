@@ -21,6 +21,7 @@ import { localDB } from './localdb';
 import { authManager } from './auth';
 import { getAPI } from '../utils/api';
 import { normalizeSyncPath } from './syncEngine';
+import { populateYDocFromCanvasJSON } from '../utils/collabDocument';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,8 @@ class YDocManagerImpl {
       this.clientId = await localDB.getClientId();
     }
 
+    const isCanvas = cleanPath.toLowerCase().endsWith('.canvas');
+
     // Create a new Y.Doc
     const doc = new Y.Doc();
     const text = doc.getText('content');
@@ -147,21 +150,39 @@ class YDocManagerImpl {
     const idbKey = `yjs-${spaceId}-${cleanPath.replace(/[/\\:]/g, '_')}`;
     const idbPersistence = new IndexeddbPersistence(idbKey, doc);
     await idbPersistence.whenSynced;
-    console.log(`[YJS] Hydrated document from IndexedDB (${text.length} chars)`);
+
+    const canvasNodesSize = doc.getMap('nodes').size;
+    const canvasEdgesSize = doc.getMap('edges').size;
+    console.log(`[YJS] Hydrated document from IndexedDB (${isCanvas ? `nodes: ${canvasNodesSize}, edges: ${canvasEdgesSize}` : `${text.length} chars`})`);
 
     // 2. If doc is empty after IndexedDB restore, initialize from local filesystem
-    if (text.length === 0) {
-      try {
-        const api = getAPI();
-        const fileContent = await api.readFile(cleanPath);
-        if (fileContent && fileContent.length > 0) {
-          doc.transact(() => {
-            text.insert(0, fileContent);
-          }, 'init');
-          console.log(`[YJS] Hydrated document from filesystem (.md) (${fileContent.length} chars)`);
+    if (isCanvas) {
+      if (canvasNodesSize === 0 && canvasEdgesSize === 0) {
+        try {
+          const api = getAPI();
+          const fileContent = await api.readFile(cleanPath);
+          if (fileContent && fileContent.length > 0) {
+            populateYDocFromCanvasJSON(doc, fileContent);
+            console.log(`[YJS] Hydrated canvas document from filesystem (.canvas)`);
+          }
+        } catch {
+          // File may not exist yet (new note)
         }
-      } catch {
-        // File may not exist yet (new note)
+      }
+    } else {
+      if (text.length === 0) {
+        try {
+          const api = getAPI();
+          const fileContent = await api.readFile(cleanPath);
+          if (fileContent && fileContent.length > 0) {
+            doc.transact(() => {
+              text.insert(0, fileContent);
+            }, 'init');
+            console.log(`[YJS] Hydrated document from filesystem (.md) (${fileContent.length} chars)`);
+          }
+        } catch {
+          // File may not exist yet (new note)
+        }
       }
     }
 
@@ -185,15 +206,23 @@ class YDocManagerImpl {
     await provider.connect();
 
     // If the doc is still empty after IndexedDB + filesystem, request snapshot from peers
-    if (text.length === 0) {
+    const isDocEmpty = isCanvas
+      ? (doc.getMap('nodes').size === 0 && doc.getMap('edges').size === 0)
+      : (text.length === 0);
+    if (isDocEmpty) {
       provider.requestSnapshot();
     }
 
     // 5. Create undo manager scoped to local edits
-    const undoManager = new Y.UndoManager(text, {
-      trackedOrigins: new Set([null]),
-      captureTimeout: 500,
-    });
+    const undoManager = isCanvas
+      ? new Y.UndoManager([doc.getMap('nodes'), doc.getMap('edges'), doc.getMap('scribbles'), doc.getMap('metadata')], {
+          trackedOrigins: new Set([null]),
+          captureTimeout: 500,
+        })
+      : new Y.UndoManager(text, {
+          trackedOrigins: new Set([null]),
+          captureTimeout: 500,
+        });
 
     const entry: DocEntry = {
       doc,

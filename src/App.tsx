@@ -7168,6 +7168,7 @@ export default function App() {
           vaultPath={vaultPath!}
           fileTree={fileTree}
           canvasFilePath={leafActiveTab.path}
+          spaceId={collaborationEngine.activeSpaceId || undefined}
           onOpenFile={(path) => openFile(path)}
           onNewCanvas={() => { void handleToggleCanvas(); }}
           onDuplicateCanvas={() => { void handleDuplicateCanvas(); }}
@@ -7855,6 +7856,7 @@ export default function App() {
                     vaultPath={vaultPath}
                     fileTree={fileTree}
                     canvasFilePath={canvasFilePath}
+                    spaceId={collaborationEngine.activeSpaceId || undefined}
                     onOpenFile={(path) => openFile(path)}
                     onNewCanvas={() => {
                       void handleToggleCanvas();
