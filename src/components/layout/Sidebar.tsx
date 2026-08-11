@@ -880,6 +880,7 @@ export function Sidebar({
       const isSelected = selectedFolder === entry.path;
       const isDragOver = dragOverPath === entry.path;
       const noteCount = countDescendantNotes(entry);
+      const isRenaming = entry.path === renamingPath;
 
       return (
         <React.Fragment key={entry.path}>
@@ -891,6 +892,10 @@ export function Sidebar({
             )}
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
             onClick={(e) => {
+              if (isRenaming) {
+                e.stopPropagation();
+                return;
+              }
               e.stopPropagation();
               if (hasNoNotesButHasSubfolders) {
                 toggleDir(entry.path);
@@ -900,6 +905,10 @@ export function Sidebar({
               }
             }}
             onDoubleClick={(e) => {
+              if (isRenaming) {
+                e.stopPropagation();
+                return;
+              }
               e.stopPropagation();
               toggleDir(entry.path);
             }}
@@ -928,13 +937,34 @@ export function Sidebar({
               <ChevronRight size={14} strokeWidth={2.25} />
             </span>
             <Folder size={14} className="shrink-0 opacity-70" />
-            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-              {entry.name}
-            </span>
-            {noteCount > 0 && (
-              <span className="text-[11px] text-[var(--text-muted,#8a8a8f)] ml-auto tabular-nums">
-                {noteCount}
-              </span>
+            {isRenaming ? (
+              <form onSubmit={handleRenameSubmit} onClick={(e) => e.stopPropagation()} style={{ flex: 1 }}>
+                <input
+                  className={renameInputClass}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={handleRenameSubmit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setRenamingPath(null);
+                      setRenameValue("");
+                    }
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </form>
+            ) : (
+              <>
+                <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                  {entry.name}
+                </span>
+                {noteCount > 0 && (
+                  <span className="text-[11px] text-[var(--text-muted,#8a8a8f)] ml-auto tabular-nums">
+                    {noteCount}
+                  </span>
+                )}
+              </>
             )}
           </button>
           {isExpanded && childDirs.length > 0 && (
@@ -1285,16 +1315,42 @@ export function Sidebar({
                             const dateStr = getRelativeDate(note.modifiedAt);
                             const isCanvas = note.extension === ".canvas";
 
+                            const isRenaming = note.path === renamingPath;
                             return (
                               <div
                                 key={note.path}
                                 className={cx("nn-note-card", isActive && "active")}
-                                onClick={() => onFileSelect(note.path)}
+                                onClick={(e) => {
+                                  if (isRenaming) {
+                                    e.stopPropagation();
+                                    return;
+                                  }
+                                  onFileSelect(note.path);
+                                }}
                                 onContextMenu={(e) => handleContextMenu(e, note.path, false)}
-                                draggable={true}
+                                draggable={!isRenaming}
                                 onDragStart={(e) => handleDragStart(e, note.path)}
                               >
-                                <div className="nn-card-title">{getNoteName(note.name)}</div>
+                                {isRenaming ? (
+                                  <form onSubmit={handleRenameSubmit} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginBottom: '4px' }}>
+                                    <input
+                                      className={renameInputClass}
+                                      value={renameValue}
+                                      onChange={(e) => setRenameValue(e.target.value)}
+                                      onBlur={handleRenameSubmit}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Escape') {
+                                          setRenamingPath(null);
+                                          setRenameValue("");
+                                        }
+                                      }}
+                                      autoFocus
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </form>
+                                ) : (
+                                  <div className="nn-card-title">{getNoteName(note.name)}</div>
+                                )}
                                 <div className="nn-card-meta">
                                   {snippet && snippet !== "No additional text" && (
                                     <div className="nn-card-snippet">{snippet}</div>
