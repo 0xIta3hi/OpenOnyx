@@ -1363,6 +1363,17 @@ class CollaborationEngine {
         if (!presence || presence.user_id === userId) return;
         this.remoteCursorListeners.forEach(fn => fn(presence));
       })
+      // Listen for database sync notifications to trigger immediate pulls
+      .on('broadcast', { event: 'space-sync' }, (msg) => {
+        if (this._collabPaused || this.realtimeChannel !== channel) return;
+        if (msg.payload?.clientId === this.clientId) return;
+        console.log('[Collab] Received space-sync broadcast from client:', msg.payload?.clientId);
+        import('./syncEngine').then(({ syncEngine }) => {
+          syncEngine.sync();
+        }).catch(err => {
+          console.warn('[Collab] Failed to trigger sync on broadcast:', err);
+        });
+      })
       // Track presence
       .on('presence', { event: 'sync' }, () => {
         if (this.realtimeChannel !== channel) return;
@@ -2110,6 +2121,20 @@ class CollaborationEngine {
     }).catch((err: any) => {
       console.warn('[Collab] doc-full broadcast error:', err);
       this.ensureRealtimeConnected();
+    });
+  }
+
+  /**
+   * Broadcast a database sync event to all peers to trigger an immediate pull.
+   */
+  broadcastSpaceSync() {
+    if (this._collabPaused || !this.realtimeChannel) return;
+    void this.realtimeChannel.send({
+      type: 'broadcast',
+      event: 'space-sync',
+      payload: { clientId: this.clientId }
+    }).catch(err => {
+      console.warn('[Collab] Failed to send space-sync broadcast:', err);
     });
   }
 

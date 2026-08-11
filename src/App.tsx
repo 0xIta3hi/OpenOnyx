@@ -5711,6 +5711,36 @@ export default function App() {
       void refreshFileTree();
     };
 
+    const onFileDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent<{ path: string; isDirectory?: boolean }>;
+      const { path, isDirectory } = customEvent.detail || {};
+      if (!path) return;
+
+      // Close tabs
+      tabs.forEach((tab) => {
+        if (
+          isDirectory
+            ? (tab.path === path || tab.path.startsWith(path + "/"))
+            : tab.path === path
+        ) {
+          void closeTab(tab.id);
+        }
+      });
+
+      // Remove embeddings
+      const store = loadStore();
+      if (isDirectory) {
+        removeEmbeddingsByPrefix(store, path);
+      } else if (path.toLowerCase().endsWith(".md")) {
+        removeEmbedding(store, path);
+      }
+
+      // Remove bookmarks
+      removeBookmarksForPath(path, Boolean(isDirectory));
+
+      void refreshFileTree();
+    };
+
     window.addEventListener("oo:save", onSave as EventListener);
     window.addEventListener("oo:close-tab", onCloseTab as EventListener);
     window.addEventListener("oo:new-note", onNewNote as EventListener);
@@ -5728,6 +5758,7 @@ export default function App() {
     window.addEventListener("oo:prev-tab", onPrevTab as EventListener);
     window.addEventListener("openonyx:note-saved", onNoteSaved as EventListener);
     window.addEventListener("openonyx:file-renamed", onFileRenamed as EventListener);
+    window.addEventListener("openonyx:file-deleted", onFileDeleted as EventListener);
 
     return () => {
       window.removeEventListener("oo:save", onSave as EventListener);
@@ -5747,6 +5778,7 @@ export default function App() {
       window.removeEventListener("oo:prev-tab", onPrevTab as EventListener);
       window.removeEventListener("openonyx:note-saved", onNoteSaved as EventListener);
       window.removeEventListener("openonyx:file-renamed", onFileRenamed as EventListener);
+      window.removeEventListener("openonyx:file-deleted", onFileDeleted as EventListener);
     };
   }, [
     activeTabId,
@@ -5758,6 +5790,7 @@ export default function App() {
     refreshFileTree,
     updateEmbeddingsAfterRename,
     updateOpenPathsAfterRename,
+    tabs,
     settings.coreBacklinks,
     settings.coreCommandPalette,
     settings.coreDailyNotes,
@@ -6814,6 +6847,9 @@ export default function App() {
   useEffect(() => {
     const unsub = syncEngine.onStatusChange((status) => {
       setSyncStatus(status);
+      if (status.state === 'idle' && (status.pulled ?? 0) > 0) {
+        void refreshFileTree();
+      }
       // Auto-clear the "N synced" idle indicator after 5 seconds
       if (status.state === 'idle' && (status.pushed || status.pulled)) {
         const timer = setTimeout(() => {
@@ -6828,7 +6864,7 @@ export default function App() {
       }
     });
     return unsub;
-  }, []);
+  }, [refreshFileTree]);
 
   // Update presence when active note changes
   useEffect(() => {

@@ -295,6 +295,11 @@ export class SyncEngine {
       await this.syncLocalFilesystemToDB();
       pushed = await this.pushChanges();
       pulled = await this.pullChanges();
+      
+      // Broadcast a sync notification so peers pull creations/deletions immediately
+      if (pushed > 0) {
+        collaborationEngine.broadcastSpaceSync();
+      }
       this.notifyStatus({
         state: 'idle',
         lastSync: new Date().toISOString(),
@@ -319,14 +324,22 @@ export class SyncEngine {
 
     const client = getActiveClient();
     const queue = await localDB.getSyncQueue();
-    if (queue.length === 0) return 0;
+    // Filter queue to only include items for the active space to prevent RLS violations
+    // from offline edits/changes made in other spaces from blocking sync.
+    const activeQueue = queue.filter(item => {
+      const payload = item.payload;
+      if (!payload) return false;
+      const itemSpaceId = payload.space_id;
+      return !itemSpaceId || itemSpaceId === this.activeSpaceId;
+    });
+    if (activeQueue.length === 0) return 0;
     const isPrivateSpace = await this.isPrivateActiveSpace();
 
     let count = 0;
 
     // Group by table:operation for batching
     const batches: Record<string, SyncQueueItem[]> = {};
-    for (const item of queue) {
+    for (const item of activeQueue) {
       const key = `${item.table}:${item.operation}`;
       if (!batches[key]) batches[key] = [];
       batches[key].push(item);
@@ -361,11 +374,11 @@ export class SyncEngine {
         return payload;
       });
 
+      let finalPayloads: any[] = [];
       try {
         const pushedItemIds = new Set<string>();
 
         if (op === 'insert' || op === 'update' || op === 'delete') {
-          const finalPayloads = [];
           let remoteNotesMap: Map<string, any> | null = null;
           for (let i = 0; i < payloads.length; i++) {
             const payload = payloads[i];
@@ -394,11 +407,7 @@ export class SyncEngine {
                   const remoteVersion = normalizeVersion((remote as any).version);
                   const localVersion = normalizeVersion(payload.version);
                   if (remoteVersion > localVersion) {
-                    console.warn('[SyncEngine][push_rejected_version]', {
-                      noteId: payload.id,
-                      remoteVersion,
-                      localVersion,
-                    });
+                    console.warn(`[SyncEngine][push_rejected_version] Note ID: ${payload.id} | Remote: v${remoteVersion} | Local: v${localVersion}`);
                     await localDB.removeSyncItem(originalItem.id);
                     count++;
                     continue;
@@ -411,10 +420,7 @@ export class SyncEngine {
                     (remote as any).content_hash !== payload.content_hash &&
                     (remote as any).client_id !== payload.client_id
                   ) {
-                    console.warn('[SyncEngine][push_rejected_equal_version_hash_conflict]', {
-                      noteId: payload.id,
-                      version: localVersion,
-                    });
+                    console.warn(`[SyncEngine][push_rejected_equal_version_hash_conflict] Note ID: ${payload.id} | Version: ${localVersion}`);
                     await localDB.removeSyncItem(originalItem.id);
                     count++;
                     continue;
@@ -457,12 +463,15 @@ export class SyncEngine {
           await localDB.removeSyncItem(itemId);
         }
       } catch (err: any) {
-        console.error(`[SyncEngine] Push failed for ${table}:`, err?.message || err, {
+        console.error(`[SyncEngine] Push failed for ${table}: ${err?.message || err} | Details: ${JSON.stringify({
           code: err?.code,
           details: err?.details,
           hint: err?.hint,
-          message: err?.message
-        });
+          message: err?.message,
+          payloads: finalPayloads,
+          userId: authManager.getUserId(),
+          userEmail: authManager.getUser()?.email
+        })}`);
         // Increment retry count but NEVER drop items. Offline edits must
         // survive indefinitely until connectivity is restored. The retry
         // count is used for exponential backoff, not as a hard limit.
@@ -524,18 +533,20 @@ export class SyncEngine {
         }
         remoteNote.path = cleanPath;
         const local = await localDB.getNote(remote.id);
+        let isRename = false;
+        let oldPath = "";
 
         // LWW: only apply if remote is newer
         if (local) {
+          if (local.path !== remoteNote.path) {
+            isRename = true;
+            oldPath = local.path;
+          }
           const remoteVersion = normalizeVersion((remote as any).version);
           const localVersion = normalizeVersion(local.version);
           if (remoteVersion > 0 || localVersion > 0) {
             if (remoteVersion <= localVersion) {
-              console.info('[SyncEngine][pull_overwrite_prevented]', {
-                path: cleanPath,
-                remoteVersion,
-                localVersion,
-              });
+              console.info(`[SyncEngine][pull_overwrite_prevented] Path: ${cleanPath} | Remote: v${remoteVersion} | Local: v${localVersion}`);
               continue;
             }
           } else {
@@ -554,12 +565,30 @@ export class SyncEngine {
             const api = getAPI();
             if (remote.deleted) {
               await api.deleteFile(cleanPath);
+              window.dispatchEvent(new CustomEvent('openonyx:file-deleted', {
+                detail: { path: cleanPath }
+              }));
             } else {
+              if (isRename && oldPath) {
+                try {
+                  await api.deleteFile(oldPath);
+                } catch (e) {
+                  console.warn('[SyncEngine] Failed to delete old path during remote rename:', e);
+                }
+              }
               if (cleanPath.includes('/')) {
                 const parentDir = cleanPath.split('/').slice(0, -1).join('/');
                 try { await api.createDirectory(parentDir); } catch { /* exists */ }
               }
               await api.writeFile(cleanPath, remoteNote.content || '');
+              window.dispatchEvent(new CustomEvent('openonyx:file-written', {
+                detail: { path: cleanPath, content: remoteNote.content || '' }
+              }));
+              if (isRename && oldPath) {
+                window.dispatchEvent(new CustomEvent('openonyx:file-renamed', {
+                  detail: { oldPath, newPath: cleanPath }
+                }));
+              }
             }
           } catch (err) {
             if (!remote.deleted) {
@@ -619,6 +648,7 @@ export class SyncEngine {
         const localNote = await localDB.getNoteByPath(this.activeSpaceId, relativePath);
 
         let needsSync = false;
+        let fileContent = "";
         if (!localNote) {
           // New file created offline / when collab was off!
           needsSync = true;
@@ -629,13 +659,21 @@ export class SyncEngine {
 
           // Sync if filesystem file is newer by more than 2 seconds (buffer clock skew)
           if (fileTime - noteTime > 2000) {
-            needsSync = true;
+            try {
+              fileContent = await api.readFile(file.path);
+              const hash = await sha256Hex(fileContent);
+              if (hash !== localNote.content_hash) {
+                needsSync = true;
+              }
+            } catch (err) {
+              console.warn('[SyncEngine] Failed to read file for hash check:', err);
+            }
           }
         }
 
         if (needsSync) {
           try {
-            const content = await api.readFile(file.path);
+            const content = fileContent || (await api.readFile(file.path));
             const title = relativePath.split('/').pop()?.replace(/\.(md|canvas)$/, '') || relativePath;
             const isCanvas = relativePath.endsWith('.canvas');
             const nowIso = new Date(file.modifiedAt || Date.now()).toISOString();
