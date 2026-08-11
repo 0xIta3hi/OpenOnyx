@@ -73,8 +73,8 @@ export class YjsPersistence {
 
   // ── Event handler ─────────────────────────────────────────────────────
 
-  private _onDocUpdate = (_update: Uint8Array, _origin: any): void => {
-    if (this.destroyed) return;
+  private _onDocUpdate = (_update: Uint8Array, origin: any): void => {
+    if (origin === 'remote' || this.destroyed) return;
     this._scheduleFilesystemWrite();
     this._scheduleSnapshotPersist();
   };
