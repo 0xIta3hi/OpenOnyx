@@ -652,7 +652,7 @@ export class SupabaseProvider {
         note.client_id = this.clientId;
         note.content_hash = contentHash;
         note.version = (note.version || 0) + 1;
-        await localDB.putNote(note, true); // true = enqueue for sync
+        await localDB.putNote(note, false); // false = store locally without enqueuing in sync_queue to avoid infinite sync storms
       } else {
         const newNote = {
           id: uuidv4(),
@@ -672,7 +672,7 @@ export class SupabaseProvider {
           deleted: false,
           is_canvas: isCanvas,
         };
-        await localDB.putNote(newNote, true);
+        await localDB.putNote(newNote, false);
       }
     } catch (err) {
       console.warn('[YjsProvider] Snapshot persistence failed:', err);
