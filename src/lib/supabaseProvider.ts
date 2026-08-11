@@ -357,6 +357,8 @@ export class SupabaseProvider {
     try {
       const update = await this._decodeUpdateRaw(payload.update);
       Y.applyUpdate(this.doc, update, 'remote');
+      this._scheduleFilesystemWrite();
+      this._scheduleSnapshotPersist();
 
       // After applying their updates, send back our own state vector diff
       // so the responder also gets any updates we have that they don't.
@@ -425,6 +427,8 @@ export class SupabaseProvider {
     try {
       const state = await this._decodeUpdateRaw(payload.state);
       Y.applyUpdate(this.doc, state, 'remote');
+      this._scheduleFilesystemWrite();
+      this._scheduleSnapshotPersist();
     } catch (err) {
       console.warn('[YjsProvider] Failed to handle snapshot response:', err);
     }
