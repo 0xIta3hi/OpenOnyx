@@ -73,8 +73,8 @@ export class YjsPersistence {
 
   // ── Event handler ─────────────────────────────────────────────────────
 
-  private _onDocUpdate = (_update: Uint8Array, _origin: any): void => {
-    if (this.destroyed) return;
+  private _onDocUpdate = (_update: Uint8Array, origin: any): void => {
+    if (origin === 'remote' || this.destroyed) return;
     this._scheduleFilesystemWrite();
     this._scheduleSnapshotPersist();
   };
@@ -146,7 +146,7 @@ export class YjsPersistence {
         note.client_id = this.clientId;
         note.content_hash = contentHash;
         note.version = (note.version || 0) + 1;
-        await localDB.putNote(note, true);
+        await localDB.putNote(note, false);
       } else {
         const newNote = {
           id: uuidv4(),
@@ -166,9 +166,9 @@ export class YjsPersistence {
           deleted: false,
           is_canvas: isCanvas,
         };
-        await localDB.putNote(newNote, true);
+        await localDB.putNote(newNote, false);
       }
-      console.log(`[YJS] Snapshot saved to IndexedDB/sync_queue for ${this.cleanPath}`);
+      console.log(`[YJS] Snapshot saved to IndexedDB for ${this.cleanPath}`);
     } catch (err) {
       console.warn('[YJS] Snapshot persistence failed:', err);
     }
