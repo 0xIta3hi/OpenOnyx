@@ -601,8 +601,22 @@ export class SupabaseProvider {
       const cleanPath = normalizeSyncPath(this.notePath);
       if (!cleanPath) return;
       const isCanvas = cleanPath.toLowerCase().endsWith('.canvas');
-      const content = getYDocContent(this.doc, isCanvas);
+      let content = getYDocContent(this.doc, isCanvas);
       const api = getAPI();
+
+      if (isCanvas && content) {
+        try {
+          const existingRaw = await api.readFile(cleanPath);
+          if (existingRaw) {
+            const existingParsed = JSON.parse(existingRaw);
+            if (existingParsed.openonyxCanvasViewportV1) {
+              const remoteParsed = JSON.parse(content);
+              remoteParsed.openonyxCanvasViewportV1 = existingParsed.openonyxCanvasViewportV1;
+              content = JSON.stringify(remoteParsed, null, 2);
+            }
+          }
+        } catch {}
+      }
 
       // Ensure parent directory exists
       if (cleanPath.includes('/')) {
