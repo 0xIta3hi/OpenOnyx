@@ -366,17 +366,29 @@ export class SyncEngine {
 
         if (op === 'insert' || op === 'update' || op === 'delete') {
           const finalPayloads = [];
+          let remoteNotesMap: Map<string, any> | null = null;
           for (let i = 0; i < payloads.length; i++) {
             const payload = payloads[i];
             const originalItem = items[i];
 
             if (table === 'notes') {
+              // Batch-fetch remote notes once (moved outside loop on first iteration)
+              if (!remoteNotesMap) {
+                try {
+                  const noteIds = payloads.map(p => p.id).filter(Boolean);
+                  const { data: remotes } = await client
+                    .from('notes')
+                    .select('id, updated_at, version, content_hash, client_id')
+                    .in('id', noteIds);
+                  remoteNotesMap = new Map((remotes || []).map((r: any) => [r.id, r]));
+                } catch (e) {
+                  console.warn('[SyncEngine] Batch remote note fetch failed:', e);
+                  remoteNotesMap = new Map();
+                }
+              }
+
               try {
-                const { data: remote } = await client
-                  .from('notes')
-                  .select('updated_at, version, content_hash, client_id')
-                  .eq('id', payload.id)
-                  .maybeSingle();
+                const remote = remoteNotesMap.get(payload.id) || null;
 
                 if (remote) {
                   const remoteVersion = normalizeVersion((remote as any).version);

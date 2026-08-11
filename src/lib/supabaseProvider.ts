@@ -295,6 +295,11 @@ export class SupabaseProvider {
     try {
       const update = await this._decodeUpdate(payload);
       Y.applyUpdate(this.doc, update, 'remote');
+      // Persist remote edits to local filesystem and IndexedDB.
+      // _onDocUpdate skips origin='remote' (to avoid re-broadcasting),
+      // so we must explicitly schedule persistence here.
+      this._scheduleFilesystemWrite();
+      this._scheduleSnapshotPersist();
     } catch (err) {
       console.warn('[YjsProvider] Failed to apply remote update:', err);
     }
