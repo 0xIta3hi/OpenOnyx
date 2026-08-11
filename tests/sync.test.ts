@@ -20,6 +20,9 @@ const mockFrom = vi.fn((table: string) => {
       if (col === 'space_id') filterSpaceId = val;
       return chain;
     }),
+    in: vi.fn((col, vals) => {
+      return chain;
+    }),
     gte: vi.fn(() => chain),
     maybeSingle: vi.fn(async () => {
       if (filterId) {
