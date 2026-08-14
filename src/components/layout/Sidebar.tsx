@@ -415,6 +415,10 @@ export function Sidebar({
   const [renameValue, setRenameValue] = useState("");
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
+  const [moveModal, setMoveModal] = useState<{
+    path: string;
+    isDir: boolean;
+  } | null>(null);
   const [showStarred, setShowStarred] = useState(true);
   const [showGroups, setShowGroups] = useState(true);
   const [groupContextMenu, setGroupContextMenu] = useState<{
@@ -425,6 +429,35 @@ export function Sidebar({
   const [filterQuery, setFilterQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("name-asc");
   const [showSortMenu, setShowSortMenu] = useState(false);
+
+  const availableDirectories = useMemo(() => {
+    if (!moveModal) return [];
+    
+    const dirs: Array<{ path: string; name: string; depth: number }> = [
+      { path: "", name: "Root Directory ( / )", depth: 0 }
+    ];
+    
+    const walk = (items: FileEntry[], depth: number) => {
+      for (const entry of items) {
+        if (entry.isDirectory) {
+          // Do not include the folder itself or any subfolder of the folder being moved
+          if (moveModal.isDir && (entry.path === moveModal.path || entry.path.startsWith(moveModal.path + "/"))) {
+            continue;
+          }
+          dirs.push({
+            path: entry.path,
+            name: entry.name,
+            depth: depth + 1
+          });
+          if (entry.children) {
+            walk(entry.children, depth + 1);
+          }
+        }
+      }
+    };
+    walk(fileTree, 0);
+    return dirs;
+  }, [fileTree, moveModal]);
   const [showVaultMenu, setShowVaultMenu] = useState(false);
   const vaultMenuRef = useRef<HTMLDivElement>(null);
   const vaultButtonRef = useRef<HTMLButtonElement>(null);
@@ -888,7 +921,8 @@ export function Sidebar({
             className={cx(
               "nn-folder-item",
               isSelected && "active",
-              isDragOver && "bg-[rgba(var(--accent-color-rgb,37,99,235),0.08)] shadow-[inset_0_0_0_1px_var(--accent-primary)]"
+              isDragOver && "bg-[rgba(var(--accent-color-rgb,37,99,235),0.08)] shadow-[inset_0_0_0_1px_var(--accent-primary)]",
+              entry.path === draggingPath && "opacity-40 scale-[0.98]"
             )}
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
             onClick={(e) => {
@@ -913,6 +947,9 @@ export function Sidebar({
               toggleDir(entry.path);
             }}
             onContextMenu={(e) => handleContextMenu(e, entry.path, true)}
+            draggable={!isRenaming}
+            onDragStart={(e) => handleDragStart(e, entry.path)}
+            onDragEnd={handleDragEnd}
             onDragOver={(e) => handleDragOver(e, entry.path)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, entry.path)}
@@ -1179,11 +1216,18 @@ export function Sidebar({
                 >
                   {/* Special / virtual views */}
                   <button
-                    className={cx("nn-folder-item", selectedFolder === "" && "active")}
+                    className={cx(
+                      "nn-folder-item",
+                      selectedFolder === "" && "active",
+                      dragOverPath === "" && "bg-[rgba(var(--accent-color-rgb,37,99,235),0.08)] shadow-[inset_0_0_0_1px_var(--accent-primary)]"
+                    )}
                     onClick={() => {
                       setSelectedFolder("");
                       setIsFoldersCollapsed(true);
                     }}
+                    onDragOver={(e) => handleDragOver(e, "")}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, "")}
                   >
                     <Home size={15} className="shrink-0 opacity-70" />
                     <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Root Directory</span>
@@ -1473,6 +1517,17 @@ export function Sidebar({
             >
               Rename
             </button>
+            <button
+              className={contextMenuItemClass}
+              onClick={() => {
+                const path = contextMenu.path;
+                const isDir = contextMenu.isDir;
+                closeContextMenu();
+                setMoveModal({ path, isDir });
+              }}
+            >
+              Move to...
+            </button>
             {contextMenu.isDir && (
               <button
                 className={contextMenuItemClass}
@@ -1585,6 +1640,85 @@ export function Sidebar({
             })()}
           </div>
         </>
+      )}
+      {moveModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="absolute inset-0" onClick={() => setMoveModal(null)} />
+          <div className="relative flex flex-col w-[min(90vw,440px)] max-h-[75vh] rounded-xl border border-[var(--border-medium)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-xl overflow-hidden z-10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                Move {moveModal.isDir ? "Folder" : "Note"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMoveModal(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1 max-h-[40vh]">
+              <div className="px-2 pb-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Select Destination Folder
+              </div>
+              {availableDirectories.map((dir) => {
+                const displayName = dir.name;
+                const currentParent = moveModal.path.substring(0, moveModal.path.lastIndexOf("/"));
+                const isCurrentParent = currentParent === dir.path;
+                
+                return (
+                  <button
+                    key={dir.path}
+                    type="button"
+                    onClick={async () => {
+                      if (isCurrentParent) {
+                        setMoveModal(null);
+                        return;
+                      }
+                      const parts = moveModal.path.split("/");
+                      const fileName = parts.pop() || moveModal.path;
+                      const nextPath = dir.path ? `${dir.path}/${fileName}` : fileName;
+                      
+                      try {
+                        await onMoveFile(moveModal.path, nextPath);
+                      } catch (err) {
+                        console.error("Move failed:", err);
+                      }
+                      setMoveModal(null);
+                    }}
+                    className={cx(
+                      "flex items-center gap-2 rounded-md py-1.5 px-3 text-left transition-colors duration-150 text-xs w-full",
+                      isCurrentParent 
+                        ? "text-[var(--text-muted)] bg-[var(--bg-secondary)] cursor-not-allowed opacity-60" 
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    )}
+                    style={{ paddingLeft: `${dir.depth * 16 + 12}px` }}
+                    disabled={isCurrentParent}
+                  >
+                    <Folder size={14} className="shrink-0 opacity-70" />
+                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {displayName}
+                    </span>
+                    {isCurrentParent && (
+                      <span className="text-[10px] italic text-[var(--text-muted)] ml-auto shrink-0">
+                        Current Parent
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+              <button
+                type="button"
+                onClick={() => setMoveModal(null)}
+                className="rounded-md border border-[var(--border-medium)] bg-[var(--bg-primary)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

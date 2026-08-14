@@ -1071,7 +1071,7 @@ export default function App() {
   const [showTags, setShowTags] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<string>("general");
+  const [settingsSection, setSettingsSection] = useState<string>("home");
 
   const bookmarks = bookmarkStore.vaultPath === vaultPath ? bookmarkStore.items : [];
   const bookmarkGroups = useMemo(
@@ -1154,7 +1154,7 @@ export default function App() {
       if (customEvent.detail?.section) {
         setSettingsSection(customEvent.detail.section);
       } else {
-        setSettingsSection("general");
+        setSettingsSection("home");
       }
       setShowSettings(true);
     };
@@ -6636,7 +6636,7 @@ export default function App() {
       id: "settings",
       label: "Open Settings",
       action: () => {
-        setSettingsSection("general");
+        setSettingsSection("home");
         setShowSettings(true);
       },
       category: "Settings",
@@ -7527,7 +7527,7 @@ export default function App() {
               openGraphAsTab();
             }}
             onSettings={() => {
-              setSettingsSection("general");
+              setSettingsSection("home");
               setShowSettings(true);
             }}
             onDailyNote={() => {
@@ -7614,7 +7614,7 @@ export default function App() {
                   previouslyOpenedVaults={previouslyOpenedVaults}
                   onSwitchVault={handleSwitchVault}
                   onSettings={() => {
-                    setSettingsSection("general");
+                    setSettingsSection("home");
                     setShowSettings(true);
                   }}
                   pluginViews={activeLeftPluginViews}
@@ -7984,7 +7984,7 @@ export default function App() {
           onSettingsChange={setSettings}
           onClose={() => {
             setShowSettings(false);
-            setSettingsSection("general");
+            setSettingsSection("home");
           }}
           initialSection={settingsSection as any}
           commands={[

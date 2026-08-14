@@ -218,6 +218,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export type SettingsSection =
+  | "home"
   | "general"
   | "editor"
   | "files"
@@ -266,6 +267,8 @@ export interface SettingsPageProps {
 
 function mapSectionToStudioTab(section?: SettingsSection): StudioTab {
   switch (section) {
+    case "home":
+      return "home";
     case "general":
       return "system";
     case "editor":
