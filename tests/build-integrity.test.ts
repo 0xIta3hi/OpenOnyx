@@ -45,7 +45,7 @@ describe('Build and Packaging Integrity Checks', () => {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
     // Check custom scripts
-    const linuxScriptPath = path.join(rootDir, 'scripts/linux/package-linux.js');
+    const linuxScriptPath = path.join(rootDir, 'scripts/linux/package-linux.cjs');
     expect(fs.existsSync(linuxScriptPath)).toBe(true);
 
     // Check that deb package dependencies and arch package dependencies match builder configuration
