@@ -12,7 +12,7 @@
 
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X, Lightbulb, BookOpen, Pen, RefreshCw, Sparkles } from "lucide-react";
+import { X, Lightbulb, BookOpen, Pen, RefreshCw, Sparkles, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Compartment, EditorState, Transaction, StateEffect, StateField, EditorSelection } from "@codemirror/state";
 import {
   EditorView,
@@ -361,6 +361,88 @@ const toggleItalic = toggleFormat("*");
 const toggleCode = toggleFormat("`");
 const toggleStrikethrough = toggleFormat("~~");
 
+const handleBackspace = (view: EditorView): boolean => {
+  const { state, dispatch } = view;
+  if (state.readOnly) return false;
+
+  let changes: { from: number; to: number; insert: string }[] = [];
+  let selectionUpdated = false;
+
+  const newRanges = state.selection.ranges.map((range) => {
+    if (!range.empty) {
+      return range;
+    }
+    const pos = range.head;
+    const line = state.doc.lineAt(pos);
+
+    const regex = new RegExp(MARKDOWN_IMAGE_GLOBAL_REGEX.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(line.text)) !== null) {
+      const from = line.from + match.index;
+      const to = from + match[0].length;
+
+      if (pos === to) {
+        changes.push({ from, to, insert: "" });
+        selectionUpdated = true;
+        return EditorSelection.cursor(from);
+      }
+    }
+    return range;
+  });
+
+  if (selectionUpdated) {
+    dispatch(state.update({
+      changes,
+      selection: EditorSelection.create(newRanges),
+      userEvent: "delete.backward"
+    }));
+    return true;
+  }
+
+  return false;
+};
+
+const handleDelete = (view: EditorView): boolean => {
+  const { state, dispatch } = view;
+  if (state.readOnly) return false;
+
+  let changes: { from: number; to: number; insert: string }[] = [];
+  let selectionUpdated = false;
+
+  const newRanges = state.selection.ranges.map((range) => {
+    if (!range.empty) {
+      return range;
+    }
+    const pos = range.head;
+    const line = state.doc.lineAt(pos);
+
+    const regex = new RegExp(MARKDOWN_IMAGE_GLOBAL_REGEX.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(line.text)) !== null) {
+      const from = line.from + match.index;
+      const to = from + match[0].length;
+
+      if (pos === from) {
+        changes.push({ from, to, insert: "" });
+        selectionUpdated = true;
+        return EditorSelection.cursor(from);
+      }
+    }
+    return range;
+  });
+
+  if (selectionUpdated) {
+    dispatch(state.update({
+      changes,
+      selection: EditorSelection.create(newRanges),
+      userEvent: "delete.forward"
+    }));
+    return true;
+  }
+
+  return false;
+};
+
 function getEditorKeymapExtensions(settings?: AppSettings) {
   return keymap.of([
     { key: "Mod-b", run: toggleBold },
@@ -368,6 +450,8 @@ function getEditorKeymapExtensions(settings?: AppSettings) {
     { key: "Mod-e", run: toggleCode },
     { key: "Mod-`", run: toggleCode },
     { key: "Mod-Shift-x", run: toggleStrikethrough },
+    { key: "Backspace", run: handleBackspace },
+    { key: "Delete", run: handleDelete },
     ...defaultKeymap,
     ...historyKeymap,
     ...(settings?.indentUsingTabs === false ? [] : [indentWithTab]),
@@ -516,9 +600,9 @@ interface MarkdownImageMatch {
 }
 
 const MARKDOWN_IMAGE_GLOBAL_REGEX =
-  /!\[([^\]]*)\]\((<[^>]+>|[^)\n]+)(?:\s+"([^"]*)")?\)|!\[\[([^\n\]|]+)(?:\|([^\n\]]+))?\]\]/g;
+  /!\[([^\]]*)\]\((<[^>]+>|[^)\s"]+)(?:\s+"([^"]*)")?\)|!\[\[([^\n\]|]+)(?:\|([^\n\]]+))?\]\]/g;
 const MARKDOWN_IMAGE_SINGLE_REGEX =
-  /^!\[([^\]]*)\]\((<[^>]+>|[^)\n]+)(?:\s+"([^"]*)")?\)$/;
+  /^!\[([^\]]*)\]\((<[^>]+>|[^)\s"]+)(?:\s+"([^"]*)")?\)$/;
 
 function parseImageMeta(title?: string): {
   width?: number;
@@ -688,14 +772,6 @@ class MarkdownImageWidget extends WidgetType {
     applyWidgetImageStyles(img, this.image);
     stage.appendChild(img);
 
-    const imageToggle = document.createElement("button");
-    imageToggle.className = "cm-image-widget-toggle";
-    imageToggle.type = "button";
-    imageToggle.dataset.action = "toggle-mode";
-    imageToggle.title = "Switch between image and markdown text mode";
-    imageToggle.textContent = "↻";
-    stage.appendChild(imageToggle);
-
     const metaRow = document.createElement("div");
     metaRow.className = "cm-image-widget-meta";
     metaRow.style.width = `${this.image.width ?? 420}px`;
@@ -716,30 +792,6 @@ class MarkdownImageWidget extends WidgetType {
 
     root.appendChild(metaRow);
 
-    const textWrap = document.createElement("div");
-    textWrap.className = "cm-image-widget-text-wrap";
-    const textEditor = document.createElement("textarea");
-    textEditor.className = "cm-image-widget-text";
-    textEditor.value = buildMarkdownImage(
-      this.image.alt,
-      this.image.src,
-      this.image.width,
-      this.image.crop,
-      this.image.offsetX,
-      this.image.offsetY,
-    );
-    textEditor.spellcheck = false;
-    textWrap.appendChild(textEditor);
-
-    const textToggle = document.createElement("button");
-    textToggle.className = "cm-image-widget-toggle text-toggle";
-    textToggle.type = "button";
-    textToggle.dataset.action = "toggle-mode";
-    textToggle.title = "Back to image mode";
-    textToggle.textContent = "↻";
-    textWrap.appendChild(textToggle);
-    root.appendChild(textWrap);
-
     return root;
   }
 
@@ -750,6 +802,23 @@ class MarkdownImageWidget extends WidgetType {
 
 function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
   let activeDragCleanup: (() => void) | null = null;
+
+  const getWidgetRange = (view: EditorView, widgetEl: HTMLElement): { from: number; to: number } | null => {
+    const pos = view.posAtDOM(widgetEl);
+    if (pos < 0) return null;
+
+    const line = view.state.doc.lineAt(pos);
+    const regex = new RegExp(MARKDOWN_IMAGE_GLOBAL_REGEX.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(line.text)) !== null) {
+      const from = line.from + match.index;
+      const to = from + match[0].length;
+      if (pos >= from && pos <= to) {
+        return { from, to };
+      }
+    }
+    return null;
+  };
 
   const getMaxRenderableWidth = (view: EditorView) => {
     const content = view.dom.querySelector(".cm-content") as HTMLElement | null;
@@ -824,14 +893,6 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
       eventHandlers: {
         mousedown: (e: MouseEvent, view: EditorView) => {
           const target = e.target as HTMLElement;
-          const textEditor = target.closest(
-            ".cm-image-widget-text",
-          ) as HTMLTextAreaElement | null;
-          if (textEditor) {
-            e.stopPropagation();
-            return;
-          }
-
           const widget = target.closest(
             ".cm-image-widget",
           ) as HTMLElement | null;
@@ -841,10 +902,9 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
           e.stopPropagation();
           view.dom.blur();
 
-          const from = Number(widget.dataset.from);
-          const to = Number(widget.dataset.to);
-          if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from)
-            return;
+          const range = getWidgetRange(view, widget);
+          if (!range) return;
+          const { from, to } = range;
 
           const current = view.state.doc.sliceString(from, to);
           const parsed = parseMarkdownImage(current, from, to);
@@ -856,44 +916,16 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
           if (button) {
             const action = button.dataset.action;
             if (action === "delete-image") {
+              const currentRange = getWidgetRange(view, widget);
+              if (!currentRange) return;
               view.dispatch({
-                changes: { from, to, insert: "" },
-                selection: { anchor: from },
+                changes: { from: currentRange.from, to: currentRange.to, insert: "" },
+                selection: { anchor: currentRange.from },
               });
-              return;
-            }
-            if (action === "toggle-mode") {
-              const editor = widget.querySelector(
-                ".cm-image-widget-text",
-              ) as HTMLTextAreaElement | null;
-              const isTextMode = widget.classList.contains("text-mode");
-              if (!isTextMode) {
-                widget.classList.add("text-mode");
-                if (editor) {
-                  editor.value = current;
-                  editor.focus();
-                  editor.select();
-                }
-                return;
-              }
-
-              const nextRaw = (editor?.value || "").trim();
-              const nextParsed = nextRaw
-                ? parseMarkdownImage(nextRaw, from, to)
-                : null;
-              if (nextParsed) {
-                view.dispatch({
-                  changes: { from, to, insert: nextRaw },
-                  selection: { anchor: from + nextRaw.length },
-                });
-                widget.classList.remove("text-mode");
-              }
               return;
             }
             return;
           }
-
-          if (widget.classList.contains("text-mode")) return;
 
           const imageEl = widget.querySelector(
             ".cm-image-widget-image",
@@ -977,6 +1009,9 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
               return;
             }
 
+            const currentRange = getWidgetRange(view, widget);
+            if (!currentRange) return;
+
             const dx = event.clientX - startX;
             const dy = event.clientY - startY;
             const nextWidth = isResizeFromEdge
@@ -999,8 +1034,8 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
               nextOy,
             );
             view.dispatch({
-              changes: { from, to, insert: replacement },
-              selection: { anchor: from + replacement.length },
+              changes: { from: currentRange.from, to: currentRange.to, insert: replacement },
+              selection: { anchor: currentRange.from + replacement.length },
             });
           };
 
@@ -1018,7 +1053,7 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
           const widget = target.closest(
             ".cm-image-widget",
           ) as HTMLElement | null;
-          if (!widget || widget.classList.contains("text-mode")) return;
+          if (!widget) return;
           const imageEl = widget.querySelector(
             ".cm-image-widget-image",
           ) as HTMLImageElement | null;
@@ -1042,10 +1077,7 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
 
         click: (e: MouseEvent) => {
           const target = e.target as HTMLElement;
-          if (
-            target.closest(".cm-image-widget") &&
-            !target.closest(".cm-image-widget-text")
-          ) {
+          if (target.closest(".cm-image-widget")) {
             e.preventDefault();
             e.stopPropagation();
           }
@@ -3319,6 +3351,50 @@ export function Editor({
     src: string;
     alt: string;
   } | null>(null);
+  const [zoomScale, setZoomScale] = useState<number>(1);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lightboxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isPanning) {
+      const onMouseMove = (e: MouseEvent) => {
+        setPanOffset({
+          x: e.clientX - panStartRef.current.x,
+          y: e.clientY - panStartRef.current.y,
+        });
+      };
+      const onMouseUp = () => {
+        setIsPanning(false);
+      };
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+    }
+  }, [isPanning]);
+
+  useEffect(() => {
+    const el = lightboxRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = 0.15;
+      const nextScale = e.deltaY < 0
+        ? Math.min(5, zoomScale + zoomFactor)
+        : Math.max(0.5, zoomScale - zoomFactor);
+      setZoomScale(nextScale);
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [imageLightbox, zoomScale]);
 
   const isSpecialTab = !!specialContent;
 
@@ -3897,6 +3973,9 @@ export function Editor({
   }, [content, isSpecialTab, updateEndSuggestionProximity]);
   const handleOpenImageLightbox = useCallback((src: string, alt: string) => {
     setImageLightbox({ src, alt });
+    setZoomScale(1);
+    setPanOffset({ x: 0, y: 0 });
+    setIsPanning(false);
   }, []);
 
   // Update available notes for autocomplete
@@ -4981,9 +5060,62 @@ export function Editor({
         case "link":
           wrapSelection("[", "](url)", "link text");
           break;
-        case "image":
-          wrapSelection("![", "](url)", "alt");
+        case "image": {
+          const view = viewRef.current;
+          if (!view) break;
+
+          (async () => {
+            try {
+              const result = await getAPI().showOpenDialog({
+                title: "Choose Images",
+                buttonLabel: "Insert",
+                properties: ["openFile", "multiSelections"],
+                filters: [
+                  { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"] }
+                ]
+              });
+
+              if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+                return;
+              }
+
+              let insertionText = "";
+              for (const filePath of result.filePaths) {
+                const fileName = filePath.split(/[/\\]/).pop() || "image.png";
+                
+                // Read binary data from the file path
+                const binaryData = await getAPI().readBinary(filePath);
+                
+                // Convert Uint8Array to base64
+                let binary = "";
+                const len = binaryData.byteLength;
+                for (let i = 0; i < len; i++) {
+                  binary += String.fromCharCode(binaryData[i]);
+                }
+                const base64Data = window.btoa(binary);
+                
+                // Save image with content-hash deduplication
+                const saveResult = await getAPI().saveImageDedup(fileName, base64Data);
+                
+                // Extract filename without extension for alt text
+                const extIdx = fileName.lastIndexOf(".");
+                const altText = extIdx !== -1 ? fileName.substring(0, extIdx) : fileName;
+                
+                insertionText += `![${altText}](${saveResult.relativePath})\n`;
+              }
+
+              const { from, to } = view.state.selection.main;
+              view.dispatch({
+                changes: { from, to, insert: insertionText },
+                selection: { anchor: from + insertionText.length }
+              });
+              view.focus();
+            } catch (err) {
+              console.error("Failed to select/import images:", err);
+            }
+          })();
           break;
+        }
         case "heading-1":
           prefixLine("# ");
           break;
@@ -5993,16 +6125,29 @@ export function Editor({
       {imageLightbox && (
         <div
           className={editorLightboxBackdropClass}
-          onClick={() => setImageLightbox(null)}
+          onClick={() => {
+            setImageLightbox(null);
+            setZoomScale(1);
+            setPanOffset({ x: 0, y: 0 });
+            setIsPanning(false);
+          }}
         >
           <div
+            ref={lightboxRef}
             className={editorLightboxModalClass}
             onClick={(e) => e.stopPropagation()}
+            style={{ overflow: "hidden" }}
           >
             <button
               type="button"
               className={editorLightboxCloseClass}
-              onClick={() => setImageLightbox(null)}
+              style={{ zIndex: 20 }}
+              onClick={() => {
+                setImageLightbox(null);
+                setZoomScale(1);
+                setPanOffset({ x: 0, y: 0 });
+                setIsPanning(false);
+              }}
               aria-label="Close image preview"
             >
               ×
@@ -6011,7 +6156,65 @@ export function Editor({
               src={imageLightbox.src}
               alt={imageLightbox.alt || "Image preview"}
               className={editorLightboxImageClass}
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                transition: isPanning ? "none" : "transform 0.15s ease-out",
+                cursor: zoomScale > 1 ? (isPanning ? "grabbing" : "grab") : "zoom-in",
+                userSelect: "none",
+                maxHeight: "100%",
+                maxWidth: "100%",
+              }}
+              onMouseDown={(e) => {
+                if (zoomScale <= 1) return;
+                e.preventDefault();
+                setIsPanning(true);
+                panStartRef.current = {
+                  x: e.clientX - panOffset.x,
+                  y: e.clientY - panOffset.y,
+                };
+              }}
+              draggable={false}
             />
+            <div
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-full border border-[var(--border-medium)] bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] px-3 py-1.5 backdrop-blur-[8px]"
+              style={{ boxShadow: "0 4px 12px rgba(0, 0, 0, 0.25)" }}
+            >
+              <button
+                type="button"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                onClick={() => {
+                  setZoomScale((s) => Math.max(0.5, s - 0.25));
+                }}
+                title="Zoom Out"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <span className="text-[12px] font-semibold min-w-[36px] text-center text-[var(--text-primary)]">
+                {Math.round(zoomScale * 100)}%
+              </span>
+              <button
+                type="button"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                onClick={() => {
+                  setZoomScale((s) => Math.min(5, s + 0.25));
+                }}
+                title="Zoom In"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <div className="h-4 w-px bg-[var(--border-subtle)] mx-0.5" />
+              <button
+                type="button"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                onClick={() => {
+                  setZoomScale(1);
+                  setPanOffset({ x: 0, y: 0 });
+                }}
+                title="Reset Zoom"
+              >
+                <RotateCcw size={14} />
+              </button>
+            </div>
           </div>
         </div>
       )}
