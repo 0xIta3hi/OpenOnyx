@@ -140,7 +140,7 @@ export class FileSystemManager {
   }
 
   async readBinary(filePath: string): Promise<Uint8Array> {
-    const absolutePath = this.resolvePath(filePath);
+    const absolutePath = path.isAbsolute(filePath) ? filePath : this.resolvePath(filePath);
     return new Uint8Array(await fs.promises.readFile(absolutePath));
   }
 

@@ -5086,13 +5086,18 @@ export function Editor({
                 // Read binary data from the file path
                 const binaryData = await getAPI().readBinary(filePath);
                 
-                // Convert Uint8Array to base64
-                let binary = "";
-                const len = binaryData.byteLength;
-                for (let i = 0; i < len; i++) {
-                  binary += String.fromCharCode(binaryData[i]);
-                }
-                const base64Data = window.btoa(binary);
+                // Convert Uint8Array to base64 (fast, native, memory-efficient FileReader)
+                const base64Data = await new Promise<string>((resolve, reject) => {
+                  const blob = new Blob([binaryData as any]);
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const res = reader.result as string;
+                    const base64 = res.split(",")[1];
+                    resolve(base64);
+                  };
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
                 
                 // Save image with content-hash deduplication
                 const saveResult = await getAPI().saveImageDedup(fileName, base64Data);
