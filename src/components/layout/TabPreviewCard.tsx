@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import ReactDOM from "react-dom";
+import { marked } from "marked";
 import { getAPI } from "../../utils/api";
 
 /* ── Constants ─────────────────────────────────────── */
@@ -41,161 +42,27 @@ function extractYouTubeId(url: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Convert a subset of markdown to safe inline HTML for preview rendering */
+/** Convert markdown to rich HTML for preview rendering using marked */
 function markdownToPreviewHTML(raw: string): string {
   const md = stripFrontmatter(raw);
-  const lines = md.split("\n");
-  const htmlParts: string[] = [];
-  let inCodeBlock = false;
-  let codeBlockLines: string[] = [];
-  let inList = false;
+  
+  // Swap block markdown markers and opening HTML tags (e.g. <span style="...">## Heading</span> -> ## <span style="...">Heading</span>)
+  let processed = md.replace(
+    /^([ \t]*)(<[a-zA-Z]+[^>]*>)(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+)/gm,
+    "$1$3$2"
+  );
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // Convert ==highlight== to <mark>highlight</mark> (multiline and boundary-aware)
+  processed = processed.replace(
+    /(^|\s|(?<=<[a-zA-Z]+[^>]*>))(==)([^\s=](?:[^\n=]*?[^\s=])?)(==)(?=\s|[.,;:!?\x27\x22]|$)/g,
+    "$1<mark>$3</mark>"
+  );
 
-    // Code fences
-    if (line.trimStart().startsWith("```")) {
-      if (inCodeBlock) {
-        htmlParts.push(
-          `<pre class="tp-code"><code>${escapeHtml(codeBlockLines.join("\n"))}</code></pre>`
-        );
-        codeBlockLines = [];
-        inCodeBlock = false;
-      } else {
-        if (inList) { htmlParts.push("</ul>"); inList = false; }
-        inCodeBlock = true;
-      }
-      continue;
-    }
-    if (inCodeBlock) {
-      codeBlockLines.push(line);
-      continue;
-    }
-
-    const trimmed = line.trim();
-    if (!trimmed) {
-      if (inList) { htmlParts.push("</ul>"); inList = false; }
-      continue;
-    }
-
-    // Headings
-    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)/);
-    if (headingMatch) {
-      if (inList) { htmlParts.push("</ul>"); inList = false; }
-      const level = Math.min(headingMatch[1].length, 6);
-      htmlParts.push(`<div class="tp-h${level}">${inlineFormat(headingMatch[2])}</div>`);
-      continue;
-    }
-
-    // Blockquotes
-    if (trimmed.startsWith("> ")) {
-      if (inList) { htmlParts.push("</ul>"); inList = false; }
-      htmlParts.push(`<div class="tp-blockquote">${inlineFormat(trimmed.slice(2))}</div>`);
-      continue;
-    }
-
-    // Horizontal rule
-    if (/^[-*_]{3,}$/.test(trimmed)) {
-      if (inList) { htmlParts.push("</ul>"); inList = false; }
-      htmlParts.push('<div class="tp-hr"></div>');
-      continue;
-    }
-
-    // Images — render as actual thumbnails
-    const imgMatch = trimmed.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-    if (imgMatch) {
-      if (inList) { htmlParts.push("</ul>"); inList = false; }
-      const alt = escapeHtml(imgMatch[1]);
-      const src = imgMatch[2];
-      const ytId = extractYouTubeId(src);
-      if (ytId) {
-        htmlParts.push(
-          `<div class="tp-yt-thumb"><img src="https://img.youtube.com/vi/${ytId}/mqdefault.jpg" alt="${alt}" class="tp-img" /><div class="tp-yt-play">▶</div></div>`
-        );
-      } else {
-        htmlParts.push(
-          `<div class="tp-img-wrap"><img src="${escapeHtml(src)}" alt="${alt}" class="tp-img" /></div>`
-        );
-      }
-      continue;
-    }
-
-    // Wikilink embeds ![[filename]]
-    const wikiEmbedMatch = trimmed.match(/^!\[\[([^\]]+)\]\]$/);
-    if (wikiEmbedMatch) {
-      if (inList) { htmlParts.push("</ul>"); inList = false; }
-      const fname = escapeHtml(wikiEmbedMatch[1]);
-      const isImg = /\.(png|jpg|jpeg|gif|svg|webp|bmp)$/i.test(fname);
-      if (isImg) {
-        htmlParts.push(`<div class="tp-img-wrap"><div class="tp-embed-placeholder">🖼 ${fname}</div></div>`);
-      } else {
-        htmlParts.push(`<div class="tp-embed-placeholder">📄 ${fname}</div>`);
-      }
-      continue;
-    }
-
-    // Unordered list items
-    const ulMatch = trimmed.match(/^[-*+]\s+(.+)/);
-    if (ulMatch) {
-      if (!inList) { htmlParts.push('<ul class="tp-ul">'); inList = true; }
-      htmlParts.push(`<li>${inlineFormat(ulMatch[1])}</li>`);
-      continue;
-    }
-
-    // Ordered list items
-    const olMatch = trimmed.match(/^\d+\.\s+(.+)/);
-    if (olMatch) {
-      if (!inList) { htmlParts.push('<ul class="tp-ul">'); inList = true; }
-      htmlParts.push(`<li>${inlineFormat(olMatch[1])}</li>`);
-      continue;
-    }
-
-    // Checkbox items
-    const cbMatch = trimmed.match(/^[-*]\s+\[([ xX])\]\s+(.+)/);
-    if (cbMatch) {
-      if (!inList) { htmlParts.push('<ul class="tp-ul">'); inList = true; }
-      const checked = cbMatch[1] !== " ";
-      htmlParts.push(
-        `<li><span class="tp-cb">${checked ? "☑" : "☐"}</span> ${inlineFormat(cbMatch[2])}</li>`
-      );
-      continue;
-    }
-
-    // Regular paragraph
-    if (inList) { htmlParts.push("</ul>"); inList = false; }
-    htmlParts.push(`<div class="tp-p">${inlineFormat(trimmed)}</div>`);
+  try {
+    return marked.parse(processed, { async: false, breaks: true }) as string;
+  } catch (e) {
+    return escapeHtml(processed);
   }
-
-  if (inList) htmlParts.push("</ul>");
-  if (inCodeBlock) {
-    htmlParts.push(`<pre class="tp-code"><code>${escapeHtml(codeBlockLines.join("\n"))}</code></pre>`);
-  }
-
-  return htmlParts.join("");
-}
-
-/** Inline formatting: bold, italic, code, wikilinks, links, strikethrough */
-function inlineFormat(text: string): string {
-  let s = escapeHtml(text);
-  // Inline code
-  s = s.replace(/`([^`]+)`/g, '<code class="tp-inline-code">$1</code>');
-  // Bold + italic
-  s = s.replace(/\*\*\*(.+?)\*\*\*/g, "<b><i>$1</i></b>");
-  // Bold
-  s = s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
-  // Italic
-  s = s.replace(/\*(.+?)\*/g, "<i>$1</i>");
-  // Strikethrough
-  s = s.replace(/~~(.+?)~~/g, "<s>$1</s>");
-  // Wikilinks [[page]]
-  s = s.replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, target, alias) => {
-    return `<span class="tp-wikilink">${alias || target}</span>`;
-  });
-  // Standard links [text](url)
-  s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, '<span class="tp-link">$1</span>');
-  // Highlight ==text==
-  s = s.replace(/==(.+?)==/g, '<mark class="tp-highlight">$1</mark>');
-  return s;
 }
 
 function escapeHtml(s: string): string {
@@ -380,7 +247,7 @@ function canvasToPreviewHTML(raw: string): string {
           bodyHtml = `<div style="font-size:11px; color:var(--color-accent, #3b82f6); text-align:center; text-decoration:underline;">${escapeHtml(n.url || '')}</div>`;
         } else {
           const rawText = n.text || n.label || "";
-          bodyHtml = `<div style="font-size:12px; color:var(--text-primary); line-height:1.4; overflow:hidden; word-break:break-word;">${inlineFormat(rawText.slice(0, 160))}</div>`;
+          bodyHtml = `<div style="font-size:12px; color:var(--text-primary); line-height:1.4; overflow:hidden; word-break:break-word;">${marked.parseInline(rawText.slice(0, 160))}</div>`;
         }
 
         html += `<div style="position:absolute; left:${left}%; top:${top}%; width:${width}%; height:${height}%; background:${cardBg}; border:${cardBorder}; border-radius:7px; padding:10px 12px; box-sizing:border-box; z-index:3; display:flex; flex-direction:column; justify-content:center; align-items:center; box-shadow:0 4px 14px rgba(0,0,0,0.35); overflow:hidden;">`;
@@ -452,7 +319,7 @@ export const TabPreviewCard = React.memo(function TabPreviewCard({
 
   // Center-align below the tab
   let left = targetRect.left + targetRect.width / 2 - CARD_WIDTH / 2;
-  const top = targetRect.bottom + 8;
+  const top = targetRect.bottom + 42;
   // Clamp to viewport edges
   left = Math.max(8, Math.min(left, window.innerWidth - CARD_WIDTH - 8));
 
@@ -481,7 +348,7 @@ export const TabPreviewCard = React.memo(function TabPreviewCard({
           <div className="tab-preview-content-scaler">
             <div
               ref={contentRef}
-              className="tab-preview-content-inner"
+              className="tab-preview-content-inner markdown-rendered"
               dangerouslySetInnerHTML={{ __html: previewHTML }}
             />
           </div>

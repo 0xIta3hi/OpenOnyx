@@ -260,6 +260,7 @@ const TitlebarTabItem = React.memo(function TitlebarTabItem({
       <div
         ref={tabRef}
         data-tab-id={tab.id}
+        data-tooltip={tab.name}
         className={cx(
           titlebarTabClass,
           isActive && titlebarTabActiveClass,

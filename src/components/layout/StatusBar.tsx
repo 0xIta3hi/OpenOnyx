@@ -11,8 +11,6 @@ import {
   Home,
   Link2,
   PencilLine,
-  Paperclip,
-  Tag,
   CloudUpload,
   CloudOff,
   RefreshCw,
@@ -163,13 +161,7 @@ export function StatusBar({
                 <VimModeIndicator vimEnabled={vimEnabled} />
               </>
             )}
-            <span className={statusItemClass} title="Tags / attributes">
-              <Tag size={12} strokeWidth={1.75} />
-              attributes
-            </span>
-            <span className={statusItemClass} title="Attachments">
-              <Paperclip size={12} strokeWidth={1.75} />
-            </span>
+
             <span className={statusItemClass}>{wordCount} words</span>
             <span className={statusItemClass}>{charCount} chars</span>
           </>
