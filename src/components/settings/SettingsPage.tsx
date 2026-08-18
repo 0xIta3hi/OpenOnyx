@@ -118,7 +118,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: "light",
+  theme: "dark",
   accentColor: "#2563eb",
   fontFamily: "Inter, system-ui, sans-serif",
   customBgPrimary: "#151515",
