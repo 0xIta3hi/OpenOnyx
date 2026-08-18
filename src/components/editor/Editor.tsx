@@ -567,6 +567,13 @@ function tagPlugin() {
           let match;
 
           while ((match = regex.exec(line.text)) !== null) {
+            const tag = match[1];
+            // Skip hex color codes (e.g. #ef4444) from tag decorators
+            const hexColorRegex = /^#[a-fA-F0-9]{3,4}$|^#[a-fA-F0-9]{6}$|^#[a-fA-F0-9]{8}$/;
+            if (hexColorRegex.test(tag)) {
+              continue;
+            }
+
             const tagStart =
               line.from + match.index + (match[0].startsWith(" ") ? 1 : 0);
             const tagEnd = tagStart + match[1].length;
@@ -1755,6 +1762,20 @@ function addInactiveInlinePreviewDecorations(
     addInlineRange(decorations, lineFrom, match, { open: 1, content: 2, close: 3 }, "cm-live-strike");
   }
 
+  const highlightRegex = /(^|\s)(==)([^\s=](?:[^\n=]*?[^\s=])?)(==)(?=\s|[.,;:!?\x27\x22]|$)/g;
+  while ((match = highlightRegex.exec(lineText)) !== null) {
+    const prefix = match[1] || "";
+    const marker = match[2];
+    const content = match[3];
+    const openFrom = lineFrom + match.index + prefix.length;
+    const contentFrom = openFrom + marker.length;
+    const contentTo = contentFrom + content.length;
+    const closeTo = contentTo + marker.length;
+    hideMarkdownSyntax(decorations, openFrom, contentFrom);
+    decorations.push(Decoration.mark({ class: "cm-live-highlight" }).range(contentFrom, contentTo));
+    hideMarkdownSyntax(decorations, contentTo, closeTo);
+  }
+
   const emphasisRegex = /(^|[^\w*])(\*|_)(?=\S)([^*_]+?\S)(\2)(?!\w)/g;
   while ((match = emphasisRegex.exec(lineText)) !== null) {
     const prefix = match[1] || "";
@@ -1817,15 +1838,90 @@ function addInactiveInlinePreviewDecorations(
   }
 }
 
+function addInactiveInlineHTMLDecorations(
+  decorations: any[],
+  lineFrom: number,
+  lineText: string,
+) {
+  const htmlRegex = /(<([a-zA-Z]+)([^>]*)>)([\s\S]*?)(<\/\2>)/g;
+  let match;
+  while ((match = htmlRegex.exec(lineText)) !== null) {
+    const openTag = match[1];
+    const tagName = match[2].toLowerCase();
+    const attrs = match[3];
+    const content = match[4];
+    const closeTag = match[5];
+
+    // Calculate absolute offsets
+    const openFrom = lineFrom + match.index;
+    const contentFrom = openFrom + openTag.length;
+    const contentTo = contentFrom + content.length;
+    const closeTo = contentTo + closeTag.length;
+
+    // Build the style/attributes object to apply to the content range
+    const attributes: Record<string, string> = {
+      class: "cm-live-html-content"
+    };
+    
+    // Parse style attribute if present
+    const styleMatch = attrs.match(/style=(["\x27])(.*?)\1/i);
+    if (styleMatch) {
+      let styleStr = styleMatch[2].trim().replace(/;+$/, "");
+      if (/background-color\s*:/i.test(styleStr) || /background\s*:/i.test(styleStr)) {
+        styleStr += "; color: #000000 !important;";
+      }
+      attributes.style = styleStr;
+    }
+    
+    // Parse class attribute if present
+    const classMatch = attrs.match(/class=(["\x27])(.*?)\1/i);
+    if (classMatch) {
+      attributes.class = "cm-live-html-content " + classMatch[2];
+    }
+
+    // Default styles for common tag names
+    if (tagName === "u") {
+      attributes.style = (attributes.style || "") + ";text-decoration:underline";
+    } else if (tagName === "i" || tagName === "em") {
+      attributes.style = (attributes.style || "") + ";font-style:italic";
+    } else if (tagName === "b" || tagName === "strong") {
+      attributes.style = (attributes.style || "") + ";font-weight:bold";
+    } else if (tagName === "s" || tagName === "del") {
+      attributes.style = (attributes.style || "") + ";text-decoration:line-through";
+    } else if (tagName === "mark") {
+      attributes.style = (attributes.style || "") + ";background-color:#ffff00;color:#000000 !important";
+    }
+
+    // Hide opening and closing tags
+    hideMarkdownSyntax(decorations, openFrom, contentFrom);
+    hideMarkdownSyntax(decorations, contentTo, closeTo);
+
+    // Apply decorations to content range
+    if (Object.keys(attributes).length > 0) {
+      decorations.push(
+        Decoration.mark({ attributes }).range(contentFrom, contentTo)
+      );
+    }
+  }
+}
+
 function addInactiveBlockPreviewDecorations(
   decorations: any[],
   lineFrom: number,
   lineText: string,
 ) {
-  const indent = lineText.match(/^\s*/)?.[0].length || 0;
-  const listMatch = lineText.match(/^(\s*)((?:[-*+])|\d+[.)])\s+(\[[ xX]\]\s+)?/);
+  const indentText = lineText.match(/^\s*/)?.[0] || "";
+  const indent = indentText.replace(/\t/g, "    ").length;
+  const listMatch = lineText.match(/^(\s*)(?:<[a-zA-Z]+[^>]*>)?((?:[-*+])|\d+[.)])\s+(\[[ xX]\]\s+)?/);
   if (listMatch) {
-    const markerFrom = lineFrom + listMatch[1].length;
+    // Hide the leading spaces to let the padding handle the indentation cleanly
+    if (listMatch[1].length > 0) {
+      hideMarkdownSyntax(decorations, lineFrom, lineFrom + listMatch[1].length);
+    }
+
+    const tagMatch = listMatch[0].match(/^(?:\s*)(?:<[a-zA-Z]+[^>]*>)/);
+    const offset = tagMatch ? tagMatch[0].length : listMatch[1].length;
+    const markerFrom = lineFrom + offset;
     const markerTo = markerFrom + listMatch[2].length;
     const checkbox = listMatch[3];
     if (checkbox) {
@@ -1848,7 +1944,7 @@ function addInactiveBlockPreviewDecorations(
       );
     }
 
-    const depth = Math.min(6, Math.floor(indent / 2));
+    const depth = indent === 0 ? 0 : Math.min(6, Math.floor((indent - 1) / 4) + 1);
     decorations.push(
       Decoration.line({
         attributes: {
@@ -1859,9 +1955,16 @@ function addInactiveBlockPreviewDecorations(
     return;
   }
 
-  const quoteMatch = lineText.match(/^(\s*>+\s*)/);
+  const quoteMatch = lineText.match(/^(\s*)(?:<[a-zA-Z]+[^>]*>)?(>+\s*)/);
   if (quoteMatch) {
-    hideMarkdownSyntax(decorations, lineFrom, lineFrom + quoteMatch[1].length);
+    // Hide the leading spaces
+    if (quoteMatch[1].length > 0) {
+      hideMarkdownSyntax(decorations, lineFrom, lineFrom + quoteMatch[1].length);
+    }
+
+    const tagMatch = quoteMatch[0].match(/^(?:\s*)(?:<[a-zA-Z]+[^>]*>)/);
+    const offset = tagMatch ? tagMatch[0].length : quoteMatch[1].length;
+    hideMarkdownSyntax(decorations, lineFrom + offset, lineFrom + offset + quoteMatch[2].length);
     decorations.push(
       Decoration.line({
         attributes: { class: "cm-live-blockquote-line" },
@@ -1875,7 +1978,7 @@ function addInactiveBlockPreviewDecorations(
  * and applies rendered styling while keeping the active line source-visible.
  */
 function markdownLivePreviewPlugin() {
-  const headingRegex = /^(#{1,6})\s/;
+  const headingRegex = /^([ \t]*)(?:<[a-zA-Z]+[^>]*>)?(#{1,6})\s/;
   const codeFenceRegex = /^\s*```/;
 
   const buildDecorations = (state: EditorState): DecorationSet => {
@@ -1945,21 +2048,23 @@ function markdownLivePreviewPlugin() {
       }
 
       if (match) {
-        const level = match[1].length;
+        const level = match[2].length;
 
         if (!isActive) {
           // Hide the `# ` prefix on non-active heading lines
-          const markerEnd = line.from + match[0].length;
-          hideMarkdownSyntax(decorations, line.from, markerEnd);
+          const tagMatch = match[0].match(/^(?:[ \t]*)(?:<[a-zA-Z]+[^>]*>)/);
+          const offset = tagMatch ? tagMatch[0].length : match[1].length;
+          const hashesLength = match[2].length + 1; // plus space
+          hideMarkdownSyntax(decorations, line.from + offset, line.from + offset + hashesLength);
         }
 
         // Apply heading font size as a line decoration
-        const sizes = ["1.6em", "1.4em", "1.2em", "1.1em", "1.05em", "1em"];
+        const sizes = ["2.0em", "1.6em", "1.37em", "1.25em", "1.1em", "1em"];
         const fontSize = sizes[level - 1] || "1em";
         decorations.push(
           Decoration.line({
             attributes: {
-              style: `font-size: ${fontSize}; line-height: 1.4`,
+              style: `font-size: ${fontSize}; line-height: 1.3; font-weight: 700; font-family: var(--font-family); color: var(--editor-heading);`,
               class: `cm-heading-${level}`,
             },
           }).range(line.from),
@@ -1969,6 +2074,7 @@ function markdownLivePreviewPlugin() {
       if (!isActive) {
         addInactiveBlockPreviewDecorations(decorations, line.from, line.text);
         addInactiveInlinePreviewDecorations(decorations, line.from, line.text);
+        addInactiveInlineHTMLDecorations(decorations, line.from, line.text);
       }
     }
 
@@ -4408,19 +4514,60 @@ export function Editor({
           ".cm-scroller": {
             overflowY: "auto",
             overflowX: "hidden",
+            "--font-family": "var(--font-sans, Inter, system-ui, sans-serif)",
+            "--font-mono": "var(--font-mono, monospace)",
             fontFamily: "var(--font-family)",
-            lineHeight: "var(--editor-line-height)",
+            lineHeight: "1.3 !important",
           },
           ".cm-content": {
             padding: "20px 40px",
             maxWidth: "var(--reading-view-width)",
             margin: "0 auto",
             caretColor: "var(--editor-caret)",
+            lineHeight: "1.3 !important",
           },
           ".cm-line": {
             padding: "0 2px",
             borderRadius: "4px",
             caretColor: "var(--editor-caret)",
+            lineHeight: "1.3 !important",
+          },
+          ".cm-line[class*='cm-heading-'] span": {
+            fontFamily: "var(--font-family) !important",
+            fontWeight: "700 !important",
+          },
+          ".cm-live-highlight, mark": {
+            color: "#000000 !important",
+          },
+          ".cm-live-html-content *, .cm-live-highlight *, mark *": {
+            color: "inherit !important",
+            fontStyle: "inherit !important",
+            fontWeight: "inherit !important",
+            textDecoration: "inherit !important",
+          },
+          ".cm-heading-1": {
+            paddingTop: "6px !important",
+            paddingBottom: "2px !important",
+          },
+          ".cm-heading-2": {
+            paddingTop: "5px !important",
+            paddingBottom: "2px !important",
+          },
+          ".cm-heading-3": {
+            paddingTop: "4px !important",
+            paddingBottom: "1px !important",
+          },
+          ".cm-heading-4": {
+            paddingTop: "3px !important",
+            paddingBottom: "1px !important",
+          },
+          ".cm-heading-5": {
+            paddingTop: "2px !important",
+            paddingBottom: "1px !important",
+          },
+          ".cm-heading-6": {
+            paddingTop: "2px !important",
+            paddingBottom: "1px !important",
           },
           ".cm-cursorLayer .cm-cursor": {
             borderLeft: "2px solid var(--editor-caret)",
@@ -4494,12 +4641,20 @@ export function Editor({
             textDecoration: "line-through",
             color: "var(--editor-muted-token)",
           },
+          ".cm-live-highlight": {
+            backgroundColor: "#ffff00",
+            borderRadius: "2px",
+            padding: "0 2px",
+            color: "#000000 !important",
+          },
           ".cm-live-code": {
             borderRadius: "var(--radius-sm)",
             backgroundColor: "var(--bg-secondary)",
             color: "var(--editor-code)",
             fontFamily: "var(--font-mono)",
-            padding: "0 4px",
+            padding: "2px 6px",
+            fontSize: "0.9em",
+            border: "1px solid var(--border-subtle)",
           },
           ".cm-live-link, .cm-live-wikilink": {
             color: "var(--editor-link)",
@@ -4627,12 +4782,12 @@ export function Editor({
           ".cm-live-task-line": {
             position: "relative",
           },
-          ".cm-live-indent-1": { paddingLeft: "1.4em" },
-          ".cm-live-indent-2": { paddingLeft: "2.8em" },
-          ".cm-live-indent-3": { paddingLeft: "4.2em" },
-          ".cm-live-indent-4": { paddingLeft: "5.6em" },
-          ".cm-live-indent-5": { paddingLeft: "7em" },
-          ".cm-live-indent-6": { paddingLeft: "8.4em" },
+          ".cm-live-indent-1": { paddingLeft: "1.5em" },
+          ".cm-live-indent-2": { paddingLeft: "3.0em" },
+          ".cm-live-indent-3": { paddingLeft: "4.5em" },
+          ".cm-live-indent-4": { paddingLeft: "6.0em" },
+          ".cm-live-indent-5": { paddingLeft: "7.5em" },
+          ".cm-live-indent-6": { paddingLeft: "9.0em" },
           ".cm-live-blockquote-line": {
             borderLeft: "3px solid var(--border-medium)",
             color: "var(--text-secondary)",
@@ -4665,7 +4820,7 @@ export function Editor({
             backgroundColor: "rgba(34, 197, 94, 0.24)",
             color: "#bbf7d0",
             fontFamily: "var(--font-family)",
-            lineHeight: "var(--editor-line-height)",
+            lineHeight: "1.3 !important",
           },
           ".cm-collab-cursor-wrapper": {
             position: "relative",
