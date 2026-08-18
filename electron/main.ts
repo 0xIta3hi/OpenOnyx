@@ -41,7 +41,6 @@ const MAX_RECENT_VAULTS = 20;
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
-  app.quit();
   app.exit(0);
 }
 
