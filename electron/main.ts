@@ -41,7 +41,7 @@ const MAX_RECENT_VAULTS = 20;
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
-  app.exit(0);
+  app.quit();
 }
 
 type VaultHistoryState = {
@@ -655,15 +655,23 @@ app.whenReady().then(() => {
 });
 
 app.on('second-instance', () => {
-  if (!mainWindow) {
-    createWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
 
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
+
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+
   mainWindow.focus();
+
+  if (process.platform === 'darwin') {
+    app.focus({ steal: true });
+  }
 });
 
 app.on('window-all-closed', () => {
