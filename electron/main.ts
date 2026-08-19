@@ -39,6 +39,11 @@ let searchEngine: SearchEngine | null = null;
 const isDevMode = !app.isPackaged;
 const MAX_RECENT_VAULTS = 20;
 
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.exit(0);
+}
+
 type VaultHistoryState = {
   currentVaultPath: string | null;
   previousVaultPaths: string[];
@@ -647,6 +652,26 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+
+  mainWindow.focus();
+
+  if (process.platform === 'darwin') {
+    app.focus({ steal: true });
+  }
 });
 
 app.on('window-all-closed', () => {
