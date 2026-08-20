@@ -31,15 +31,22 @@ describe("pdf export", () => {
     expect(html).toContain("cat.png");
   });
 
-  it("currently drops wiki image embeds as missing placeholders", () => {
+  it("renders wiki image embeds as printable vault protocol images", () => {
     const html = buildMarkdownPdfHtml({
-      markdown: "![[attachments/cat.png]]",
-      title: "Wiki img",
-      notePath: "Wiki.md",
-      vaultPath: "/Users/me/vault",
+      markdown: [
+        "![[attachments/demo.png]]",
+        "![regular](regular.png)",
+        "![[Missing Note]]",
+      ].join("\n\n"),
+      title: "Image Export",
+      notePath: "Image Export.md",
+      vaultPath: "/Users/example/My Vault",
     });
-    expect(html).toContain("embed-missing");
-    expect(html).not.toContain("file:///Users/me/vault/attachments/cat.png");
+
+    expect(html).toContain('src="vault://local/attachments/demo.png"');
+    expect(html).toContain('alt="attachments/demo.png"');
+    expect(html).toContain('src="file:///Users/example/My%20Vault/regular.png"');
+    expect(html).toContain('<div class="embed-missing">Missing Note</div>');
   });
 
   it("escapes the document title", () => {
