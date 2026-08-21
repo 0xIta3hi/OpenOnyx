@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/OpenOnyx/OpenOnyx"><img alt="Main Repository" src="https://img.shields.io/badge/Repository-OpenOnyx-111827?style=for-the-badge&logo=github"></a>
   <a href="https://github.com/OpenOnyx/OpenOnyx/releases"><img alt="Latest Release" src="https://img.shields.io/badge/Release-v1.0.3-47848F?style=for-the-badge&logo=electron"></a>
-  <a href="https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge"></a>
+  <a href="https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache%202.0-10B981?style=for-the-badge"></a>
 </p>
 
 ---
@@ -109,4 +109,4 @@ We welcome contributions from developers, researchers, and writers. Whether you 
 
 - **Organization Homepage**: [https://github.com/OpenOnyx](https://github.com/OpenOnyx)
 - **Main Repository**: [OpenOnyx/OpenOnyx](https://github.com/OpenOnyx/OpenOnyx)
-- **License**: [MIT License](https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE)
+- **License**: [Apache License 2.0](https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE)
