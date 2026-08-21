@@ -22,6 +22,7 @@ import React, {
 } from "react";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
+import mermaid from "mermaid";
 import DOMPurify from "dompurify";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl, toggleUrlInMarkdown } from "../../utils/urlHelper";
@@ -1003,6 +1004,34 @@ export function MarkdownPreview({
     if (lastHtmlRef.current !== renderedHtml || processorVersion > 0) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
+    }
+    
+    // Handle mermaid diagrams
+    const mermaidBlocks = previewRef.current.querySelectorAll("code.language-mermaid",);
+
+    if (mermaidBlocks.length > 0) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: theme === "dark" ? "dark" : "default",
+      });
+
+    mermaidBlocks.forEach((block) => {
+    const pre = block.parentElement;
+
+    if (pre?.tagName === "PRE") {
+      const diagram = document.createElement("div");
+      diagram.className = "mermaid";
+      diagram.textContent = block.textContent || "";
+
+      pre.replaceWith(diagram);
+      }
+    });
+
+    mermaid.run({
+        nodes: Array.from(
+          previewRef.current.querySelectorAll(".mermaid"),
+        ) as HTMLElement[],
+      });
     }
 
     // Function to upgrade YouTube iframes into HD Posters
