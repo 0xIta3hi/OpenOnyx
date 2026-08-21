@@ -34,6 +34,9 @@ const electronAPI = {
   openPath: (targetPath: string): Promise<string> =>
     ipcRenderer.invoke('desktop:openPath', targetPath),
 
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke('desktop:openExternal', url),
+
   showItemInFolder: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('desktop:showItemInFolder', targetPath),
 

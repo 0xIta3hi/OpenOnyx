@@ -54,6 +54,7 @@ beforeEach(() => {
     deleteDirectory: vi.fn(async () => {}),
     renameFile: vi.fn(async () => {}),
     openPath: vi.fn(async () => ''),
+    openExternal: vi.fn(async () => {}),
     showItemInFolder: vi.fn(async () => {}),
     writeClipboardText: vi.fn(async () => {}),
     readClipboardText: vi.fn(async () => ''),
@@ -134,6 +135,7 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     expect((window as any).electron.remote.getCurrentWindow().isMaximized()).toBe(false);
     expect((window as any).electron.remote.getCurrentWebContents().getZoomFactor()).toBe(1);
     expect((window as any).require('electron').shell.openPath).toBeTypeOf('function');
+    expect((window as any).require('electron').shell.openExternal).toBeTypeOf('function');
     expect((window as any).require('electron').shell.showItemInFolder).toBeTypeOf('function');
     expect((window as any).activeWindow).toBe(window);
     expect((window as any).activeDocument).toBe(document);
@@ -159,6 +161,14 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     const shell = (window as any).require('electron').shell;
     await shell.openPath('/vault/Folder/Note.md');
     expect((window as any).electronAPI.openPath).toHaveBeenCalledWith('/vault/Folder/Note.md');
+
+    await shell.openExternal('https://github.com/OpenOnyx/OpenOnyx');
+    expect((window as any).electronAPI.openExternal).toHaveBeenCalledWith(
+      'https://github.com/OpenOnyx/OpenOnyx',
+    );
+    expect((window as any).electronAPI.openPath).not.toHaveBeenCalledWith(
+      'https://github.com/OpenOnyx/OpenOnyx',
+    );
   });
 
   it('exposes Lezer LR parser APIs required by Excalidraw', () => {
