@@ -10,6 +10,7 @@ import * as fs from 'fs/promises';
 import * as nodePath from 'path';
 import { FileSystemManager } from './fileSystem.js';
 import { SearchEngine } from './search.js';
+import { allowedExternalUrl } from './externalUrl.js';
 import { assertPublicHttpUrl } from './outboundUrl.js';
 import { isInsideRoot } from './pathSafety.js';
 import { approveVaultPath, isApprovedVaultPath, seedApprovedVaultPaths } from './vaultAccess.js';
@@ -24,7 +25,7 @@ export function registerIpcHandlers(
   removePreviousPath?: (vaultPath: string) => string[],
 ): void {
   seedApprovedVaultPaths([
-    fsManager.getVaultPath(),
+    fsManager.getVaultPath?.(),
     ...(getPreviousPaths ? getPreviousPaths() : []),
   ]);
 
@@ -92,6 +93,9 @@ export function registerIpcHandlers(
 
   ipcMain.handle('desktop:openPath', async (_event, targetPath: string) => {
     return shell.openPath(resolveInsideCurrentVault(targetPath));
+  });
+  ipcMain.handle('desktop:openExternal', async (_event, url: string) => {
+    await shell.openExternal(allowedExternalUrl(url));
   });
   ipcMain.handle('desktop:showItemInFolder', (_event, targetPath: string) => {
     shell.showItemInFolder(resolveInsideCurrentVault(targetPath));

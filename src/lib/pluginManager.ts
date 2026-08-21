@@ -161,7 +161,7 @@ export class PluginManager {
       ...(electron.shell || {}),
       openPath: (targetPath: string) => bridge.openPath?.(targetPath) ?? Promise.resolve(''),
       showItemInFolder: (targetPath: string) => bridge.showItemInFolder?.(targetPath),
-      openExternal: (url: string) => bridge.openPath?.(url) ?? Promise.resolve(''),
+      openExternal: (url: string) => bridge.openExternal?.(url) ?? Promise.resolve(),
     };
     // Some established plugins access Electron through window.electron rather
     // than require('electron'). Modern Electron no longer exposes `remote` in
@@ -442,7 +442,7 @@ export class PluginManager {
             permissions.includes('filesystem')
               ? bridge.showItemInFolder?.(targetPath)
               : denyFilesystem(),
-          openExternal: (url: string) => bridge.openPath?.(url) ?? Promise.resolve(''),
+          openExternal: (url: string) => bridge.openExternal?.(url) ?? Promise.resolve(),
         };
         return {
           ...electron,
