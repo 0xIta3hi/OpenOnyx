@@ -10,6 +10,7 @@ import * as fs from 'fs/promises';
 import * as nodePath from 'path';
 import { FileSystemManager } from './fileSystem.js';
 import { SearchEngine } from './search.js';
+import { allowedExternalUrl } from './externalUrl.js';
 
 export function registerIpcHandlers(
   ipcMain: IpcMain,
@@ -65,6 +66,9 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('desktop:openPath', async (_event, targetPath: string) => shell.openPath(targetPath));
+  ipcMain.handle('desktop:openExternal', async (_event, url: string) => {
+    await shell.openExternal(allowedExternalUrl(url));
+  });
   ipcMain.handle('desktop:showItemInFolder', (_event, targetPath: string) => shell.showItemInFolder(targetPath));
   ipcMain.handle('desktop:getPath', (_event, name: Parameters<typeof app.getPath>[0]) => app.getPath(name));
 

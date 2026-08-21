@@ -263,6 +263,7 @@ export function createMockAPI(): ElectronAPI {
     showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
     showSaveDialog: async () => ({ canceled: true, filePath: "" }),
     openPath: async () => "",
+    openExternal: async () => {},
     showItemInFolder: async () => {},
     renamePath: async (_oldPath: string, newPath: string) => {
       mockVaultPath = newPath;
