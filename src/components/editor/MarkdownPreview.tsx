@@ -727,9 +727,9 @@ export function MarkdownPreview({
       "$1<mark>$2</mark>"
     );
 
-    // Restore inline and fenced code blocks
+    // Restore inline code, but keep fenced code blocks protected
     processed = protectedInline.restore(processed);
-    processed = protectedCode.restore(processed);
+    
 
     // Swap block markdown markers and opening HTML tags to ensure correct rendering (e.g. <span style="...">## Heading</span> -> ## <span style="...">Heading</span>)
     processed = processed.replace(
@@ -819,11 +819,13 @@ export function MarkdownPreview({
         return `${prefix}<input type="checkbox" class="task-checkbox" data-line="${lineNum++}" ${isChecked ? "checked" : ""}>`;
       },
     );
-    processed = protectedCode.restore(processed);
 
     if (settings?.propertiesInDocument === "hidden") {
       processed = processed.replace(/^---\n[\s\S]*?\n---\n?/, "");
     }
+
+    // Restore fenced code blocks last
+    processed = protectedCode.restore(processed)
 
     // Parse markdown to HTML
     let html = marked.parse(processed, {
