@@ -1101,7 +1101,7 @@ export function MarkdownPreview({
             mermaid.initialize({
               startOnLoad: false,
               theme: isDarkTheme ? "dark" : "default",
-              securityLevel: "loose",
+              securityLevel: "strict",
             });
 
             // Convert any remaining <pre><code class="language-mermaid">
@@ -1132,7 +1132,7 @@ export function MarkdownPreview({
               node.removeAttribute("data-processed");
               node.removeAttribute("data-mermaid-source"); // clean old attr
               node.dataset.mermaidSource = source;
-              node.innerHTML = source; // put pure text source back
+              node.textContent = source; // put pure text source back
             }
 
             await mermaid.run({
