@@ -993,6 +993,8 @@ export function MarkdownPreview({
 
   // Use a ref to track the last rendered HTML to avoid unnecessary DOM updates that reload iframes
   const lastHtmlRef = useRef<string>("");
+  // Use a ref to track the last theme to avoid unnecessary re-rendering of mermaid diagrams
+  const lastThemeRef = useRef<typeof theme | null>(null);
 
   // Manually update the DOM and upgrade iframes injected by plugins
   useEffect(() => {
@@ -1001,9 +1003,10 @@ export function MarkdownPreview({
     let cancelled = false;
     let observer: MutationObserver | null = null;
 
-    if (lastHtmlRef.current !== renderedHtml || processorVersion > 0) {
+    if (lastHtmlRef.current !== renderedHtml || lastThemeRef.current !== theme ||processorVersion > 0) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
+      lastThemeRef.current = theme;
     }
     
     // Handle mermaid diagrams
