@@ -22,7 +22,6 @@ import React, {
 } from "react";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
-import mermaid from "mermaid";
 import DOMPurify from "dompurify";
 import { resolveVaultImageSrc } from "../../utils/resolveImageSrc";
 import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl, toggleUrlInMarkdown } from "../../utils/urlHelper";
@@ -496,6 +495,11 @@ export function MarkdownPreview({
   contentRef.current = content;
   const [processorVersion, setProcessorVersion] = useState(0);
 
+  const [themeMode, setThemeMode] = useState(() =>
+      document.documentElement.getAttribute("data-theme-mode") ||
+      (theme === "dark" ? "dark" : "light")
+  );
+
   useEffect(() => {
     const handleProcessorsChanged = () => setProcessorVersion((version) => version + 1);
     window.addEventListener('obsidian:markdown-processors-changed', handleProcessorsChanged);
@@ -509,12 +513,43 @@ export function MarkdownPreview({
         setDebouncedContent(content);
       }, 500);
     }, content.length > 8000 ? 80 : 0);
-
+    
     return () => {
       clearTimeout(handler);
       cancelIdle?.();
     };
   }, [content]);
+  
+  // Keep themeMode in sync with the global data-theme-mode attribute
+  useEffect(() => {
+    const root = document.documentElement;
+
+    const sync = () => {
+      const next =
+        root.getAttribute("data-theme-mode") ||
+        (theme === "dark" ? "dark" : "light");
+      setThemeMode(next);
+    };
+
+    sync();
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "attributes" && m.attributeName === "data-theme-mode") {
+          sync();
+          break;
+        }
+      }
+    });
+
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme-mode"],
+    });
+
+    return () => observer.disconnect();
+  }, [theme]);
+
 
   const [linkPreview, setLinkPreview] = useState<{
     noteName: string;
@@ -803,7 +838,7 @@ export function MarkdownPreview({
 
     // --- Unified Smart Embed Resolver ---
     // Handle both raw iframes and Twitter blockquotes
-    const themeValue = document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light");
+    const themeValue = themeMode;
 
     // Fix Twitter theme in the HTML string itself
     html = html.replace(/<blockquote class="twitter-tweet"/g, `<blockquote class="twitter-tweet" data-theme="${themeValue}"`);
@@ -812,7 +847,7 @@ export function MarkdownPreview({
     html = html.replace(
       /(?:<p>)?<div class="url-preview-placeholder" data-url="([^"]+)"><\/div>(?:<\/p>)?/g,
       (match, url) => {
-        return getUrlPreviewMarkup(url, theme || "dark");
+        return getUrlPreviewMarkup(url, themeMode);
       }
     );
 
@@ -833,7 +868,7 @@ export function MarkdownPreview({
         style: styleMatch ? styleMatch[2] : undefined,
       };
 
-      return getUrlPreviewMarkup(src, theme || "dark", customAttrs);
+      return getUrlPreviewMarkup(src, themeMode , customAttrs);
     });
 
     // Sanitize
@@ -843,7 +878,7 @@ export function MarkdownPreview({
       ADD_TAGS: ["span", "input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "table", "tbody", "tr", "mtd", "mtr", "annotation", "iframe", "blockquote", "div", "svg", "path", "circle", "line", "rect", "polyline"],
       ADD_DATA_URI_TAGS: ["img"],
     });
-  }, [debouncedContent, onEmbed, theme, getSmartEmbed, getUrlPreviewMarkup]);
+  }, [debouncedContent, onEmbed, themeMode, getSmartEmbed, getUrlPreviewMarkup]);
 
   // Handle clicks on wiki-links, tags, and checkboxes
   useEffect(() => {
@@ -993,8 +1028,6 @@ export function MarkdownPreview({
 
   // Use a ref to track the last rendered HTML to avoid unnecessary DOM updates that reload iframes
   const lastHtmlRef = useRef<string>("");
-  // Use a ref to track the last theme to avoid unnecessary re-rendering of mermaid diagrams
-  const lastThemeRef = useRef<typeof theme | null>(null);
 
   // Manually update the DOM and upgrade iframes injected by plugins
   useEffect(() => {
@@ -1003,40 +1036,11 @@ export function MarkdownPreview({
     let cancelled = false;
     let observer: MutationObserver | null = null;
 
-    if (lastHtmlRef.current !== renderedHtml || lastThemeRef.current !== theme ||processorVersion > 0) {
+    if (lastHtmlRef.current !== renderedHtml ||processorVersion > 0) {
       previewRef.current.innerHTML = renderedHtml;
       lastHtmlRef.current = renderedHtml;
-      lastThemeRef.current = theme;
     }
     
-    // Handle mermaid diagrams
-    const mermaidBlocks = previewRef.current.querySelectorAll("code.language-mermaid",);
-
-    if (mermaidBlocks.length > 0) {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: theme === "dark" ? "dark" : "default",
-      });
-
-    mermaidBlocks.forEach((block) => {
-    const pre = block.parentElement;
-
-    if (pre?.tagName === "PRE") {
-      const diagram = document.createElement("div");
-      diagram.className = "mermaid";
-      diagram.textContent = block.textContent || "";
-
-      pre.replaceWith(diagram);
-      }
-    });
-
-    mermaid.run({
-        nodes: Array.from(
-          previewRef.current.querySelectorAll(".mermaid"),
-        ) as HTMLElement[],
-      });
-    }
-
     // Function to upgrade YouTube iframes into HD Posters
     const upgradeYouTubeIframe = (iframe: HTMLIFrameElement) => {
       const src = iframe.src || "";
@@ -1079,12 +1083,79 @@ export function MarkdownPreview({
 
       installHeadingFoldControls(previewRef.current);
 
+      // Handle Mermaid diagrams during idle time
+      const mermaidBlocks = previewRef.current.querySelectorAll(
+        "code.language-mermaid",
+      );
+      const existingMermaid = previewRef.current.querySelectorAll(".mermaid");
+
+      if (mermaidBlocks.length > 0 || existingMermaid.length > 0) {
+        void (async () => {
+          try {
+            const { default: mermaid } = await import("mermaid");
+
+            if (cancelled || !previewRef.current) return;
+
+            const isDarkTheme = themeMode === "dark" || themeMode.startsWith("dark-") ||themeMode.includes("dark");
+
+            mermaid.initialize({
+              startOnLoad: false,
+              theme: isDarkTheme ? "dark" : "default",
+              securityLevel: "loose",
+            });
+
+            // Convert any remaining <pre><code class="language-mermaid">
+            mermaidBlocks.forEach((block) => {
+              const pre = block.parentElement;
+              if (pre?.tagName === "PRE") {
+                const source = block.textContent || "";
+                const diagram = document.createElement("div");
+                diagram.className = "mermaid";
+                diagram.dataset.mermaidSource = source;
+                diagram.textContent = source;
+                pre.replaceWith(diagram);
+              }
+            });
+
+            const nodes = Array.from(
+              previewRef.current.querySelectorAll(".mermaid"),
+            ) as HTMLElement[];
+
+            // Reset every diagram so Mermaid can re-render it
+            for (const node of nodes) {
+              const source =
+                node.dataset.mermaidSource ||
+                node.getAttribute("data-mermaid-source") ||
+                node.textContent ||
+                "";
+
+              node.removeAttribute("data-processed");
+              node.removeAttribute("data-mermaid-source"); // clean old attr
+              node.dataset.mermaidSource = source;
+              node.innerHTML = source; // put pure text source back
+            }
+
+            await mermaid.run({
+              nodes,
+              suppressErrors: false,
+            });
+          } catch (error: any) {
+            // Better logging so we can see the real error
+            console.error(
+              "Failed to render Mermaid diagram:",
+              error?.message || error,
+              error,
+            );
+          }
+        })();
+      }
+
       // Handle Twitter embeds: if twit-blockquote exists, ensure widgets script is loaded and triggered
       if (renderedHtml.includes("twitter-tweet")) {
         // Apply theme to blockquotes before Twitter script processes them
         const tweets = previewRef.current.querySelectorAll("blockquote.twitter-tweet");
         tweets.forEach(tweet => {
-          tweet.setAttribute("data-theme", document.documentElement.getAttribute("data-theme-mode") || (theme === "dark" ? "dark" : "light"));
+          tweet.setAttribute("data-theme", themeMode);
         });
 
         const injectTwitter = () => {
@@ -1133,7 +1204,7 @@ export function MarkdownPreview({
       processorCleanup?.();
       observer?.disconnect();
     };
-  }, [renderedHtml, theme, processorVersion]);
+  }, [renderedHtml, themeMode, processorVersion]);
 
   return (
     <>
