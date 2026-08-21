@@ -102,6 +102,7 @@ import { useVaultSession } from "./hooks/useVaultSession";
 import { useLayoutGroups } from "./hooks/useLayoutGroups";
 import { useInlineSuggestions } from "./hooks/useInlineSuggestions";
 import { useFileOperations } from "./hooks/useFileOperations";
+import { rewriteWikiLinks } from "./utils/wikiLinks";
 import {
   getUngroupedTabsToPreserve,
   isUngroupedTab,

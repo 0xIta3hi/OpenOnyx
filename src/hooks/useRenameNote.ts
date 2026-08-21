@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { getNoteName } from "../utils/helpers";
+import { rewriteWikiLinks } from "../utils/wikiLinks";
 import { collaborationEngine } from "../lib/collaborationEngine";
 import { localDB } from "../lib/localdb";
 import { syncEngine } from "../lib/syncEngine";
@@ -120,13 +121,11 @@ export function useRenameNote({
     ) {
       const oldName = getNoteName(oldPath);
       const newName = getNoteName(newPath);
-      const escapedOldName = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const wikiLinkPattern = new RegExp(`\\[\\[${escapedOldName}([|#\\]])`, "g");
       for (const note of allNoteNames) {
         if (!note.path.toLowerCase().endsWith(".md")) continue;
         try {
           const text = await api.readFile(note.path);
-          const updated = text.replace(wikiLinkPattern, `[[${newName}$1`);
+          const updated = rewriteWikiLinks(text, oldName, newName);
           if (updated !== text) {
             await api.writeFile(note.path, updated);
           }
