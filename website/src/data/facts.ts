@@ -218,6 +218,25 @@ export const STORY = [
   },
 ] as const;
 
+export const THEATER = [
+  { ...STORY[0], kicker: "01 · editor" },
+  { ...STORY[1], kicker: "02 · graph" },
+  { ...STORY[2], kicker: "03 · ai graph" },
+  { ...STORY[3], kicker: "04 · canvas" },
+  { ...STORY[4], kicker: "05 · spaces" },
+  {
+    id: "plugins",
+    kicker: "06 · plugins",
+    title: "Community plugins, contained.",
+    body: "Obsidian-compatible API, marketplace, and permission prompts. Compatibility is tested against real community plugin bundles — 158/158 public exports, crash isolation.",
+    points: ["obsidian@1.13.1 runtime", "158/158 public API", "Crash isolation"],
+    image: "/images/plugin-marketplace.png",
+    clip: "/videos/look-demo.mp4",
+    alt: "OpenOnyx plugin marketplace with installed community plugins",
+  },
+  { ...STORY[5], kicker: "07 · sync" },
+] as const;
+
 export const DOWNLOADS = {
   macNote:
     'If macOS says the app is from an unidentified developer or is "damaged", right-click OpenOnyx.app and choose Open, or run: xattr -cr /Applications/OpenOnyx.app',

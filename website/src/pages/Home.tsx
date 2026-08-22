@@ -1,10 +1,24 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 import { CompareTable } from "../components/CompareTable";
 import { Reveal } from "../components/Reveal";
-import { FilmFrame } from "../components/product/FilmFrame";
+import { ProductStory } from "../components/product/ProductStory";
 import { Workspace } from "../components/product/Workspace";
-import { FEATURES, PRODUCT, STORY } from "../data/facts";
+import { FEATURES, PRODUCT, THEATER } from "../data/facts";
+import { usePointerDepth } from "../lib/motion";
 import { usePageMeta } from "../lib/meta";
+
+function HeroWorkspace() {
+  const ref = useRef<HTMLDivElement>(null);
+  usePointerDepth(ref, { move: 5, tilt: 0.7 });
+  return (
+    <div className="stage-device" ref={ref}>
+      <div data-depth-inner>
+        <Workspace />
+      </div>
+    </div>
+  );
+}
 
 export function Home() {
   usePageMeta(`OpenOnyx — Local-first knowledge workspace`, PRODUCT.description);
@@ -32,7 +46,7 @@ export function Home() {
         </p>
       </div>
 
-      <Workspace />
+      <HeroWorkspace />
 
       <ul className="understory">
         <li>
@@ -63,25 +77,7 @@ export function Home() {
         </div>
       </section>
 
-      <div className="story">
-        {STORY.map((item, index) => (
-          <section className={`film${index % 2 ? " is-flip" : ""}`} key={item.id} id={item.id}>
-            <Reveal className="film-copy">
-              <div className="kicker">{item.kicker}</div>
-              <h2>{item.title}</h2>
-              <p>{item.body}</p>
-              <ul className="points">
-                {item.points.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
-            </Reveal>
-            <Reveal className="film-stage" delay={70}>
-              <FilmFrame src={item.clip} poster={item.image} alt={item.alt} />
-            </Reveal>
-          </section>
-        ))}
-      </div>
+      <ProductStory chapters={THEATER} />
 
       <section className="compare">
         <Reveal>
