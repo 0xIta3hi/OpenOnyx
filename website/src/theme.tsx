@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { documentTailwindClasses } from "../../src/styles/documentTailwindClasses";
+import { themeClasses } from "../../src/styles/themeClasses";
 
 export type Theme = "dark" | "light";
 
@@ -26,6 +28,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
+    document.documentElement.className = `${documentTailwindClasses} ${themeClasses}`.trim();
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", theme === "light" ? "#ffffff" : "#0f0f14");
     try {
