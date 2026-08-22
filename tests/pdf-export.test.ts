@@ -31,15 +31,37 @@ describe("pdf export", () => {
     expect(html).toContain("cat.png");
   });
 
-  it("currently drops wiki image embeds as missing placeholders", () => {
+  it("renders wiki image embeds as printable vault protocol images", () => {
     const html = buildMarkdownPdfHtml({
-      markdown: "![[attachments/cat.png]]",
-      title: "Wiki img",
-      notePath: "Wiki.md",
-      vaultPath: "/Users/me/vault",
+      markdown: [
+        "![[attachments/demo.png]]",
+        "![[diagram.png|300]]",
+        "![[photo.jpg|300|Alt text]]",
+        "![[missing.png]]",
+        "![regular](regular.png)",
+        "![[Missing Note]]",
+      ].join("\n\n"),
+      title: "Image Export",
+      notePath: "Image Export.md",
+      vaultPath: "/Users/example/My Vault",
+      vaultFiles: [
+        { path: "attachments/demo.png", name: "demo.png", isDirectory: false },
+        { path: "assets/nested/diagram.png", name: "diagram.png", isDirectory: false },
+        { path: "photo.jpg", name: "photo.jpg", isDirectory: false },
+      ],
     });
-    expect(html).toContain("embed-missing");
-    expect(html).not.toContain("file:///Users/me/vault/attachments/cat.png");
+
+    expect(html).toContain('src="vault://local/attachments/demo.png"');
+    expect(html).toContain('alt="attachments/demo.png"');
+    expect(html).toContain('src="vault://local/diagram.png"');
+    expect(html).toContain('alt="diagram.png"');
+    expect(html).toContain('style="max-width: 300px; width: 100%;"');
+    expect(html).toContain('src="vault://local/photo.jpg"');
+    expect(html).toContain('alt="Alt text"');
+    expect(html).not.toContain('alt="300"');
+    expect(html).toContain('<div class="embed-missing">missing.png</div>');
+    expect(html).toContain('src="file:///Users/example/My%20Vault/regular.png"');
+    expect(html).toContain('<div class="embed-missing">Missing Note</div>');
   });
 
   it("escapes the document title", () => {
