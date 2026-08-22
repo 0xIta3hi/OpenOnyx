@@ -1,39 +1,75 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useWorkspaceMotion } from "../../lib/motion";
+import { Editor } from "../../../../src/components/editor/Editor";
+import { GraphView } from "../../../../src/components/graph/GraphView";
+import { AIKnowledgeGraph, resetAIGraphCache } from "../../../../src/components/graph/AIKnowledgeGraph";
+import { DEFAULT_SETTINGS } from "../../../../src/components/settings/SettingsPage";
+import { getAPI } from "../../../../src/utils/api";
+import type { FileEntry, Tab, ViewMode } from "../../../../src/types";
 import { PLUGINS_TESTED } from "../../data/facts";
-import {
-  ASK_PROMPTS,
-  VAULT_NOTES,
-  VAULT_TREE,
-  backlinksTo,
-  noteById,
-  wordCount,
-  type TreeNode,
-} from "../../data/vault";
-import { VaultGraph } from "../VaultGraph";
+import vault from "../../data/real-vault.json";
 import { useTheme } from "../../theme";
 import { useCommands, type SiteCommand } from "../commands";
-import { SourceView } from "./SourceView";
-import { WikiMarkdown } from "./WikiMarkdown";
+import { SiteSpaces } from "./SiteSpaces";
 
-type View = "write" | "graph" | "ask" | "canvas" | "look" | "plugins";
-type EditMode = "source" | "preview" | "live";
+type Surface = "write" | "graph" | "ask" | "look" | "plugins";
+type GraphMode = "manual" | "ai";
 
 const START = "01 - Projects/Research/Knowledge Management.md";
+const VAULT_PATH = "OO-Test-Vault";
+const FILES = vault as Record<string, string>;
 
-const VIEWS: Array<[View, string]> = [
+const VIEWS: Array<[Surface, string]> = [
   ["write", "write"],
   ["graph", "graph"],
   ["ask", "spaces"],
 ];
 
-const CANVAS_CARDS = [
-  { id: "01 - Projects/Research/Knowledge Management.md", x: 6, y: 16, tone: "a" },
-  { id: "01 - Projects/Research/Zettelkasten Method.md", x: 38, y: 10, tone: "b" },
-  { id: "03 - Resources/Books/Atomic Habits Notes.md", x: 68, y: 18, tone: "c" },
-  { id: "01 - Projects/MachineLearning/Transformer Architecture.md", x: 18, y: 54, tone: "d" },
-  { id: "00 - Inbox/Reading Queue.md", x: 50, y: 58, tone: "a" },
-  { id: "05 - Daily Notes/2024-01-15.md", x: 72, y: 62, tone: "b" },
-];
+function fileName(path: string) {
+  return path.split("/").pop()?.replace(/\.md$/i, "") || path;
+}
+
+function buildTree(paths: string[]): FileEntry[] {
+  const root: FileEntry[] = [];
+  const dirs = new Map<string, FileEntry>();
+
+  const ensureDir = (dirPath: string): FileEntry[] => {
+    if (!dirPath) return root;
+    const existing = dirs.get(dirPath);
+    if (existing?.children) return existing.children;
+    const parent = dirPath.includes("/") ? dirPath.slice(0, dirPath.lastIndexOf("/")) : "";
+    const name = dirPath.split("/").pop() || dirPath;
+    const node: FileEntry = {
+      name,
+      path: dirPath,
+      absolutePath: `${VAULT_PATH}/${dirPath}`,
+      isDirectory: true,
+      extension: "",
+      children: [],
+      modifiedAt: Date.now(),
+      size: 0,
+    };
+    dirs.set(dirPath, node);
+    ensureDir(parent).push(node);
+    return node.children!;
+  };
+
+  for (const filePath of [...paths].sort()) {
+    const slash = filePath.lastIndexOf("/");
+    const dir = slash === -1 ? "" : filePath.slice(0, slash);
+    const name = slash === -1 ? filePath : filePath.slice(slash + 1);
+    ensureDir(dir).push({
+      name,
+      path: filePath,
+      absolutePath: `${VAULT_PATH}/${filePath}`,
+      isDirectory: false,
+      extension: name.includes(".") ? `.${name.split(".").pop()}` : "",
+      modifiedAt: Date.now(),
+      size: FILES[filePath]?.length ?? 0,
+    });
+  }
+  return root;
+}
 
 function Icon({ children }: { children: ReactNode }) {
   return (
@@ -46,83 +82,127 @@ function Icon({ children }: { children: ReactNode }) {
 export function Workspace() {
   const { theme, setTheme } = useTheme();
   const { setWorkspaceCommands, openPalette } = useCommands();
-  const [activeId, setActiveId] = useState(START);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [activePath, setActivePath] = useState(START);
   const [openTabs, setOpenTabs] = useState<string[]>([START]);
-  const [view, setView] = useState<View>("write");
-  const [editMode, setEditMode] = useState<EditMode>("live");
+  const [contents, setContents] = useState<Record<string, string>>(() => ({ ...FILES }));
+  const [surface, setSurface] = useState<Surface>("write");
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    typeof window !== "undefined" && window.innerWidth <= 760 ? "editor" : "split",
+  );
+  const [graphMode, setGraphMode] = useState<GraphMode>("manual");
   const [query, setQuery] = useState("");
   const [pluginQuery, setPluginQuery] = useState("");
   const [sidebar, setSidebar] = useState(() => (typeof window === "undefined" ? true : window.innerWidth > 760));
-  const [askId, setAskId] = useState<(typeof ASK_PROMPTS)[number]["id"] | null>(null);
   const [wallpaper, setWallpaper] = useState(false);
+  const settings = useMemo(
+    () => ({
+      ...DEFAULT_SETTINGS,
+      theme,
+      defaultView: viewMode,
+      defaultEditingMode: "source" as const,
+      readableLineLength: false,
+      showLineNumbers: true,
+      backgroundImage: wallpaper ? "/images/wallpaper-background.png" : "",
+    }),
+    [theme, viewMode, wallpaper],
+  );
 
-  const note = noteById(activeId) ?? VAULT_NOTES[0];
-  const backs = useMemo(() => backlinksTo(note.id), [note.id]);
-  const asked = ASK_PROMPTS.find((item) => item.id === askId) ?? null;
+  const notes = useMemo(
+    () =>
+      Object.keys(FILES)
+        .filter((path) => path.toLowerCase().endsWith(".md"))
+        .map((path) => ({ name: fileName(path), path })),
+    [],
+  );
+  const fileTree = useMemo(() => buildTree(Object.keys(FILES)), []);
+  const tabs: Tab[] = openTabs.map((path) => ({
+    id: path,
+    path,
+    name: fileName(path),
+    isModified: contents[path] !== FILES[path],
+  }));
+  const content = contents[activePath] ?? "";
   const plugins = PLUGINS_TESTED.filter((item) => item.name.toLowerCase().includes(pluginQuery.toLowerCase()));
 
-  const openNote = (id: string) => {
-    const found = noteById(id);
-    if (!found) return;
-    setActiveId(id);
-    setOpenTabs((tabs) => (tabs.includes(id) ? tabs : [...tabs, id]));
-    setView("write");
+  const openNote = (path: string) => {
+    if (!FILES[path] && !contents[path]) {
+      const byName = notes.find((note) => note.name.toLowerCase() === fileName(path).toLowerCase());
+      if (!byName) return;
+      path = byName.path;
+    }
+    setActivePath(path);
+    setOpenTabs((current) => (current.includes(path) ? current : [...current, path]));
+    setSurface("write");
   };
 
-  useEffect(() => {
-    const commands: SiteCommand[] = [
-      { id: "view-write", label: "Open editor", category: "View", shortcut: "⌘1", action: () => setView("write") },
-      { id: "mode-source", label: "Source mode", category: "Editor", action: () => { setView("write"); setEditMode("source"); } },
-      { id: "mode-preview", label: "Preview mode", category: "Editor", action: () => { setView("write"); setEditMode("preview"); } },
-      { id: "mode-live", label: "Split source + preview", category: "Editor", action: () => { setView("write"); setEditMode("live"); } },
-      { id: "view-graph", label: "Open graph", category: "View", shortcut: "⌘G", action: () => setView("graph") },
-      { id: "view-ask", label: "Ask this vault", category: "View", action: () => setView("ask") },
-      { id: "view-canvas", label: "Open canvas", category: "View", action: () => setView("canvas") },
-      { id: "view-look", label: "Appearance", category: "View", action: () => setView("look") },
-      { id: "view-plugins", label: "Plugin runtime", category: "View", action: () => setView("plugins") },
-      { id: "toggle-side", label: "Toggle file tree", category: "View", action: () => setSidebar((v) => !v) },
-      ...VAULT_NOTES.map((item) => ({
-        id: `note-${item.id}`,
-        label: item.title,
-        category: "Notes",
-        action: () => openNote(item.id),
-      })),
-    ];
-    setWorkspaceCommands(commands);
-    return () => setWorkspaceCommands([]);
-  }, [setWorkspaceCommands]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.key.toLowerCase() === "g") {
-        event.preventDefault();
-        setView((current) => (current === "graph" ? "write" : "graph"));
-      }
-      if (event.key === "1") {
-        event.preventDefault();
-        setView("write");
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const closeTab = (id: string) => {
-    setOpenTabs((tabs) => {
-      const next = tabs.filter((tab) => tab !== id);
-      if (id === activeId) {
-        const fallback = next[next.length - 1] ?? START;
-        setActiveId(fallback);
-      }
+  const closeTab = (path: string) => {
+    setOpenTabs((current) => {
+      const next = current.filter((item) => item !== path);
+      if (path === activePath) setActivePath(next[next.length - 1] ?? START);
       return next.length ? next : [START];
     });
   };
 
-  const showTabs = view === "write";
+  useEffect(() => {
+    void getAPI().setVaultPath(VAULT_PATH);
+    resetAIGraphCache();
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth <= 760) {
+        setSidebar(false);
+        setViewMode((mode) => (mode === "split" ? "editor" : mode));
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    const commands: SiteCommand[] = [
+      { id: "view-write", label: "Open editor", category: "View", action: () => setSurface("write") },
+      { id: "mode-source", label: "Source mode", category: "Editor", action: () => { setSurface("write"); setViewMode("editor"); } },
+      { id: "mode-preview", label: "Preview mode", category: "Editor", action: () => { setSurface("write"); setViewMode("preview"); } },
+      { id: "mode-live", label: "Split source + preview", category: "Editor", action: () => { setSurface("write"); setViewMode("split"); } },
+      { id: "view-graph", label: "Open graph", category: "View", shortcut: "⌘G", action: () => setSurface("graph") },
+      { id: "view-ai", label: "Open AI graph", category: "View", action: () => { setSurface("graph"); setGraphMode("ai"); } },
+      { id: "view-ask", label: "Ask this vault", category: "View", action: () => setSurface("ask") },
+      { id: "view-look", label: "Appearance", category: "View", action: () => setSurface("look") },
+      { id: "view-plugins", label: "Plugin runtime", category: "View", action: () => setSurface("plugins") },
+      { id: "toggle-side", label: "Toggle file tree", category: "View", action: () => setSidebar((value) => !value) },
+      ...notes.map((note) => ({
+        id: `note-${note.path}`,
+        label: note.name,
+        category: "Notes",
+        action: () => openNote(note.path),
+      })),
+    ];
+    setWorkspaceCommands(commands);
+    return () => setWorkspaceCommands([]);
+  }, [notes, setWorkspaceCommands]);
+
+
+
+  const visibleTree = query.trim()
+    ? notes.filter((note) => `${note.name} ${contents[note.path] ?? ""}`.toLowerCase().includes(query.toLowerCase()))
+    : null;
+
+  useWorkspaceMotion({
+    root: shellRef,
+    surface,
+    activePath,
+    viewMode,
+    sidebar,
+  });
 
   return (
-    <div className={`oo${theme === "light" ? " is-light" : ""}${wallpaper ? " is-wall" : ""}`}>
+    <div
+      ref={shellRef}
+      className={`oo oo-real${theme === "light" ? " is-light" : ""}${wallpaper ? " is-wall" : ""}`}
+      data-theme={theme}
+    >
       <div className="oo-title">
         <div className="oo-dots" aria-hidden>
           <span />
@@ -132,7 +212,7 @@ export function Workspace() {
         <div className="oo-vault">OO-Test-Vault</div>
         <div className="oo-views" role="tablist" aria-label="Workspace views">
           {VIEWS.map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={view === id} className={view === id ? "is-on" : ""} onClick={() => setView(id)}>
+            <button key={id} type="button" role="tab" aria-selected={surface === id} className={surface === id ? "is-on" : ""} onClick={() => setSurface(id)}>
               {label}
             </button>
           ))}
@@ -144,18 +224,18 @@ export function Workspace() {
 
       <div className="oo-body">
         <nav className="oo-ribbon" aria-label="Ribbon">
-          <button type="button" className={sidebar ? "is-on" : ""} onClick={() => setSidebar((v) => !v)} title="Files">
+          <button type="button" className={sidebar ? "is-on" : ""} onClick={() => setSidebar((value) => !value)} title="Files">
             <Icon>
               <path d="M4 7h16M4 12h16M4 17h10" />
             </Icon>
           </button>
-          <button type="button" className={view === "write" ? "is-on" : ""} onClick={() => setView("write")} title="Editor">
+          <button type="button" className={surface === "write" ? "is-on" : ""} onClick={() => setSurface("write")} title="Editor">
             <Icon>
               <path d="M7 3h8l4 4v14H7z" />
               <path d="M15 3v5h5M9 13h6M9 17h4" />
             </Icon>
           </button>
-          <button type="button" className={view === "graph" ? "is-on" : ""} onClick={() => setView(view === "graph" ? "write" : "graph")} title="Graph">
+          <button type="button" className={surface === "graph" ? "is-on" : ""} onClick={() => setSurface(surface === "graph" ? "write" : "graph")} title="Graph">
             <Icon>
               <circle cx="6.5" cy="7" r="2.2" />
               <circle cx="17.5" cy="7" r="2.2" />
@@ -163,46 +243,32 @@ export function Workspace() {
               <path d="M8.4 8.2 15.6 8.2M7.6 9.1 10.6 15M16.4 9.1 13.4 15" />
             </Icon>
           </button>
-          <button type="button" className={view === "ask" ? "is-on" : ""} onClick={() => setView("ask")} title="Spaces">
+          <button type="button" className={surface === "ask" ? "is-on" : ""} onClick={() => setSurface("ask")} title="Spaces">
             <Icon>
               <path d="M12 3.5l2.2 4.5 5 .7-3.6 3.5.9 4.9L12 14.8 7.5 17.1l.9-4.9L4.8 8.7l5-.7z" />
             </Icon>
           </button>
-          <button type="button" className={view === "canvas" ? "is-on" : ""} onClick={() => setView("canvas")} title="Canvas">
-            <Icon>
-              <rect x="4" y="5" width="7" height="6" rx="1" />
-              <rect x="13" y="13" width="7" height="6" rx="1" />
-              <path d="M11 8h4M16 11v2" />
-            </Icon>
-          </button>
         </nav>
 
-        {sidebar && (
+        {sidebar && surface !== "ask" && (
           <aside className="oo-side">
             <div className="oo-search">
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search notes…"
-                aria-label="Search notes"
-              />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes…" aria-label="Search notes" />
             </div>
             <div className="oo-tree">
-              {query.trim() ? (
+              {visibleTree ? (
                 <ul>
-                  {VAULT_NOTES.filter((item) =>
-                    `${item.title} ${item.body}`.toLowerCase().includes(query.toLowerCase()),
-                  ).map((item) => (
-                    <li key={item.id}>
-                      <button type="button" className={item.id === activeId ? "is-on" : ""} onClick={() => openNote(item.id)}>
-                        {item.title}
+                  {visibleTree.map((note) => (
+                    <li key={note.path}>
+                      <button type="button" className={note.path === activePath ? "is-on" : ""} onClick={() => openNote(note.path)}>
+                        {note.name}
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                VAULT_TREE.map((node) => (
-                  <Tree key={node.type === "folder" ? node.name : node.id} node={node} activeId={activeId} onOpen={openNote} />
+                fileTree.map((node) => (
+                  <Tree key={node.path} node={node} activePath={activePath} onOpen={openNote} />
                 ))
               )}
             </div>
@@ -210,222 +276,186 @@ export function Workspace() {
         )}
 
         <section className="oo-main">
-          {showTabs && (
-            <div className="oo-tabs">
-              {openTabs.map((id) => {
-                const tab = noteById(id);
-                if (!tab) return null;
-                return (
-                  <div key={id} className={`oo-tab${id === activeId ? " is-on" : ""}`}>
-                    <button type="button" onClick={() => setActiveId(id)}>
-                      {tab.title}
+          {surface === "write" && (
+            <>
+              <div className="oo-tabs">
+                {tabs.map((tab) => (
+                  <div key={tab.id} className={`oo-tab${tab.id === activePath ? " is-on" : ""}`}>
+                    <button type="button" onClick={() => setActivePath(tab.path)}>
+                      {tab.name}
                     </button>
-                    <button type="button" className="oo-tab-x" onClick={() => closeTab(id)} aria-label={`Close ${tab.title}`}>
+                    <button type="button" className="oo-tab-x" onClick={() => closeTab(tab.path)} aria-label={`Close ${tab.name}`}>
                       ×
                     </button>
                   </div>
-                );
-              })}
+                ))}
+              </div>
               <div className="oo-modes" role="tablist" aria-label="Editor mode">
-                {(["source", "preview", "live"] as const).map((mode) => (
+                {([
+                  ["editor", "source"],
+                  ["preview", "preview"],
+                  ["split", "split"],
+                ] as const).map(([mode, label]) => (
                   <button
                     key={mode}
                     type="button"
                     role="tab"
-                    aria-selected={editMode === mode}
-                    className={editMode === mode ? "is-on" : ""}
-                    onClick={() => setEditMode(mode)}
+                    aria-selected={viewMode === mode}
+                    className={viewMode === mode ? "is-on" : ""}
+                    onClick={() => setViewMode(mode)}
                   >
-                    {mode === "live" ? "split" : mode}
+                    {label}
                   </button>
                 ))}
+              </div>
+              <div className="oo-real-editor">
+                <div className="oo-editor-veil" aria-hidden />
+                <Editor
+                  tabs={tabs}
+                  activeTabId={activePath}
+                  content={content}
+                  viewMode={viewMode}
+                  availableNotes={notes}
+                  onAdjustFontSize={() => undefined}
+                  onTabSelect={(id) => setActivePath(id)}
+                  onTabClose={closeTab}
+                  onContentChange={(next, _user, path) => {
+                    const target = path || activePath;
+                    setContents((current) => ({ ...current, [target]: next }));
+                    void getAPI().writeFile(target, next);
+                  }}
+                  onViewModeChange={setViewMode}
+                  onLinkClick={(name) => openNote(name)}
+                  onGetNoteContent={(name) => {
+                    const found = notes.find((note) => note.name.toLowerCase() === name.toLowerCase());
+                    return found ? contents[found.path] ?? FILES[found.path] ?? null : null;
+                  }}
+                  onOpenNote={openNote}
+                  theme={theme}
+                  settings={settings}
+                />
+              </div>
+            </>
+          )}
+
+          {surface === "graph" && (
+            <div className="oo-real-graph">
+              <div className="graph-mode-switch" role="tablist" aria-label="Graph mode">
+                <button
+                  type="button"
+                  className={`graph-mode-btn${graphMode !== "ai" ? " active" : ""}`}
+                  onClick={() => setGraphMode("manual")}
+                >
+                  Manual
+                </button>
+                <button
+                  type="button"
+                  className={`graph-mode-btn${graphMode === "ai" ? " active" : ""}`}
+                  onClick={() => {
+                    resetAIGraphCache();
+                    setGraphMode("ai");
+                  }}
+                >
+                  AI View
+                </button>
+              </div>
+              <div className="oo-graph-live">
+                {graphMode === "ai" ? (
+                  <AIKnowledgeGraph
+                    onNodeClick={(_name, _heading, path) => path && openNote(path)}
+                    onClose={() => setSurface("write")}
+                    theme={theme}
+                    vaultPath={VAULT_PATH}
+                    fileTree={fileTree}
+                    localNodePath={activePath}
+                  />
+                ) : (
+                  <GraphView
+                    onNodeClick={(_name, _heading, path) => path && openNote(path)}
+                    onClose={() => setSurface("write")}
+                    theme={theme}
+                    vaultPath={VAULT_PATH}
+                    localNodePath={activePath}
+                  />
+                )}
               </div>
             </div>
           )}
 
-          <div className={`oo-stage is-${view} mode-${editMode}`}>
-            {view === "write" && (editMode === "source" || editMode === "live") && (
-              <article className="oo-editor is-source">
-                <SourceView source={note.body} onOpen={openNote} />
-              </article>
-            )}
-            {view === "write" && (editMode === "preview" || editMode === "live") && (
-              <article className="oo-editor">
-                <WikiMarkdown source={note.body} onOpen={openNote} />
-              </article>
-            )}
-            {view === "graph" && (
-              <div className="oo-graph">
-                <VaultGraph
-                  className="oo-graph-canvas"
-                  light={theme === "light"}
-                  focusId={note.id}
-                  onSelect={(id) => {
-                    if (noteById(id)) openNote(id);
-                  }}
-                />
-              </div>
-            )}
-            {view === "ask" && (
-              <div className="oo-ask">
-                <p className="oo-ask-kicker">spaces · local embeddings · all-MiniLM-L6-v2</p>
-                <h2>Ask the files. Don’t replace them.</h2>
-                <p>
-                  On desktop, Spaces chunk the vault and retrieve with citations. These four answers are from this
-                  test vault — tap a source to open the note.
-                </p>
-                <div className="oo-asks">
-                  {ASK_PROMPTS.map((item) => (
-                    <button key={item.id} type="button" className={askId === item.id ? "is-on" : ""} onClick={() => setAskId(item.id)}>
-                      {item.q}
-                    </button>
-                  ))}
-                </div>
-                {asked && (
-                  <div className="oo-answer">
-                    <p>{asked.a}</p>
-                    <div className="oo-cites">
-                      {asked.cites.map((id) => {
-                        const cite = noteById(id);
-                        if (!cite) return null;
-                        return (
-                          <button key={id} type="button" onClick={() => openNote(id)}>
-                            {cite.title}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <figure className="oo-shot">
-                  <img src="/images/spaces-dashboard.png" alt="Spaces chat in the OpenOnyx desktop app" />
-                  <figcaption>Spaces in the running app</figcaption>
-                </figure>
-              </div>
-            )}
-            {view === "canvas" && (
-              <div className="oo-canvas">
-                <div className="oo-canvas-bar">Vault Atlas · click a card to open the note</div>
-                <div className="oo-board">
-                  {CANVAS_CARDS.map((card) => {
-                    const item = noteById(card.id);
-                    if (!item) return null;
-                    return (
-                      <button
-                        key={card.id}
-                        type="button"
-                        className={`oo-card tone-${card.tone}${card.id === activeId ? " is-on" : ""}`}
-                        style={{ left: `${card.x}%`, top: `${card.y}%` }}
-                        onClick={() => openNote(card.id)}
-                      >
-                        <span>{item.folder}</span>
-                        {item.title}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {view === "look" && (
-              <div className="oo-look">
-                <p className="oo-ask-kicker">appearance · live on this window</p>
-                <h2>Quiet chrome. Your theme.</h2>
-                <p>
-                  Dark and light apply on this page. The desktop app also has oceanic, custom themes, and a
-                  vault wallpaper.
-                </p>
-                <div className="oo-skins">
-                  <button type="button" className={theme === "dark" ? "is-on" : ""} onClick={() => setTheme("dark")}>
-                    dark
-                  </button>
-                  <button type="button" className={theme === "light" ? "is-on" : ""} onClick={() => setTheme("light")}>
-                    light
-                  </button>
-                  <button type="button" className={wallpaper ? "is-on" : ""} onClick={() => setWallpaper((v) => !v)}>
-                    wallpaper
-                  </button>
-                </div>
-                <figure className="oo-shot">
-                  <img src="/images/themes.png" alt="Appearance settings in OpenOnyx" />
-                  <figcaption>Appearance & Theme in the running app</figcaption>
-                </figure>
-              </div>
-            )}
-            {view === "plugins" && (
-              <div className="oo-plugins">
-                <p className="oo-ask-kicker">runtime · obsidian@1.13.1 · 158/158 exports</p>
-                <h2>Community plugins, contained.</h2>
-                <p>
-                  These are the community bundles the desktop test suite loads against the compatibility
-                  layer. The app prompts for permissions and isolates crashes.
-                </p>
-                <input
-                  className="oo-plugin-search"
-                  value={pluginQuery}
-                  onChange={(event) => setPluginQuery(event.target.value)}
-                  placeholder="Filter plugins…"
-                  aria-label="Filter plugins"
-                />
-                <ul className="oo-plugin-list">
-                  {plugins.map((item) => (
-                    <li key={item.name}>
-                      <b>{item.name}</b>
-                      <span>{item.version}</span>
-                    </li>
-                  ))}
-                </ul>
-                <figure className="oo-shot">
-                  <img src="/images/plugin-marketplace.png" alt="Plugin marketplace in OpenOnyx" />
-                  <figcaption>Marketplace in the running app</figcaption>
-                </figure>
-              </div>
-            )}
-          </div>
-        </section>
+          {surface === "ask" && (
+            <div className="oo-real-spaces">
+              <SiteSpaces onOpenNote={openNote} />
+            </div>
+          )}
 
-        {view === "write" && (
-          <aside className="oo-right">
-            <h4>Backlinks</h4>
-            {backs.length === 0 && <p className="oo-empty">No incoming links in this slice.</p>}
-            {backs.map((item) => (
-              <button key={item.id} type="button" onClick={() => openNote(item.id)}>
-                {item.title}
-              </button>
-            ))}
-            <h4>In this note</h4>
-            <p className="oo-empty">{wordCount(note.body)} words · markdown on disk</p>
-          </aside>
-        )}
+          {surface === "look" && (
+            <div className="oo-look">
+              <p className="oo-ask-kicker">appearance · live on this window</p>
+              <h2>Quiet chrome. Your theme.</h2>
+              <p>Dark and light apply on this page. The desktop app also has oceanic, custom themes, and a vault wallpaper.</p>
+              <div className="oo-skins">
+                <button type="button" className={theme === "dark" ? "is-on" : ""} onClick={() => setTheme("dark")}>
+                  dark
+                </button>
+                <button type="button" className={theme === "light" ? "is-on" : ""} onClick={() => setTheme("light")}>
+                  light
+                </button>
+                <button type="button" className={wallpaper ? "is-on" : ""} onClick={() => setWallpaper((value) => !value)}>
+                  wallpaper
+                </button>
+              </div>
+            </div>
+          )}
+
+          {surface === "plugins" && (
+            <div className="oo-plugins">
+              <p className="oo-ask-kicker">runtime · obsidian@1.13.1 · 158/158 exports</p>
+              <h2>Community plugins, contained.</h2>
+              <p>These are the community bundles the desktop test suite loads against the compatibility layer.</p>
+              <input className="oo-plugin-search" value={pluginQuery} onChange={(event) => setPluginQuery(event.target.value)} placeholder="Filter plugins…" aria-label="Filter plugins" />
+              <ul className="oo-plugin-list">
+                {plugins.map((item) => (
+                  <li key={item.name}>
+                    <b>{item.name}</b>
+                    <span>{item.version}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
       </div>
 
       <footer className="oo-status">
         <span>
-          {view === "plugins"
-            ? "plugin runtime"
-            : view === "look"
-              ? `appearance · ${theme}${wallpaper ? " · wallpaper" : ""}`
-              : view === "canvas"
-                ? "Vault Atlas.canvas"
-                : note.id.replace(/\.md$/, "")}
+          {surface === "graph"
+            ? `${graphMode === "ai" ? "AI graph" : "graph"} · ${notes.length} notes`
+            : surface === "ask"
+              ? "spaces · real index"
+              : `${activePath.replace(/\.md$/, "")}`}
         </span>
         <span>
-          {view === "plugins"
-            ? `${PLUGINS_TESTED.length} tested bundles`
-            : view === "write"
-              ? `${editMode === "live" ? "source + preview" : editMode} · ${backs.length} backlink${backs.length === 1 ? "" : "s"} · ${wordCount(note.body)} words`
-              : `${backs.length} backlink${backs.length === 1 ? "" : "s"} · ${wordCount(note.body)} words · local`}
+          {surface === "write" ? `${viewMode} · ${content.split(/\s+/).filter(Boolean).length} words · live editor` : "OO-Test-Vault"}
         </span>
       </footer>
     </div>
   );
 }
 
-function Tree({ node, activeId, onOpen }: { node: TreeNode; activeId: string; onOpen: (id: string) => void }) {
+function Tree({
+  node,
+  activePath,
+  onOpen,
+}: {
+  node: FileEntry;
+  activePath: string;
+  onOpen: (path: string) => void;
+}) {
   const [open, setOpen] = useState(true);
-  if (node.type === "file") {
+  if (!node.isDirectory) {
     return (
-      <button type="button" className={`tree-file${node.id === activeId ? " is-on" : ""}`} onClick={() => onOpen(node.id)}>
-        {node.title}
+      <button type="button" className={`tree-file${node.path === activePath ? " is-on" : ""}`} onClick={() => onOpen(node.path)}>
+        {fileName(node.path)}
       </button>
     );
   }
@@ -435,13 +465,7 @@ function Tree({ node, activeId, onOpen }: { node: TreeNode; activeId: string; on
         <span className={`chev${open ? " is-open" : ""}`} />
         {node.name}
       </button>
-      {open && (
-        <div className="tree-kids">
-          {node.children.map((child) => (
-            <Tree key={child.type === "folder" ? child.name : child.id} node={child} activeId={activeId} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
+      {open && node.children?.map((child) => <Tree key={child.path} node={child} activePath={activePath} onOpen={onOpen} />)}
     </div>
   );
 }
