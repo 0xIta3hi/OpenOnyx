@@ -227,9 +227,16 @@ function buildFileTree(): any[] {
   return tree;
 }
 
+export function seedMockFiles(files: Record<string, string>): void {
+  for (const key of Object.keys(mockFiles)) delete mockFiles[key];
+  Object.assign(mockFiles, files);
+}
+
 export function createMockAPI(): ElectronAPI {
-  // Initialize with sample notes
-  Object.assign(mockFiles, SAMPLE_NOTES);
+  // Initialize with sample notes unless a vault was already seeded.
+  if (Object.keys(mockFiles).length === 0) {
+    Object.assign(mockFiles, SAMPLE_NOTES);
+  }
 
   const mockAPI: ElectronAPI = {
     // Vault

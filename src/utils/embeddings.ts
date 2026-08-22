@@ -371,6 +371,30 @@ export function resetEmbeddingsStore(): void {
   _disabledReason = null;
 }
 
+/** Seed the in-memory store with the app's lexical fallback — no model download. */
+export function seedLexicalEmbeddings(files: Record<string, string>): number {
+  _disabledReason = "website-lexical";
+  _isLoaded = true;
+  _isLoading = false;
+  _loadPromise = null;
+  _memoryStore = { entries: new Map() };
+  for (const [path, content] of Object.entries(files)) {
+    if (!path.toLowerCase().endsWith(".md")) continue;
+    const source = typeof content === "string" ? content : "";
+    const clean = stripMarkdown(source).substring(0, 1500);
+    const vector = clean.length < 5 ? new Array(EMBEDDING_DIM).fill(0) : lexicalEmbedText(clean);
+    _memoryStore.entries.set(path, {
+      path,
+      hash: simpleHash(source),
+      vector,
+      updatedAt: Date.now(),
+      modifiedAt: Date.now(),
+      size: source.length,
+    });
+  }
+  return _memoryStore.entries.size;
+}
+
 /**
  * Embed a note if its content has changed.
  */
