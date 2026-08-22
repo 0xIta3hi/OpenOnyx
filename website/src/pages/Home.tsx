@@ -5,7 +5,7 @@ import { Reveal } from "../components/Reveal";
 import { ProductStory } from "../components/product/ProductStory";
 import { Workspace } from "../components/product/Workspace";
 import { FEATURES, PRODUCT, THEATER } from "../data/facts";
-import { usePointerDepth } from "../lib/motion";
+import { usePointerDepth, useStaggerIn } from "../lib/motion";
 import { usePageMeta } from "../lib/meta";
 
 function HeroWorkspace() {
@@ -21,7 +21,9 @@ function HeroWorkspace() {
 }
 
 export function Home() {
+  const inventory = useRef<HTMLDivElement>(null);
   usePageMeta(`OpenOnyx — Local-first knowledge workspace`, PRODUCT.description);
+  useStaggerIn(inventory, ".inventory-card");
 
   return (
     <div className="stage">
@@ -66,7 +68,7 @@ export function Home() {
           <h2>The whole product. Not a plugin shopping list.</h2>
           <p>Twelve surfaces that ship in the desktop app. Open any one in the docs.</p>
         </Reveal>
-        <div className="inventory-grid">
+        <div className="inventory-grid" ref={inventory}>
           {FEATURES.map((item) => (
             <Link className="inventory-card" key={item.id} to={item.href}>
               <span>{item.kicker}</span>

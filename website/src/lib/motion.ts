@@ -107,6 +107,30 @@ export function useScrollFade(root: RefObject<HTMLElement | null>, { y = 12 }: {
   }, [root, y]);
 }
 
+export function useStaggerIn(root: RefObject<HTMLElement | null>, selector: string) {
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el || prefersReducedMotion()) return;
+    const items = el.querySelectorAll(selector);
+    if (!items.length) return;
+    const ctx = gsap.context(() => {
+      gsap.from(items, {
+        y: 10,
+        autoAlpha: 0,
+        duration: 0.45,
+        stagger: 0.04,
+        ease,
+        scrollTrigger: {
+          trigger: el,
+          start: "top 84%",
+          once: true,
+        },
+      });
+    }, el);
+    return () => ctx.revert();
+  }, [root, selector]);
+}
+
 export function useStoryChapters(
   root: RefObject<HTMLElement | null>,
   setActive: (index: number) => void,
@@ -120,7 +144,12 @@ export function useStoryChapters(
     const count = chapters.length;
     let last = -1;
     const apply = (progress: number) => {
-      const next = Math.min(count - 1, Math.max(0, Math.floor(progress * count)));
+      const exact = progress * count;
+      let next = Math.min(count - 1, Math.max(0, Math.floor(exact)));
+      if (last >= 0 && next !== last) {
+        if (next > last && exact < last + 1.08) next = last;
+        if (next < last && exact > last - 0.08) next = last;
+      }
       if (next !== last) {
         last = next;
         setActive(next);

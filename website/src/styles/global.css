@@ -802,7 +802,9 @@ img, video { max-width: 100%; display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .page, .btn, .device, .card, .meta-chip, .nav-links a::after { transition: none; }
+  .reveal, .page, .btn, .device, .card, .meta-chip, .nav-links a::after,
+  .inventory-card, .inventory-card::before, .inventory-card span,
+  .compare-table th, .compare-table td { transition: none; }
   .page, .reveal { animation: none; opacity: 1; transform: none; }
   .live-dot { animation: none; }
   .oo-stage > *, .oo-card { animation: none; transition: none; }
@@ -899,8 +901,8 @@ img, video { max-width: 100%; display: block; }
 .story-copy-card {
   grid-area: 1 / 1;
   opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateY(6px);
+  transition: opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
 }
 .story-copy-card.is-on {
@@ -965,7 +967,7 @@ img, video { max-width: 100%; display: block; }
   object-position: center center;
   opacity: 0;
   transform-origin: 50% 40%;
-  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .story-frame-inner img.is-on { opacity: 1; }
 .story-frame:hover img.is-on,
@@ -1090,6 +1092,14 @@ img, video { max-width: 100%; display: block; }
   padding: 10px 12px;
   border-top: 1px solid var(--line);
   vertical-align: top;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.compare-table tbody tr:hover th,
+.compare-table tbody tr:hover td {
+  background: var(--bg-2);
+}
+.compare-table tbody tr:hover td:nth-child(2) {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .compare-table thead th { color: var(--faint); font-weight: 500; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; border-top: 0; }
 .compare-table thead th:nth-child(2) { color: var(--text); }
@@ -1124,11 +1134,27 @@ img, video { max-width: 100%; display: block; }
 }
 .inventory-card {
   display: block;
+  position: relative;
   background: var(--bg);
   padding: 18px 18px 20px;
   min-height: 100%;
+  transition: background 0.22s ease;
+}
+.inventory-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 1px;
+  background: var(--text);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.28s ease;
 }
 .inventory-card:hover { background: var(--bg-2); }
+.inventory-card:hover::before { transform: scaleY(1); }
+.inventory-card:hover span { color: var(--text); }
 .inventory-card span {
   display: block;
   font-size: 11px;
@@ -1136,6 +1162,7 @@ img, video { max-width: 100%; display: block; }
   text-transform: uppercase;
   color: var(--faint);
   margin-bottom: 8px;
+  transition: color 0.22s ease;
 }
 .inventory-card h3 {
   margin: 0 0 8px;
