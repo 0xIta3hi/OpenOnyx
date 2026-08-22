@@ -31,18 +31,92 @@ function isImageEmbedPath(src: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:[?#].*)?$/i.test(src.trim());
 }
 
-function preprocessMarkdown(markdown: string, vaultPath?: string): string {
+type VaultFileLike = {
+  path?: string;
+  name?: string;
+  isDirectory?: boolean;
+  children?: VaultFileLike[];
+};
+
+function normalizeVaultPath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/");
+}
+
+function flattenVaultFiles(files: VaultFileLike[] | undefined): VaultFileLike[] | undefined {
+  if (!files) return undefined;
+
+  const flattened: VaultFileLike[] = [];
+  const visit = (entries: VaultFileLike[]) => {
+    for (const entry of entries) {
+      flattened.push(entry);
+      if (entry.children) visit(entry.children);
+    }
+  };
+  visit(files);
+  return flattened;
+}
+
+function parseWikiImageDisplay(displayText: string | undefined): { alt: string | null; width: number | null } {
+  if (!displayText) return { alt: null, width: null };
+
+  const parts = displayText.split("|").map((part) => part.trim()).filter(Boolean);
+  let width: number | null = null;
+  const altParts: string[] = [];
+
+  for (const part of parts) {
+    if (/^\d+$/.test(part) && width === null) {
+      width = Number(part);
+    } else {
+      altParts.push(part);
+    }
+  }
+
+  return {
+    alt: altParts.length > 0 ? altParts.join(" | ") : null,
+    width,
+  };
+}
+
+function preprocessMarkdown(markdown: string, vaultPath?: string, vaultFiles?: VaultFileLike[]): string {
   let processed = stripFrontmatter(markdown);
+  const flattenedVaultFiles = flattenVaultFiles(vaultFiles);
+  const existingPaths = new Set<string>();
+  const existingBasenames = new Set<string>();
+
+  if (flattenedVaultFiles) {
+    for (const file of flattenedVaultFiles) {
+      if (file.isDirectory) continue;
+
+      const filePath = file.path ? normalizeVaultPath(file.path) : "";
+      const fileName = file.name || filePath.split("/").pop();
+
+      if (filePath) existingPaths.add(filePath);
+      if (fileName) existingBasenames.add(fileName);
+    }
+  }
 
   processed = processed.replace(
     /!\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g,
     (_match, noteName, heading, displayText) => {
       const src = String(noteName).trim();
-      const label = displayText || src;
+      const { alt, width } = parseWikiImageDisplay(displayText);
+      const label = alt || src;
 
       if (isImageEmbedPath(src)) {
+        const normalizedSrc = normalizeVaultPath(src);
+        const srcBasename = normalizedSrc.split("/").pop();
+        const exists =
+          !vaultFiles ||
+          existingPaths.has(normalizedSrc) ||
+          (!!srcBasename && existingBasenames.has(srcBasename));
+
+        if (!exists) {
+          return `<div class="embed-missing">${escapeHtml(src)}</div>`;
+        }
+
         const resolvedSrc = resolveVaultImageSrc(src);
-        return `<img src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(label)}">`;
+        const style = width ? ` style="max-width: ${width}px; width: 100%;"` : "";
+        return `<img src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(label)}" title="${escapeHtml(label)}"${style}>`;
       }
 
       const labelText = displayText || src;
@@ -87,13 +161,15 @@ export function buildMarkdownPdfHtml({
   title,
   notePath,
   vaultPath,
+  vaultFiles,
 }: {
   markdown: string;
   title: string;
   notePath: string;
   vaultPath?: string;
+  vaultFiles?: VaultFileLike[];
 }): string {
-  const processed = preprocessMarkdown(markdown, vaultPath);
+  const processed = preprocessMarkdown(markdown, vaultPath, vaultFiles);
   const rendered = marked.parse(processed, { gfm: true, breaks: true }) as string;
   const safeHtml = DOMPurify.sanitize(rendered, {
     ADD_TAGS: ["input", "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "mspace", "msqrt", "mfrac", "annotation"],
