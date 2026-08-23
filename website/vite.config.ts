@@ -20,6 +20,7 @@ export default defineConfig({
     fs: { allow: [appRoot] },
   },
   optimizeDeps: {
+    include: ["d3-force", "d3", "mermaid", "react-colorful"],
     exclude: ["electron"],
   },
   worker: {
