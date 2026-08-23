@@ -763,6 +763,10 @@ export class GraphRenderer {
     // Obsidian fQ constant for dimming
     const fQ = 0.2;
 
+    const fontStack = `ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Inter", sans-serif`;
+    const defaultFont = `${this.labelStyle.size}px ${fontStack}`;
+    ctx.font = defaultFont;
+
     for (const node of this.nodes.values()) {
       const screenX = this.offsetX + node.x * this.scale;
       const screenY = this.offsetY + node.y * this.scale;
@@ -777,26 +781,21 @@ export class GraphRenderer {
       }
 
       const isHovered = node.id === this.hoveredNodeId;
-      const isConnectedToHovered = this.hoveredNodeId ? (connectedToHighlight?.has(node.id) ?? false) : false;
       
-      // If we are zoomed out past threshold, only render the hovered node's and its connected nodes' labels
-      if (textAlpha <= 0 && !isHovered && !isConnectedToHovered) {
+      // When zoomed out past threshold, only render the hovered node's label
+      if (textAlpha <= 0 && !isHovered) {
         continue;
       }
 
       let alpha = textAlpha;
       if (isHovered) {
         alpha = 1.0;
-      } else if (isConnectedToHovered) {
-        alpha = textAlpha <= 0 ? 0.8 : Math.max(textAlpha, 0.8);
-      }
+      } else {
+        // Dim labels for unrelated nodes (matching edge/node dimming logic)
+        const isSelected = node.id === this.selectedNodeId;
+        const isHighlightNode = isHovered || isSelected;
+        const isConnected = connectedToHighlight?.has(node.id) ?? false;
 
-      // Dim labels for unrelated nodes (matching edge/node dimming logic)
-      const isSelected = node.id === this.selectedNodeId;
-      const isHighlightNode = isHovered || isSelected;
-      const isConnected = connectedToHighlight?.has(node.id) ?? false;
-      
-      if (!isHovered && !isConnectedToHovered) {
         if (this.highlightedPathNodeIds) {
           if (!this.highlightedPathNodeIds.has(node.id)) {
             alpha *= fQ;
@@ -804,6 +803,15 @@ export class GraphRenderer {
         } else if (highlightNode && !isHighlightNode && !isConnected) {
           alpha *= fQ;
         }
+      }
+
+      if (alpha <= 0) continue;
+
+      if (isHovered) {
+        const hoveredFontSize = Math.max(18, Math.round(this.labelStyle.size * 1.5));
+        ctx.font = `bold ${hoveredFontSize}px ${fontStack}`;
+      } else {
+        ctx.font = defaultFont;
       }
 
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;

@@ -500,15 +500,17 @@ function wikiLinkPlugin(onLinkClick: (name: string) => void) {
             const from = line.from + match.index;
             const to = from + match[0].length;
 
-            decorations.push(
-              Decoration.mark({
-                class: "cm-wikilink",
-                attributes: {
-                  "data-link": match[1],
-                  title: `Open: ${match[1]}`,
-                },
-              }).range(from, to),
-            );
+            if (from < to) {
+              decorations.push(
+                Decoration.mark({
+                  class: "cm-wikilink",
+                  attributes: {
+                    "data-link": match[1],
+                    title: `Open: ${match[1]}`,
+                  },
+                }).range(from, to),
+              );
+            }
           }
         }
 
@@ -578,9 +580,11 @@ function tagPlugin() {
               line.from + match.index + (match[0].startsWith(" ") ? 1 : 0);
             const tagEnd = tagStart + match[1].length;
 
-            decorations.push(
-              Decoration.mark({ class: "cm-tag-mark" }).range(tagStart, tagEnd),
-            );
+            if (tagStart < tagEnd) {
+              decorations.push(
+                Decoration.mark({ class: "cm-tag-mark" }).range(tagStart, tagEnd),
+              );
+            }
           }
         }
 
@@ -1736,6 +1740,8 @@ function addInlineRange(
   const contentTo = contentFrom + content.length;
   const closeTo = contentTo + close.length;
 
+  if (contentFrom >= contentTo) return;
+
   hideMarkdownSyntax(decorations, openFrom, contentFrom);
   decorations.push(Decoration.mark({ class: className }).range(contentFrom, contentTo));
   hideMarkdownSyntax(decorations, contentTo, closeTo);
@@ -1771,9 +1777,11 @@ function addInactiveInlinePreviewDecorations(
     const contentFrom = openFrom + marker.length;
     const contentTo = contentFrom + content.length;
     const closeTo = contentTo + marker.length;
-    hideMarkdownSyntax(decorations, openFrom, contentFrom);
-    decorations.push(Decoration.mark({ class: "cm-live-highlight" }).range(contentFrom, contentTo));
-    hideMarkdownSyntax(decorations, contentTo, closeTo);
+    if (contentFrom < contentTo) {
+      hideMarkdownSyntax(decorations, openFrom, contentFrom);
+      decorations.push(Decoration.mark({ class: "cm-live-highlight" }).range(contentFrom, contentTo));
+      hideMarkdownSyntax(decorations, contentTo, closeTo);
+    }
   }
 
   const emphasisRegex = /(^|[^\w*])(\*|_)(?=\S)([^*_]+?\S)(\2)(?!\w)/g;
@@ -1785,9 +1793,11 @@ function addInactiveInlinePreviewDecorations(
     const contentFrom = openFrom + marker.length;
     const contentTo = contentFrom + content.length;
     const closeTo = contentTo + marker.length;
-    hideMarkdownSyntax(decorations, openFrom, contentFrom);
-    decorations.push(Decoration.mark({ class: "cm-live-emphasis" }).range(contentFrom, contentTo));
-    hideMarkdownSyntax(decorations, contentTo, closeTo);
+    if (contentFrom < contentTo) {
+      hideMarkdownSyntax(decorations, openFrom, contentFrom);
+      decorations.push(Decoration.mark({ class: "cm-live-emphasis" }).range(contentFrom, contentTo));
+      hideMarkdownSyntax(decorations, contentTo, closeTo);
+    }
   }
 
   const markdownLinkRegex = /(!?)\[([^\]\n]+)\]\(([^)\n]+)\)/g;
@@ -1797,14 +1807,16 @@ function addInactiveInlinePreviewDecorations(
     const labelFrom = fullFrom + 1;
     const labelTo = labelFrom + match[2].length;
     const fullTo = fullFrom + match[0].length;
-    hideMarkdownSyntax(decorations, fullFrom, labelFrom);
-    decorations.push(
-      Decoration.mark({
-        class: "cm-live-link",
-        attributes: { title: match[3] },
-      }).range(labelFrom, labelTo),
-    );
-    hideMarkdownSyntax(decorations, labelTo, fullTo);
+    if (labelFrom < labelTo) {
+      hideMarkdownSyntax(decorations, fullFrom, labelFrom);
+      decorations.push(
+        Decoration.mark({
+          class: "cm-live-link",
+          attributes: { title: match[3] },
+        }).range(labelFrom, labelTo),
+      );
+      hideMarkdownSyntax(decorations, labelTo, fullTo);
+    }
   }
 
   const wikiLinkRegex = /\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
@@ -1815,25 +1827,29 @@ function addInactiveInlinePreviewDecorations(
     if (alias) {
       const aliasFrom = fullFrom + 2 + target.length + 1;
       const aliasTo = aliasFrom + alias.length;
-      hideMarkdownSyntax(decorations, fullFrom, aliasFrom);
-      decorations.push(
-        Decoration.mark({
-          class: "cm-live-wikilink",
-          attributes: { "data-link": target, title: `Open: ${target}` },
-        }).range(aliasFrom, aliasTo),
-      );
-      hideMarkdownSyntax(decorations, aliasTo, fullFrom + match[0].length);
+      if (aliasFrom < aliasTo) {
+        hideMarkdownSyntax(decorations, fullFrom, aliasFrom);
+        decorations.push(
+          Decoration.mark({
+            class: "cm-live-wikilink",
+            attributes: { "data-link": target, title: `Open: ${target}` },
+          }).range(aliasFrom, aliasTo),
+        );
+        hideMarkdownSyntax(decorations, aliasTo, fullFrom + match[0].length);
+      }
     } else {
       const contentFrom = fullFrom + 2;
       const contentTo = contentFrom + target.length;
-      hideMarkdownSyntax(decorations, fullFrom, contentFrom);
-      decorations.push(
-        Decoration.mark({
-          class: "cm-live-wikilink",
-          attributes: { "data-link": target, title: `Open: ${target}` },
-        }).range(contentFrom, contentTo),
-      );
-      hideMarkdownSyntax(decorations, contentTo, fullFrom + match[0].length);
+      if (contentFrom < contentTo) {
+        hideMarkdownSyntax(decorations, fullFrom, contentFrom);
+        decorations.push(
+          Decoration.mark({
+            class: "cm-live-wikilink",
+            attributes: { "data-link": target, title: `Open: ${target}` },
+          }).range(contentFrom, contentTo),
+        );
+        hideMarkdownSyntax(decorations, contentTo, fullFrom + match[0].length);
+      }
     }
   }
 }
@@ -1897,7 +1913,7 @@ function addInactiveInlineHTMLDecorations(
     hideMarkdownSyntax(decorations, contentTo, closeTo);
 
     // Apply decorations to content range
-    if (Object.keys(attributes).length > 0) {
+    if (contentFrom < contentTo && Object.keys(attributes).length > 0) {
       decorations.push(
         Decoration.mark({ attributes }).range(contentFrom, contentTo)
       );
@@ -3098,12 +3114,13 @@ function buildInlineAIPreviewDecorations(spec: InlineAIPreviewSpec | null): Deco
 
   const addRemoved = (token: InlineDiffToken) => {
     if (token.isSpace) return;
-    decorations.push(
-      Decoration.mark({ class: "cm-inline-ai-removed" }).range(
-        from + token.start,
-        from + token.end,
-      ),
-    );
+    const rFrom = from + token.start;
+    const rTo = from + token.end;
+    if (rFrom < rTo) {
+      decorations.push(
+        Decoration.mark({ class: "cm-inline-ai-removed" }).range(rFrom, rTo),
+      );
+    }
   };
 
   const addInsert = (pos: number, text: string) => {

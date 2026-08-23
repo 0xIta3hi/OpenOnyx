@@ -82,18 +82,24 @@ export async function searchSpacesSemantic(query: string, limit = 10): Promise<E
   const ids = (data || []).map((d: any) => d.space_id);
   if (ids.length === 0) return [];
 
-  const { data: spaces, error: spacesErr } = await supabase
-    .from('spaces')
-    .select(`
-      id, title, description, helps_with, owner_id, forked_from, visibility, created_at, updated_at,
-      space_stats ( views, forks, upvotes, score )
-    `)
-    .in('id', ids)
-    .eq('visibility', 'public');
+  const FETCH_BATCH_SIZE = 30;
+  let spaces: any[] = [];
+  for (let i = 0; i < ids.length; i += FETCH_BATCH_SIZE) {
+    const chunk = ids.slice(i, i + FETCH_BATCH_SIZE);
+    const { data: chunkSpaces, error: spacesErr } = await supabase
+      .from('spaces')
+      .select(`
+        id, title, description, helps_with, owner_id, forked_from, visibility, created_at, updated_at,
+        space_stats ( views, forks, upvotes, score )
+      `)
+      .in('id', chunk)
+      .eq('visibility', 'public');
 
-  if (spacesErr) throw spacesErr;
+    if (spacesErr) throw spacesErr;
+    if (chunkSpaces) spaces.push(...chunkSpaces);
+  }
 
-  return (spaces || []).map(mapExploreSpace);
+  return spaces.map(mapExploreSpace);
 }
 
 /**

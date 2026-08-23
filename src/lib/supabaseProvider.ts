@@ -18,7 +18,7 @@
 
 import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
-import { supabase } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 import { authManager } from './auth';
 import { localDB } from './localdb';
 import { isPrivateCloudSpace, privateCrypto } from './privateCrypto';
@@ -115,7 +115,7 @@ export class SupabaseProvider {
   // ── Public API ────────────────────────────────────────────────────────
 
   async connect(): Promise<void> {
-    if (this.destroyed) return;
+    if (this.destroyed || !isSupabaseConfigured) return;
 
     // Resolve encryption status
     this.isPrivate = await this._checkPrivate();

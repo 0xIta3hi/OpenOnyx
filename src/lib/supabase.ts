@@ -14,6 +14,7 @@ function createSupabaseClient(config: LocalSupabaseConfig | null) {
     clientAnonKey,
     {
       auth: {
+        storageKey: 'openonyx-app-auth-v1',
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,

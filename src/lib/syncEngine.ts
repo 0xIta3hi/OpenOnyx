@@ -463,11 +463,20 @@ export class SyncEngine {
               if (!remoteNotesMap) {
                 try {
                   const noteIds = payloads.map(p => p.id).filter(Boolean);
-                  const { data: remotes } = await client
-                    .from('notes')
-                    .select('id, updated_at, version, content_hash, client_id')
-                    .in('id', noteIds);
-                  remoteNotesMap = new Map((remotes || []).map((r: any) => [r.id, r]));
+                  remoteNotesMap = new Map();
+                  const FETCH_BATCH_SIZE = 30;
+                  for (let b = 0; b < noteIds.length; b += FETCH_BATCH_SIZE) {
+                    const chunk = noteIds.slice(b, b + FETCH_BATCH_SIZE);
+                    const { data: remotes } = await client
+                      .from('notes')
+                      .select('id, updated_at, version, content_hash, client_id')
+                      .in('id', chunk);
+                    if (remotes) {
+                      for (const r of remotes) {
+                        remoteNotesMap.set(r.id, r);
+                      }
+                    }
+                  }
                 } catch (e) {
                   console.warn('[SyncEngine] Batch remote note fetch failed:', e);
                   remoteNotesMap = new Map();
@@ -533,8 +542,12 @@ export class SyncEngine {
           }
 
           if (finalPayloads.length > 0) {
-            const { error } = await client.from(table as any).upsert(finalPayloads);
-            if (error) throw error;
+            const UPSERT_BATCH_SIZE = 50;
+            for (let b = 0; b < finalPayloads.length; b += UPSERT_BATCH_SIZE) {
+              const chunk = finalPayloads.slice(b, b + UPSERT_BATCH_SIZE);
+              const { error } = await client.from(table as any).upsert(chunk);
+              if (error) throw error;
+            }
             count += finalPayloads.length;
           }
         }

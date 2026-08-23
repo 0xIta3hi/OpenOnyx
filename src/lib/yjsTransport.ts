@@ -19,7 +19,7 @@ import {
   applyAwarenessUpdate,
   removeAwarenessStates,
 } from 'y-protocols/awareness';
-import { supabase } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 
 // ── Base64 helpers ──────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ export class YjsTransport {
   // ── Public API ────────────────────────────────────────────────────────
 
   async connect(): Promise<void> {
-    if (this.destroyed) return;
+    if (this.destroyed || !isSupabaseConfigured) return;
     console.log(`[YJS] Transport connecting to channel ${this.channelName} for note: ${this.notePath}`);
 
     const channel = supabase.channel(this.channelName, {
