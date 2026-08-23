@@ -9,6 +9,9 @@
  */
 
 import { loadAIConfig, getBaseUrl, getProviderHeaders, getModelsForProvider, parseProviderError } from "./ai-settings";
+import { MERMAID_FORMATTING_RULES } from "./spaces-rag";
+
+const MERMAID_RULES = MERMAID_FORMATTING_RULES;
 
 // ── Content Types ────────────────────────────────────────────────────────────
 
@@ -435,7 +438,9 @@ export async function askVault(
   const systemMessage = `You are an AI assistant for a knowledge management tool called OpenOnyx.
 You have access to the user's vault notes as context. Answer questions about their notes, suggest connections, summarize themes, or help with research.
 
-Be concise, helpful, and reference specific notes when relevant.${contextBlock}`;
+Be concise, helpful, and reference specific notes when relevant. Use clean markdown formatting in responses.
+
+${MERMAID_RULES}${contextBlock}`;
 
   const messages: { role: string; content: string }[] = [
     { role: "system", content: systemMessage },
@@ -449,7 +454,7 @@ Be concise, helpful, and reference specific notes when relevant.${contextBlock}`
     headers: getProviderHeaders(config),
     body: JSON.stringify({
       model: config.modelId,
-      max_tokens: 1500,
+      max_tokens: 4096,
       messages,
       temperature: 0.3,
     }),

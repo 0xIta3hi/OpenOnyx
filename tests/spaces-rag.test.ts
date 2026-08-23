@@ -25,6 +25,11 @@ describe("spaces RAG parsers", () => {
     expect(parsed.action).toBe("create_note");
   });
 
+  it("parses raw JSON with only a type key", () => {
+    const parsed = parseActionPayload('prefix {"type":"update_note","file_path":"Note.md"} suffix');
+    expect(parsed.type).toBe("update_note");
+  });
+
   it("returns null for conversation-only replies", () => {
     expect(parseActionPayload("Deadlocks happen when...")).toBeNull();
     expect(parseActionPayload("")).toBeNull();
@@ -43,6 +48,30 @@ print("hi")
 `);
     expect(cleaned).toContain("print(\"hi\")");
     expect(cleaned).not.toContain("update_note");
+  });
+
+  it("strips action JSON containing only type keys", () => {
+    const cleaned = stripJSONBlock(`Answer
+
+\`\`\`json
+{"type":"update_note","file_path":"Note.md"}
+\`\`\`
+`);
+    expect(cleaned).toBe("Answer");
+  });
+
+  it("repairs and parses truncated JSON action payloads", () => {
+    const truncatedPayload = '```json\n{"type":"update_note","file_path":"Algorithms/Sorting.md","changes":{"after":"# Sorting';
+    const parsed = parseActionPayload(truncatedPayload);
+    expect(parsed).not.toBeNull();
+    expect(parsed.type).toBe("update_note");
+    expect(parsed.file_path).toBe("Algorithms/Sorting.md");
+  });
+
+  it("strips truncated JSON action payloads completely", () => {
+    const truncatedText = 'Here is your update:\n```json\n{"type":"update_note","file_path":"Algorithms/Sorting.md","changes":{"after":"# Sorting';
+    const cleaned = stripJSONBlock(truncatedText);
+    expect(cleaned).toBe("Here is your update:");
   });
 
   it("maps cloud RPC rows and keeps a path when the RPC provides one", () => {

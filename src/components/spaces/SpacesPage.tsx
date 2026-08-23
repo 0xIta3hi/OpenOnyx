@@ -540,10 +540,11 @@ function detectActionType(text: string, query?: string): string | null {
 function getPayloadActions(payload: any): any[] {
   if (!payload) return [];
   if (Array.isArray(payload.actions)) return payload.actions;
-  if (payload.intent === "create_note" || payload.action === "create_note") {
+  const type = payload.intent || payload.action || payload.type;
+  if (type === "create_note") {
     return [{ ...payload, type: "create_note" }];
   }
-  if (payload.intent === "update_note" || payload.action === "update_note") {
+  if (type === "update_note") {
     return [{ ...payload, type: "update_note" }];
   }
   return [];
@@ -551,14 +552,14 @@ function getPayloadActions(payload: any): any[] {
 
 function payloadRequiresSourceMutation(payload: any): boolean {
   if (!payload) return false;
-  const intent = payload.intent || payload.action;
+  const intent = payload.intent || payload.action || payload.type;
   if (intent === "update_note" || intent === "suggest_structure" || intent === "suggest_links") return true;
   return getPayloadActions(payload).some((action) => action?.type === "update_note");
 }
 
 function payloadCreatesOnlyLocalNotes(payload: any): boolean {
   if (!payload) return false;
-  const intent = payload.intent || payload.action;
+  const intent = payload.intent || payload.action || payload.type;
   if (intent === "insight_report") return true;
   const actions = getPayloadActions(payload);
   return actions.length > 0 && actions.every((action) => action?.type === "create_note");
@@ -3090,7 +3091,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
                       const isApplied = appliedActions[msg.id];
                       const isRejected = rejectedActions[msg.id];
                       
-                      const intent = payload.intent || payload.action;
+                      const intent = payload.intent || payload.action || payload.type;
                       const summary = payload.summary || "AI proposed changes";
                       
                       if (isApplied) {
