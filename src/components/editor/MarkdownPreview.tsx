@@ -1112,7 +1112,7 @@ export function MarkdownPreview({
 
             if (cancelled || !previewRef.current) return;
 
-            const isDarkTheme = themeMode === "dark" || themeMode.startsWith("dark-") ||themeMode.includes("dark");
+            const isDarkTheme = themeMode === "dark" || themeMode.startsWith("dark-") || themeMode.includes("dark");
 
             mermaid.initialize({
               startOnLoad: false,

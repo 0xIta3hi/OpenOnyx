@@ -11,7 +11,7 @@ import * as nodePath from 'path';
 import { FileSystemManager } from './fileSystem.js';
 import { SearchEngine } from './search.js';
 import { allowedExternalUrl } from './externalUrl.js';
-import { assertPublicHttpUrl } from './outboundUrl.js';
+import { fetchPublicHttp } from './outboundUrl.js';
 import { isInsideRoot } from './pathSafety.js';
 import { approveVaultPath, isApprovedVaultPath, seedApprovedVaultPaths } from './vaultAccess.js';
 
@@ -262,7 +262,7 @@ export function registerIpcHandlers(
   // ── Network (CORS Bypass) ─────────────────────────
   ipcMain.handle('data:fetch', async (_event, url: string) => {
     try {
-      const res = await fetch(assertPublicHttpUrl(url), {
+      const res = await fetchPublicHttp(url, {
         headers: {
           'User-Agent': 'OpenOnyx/1.0',
           'Accept': 'application/json, text/plain, */*',
@@ -355,17 +355,14 @@ export function registerIpcHandlers(
 
   ipcMain.handle('network:request', async (_event, params: any) => {
     try {
-      const url = assertPublicHttpUrl(params?.url);
-      const options: RequestInit = {
+      const res = await fetchPublicHttp(params?.url, {
         method: params.method || 'GET',
         headers: {
           'User-Agent': 'OpenOnyx/1.0',
           ...params.headers,
         },
         body: params.body,
-      };
-
-      const res = await fetch(url, options);
+      });
       const arrayBuffer = await res.arrayBuffer();
       
       // IPC can clone ArrayBuffer or Uint8Array

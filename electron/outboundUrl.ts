@@ -50,3 +50,12 @@ export function assertPublicHttpUrl(value: unknown): string {
 
   return url.href;
 }
+
+/**
+ * Fetch a renderer-supplied URL without following redirects.
+ * Node's default `redirect: "follow"` would skip the host check on 3xx targets
+ * (localhost, RFC1918, metadata).
+ */
+export async function fetchPublicHttp(url: unknown, init: RequestInit = {}): Promise<Response> {
+  return fetch(assertPublicHttpUrl(url), { ...init, redirect: "error" });
+}
