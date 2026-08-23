@@ -557,15 +557,7 @@ export class SyncEngine {
           await localDB.removeSyncItem(itemId);
         }
       } catch (err: any) {
-        console.error(`[SyncEngine] Push failed for ${table}: ${err?.message || err} | Details: ${JSON.stringify({
-          code: err?.code,
-          details: err?.details,
-          hint: err?.hint,
-          message: err?.message,
-          payloads: finalPayloads,
-          userId: authManager.getUserId(),
-          userEmail: authManager.getUser()?.email
-        })}`);
+        console.error(`[SyncEngine] Push failed for ${table}: ${err?.message || err} (count: ${finalPayloads.length}, code: ${err?.code || 'none'})`);
         // Increment retry count but NEVER drop items. Offline edits must
         // survive indefinitely until connectivity is restored. The retry
         // count is used for exponential backoff, not as a hard limit.
