@@ -34,6 +34,93 @@ if (env.backends?.onnx?.wasm) {
   wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/@xenova/transformers@${env.version}/dist/`;
 }
 
+// Fetch interceptor to cache Transformers.js model files locally in Electron
+if (
+  typeof window !== "undefined" &&
+  (window as any).electronAPI &&
+  typeof process !== "undefined" &&
+  process.env.NODE_ENV !== "test"
+) {
+  const originalFetch = window.fetch;
+
+  const getModelSubpath = (url: string): string | null => {
+    const marker = "Xenova/all-MiniLM-L6-v2/";
+    const index = url.indexOf(marker);
+    if (index === -1) return null;
+    let sub = url.substring(index + marker.length);
+    if (sub.startsWith("resolve/main/")) {
+      sub = sub.substring("resolve/main/".length);
+    }
+    return sub;
+  };
+
+  window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    const subpath = getModelSubpath(url);
+
+    if (subpath) {
+      const localPath = `.openonyx/models/Xenova/all-MiniLM-L6-v2/${subpath}`;
+      try {
+        const exists = await (window as any).electronAPI.fileExists(localPath);
+        if (exists) {
+          if (subpath.endsWith(".json")) {
+            const content = await (window as any).electronAPI.readFile(localPath);
+            if (content !== null) {
+              return new Response(content, {
+                status: 200,
+                headers: { "Content-Type": "application/json" }
+              });
+            }
+          } else if (subpath.endsWith(".onnx")) {
+            const content = await (window as any).electronAPI.readBinary(localPath);
+            if (content && content.length > 0) {
+              return new Response(content, {
+                status: 200,
+                headers: { "Content-Type": "application/octet-stream" }
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[Embeddings Cache] Failed to read local cached file ${localPath}:`, err);
+      }
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return new Response("Offline and model file not cached", {
+          status: 503,
+          statusText: "Service Unavailable"
+        });
+      }
+
+      try {
+        const response = await originalFetch(input, init);
+        if (response.ok) {
+          const clone = response.clone();
+          if (subpath.endsWith(".json")) {
+            clone.text().then(text => {
+              (window as any).electronAPI.writeFile(localPath, text).catch((err: any) => {
+                console.warn(`[Embeddings Cache] Failed to cache JSON file ${localPath}:`, err);
+              });
+            });
+          } else if (subpath.endsWith(".onnx")) {
+            clone.arrayBuffer().then(buffer => {
+              (window as any).electronAPI.writeBinary(localPath, new Uint8Array(buffer)).catch((err: any) => {
+                console.warn(`[Embeddings Cache] Failed to cache binary file ${localPath}:`, err);
+              });
+            });
+          }
+        }
+        return response;
+      } catch (err) {
+        console.error(`[Embeddings Cache] Fetch failed for ${url}:`, err);
+        throw err;
+      }
+    }
+
+    return originalFetch(input, init);
+  };
+}
+
 // ── Model singleton ──────────────────────────────────────────────────────────
 
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
@@ -67,8 +154,55 @@ export function isSemanticEmbeddingAvailable(): boolean {
   return _pipeline !== null;
 }
 
+let _embeddingsAvailable = typeof navigator !== "undefined" ? navigator.onLine : true;
+
+export async function isModelCached(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+
+  if ((window as any).electronAPI) {
+    try {
+      return await (window as any).electronAPI.fileExists(".openonyx/models/Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx");
+    } catch {
+      return false;
+    }
+  }
+
+  try {
+    if (typeof caches !== "undefined") {
+      const cache = await caches.open("transformers-cache");
+      const keys = await cache.keys();
+      return keys.some(key => key.url.includes("model_quantized.onnx"));
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+export async function updateAvailability(): Promise<void> {
+  const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+  if (!online) {
+    const cached = await isModelCached();
+    _embeddingsAvailable = cached;
+  } else {
+    _embeddingsAvailable = true;
+  }
+}
+
+if (typeof window !== "undefined") {
+  updateAvailability();
+
+  window.addEventListener("online", () => {
+    _embeddingsAvailable = true;
+  });
+
+  window.addEventListener("offline", async () => {
+    _embeddingsAvailable = await isModelCached();
+  });
+}
+
 export function areEmbeddingsAvailable(): boolean {
-  return true;
+  return _embeddingsAvailable;
 }
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {

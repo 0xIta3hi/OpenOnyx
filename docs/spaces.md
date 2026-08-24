@@ -9,7 +9,7 @@ This document provides a comprehensive, pin-to-pin description of the **Spaces**
 A **Space** is a context-aware, queryable knowledge layer constructed over a user's vault notes. Unlike generic folder architectures or tag groupings that require manual organization, a Space automatically indexes and synthesizes notes, allowing the user to converse with their thoughts via an AI-assisted "thinking layer."
 
 OpenOnyx spaces support three visibility levels:
-1. **Local**: Stored strictly on the current device within IndexedDB. Neural embedding models (`Xenova/all-MiniLM-L6-v2`) are loaded on first use and cached locally via browser Cache API for offline operation. If offline prior to initial download, OpenOnyx automatically falls back to local lexical keyword search and informs the user with a UI banner.
+1. **Local**: Stored strictly on the current device within IndexedDB. Neural embedding models (`Xenova/all-MiniLM-L6-v2`) are loaded on first use and cached locally (via browser Cache API in browser mode, or directly under `.openonyx/models/` in Electron mode) for offline operation. If offline prior to initial download, OpenOnyx automatically falls back to local lexical keyword search and informs the user with a UI banner.
 2. **Private**: Automatically backed up to the cloud (Supabase) in the background. Content is fully secure and only accessible by the authenticated owner.
 3. **Public**: Synced to the cloud and published to the Explore Marketplace, allowing other OpenOnyx users to discover, upvote, read, and "Remix" (fork) the space into their own vaults.
 
@@ -24,7 +24,7 @@ When a space is created or selected, the app initiates an asynchronous indexing 
 1. **File Tree Scan**: The engine traverses the entire active vault directory, locating all `.md` (Markdown) and `.canvas` (Obsidian Canvas) files.
 2. **Content Extraction**: Textual content is read, stripping out heavy formatting while preserving headers, lists, tags, and inline links.
 3. **Semantic Chunking**: Long notes are parsed into small, overlapping semantic chunks (average 500-1000 characters) to ensure localized semantic meaning is retained during search.
-4. **Local Embedding Generation**: Chunks are processed by a browser-native Web Worker running `@xenova/transformers` loaded with the `all-MiniLM-L6-v2` model. Model weights are cached locally for offline use. If network connectivity is unavailable before initial download, the pipeline seamlessly switches to keyword indexing fallback with clear visual indicators.
+4. **Local Embedding Generation**: Chunks are processed by a browser-native Web Worker running `@xenova/transformers` loaded with the `all-MiniLM-L6-v2` model. Model weights are cached locally (in the browser Cache Storage, or under `.openonyx/models/` in Electron mode) for offline use. If network connectivity is unavailable before initial download, the pipeline seamlessly switches to keyword indexing fallback with clear visual indicators.
 5. **Local Storage**: Chunks, metadata, and embeddings are committed to IndexedDB.
 
 ### B. The Retrieval-Augmented Generation (RAG) Query Lifecycle
