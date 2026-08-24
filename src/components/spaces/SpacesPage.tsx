@@ -24,6 +24,7 @@ import {
 } from "../../utils/spaces-store";
 import { buildVectorIndex, type VaultNote } from "../../utils/spaces-processing";
 import { querySpaceStreaming, parseActionPayload, stripJSONBlock, type RAGResult, type SpaceMetadata } from "../../utils/spaces-rag";
+import { isLexicalFallbackActive } from "../../utils/embeddings";
 import { isAIConfigured } from "../../utils/ai-core";
 import { getAPI } from "../../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility, SpaceConversation } from "../../types/spaces";
@@ -540,10 +541,11 @@ function detectActionType(text: string, query?: string): string | null {
 function getPayloadActions(payload: any): any[] {
   if (!payload) return [];
   if (Array.isArray(payload.actions)) return payload.actions;
-  if (payload.intent === "create_note" || payload.action === "create_note") {
+  const type = payload.intent || payload.action || payload.type;
+  if (type === "create_note") {
     return [{ ...payload, type: "create_note" }];
   }
-  if (payload.intent === "update_note" || payload.action === "update_note") {
+  if (type === "update_note") {
     return [{ ...payload, type: "update_note" }];
   }
   return [];
@@ -551,14 +553,14 @@ function getPayloadActions(payload: any): any[] {
 
 function payloadRequiresSourceMutation(payload: any): boolean {
   if (!payload) return false;
-  const intent = payload.intent || payload.action;
+  const intent = payload.intent || payload.action || payload.type;
   if (intent === "update_note" || intent === "suggest_structure" || intent === "suggest_links") return true;
   return getPayloadActions(payload).some((action) => action?.type === "update_note");
 }
 
 function payloadCreatesOnlyLocalNotes(payload: any): boolean {
   if (!payload) return false;
-  const intent = payload.intent || payload.action;
+  const intent = payload.intent || payload.action || payload.type;
   if (intent === "insight_report") return true;
   const actions = getPayloadActions(payload);
   return actions.length > 0 && actions.every((action) => action?.type === "create_note");
@@ -2891,6 +2893,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
               <span>AI Indexing Vault... ({indexProgress.done}/{indexProgress.total})</span>
             </div>
           )}
+          {isLexicalFallbackActive() && (
+            <div className="mx-4 my-2 flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--bg-secondary)_95%,var(--text-muted)_5%)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <Zap size={14} className="shrink-0 text-[var(--text-muted)]" />
+              <span>Using keyword search — semantic model not loaded (offline mode)</span>
+            </div>
+          )}
           
           <div className={spaceMessagesScrollClass}>
             {chatMessages.length > 0 && <div style={{ marginTop: "auto" }} />}
@@ -3090,7 +3098,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
                       const isApplied = appliedActions[msg.id];
                       const isRejected = rejectedActions[msg.id];
                       
-                      const intent = payload.intent || payload.action;
+                      const intent = payload.intent || payload.action || payload.type;
                       const summary = payload.summary || "AI proposed changes";
                       
                       if (isApplied) {

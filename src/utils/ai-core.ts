@@ -14,6 +14,7 @@
 
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "./ai-settings";
 import { readData, writeData, createDebouncedWriter } from "./disk-store";
+import { MERMAID_FORMATTING_RULES } from "./spaces-rag";
 
 // ── Cache ────────────────────────────────────────────────────────────────────
 
@@ -266,7 +267,9 @@ export async function queryRAG(
   const systemPrompt = `You are a knowledge assistant for a note-taking tool.
 Answer based ONLY on the provided notes.
 Reference notes by name. Keep concise (3-6 sentences).
-If information is insufficient, say so. Reply with ONLY the answer.`;
+If information is insufficient, say so. Reply with ONLY the answer.
+Use clean markdown formatting. If the user requests a diagram, follow these rules:
+${MERMAID_FORMATTING_RULES}`;
 
   const notesBlock = relevantNotes
     .map((n) => `[${n.title}] (${Math.round(n.similarity * 100)}%)\n${n.content.substring(0, 800)}`)
@@ -275,7 +278,7 @@ If information is insufficient, say so. Reply with ONLY the answer.`;
   const answer = await callLLM(
     systemPrompt,
     `Question: ${question}\n\n--- Notes ---\n\n${notesBlock}`,
-    500,
+    2048,
     0.2,
   );
 

@@ -1058,7 +1058,7 @@ export function GraphView({
                 value={settings.textSize}
                 onChange={(v) => setSettings((s) => ({ ...s, textSize: v }))}
                 min={8}
-                max={18}
+                max={48}
               />
               <Slider
                 label="Show at zoom"

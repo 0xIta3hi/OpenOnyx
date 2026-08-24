@@ -227,9 +227,16 @@ function buildFileTree(): any[] {
   return tree;
 }
 
+export function seedMockFiles(files: Record<string, string>): void {
+  for (const key of Object.keys(mockFiles)) delete mockFiles[key];
+  Object.assign(mockFiles, files);
+}
+
 export function createMockAPI(): ElectronAPI {
-  // Initialize with sample notes
-  Object.assign(mockFiles, SAMPLE_NOTES);
+  // Initialize with sample notes unless a vault was already seeded.
+  if (Object.keys(mockFiles).length === 0) {
+    Object.assign(mockFiles, SAMPLE_NOTES);
+  }
 
   const mockAPI: ElectronAPI = {
     // Vault
@@ -512,6 +519,7 @@ export function createMockAPI(): ElectronAPI {
 
     // .openonyx Data Storage (localStorage fallback in browser mode)
     dataRead: async (relativePath: string) => {
+      if (typeof localStorage === "undefined" || !localStorage) return null;
       let content = localStorage.getItem(`openonyx-data:${relativePath}`);
       if (content === null) {
         content = localStorage.getItem(`openobsidian-data:${relativePath}`);
@@ -523,12 +531,17 @@ export function createMockAPI(): ElectronAPI {
       return content;
     },
     dataWrite: async (relativePath: string, content: string) => {
-      localStorage.setItem(`openonyx-data:${relativePath}`, content);
+      if (typeof localStorage !== "undefined" && localStorage) {
+        localStorage.setItem(`openonyx-data:${relativePath}`, content);
+      }
     },
     dataDelete: async (relativePath: string) => {
-      localStorage.removeItem(`openonyx-data:${relativePath}`);
+      if (typeof localStorage !== "undefined" && localStorage) {
+        localStorage.removeItem(`openonyx-data:${relativePath}`);
+      }
     },
     dataList: async (subDir: string) => {
+      if (typeof localStorage === "undefined" || !localStorage) return [];
       const prefix = `openonyx-data:${subDir}/`;
       const files: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {

@@ -16,9 +16,12 @@
 import { pipeline, env, type FeatureExtractionPipeline } from "@xenova/transformers";
 import { readData, writeData, listData, deleteData, createDebouncedWriter } from "./disk-store";
 
-// Disable local model loading — always use remote CDN cache
-env.allowLocalModels = false;
+// Allow local cached models alongside remote downloads so offline models work after first load
+env.allowLocalModels = true;
 env.allowRemoteModels = true;
+if ("useBrowserCache" in env) {
+  (env as any).useBrowserCache = true;
+}
 
 // Electron/Browser compatibility fixes for @xenova/transformers v2.
 // Force the WASM backend and disable Node.js-specific backends.
@@ -29,6 +32,93 @@ if (env.backends?.onnx?.wasm) {
   };
   wasm.proxy = false;
   wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/@xenova/transformers@${env.version}/dist/`;
+}
+
+// Fetch interceptor to cache Transformers.js model files locally in Electron
+if (
+  typeof window !== "undefined" &&
+  (window as any).electronAPI &&
+  typeof process !== "undefined" &&
+  process.env.NODE_ENV !== "test"
+) {
+  const originalFetch = window.fetch;
+
+  const getModelSubpath = (url: string): string | null => {
+    const marker = "Xenova/all-MiniLM-L6-v2/";
+    const index = url.indexOf(marker);
+    if (index === -1) return null;
+    let sub = url.substring(index + marker.length);
+    if (sub.startsWith("resolve/main/")) {
+      sub = sub.substring("resolve/main/".length);
+    }
+    return sub;
+  };
+
+  window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    const subpath = getModelSubpath(url);
+
+    if (subpath) {
+      const localPath = `.openonyx/models/Xenova/all-MiniLM-L6-v2/${subpath}`;
+      try {
+        const exists = await (window as any).electronAPI.fileExists(localPath);
+        if (exists) {
+          if (subpath.endsWith(".json")) {
+            const content = await (window as any).electronAPI.readFile(localPath);
+            if (content !== null) {
+              return new Response(content, {
+                status: 200,
+                headers: { "Content-Type": "application/json" }
+              });
+            }
+          } else if (subpath.endsWith(".onnx")) {
+            const content = await (window as any).electronAPI.readBinary(localPath);
+            if (content && content.length > 0) {
+              return new Response(content, {
+                status: 200,
+                headers: { "Content-Type": "application/octet-stream" }
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[Embeddings Cache] Failed to read local cached file ${localPath}:`, err);
+      }
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return new Response("Offline and model file not cached", {
+          status: 503,
+          statusText: "Service Unavailable"
+        });
+      }
+
+      try {
+        const response = await originalFetch(input, init);
+        if (response.ok) {
+          const clone = response.clone();
+          if (subpath.endsWith(".json")) {
+            clone.text().then(text => {
+              (window as any).electronAPI.writeFile(localPath, text).catch((err: any) => {
+                console.warn(`[Embeddings Cache] Failed to cache JSON file ${localPath}:`, err);
+              });
+            });
+          } else if (subpath.endsWith(".onnx")) {
+            clone.arrayBuffer().then(buffer => {
+              (window as any).electronAPI.writeBinary(localPath, new Uint8Array(buffer)).catch((err: any) => {
+                console.warn(`[Embeddings Cache] Failed to cache binary file ${localPath}:`, err);
+              });
+            });
+          }
+        }
+        return response;
+      } catch (err) {
+        console.error(`[Embeddings Cache] Fetch failed for ${url}:`, err);
+        throw err;
+      }
+    }
+
+    return originalFetch(input, init);
+  };
 }
 
 // ── Model singleton ──────────────────────────────────────────────────────────
@@ -56,8 +146,63 @@ export function getEmbeddingDisabledReason(): string | null {
   return _disabledReason;
 }
 
+export function isLexicalFallbackActive(): boolean {
+  return _disabledReason !== null;
+}
+
+export function isSemanticEmbeddingAvailable(): boolean {
+  return _pipeline !== null;
+}
+
+let _embeddingsAvailable = typeof navigator !== "undefined" ? navigator.onLine : true;
+
+export async function isModelCached(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+
+  if ((window as any).electronAPI) {
+    try {
+      return await (window as any).electronAPI.fileExists(".openonyx/models/Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx");
+    } catch {
+      return false;
+    }
+  }
+
+  try {
+    if (typeof caches !== "undefined") {
+      const cache = await caches.open("transformers-cache");
+      const keys = await cache.keys();
+      return keys.some(key => key.url.includes("model_quantized.onnx"));
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+export async function updateAvailability(): Promise<void> {
+  const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+  if (!online) {
+    const cached = await isModelCached();
+    _embeddingsAvailable = cached;
+  } else {
+    _embeddingsAvailable = true;
+  }
+}
+
+if (typeof window !== "undefined") {
+  updateAvailability();
+
+  window.addEventListener("online", () => {
+    _embeddingsAvailable = true;
+  });
+
+  window.addEventListener("offline", async () => {
+    _embeddingsAvailable = await isModelCached();
+  });
+}
+
 export function areEmbeddingsAvailable(): boolean {
-  return true;
+  return _embeddingsAvailable;
 }
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
@@ -78,6 +223,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       if (!p) throw new Error("Pipeline creation returned null");
 
       _loadProgress = 100;
+      _disabledReason = null;
       _onProgress?.(100, "Model ready");
       _pipeline = p as FeatureExtractionPipeline;
       _loadingPromise = null;
@@ -86,7 +232,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       _loadingPromise = null;
       _loadProgress = 0;
       _disabledReason = err instanceof Error ? err.message : "Analysis engine failed to load";
-      _onProgress?.(100, "Local analysis fallback ready");
+      _onProgress?.(100, "Using keyword search (semantic model not loaded)");
       throw err;
     }
   })();
@@ -369,6 +515,30 @@ export function resetEmbeddingsStore(): void {
   _isLoading = false;
   _loadPromise = null;
   _disabledReason = null;
+}
+
+/** Seed the in-memory store with the app's lexical fallback — no model download. */
+export function seedLexicalEmbeddings(files: Record<string, string>): number {
+  _disabledReason = "website-lexical";
+  _isLoaded = true;
+  _isLoading = false;
+  _loadPromise = null;
+  _memoryStore = { entries: new Map() };
+  for (const [path, content] of Object.entries(files)) {
+    if (!path.toLowerCase().endsWith(".md")) continue;
+    const source = typeof content === "string" ? content : "";
+    const clean = stripMarkdown(source).substring(0, 1500);
+    const vector = clean.length < 5 ? new Array(EMBEDDING_DIM).fill(0) : lexicalEmbedText(clean);
+    _memoryStore.entries.set(path, {
+      path,
+      hash: simpleHash(source),
+      vector,
+      updatedAt: Date.now(),
+      modifiedAt: Date.now(),
+      size: source.length,
+    });
+  }
+  return _memoryStore.entries.size;
 }
 
 /**

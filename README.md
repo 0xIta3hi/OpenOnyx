@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-111827?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache%202.0-111827?style=flat-square"></a>
   <img alt="Electron" src="https://img.shields.io/badge/Electron-41-47848F?style=flat-square&logo=electron&logoColor=white">
   <img alt="React" src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white">
@@ -123,7 +123,7 @@ Key capabilities:
 
 - Local Spaces stored in IndexedDB
 - Private and public cloud-backed Spaces through Supabase
-- Browser-native embeddings with `@xenova/transformers`
+- Browser-native embeddings with `@xenova/transformers` (cached locally for offline use; keyword search fallback when model is not cached)
 - RAG chat with source citations back to notes
 - Suggested queries, indexing progress, and vault previews
 - Public Space discovery, upvotes, and Remix/fork workflows
@@ -465,7 +465,7 @@ See [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility
 
 ## Privacy and Security
 
-- Core note editing, search, graph navigation, local embeddings, and local Spaces work offline.
+- Core note editing, search, graph navigation, local embeddings (with keyword search fallback when offline prior to first model cache), and local Spaces work offline.
 - Notes are stored as local files in the selected vault.
 - Local indexes, embeddings, and caches stay on device unless the user enables cloud-backed features.
 - The renderer runs with context isolation and talks to the filesystem through a preload IPC bridge.
@@ -494,9 +494,18 @@ See [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility
 
 ## Documentation
 
-- [`docs/spaces.md`](docs/spaces.md) explains the Spaces architecture, indexing pipeline, RAG lifecycle, storage model, and sync behavior.
-- [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) documents plugin API coverage and the real-plugin regression matrix.
-- [`changelog.md`](changelog.md) tracks project changes.
+The product website and user guide live in [`website/`](website/):
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+- [`website/`](website/) — marketing site, interactive vault graph, and user docs
+- [`docs/spaces.md`](docs/spaces.md) — Spaces architecture, indexing, RAG, storage, sync
+- [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) — plugin API coverage and the real-plugin regression matrix
+- [`changelog.md`](changelog.md) — project changes
 
 ## Contributing
 
@@ -511,4 +520,4 @@ For changes that touch plugins, Spaces, sync, AI retrieval, filesystem behavior,
 
 ## License
 
-OpenOnyx is released under the [MIT License](LICENSE).
+OpenOnyx is released under the [Apache License 2.0](LICENSE).

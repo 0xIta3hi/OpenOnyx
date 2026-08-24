@@ -18,6 +18,7 @@ import { IndexeddbPersistence } from 'y-indexeddb';
 import type { Awareness } from 'y-protocols/awareness';
 import { SupabaseProvider, type SupabaseProviderOptions } from './supabaseProvider';
 import { localDB } from './localdb';
+import { isSupabaseConfigured } from './supabase';
 import { authManager } from './auth';
 import { getAPI } from '../utils/api';
 import { normalizeSyncPath } from './syncEngine';
@@ -151,13 +152,57 @@ class YDocManagerImpl {
     const idbPersistence = new IndexeddbPersistence(idbKey, doc);
     await idbPersistence.whenSynced;
 
-    const canvasNodesSize = doc.getMap('nodes').size;
-    const canvasEdgesSize = doc.getMap('edges').size;
-    console.log(`[YJS] Hydrated document from IndexedDB (${isCanvas ? `nodes: ${canvasNodesSize}, edges: ${canvasEdgesSize}` : `${text.length} chars`})`);
+    const canvasNodesSize = () => doc.getMap('nodes').size;
+    const canvasEdgesSize = () => doc.getMap('edges').size;
+    const isDocPopulated = () => {
+      if (isCanvas) {
+        return canvasNodesSize() > 0 || canvasEdgesSize() > 0;
+      } else {
+        return text.length > 0;
+      }
+    };
 
-    // 2. If doc is empty after IndexedDB restore, initialize from local filesystem
-    if (isCanvas) {
-      if (canvasNodesSize === 0 && canvasEdgesSize === 0) {
+    console.log(`[YJS] Hydrated document from IndexedDB (${isCanvas ? `nodes: ${canvasNodesSize()}, edges: ${canvasEdgesSize()}` : `${text.length} chars`})`);
+
+    // 2. Resolve user info for awareness
+    const user = authManager.getUser();
+    const userId = authManager.getUserId() || 'anonymous';
+    const userInfo: SupabaseProviderOptions['user'] = {
+      id: userId,
+      name: user?.email?.split('@')[0] || 'Anonymous',
+      email: user?.email || '',
+      color: getColorForUser(userId),
+    };
+
+    // 3. Create provider and connect
+    const provider = new SupabaseProvider(doc, {
+      spaceId,
+      notePath: cleanPath,
+      clientId: this.clientId,
+      user: userInfo,
+    });
+    await provider.connect();
+
+    // 4. If doc is empty after IndexedDB restore, wait for peer sync before hydrating from filesystem
+    if (!isDocPopulated()) {
+      const shouldWait = typeof navigator !== 'undefined' && navigator.onLine && isSupabaseConfigured;
+      if (shouldWait) {
+        console.log(`[YJS] Document empty after IndexedDB, waiting up to 300ms for peer sync...`);
+        await new Promise<void>((resolve) => {
+          const startTime = Date.now();
+          const interval = setInterval(() => {
+            if (isDocPopulated() || Date.now() - startTime >= 300) {
+              clearInterval(interval);
+              resolve();
+            }
+          }, 30);
+        });
+      }
+    }
+
+    // 5. If doc is STILL empty, initialize from local filesystem
+    if (!isDocPopulated()) {
+      if (isCanvas) {
         try {
           const api = getAPI();
           const fileContent = await api.readFile(cleanPath);
@@ -168,9 +213,7 @@ class YDocManagerImpl {
         } catch {
           // File may not exist yet (new note)
         }
-      }
-    } else {
-      if (text.length === 0) {
+      } else {
         try {
           const api = getAPI();
           const fileContent = await api.readFile(cleanPath);
@@ -186,30 +229,8 @@ class YDocManagerImpl {
       }
     }
 
-    // 3. Resolve user info for awareness
-    const user = authManager.getUser();
-    const userId = authManager.getUserId() || 'anonymous';
-    const userInfo: SupabaseProviderOptions['user'] = {
-      id: userId,
-      name: user?.email?.split('@')[0] || 'Anonymous',
-      email: user?.email || '',
-      color: getColorForUser(userId),
-    };
-
-    // 4. Create provider and connect
-    const provider = new SupabaseProvider(doc, {
-      spaceId,
-      notePath: cleanPath,
-      clientId: this.clientId,
-      user: userInfo,
-    });
-    await provider.connect();
-
-    // If the doc is still empty after IndexedDB + filesystem, request snapshot from peers
-    const isDocEmpty = isCanvas
-      ? (doc.getMap('nodes').size === 0 && doc.getMap('edges').size === 0)
-      : (text.length === 0);
-    if (isDocEmpty) {
+    // If the doc is still empty after IndexedDB + filesystem + peer sync wait, request snapshot from peers
+    if (!isDocPopulated()) {
       provider.requestSnapshot();
     }
 

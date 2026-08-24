@@ -278,52 +278,57 @@ async function fetchRemoteSpaces(): Promise<SpaceIndexEntry[]> {
   const userId = authManager.getUserId();
   if (!userId) return [];
 
-  // Fetch all remote spaces owned by the current user (both public and private)
-  const { data: ownSpaces, error: ownErr } = await getClient()
-    .from("spaces" as any)
-    .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
-    .eq("owner_id", userId)
-    .order("updated_at", { ascending: false });
+  try {
+    // Fetch all remote spaces owned by the current user (both public and private)
+    const { data: ownSpaces, error: ownErr } = await getClient()
+      .from("spaces" as any)
+      .select("id, title, description, helps_with, owner_id, visibility, is_public, forked_from, created_at, updated_at, status, encrypted_space_key, key_salt, key_iv, key_auth_tag, key_version, encryption_version, key_wrapping, kdf, kdf_params")
+      .eq("owner_id", userId)
+      .order("updated_at", { ascending: false });
 
-  if (ownErr) {
-    console.error("[SpacesStore] Failed to fetch own spaces:", ownErr);
+    if (ownErr) {
+      console.warn("[SpacesStore] Failed to fetch own spaces:", ownErr);
+      return [];
+    }
+
+    const rawSpaces = (ownSpaces || []) as unknown as RemoteSpaceRow[];
+
+    // Fetch note counts for each space
+    const countMap: Record<string, number> = {};
+    await Promise.all(rawSpaces.map(async (row) => {
+      try {
+        const { count, error: countErr } = await getClient()
+          .from("notes" as any)
+          .select("id", { count: "exact", head: true })
+          .eq("space_id", row.id)
+          .eq("deleted", false);
+        
+        if (!countErr && count !== null) {
+          countMap[row.id] = count;
+        }
+      } catch {
+        // Silent fallback to 0
+      }
+    }));
+
+    const results: SpaceIndexEntry[] = rawSpaces.map(row =>
+      toIndexEntry(mapRemoteToSpace(row, countMap[row.id] || 0))
+    );
+
+    // Sort by most recently updated
+    const finalResults = results.sort((a, b) => 
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    if (finalResults.length > 0) {
+      console.log(`[SpacesStore] Fetched ${finalResults.length} remote spaces.`);
+    }
+
+    return finalResults;
+  } catch (err) {
+    console.warn("[SpacesStore] Offline or network error fetching remote spaces:", err);
     return [];
   }
-
-  const rawSpaces = (ownSpaces || []) as unknown as RemoteSpaceRow[];
-
-  // Fetch note counts for each space
-  const countMap: Record<string, number> = {};
-  await Promise.all(rawSpaces.map(async (row) => {
-    try {
-      const { count, error: countErr } = await getClient()
-        .from("notes" as any)
-        .select("id", { count: "exact", head: true })
-        .eq("space_id", row.id)
-        .eq("deleted", false);
-      
-      if (!countErr && count !== null) {
-        countMap[row.id] = count;
-      }
-    } catch {
-      // Silent fallback to 0
-    }
-  }));
-
-  const results: SpaceIndexEntry[] = rawSpaces.map(row =>
-    toIndexEntry(mapRemoteToSpace(row, countMap[row.id] || 0))
-  );
-
-  // Sort by most recently updated
-  const finalResults = results.sort((a, b) => 
-    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
-
-  if (finalResults.length > 0) {
-    console.log(`[SpacesStore] Fetched ${finalResults.length} remote spaces.`);
-  }
-
-  return finalResults;
 }
 
 // ── In-memory cache ──────────────────────────────────────────────────────────

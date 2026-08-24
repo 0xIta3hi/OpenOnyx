@@ -1864,13 +1864,15 @@ class CollaborationEngine {
       const remoteVersion = normalizeVersion(remoteNote.version);
       const localVersion = normalizeVersion(localNote.version);
       if (remoteVersion > 0 || localVersion > 0) {
-        if (remoteVersion <= localVersion) {
+        if (remoteVersion < localVersion) {
           console.info('[Collab][overwrite_prevented]', {
             path: cleanPath,
             source: 'postgres_changes',
             remoteVersion,
             localVersion,
           });
+          return;
+        } else if (remoteVersion === localVersion) {
           return;
         }
       } else {

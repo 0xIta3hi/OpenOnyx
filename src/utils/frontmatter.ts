@@ -92,7 +92,7 @@ export function parseFrontmatter(content: string): {
 export function updateFrontmatter(content: string, updates: Record<string, string | number | string[]>): string {
   const { properties, bodyStart } = parseFrontmatter(content);
   const body = bodyStart > 0 ? content.slice(bodyStart) : content;
-  
+
   // Merge updates
   const propMap = new Map<string, Property>();
   for (const p of properties) {

@@ -32,6 +32,7 @@ import {
   applyHistoryWeighting,
   recordSuggestion,
   isModelLoaded,
+  isLexicalFallbackActive,
   getLoadProgress,
   setProgressCallback,
   type EmbeddingStore,
@@ -544,11 +545,15 @@ export function AIPage({
 
       <div className={tm.content}>
         {/* Model loading indicator */}
-        {modelStatus !== "ready" && modelStatus !== "not loaded" && modelStatus !== "Model ready" && (
+        {((modelStatus !== "ready" && modelStatus !== "not loaded" && modelStatus !== "Model ready") || isLexicalFallbackActive()) && (
           <div className={ai.modelStatus}>
-            <Loader2 size={12} className={tm.spinner} />
-            <span>{modelStatus}</span>
-            {modelProgress > 0 && modelProgress < 100 && (
+            {isLexicalFallbackActive() ? (
+              <Zap size={12} className="text-(--text-muted)" />
+            ) : (
+              <Loader2 size={12} className={tm.spinner} />
+            )}
+            <span>{isLexicalFallbackActive() ? "Using keyword search (semantic model not loaded)" : modelStatus}</span>
+            {!isLexicalFallbackActive() && modelProgress > 0 && modelProgress < 100 && (
               <div className={ai.modelProgress}>
                 <div className={ai.modelProgressBar} style={{ width: `${modelProgress}%` }} />
               </div>

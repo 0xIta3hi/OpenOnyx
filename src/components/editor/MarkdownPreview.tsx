@@ -29,6 +29,8 @@ import { getSmartEmbed, getDisplayDomain, cleanEmbedUrl, toggleUrlInMarkdown } f
 import { runMarkdownPostProcessors } from "../../lib/obsidian-api/markdown";
 import type { AppSettings } from "../settings/SettingsPage";
 
+import { initializeInteractiveMermaid } from "../../utils/mermaid-layout-engine";
+
 // Enable math formatting
 marked.use(markedKatex({ throwOnError: false }));
 
@@ -1118,13 +1120,123 @@ export function MarkdownPreview({
               startOnLoad: false,
               theme: isDarkTheme ? "dark" : "default",
               securityLevel: "strict",
+              fontSize: 13,
+              maxTextSize: 1000000,
+              maxEdges: 10000,
+              mindmap: {
+                useMaxWidth: true,
+                padding: 10,
+              },
+              flowchart: {
+                padding: 12,
+                nodeSpacing: 25,
+                rankSpacing: 25,
+                useMaxWidth: false,
+              },
+              sequence: {
+                useMaxWidth: false,
+              },
+              gantt: {
+                useMaxWidth: true,
+              },
             });
+
+            // Sanitize Mermaid source to fix common LLM generation errors
+            const sanitizeMermaidSource = (raw: string): string => {
+              let s = raw;
+              // Fix literal escaped newlines (LLM sometimes outputs "\\n" as text)
+              s = s.replace(/\\n/g, "\n");
+
+              const rawLines = s.split("\n");
+              // Safeguard against mega-diagrams (> 1000 lines) with duplicate nodes that cause exponential D3 layout loops
+              if (rawLines.length > 1000) {
+                const isMindmap = /^\s*mindmap\b/i.test(s);
+                if (isMindmap) {
+                  const seen = new Set<string>();
+                  const pruned: string[] = [];
+                  for (const line of rawLines) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+                    if (pruned.length < 800 || !seen.has(trimmed)) {
+                      seen.add(trimmed);
+                      pruned.push(line);
+                    }
+                    if (pruned.length >= 950) break;
+                  }
+                  s = pruned.join("\n");
+                } else {
+                  s = rawLines.slice(0, 950).join("\n");
+                }
+              }
+
+              // Check if diagram is a flowchart/graph before applying flowchart-specific node shape transformations
+              const isFlowchart = /^\s*(?:---[\s\S]*?---\s*)?(?:graph|flowchart)\b/i.test(s);
+
+              if (isFlowchart) {
+                // Fix wrong arrow syntax: single-dash -> should be --> (without mangling dotted links -.-> or existing -->)
+                s = s.replace(/(?<![\.-])->/g, "-->");
+                // Convert Unicode arrows like → or ➔ to -->, and ⇒ to ==>
+                s = s.replace(/→|➔/g, "-->");
+                s = s.replace(/⇒/g, "==>");
+
+                const escapeMermaidLabel = (label: string): string => {
+                  const BR = '\x00BR\x00';
+                  let str = label.replace(/<br\s*\/?>/gi, BR);
+                  // Replace inner double quotes with single quotes to prevent breaking outer double-quoted string boundary
+                  str = str.replace(/"/g, "'");
+                  // Escape structural brackets and comparison operators with standard HTML entities
+                  str = str
+                    .replace(/\[/g, '&lsqb;')
+                    .replace(/\]/g, '&rsqb;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                  return str.replace(new RegExp(BR, 'g'), '<br/>');
+                };
+
+                s = s.replace(/\b([a-zA-Z0-9_-]+)\[((?:(?!-->|---|==>)[^\n])+)\]/g, (match, id, label) => {
+                  let inner = label.trim();
+                  if (inner.startsWith('"') && inner.endsWith('"')) {
+                    inner = inner.slice(1, -1);
+                  }
+                  return `${id}["${escapeMermaidLabel(inner)}"]`;
+                });
+                s = s.replace(/\b([a-zA-Z0-9_-]+)\(((?:(?!-->|---|==>)[^\n])+)\)/g, (match, id, label) => {
+                  let inner = label.trim();
+                  if (inner.startsWith('"') && inner.endsWith('"')) {
+                    inner = inner.slice(1, -1);
+                  }
+                  return `${id}("${escapeMermaidLabel(inner)}")`;
+                });
+                s = s.replace(/\b([a-zA-Z0-9_-]+)\{((?:(?!-->|---|==>)[^\n])+)\}/g, (match, id, label) => {
+                  let inner = label.trim();
+                  if (inner.startsWith('"') && inner.endsWith('"')) {
+                    inner = inner.slice(1, -1);
+                  }
+                  return `${id}\{"${escapeMermaidLabel(inner)}"}`;
+                });
+
+                // Fix subgraph syntax errors: convert `subgraph "Title"` to `subgraph sub_1 ["Title"]`
+                let subgraphCounter = 0;
+                s = s.replace(/subgraph\s+"([^"]+)"/g, (match, title) => {
+                  subgraphCounter++;
+                  return `subgraph sub_${subgraphCounter} ["${title}"]`;
+                });
+                s = s.replace(/subgraph\s+([a-zA-Z0-9_\s\-\(\)\^]+)(?:\r?\n|$)/g, (match, title) => {
+                  const trimmed = title.trim();
+                  if (!trimmed || trimmed.includes("[")) return match;
+                  subgraphCounter++;
+                  return `subgraph sub_${subgraphCounter} ["${trimmed}"]\n`;
+                });
+              }
+
+              return s;
+            };
 
             // Convert any remaining <pre><code class="language-mermaid">
             mermaidBlocks.forEach((block) => {
               const pre = block.parentElement;
               if (pre?.tagName === "PRE") {
-                const source = block.textContent || "";
+                const source = sanitizeMermaidSource(block.textContent || "");
                 const diagram = document.createElement("div");
                 diagram.className = "mermaid";
                 diagram.dataset.mermaidSource = source;
@@ -1137,31 +1249,121 @@ export function MarkdownPreview({
               previewRef.current.querySelectorAll(".mermaid"),
             ) as HTMLElement[];
 
-            // Reset every diagram so Mermaid can re-render it
-            for (const node of nodes) {
-              const source =
+            const renderMermaidError = (node: HTMLElement, source: string, msg: string) => {
+              node.setAttribute("data-processed", "true");
+              const escapedSource = source.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              node.innerHTML = `<div style="width:100%; border:1px solid var(--border-subtle); border-radius:6px; overflow:hidden; background:var(--bg-secondary); margin:0.5rem 0;">
+                <div style="background:rgba(239,68,68,0.12); color:var(--text-secondary); padding:6px 12px; font-size:12px; font-weight:500; border-bottom:1px solid var(--border-subtle);">
+                  Mermaid diagram error (${msg}) — showing raw source
+                </div>
+                <pre style="margin:0; padding:12px; font-size:12px; overflow-x:auto; background:var(--bg-secondary); color:var(--text-primary);"><code>${escapedSource}</code></pre>
+              </div>`;
+            };
+
+            // Process each diagram individually to isolate syntax errors and prevent main-thread locks
+            for (let i = 0; i < nodes.length; i++) {
+              if (cancelled || !previewRef.current) break;
+              const node = nodes[i];
+              if (node.getAttribute("data-processed") === "true") continue;
+
+              const rawSource =
                 node.dataset.mermaidSource ||
                 node.getAttribute("data-mermaid-source") ||
                 node.textContent ||
                 "";
+              const source = sanitizeMermaidSource(rawSource);
+              if (!source.trim()) continue;
 
-              node.removeAttribute("data-processed");
-              node.removeAttribute("data-mermaid-source"); // clean old attr
               node.dataset.mermaidSource = source;
-              node.textContent = source; // put pure text source back
-            }
 
-            await mermaid.run({
-              nodes,
-              suppressErrors: false,
-            });
+              try {
+                // Yield to main thread between diagrams so UI repaints and stays 100% responsive
+                await new Promise((resolve) => setTimeout(resolve, 30));
+                if (cancelled || !previewRef.current) break;
+
+                const isValid = await mermaid.parse(source, { suppressErrors: true });
+                if (!isValid) {
+                  renderMermaidError(node, source, "syntax check failed");
+                  continue;
+                }
+
+                const id = `mermaid-id-${i}-${Math.random().toString(36).slice(2, 7)}`;
+
+                // 2.5s layout computation timeout safeguard
+                const renderPromise = mermaid.render(id, source);
+                const timeoutPromise = new Promise<{ svg: string }>((_, reject) =>
+                  setTimeout(() => reject(new Error("Layout calculation timed out (> 2.5s)")), 2500)
+                );
+
+                const { svg } = await Promise.race([renderPromise, timeoutPromise]);
+                if (cancelled || !previewRef.current) break;
+
+                node.innerHTML = `<div class="mermaid-canvas-wrapper">${svg}</div>`;
+                node.setAttribute("data-processed", "true");
+
+                const canvasWrapper = node.querySelector(".mermaid-canvas-wrapper") as HTMLElement;
+                let currentInlineScale = 1.0;
+
+                const svgEl = node.querySelector("svg");
+                if (svgEl) {
+                  (svgEl as SVGElement).style.width = "100%";
+                  (svgEl as SVGElement).style.maxWidth = "none";
+                  (svgEl as SVGElement).style.height = "auto";
+                  (svgEl as SVGElement).style.maxHeight = "none";
+                }
+
+                initializeInteractiveMermaid(node, source);
+
+                if (!node.querySelector(".mermaid-toolbar")) {
+                  const toolbar = document.createElement("div");
+                  toolbar.className = "mermaid-toolbar";
+                  toolbar.textContent = "Double-click diagram for fullscreen";
+                  node.appendChild(toolbar);
+
+                  // Prevent text selection inside diagram when double-clicking
+                  node.style.userSelect = "none";
+                  node.style.webkitUserSelect = "none";
+                  node.addEventListener("mousedown", (e) => {
+                    if (e.detail > 1) {
+                      e.preventDefault();
+                    }
+                  });
+
+                  node.addEventListener("dblclick", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Clear any text selection that might have happened
+                    window.getSelection()?.removeAllRanges();
+
+                    let html = canvasWrapper?.innerHTML || node.innerHTML;
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, "text/html");
+                    const svg = doc.querySelector("svg");
+                    if (svg) {
+                      svg.removeAttribute("width");
+                      svg.removeAttribute("height");
+                      svg.style.width = "100%";
+                      svg.style.height = "100%";
+                      svg.style.maxWidth = "none";
+                      svg.style.maxHeight = "none";
+                      html = svg.outerHTML;
+                    }
+
+                    setDiagramModal({
+                      svgHtml: html,
+                      rawSource: source,
+                    });
+                    zoomRef.current = 1;
+                    panRef.current = { x: 0, y: 0 };
+                  });
+                }
+              } catch (nodeErr: any) {
+                renderMermaidError(node, source, nodeErr?.message || "render error");
+              }
+            }
           } catch (error: any) {
-            // Better logging so we can see the real error
-            console.error(
-              "Failed to render Mermaid diagram:",
-              error?.message || error,
-              error,
-            );
+            console.error("[MarkdownPreview] Mermaid initialization error:", error);
           }
         })();
       }
@@ -1222,6 +1424,91 @@ export function MarkdownPreview({
     };
   }, [renderedHtml, themeMode, processorVersion]);
 
+  // Fullscreen Diagram Lightbox Modal State
+  const [diagramModal, setDiagramModal] = useState<{ svgHtml: string; rawSource: string } | null>(null);
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const lightboxCanvasRef = useRef<HTMLDivElement>(null);
+  const isPanningRef = useRef(false);
+  const startPanRef = useRef({ x: 0, y: 0 });
+
+  const updateSvgTransform = (zoom: number, pan: { x: number; y: number }) => {
+    if (lightboxCanvasRef.current) {
+      const svg = lightboxCanvasRef.current.querySelector("svg");
+      if (svg) {
+        svg.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+        svg.style.transformOrigin = "center center";
+        svg.style.transition = "none";
+        
+        if (typeof (svg as any).drawCustomLayout === "function") {
+          (svg as any).drawCustomLayout(zoom);
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (diagramModal && lightboxCanvasRef.current) {
+      setTimeout(() => {
+        updateSvgTransform(1, { x: 0, y: 0 });
+        initializeInteractiveMermaid(lightboxCanvasRef.current!, diagramModal.rawSource);
+      }, 0);
+    }
+  }, [diagramModal]);
+
+  const lightboxCardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!diagramModal || !lightboxCardRef.current) return;
+    const el = lightboxCardRef.current;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      const nextZoom = Math.min(10, Math.max(0.2, zoomRef.current * zoomFactor));
+      zoomRef.current = nextZoom;
+      const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+      if (zoomIndicator) {
+        zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
+      }
+      updateSvgTransform(nextZoom, panRef.current);
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", handleWheel);
+    };
+  }, [diagramModal]);
+
+  useEffect(() => {
+    if (!diagramModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setDiagramModal(null);
+      } else if (e.key === "+" || e.key === "=") {
+        const nextZoom = Math.min(10, zoomRef.current + 0.3);
+        zoomRef.current = nextZoom;
+        const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+        if (zoomIndicator) zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
+        updateSvgTransform(nextZoom, panRef.current);
+      } else if (e.key === "-") {
+        const nextZoom = Math.max(0.2, zoomRef.current - 0.3);
+        zoomRef.current = nextZoom;
+        const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+        if (zoomIndicator) zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
+        updateSvgTransform(nextZoom, panRef.current);
+      } else if (e.key === "0") {
+        zoomRef.current = 1;
+        panRef.current = { x: 0, y: 0 };
+        const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+        if (zoomIndicator) zoomIndicator.textContent = `100% Zoom`;
+        updateSvgTransform(1, { x: 0, y: 0 });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [diagramModal]);
+
   return (
     <>
       <div
@@ -1233,6 +1520,214 @@ export function MarkdownPreview({
           margin: "0 auto",
         } : undefined}
       />
+
+      {/* Fullscreen Interactive Diagram Lightbox Modal */}
+      {diagramModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            background: "rgba(10, 10, 12, 0.4)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setDiagramModal(null)}
+        >
+          {/* Modal Card Content (85vw x 85vh) */}
+          <div
+            ref={lightboxCardRef}
+            style={{
+              width: "85vw",
+              height: "85vh",
+              background: "var(--bg-secondary, #18181c)",
+              borderRadius: "12px",
+              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.55)",
+              position: "relative",
+              overflow: "hidden",
+              userSelect: "none",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Controls (Floating Overlay) */}
+            <div
+              style={{
+                position: "absolute",
+                top: "20px",
+                left: "24px",
+                right: "24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                zIndex: 10,
+                pointerEvents: "none",
+              }}
+            >
+              {/* Title & Zoom Info */}
+              <div 
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "10px", 
+                  color: "var(--text-primary, #ffffff)", 
+                  fontWeight: 600, 
+                  fontSize: "13px",
+                  background: "rgba(20, 20, 25, 0.65)",
+                  backdropFilter: "blur(8px)",
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  pointerEvents: "auto",
+                }}
+              >
+                <span>Mermaid Diagram Viewer</span>
+                <span
+                  id="lightbox-zoom-indicator"
+                  style={{ fontSize: "11px", color: "var(--text-muted, #a1a1aa)", background: "var(--bg-secondary, rgba(255,255,255,0.06))", padding: "1px 6px", borderRadius: "12px" }}
+                >
+                  100% Zoom
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div 
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "6px",
+                  background: "rgba(20, 20, 25, 0.65)",
+                  backdropFilter: "blur(8px)",
+                  padding: "4px 6px",
+                  borderRadius: "8px",
+                  pointerEvents: "auto",
+                }}
+              >
+                <button
+                  onClick={() => {
+                    const nextZoom = Math.min(10, zoomRef.current + 0.3);
+                    zoomRef.current = nextZoom;
+                    const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+                    if (zoomIndicator) zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
+                    updateSvgTransform(nextZoom, panRef.current);
+                  }}
+                  style={{ background: "transparent", border: "none", color: "var(--text-muted, #8a8a8f)", width: "30px", height: "30px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease" }}
+                  className="hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  title="Zoom In"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+                <button
+                  onClick={() => {
+                    const nextZoom = Math.max(0.2, zoomRef.current - 0.3);
+                    zoomRef.current = nextZoom;
+                    const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+                    if (zoomIndicator) zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
+                    updateSvgTransform(nextZoom, panRef.current);
+                  }}
+                  style={{ background: "transparent", border: "none", color: "var(--text-muted, #8a8a8f)", width: "30px", height: "30px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease" }}
+                  className="hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  title="Zoom Out"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+                <button
+                  onClick={() => {
+                    zoomRef.current = 1;
+                    panRef.current = { x: 0, y: 0 };
+                    const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+                    if (zoomIndicator) zoomIndicator.textContent = `100% Zoom`;
+                    updateSvgTransform(1, { x: 0, y: 0 });
+                  }}
+                  style={{ background: "transparent", border: "none", color: "var(--text-muted, #8a8a8f)", width: "30px", height: "30px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease" }}
+                  className="hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  title="Reset View"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </button>
+                <button
+                  onClick={() => setDiagramModal(null)}
+                  style={{ background: "transparent", border: "none", color: "var(--text-muted, #8a8a8f)", width: "30px", height: "30px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease" }}
+                  className="hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  title="Close (Esc)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Pan & Zoom Canvas */}
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                overflow: "hidden",
+                position: "absolute",
+                inset: 0,
+                cursor: "grab",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1,
+              }}
+              onMouseDown={(e) => {
+                isPanningRef.current = true;
+                startPanRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
+                e.currentTarget.style.cursor = "grabbing";
+              }}
+              onMouseMove={(e) => {
+                if (!isPanningRef.current) return;
+                panRef.current = {
+                  x: e.clientX - startPanRef.current.x,
+                  y: e.clientY - startPanRef.current.y,
+                };
+                updateSvgTransform(zoomRef.current, panRef.current);
+              }}
+              onMouseUp={(e) => {
+                isPanningRef.current = false;
+                e.currentTarget.style.cursor = "grab";
+              }}
+              onMouseLeave={(e) => {
+                isPanningRef.current = false;
+                e.currentTarget.style.cursor = "grab";
+              }}
+            >
+              <div
+                ref={lightboxCanvasRef}
+                style={{
+                  width: "95%",
+                  height: "95%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                dangerouslySetInnerHTML={{ __html: diagramModal.svgHtml }}
+              />
+            </div>
+
+            {/* Footer Instructions */}
+            <div 
+              style={{ 
+                position: "absolute",
+                bottom: "20px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: "rgba(20, 20, 25, 0.65)",
+                backdropFilter: "blur(8px)",
+                padding: "6px 16px",
+                borderRadius: "20px",
+                fontSize: "11px", 
+                color: "var(--text-muted, #a1a1aa)", 
+                textAlign: "center",
+                zIndex: 10,
+                pointerEvents: "none",
+              }}
+            >
+              Scroll mouse wheel to zoom | Click and drag to pan | Press Escape to close
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Link Preview Popup */}
       {linkPreview && (
