@@ -512,6 +512,7 @@ export function createMockAPI(): ElectronAPI {
 
     // .openonyx Data Storage (localStorage fallback in browser mode)
     dataRead: async (relativePath: string) => {
+      if (typeof localStorage === "undefined" || !localStorage) return null;
       let content = localStorage.getItem(`openonyx-data:${relativePath}`);
       if (content === null) {
         content = localStorage.getItem(`openobsidian-data:${relativePath}`);
@@ -523,12 +524,17 @@ export function createMockAPI(): ElectronAPI {
       return content;
     },
     dataWrite: async (relativePath: string, content: string) => {
-      localStorage.setItem(`openonyx-data:${relativePath}`, content);
+      if (typeof localStorage !== "undefined" && localStorage) {
+        localStorage.setItem(`openonyx-data:${relativePath}`, content);
+      }
     },
     dataDelete: async (relativePath: string) => {
-      localStorage.removeItem(`openonyx-data:${relativePath}`);
+      if (typeof localStorage !== "undefined" && localStorage) {
+        localStorage.removeItem(`openonyx-data:${relativePath}`);
+      }
     },
     dataList: async (subDir: string) => {
+      if (typeof localStorage === "undefined" || !localStorage) return [];
       const prefix = `openonyx-data:${subDir}/`;
       const files: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {

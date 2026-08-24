@@ -1,9 +1,11 @@
 /**
  * AI Settings - Configuration for AI providers and models
  * 
- * Adapted from nodepad's ai-settings to work within the OpenOnyx
- * Electron + Vite architecture. Uses localStorage for persistence.
+ * Uses disk storage (.openonyx/ai-settings.json) for security.
+ * Plaintext API keys are never left in localStorage.
  */
+
+import { readData, writeData } from "./disk-store";
 
 export interface AIModel {
   id: string;
@@ -156,20 +158,110 @@ export interface AISettings {
   customModelId?: string;
 }
 
-const STORAGE_KEY = "openonyx-ai-settings";
+const LEGACY_STORAGE_KEY = "openonyx-ai-settings";
+const DISK_SETTINGS_PATH = "ai-settings.json";
+
+let _settingsCache: AISettings | null = null;
+let _loadPromise: Promise<AISettings> | null = null;
+
+const DEFAULT_SETTINGS: AISettings = {
+  apiKey: "",
+  modelId: DEFAULT_MODEL_ID,
+  webGrounding: false,
+  provider: DEFAULT_PROVIDER,
+  customBaseUrl: "",
+  customModelId: "",
+};
 
 export function loadSettings(): AISettings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", customModelId: "" };
-    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", customModelId: "", ...JSON.parse(raw) };
-  } catch {
-    return { apiKey: "", modelId: DEFAULT_MODEL_ID, webGrounding: false, provider: DEFAULT_PROVIDER, customBaseUrl: "", customModelId: "" };
+  if (_settingsCache) {
+    return _settingsCache;
   }
+
+  // 1. Check legacy localStorage for migration
+  try {
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const result: AISettings = { ...DEFAULT_SETTINGS, ...parsed };
+        _settingsCache = result;
+        void writeData(DISK_SETTINGS_PATH, result).then(() => {
+          try {
+            if (typeof localStorage !== "undefined") {
+              localStorage.removeItem(LEGACY_STORAGE_KEY);
+              console.log("[AISettings] Migrated AI settings from localStorage to .openonyx/ai-settings.json");
+            }
+          } catch { /* silent */ }
+        });
+        return result;
+      }
+    }
+  } catch { /* silent */ }
+
+  // 2. Trigger async load in background to populate cache
+  void loadSettingsAsync();
+
+  _settingsCache = { ...DEFAULT_SETTINGS };
+  return _settingsCache;
+}
+
+export async function loadSettingsAsync(): Promise<AISettings> {
+  if (_loadPromise) return _loadPromise;
+
+  _loadPromise = (async (): Promise<AISettings> => {
+    // 1. Read from disk (.openonyx/ai-settings.json)
+    const diskData = await readData<AISettings>(DISK_SETTINGS_PATH);
+    if (diskData) {
+      const result: AISettings = { ...DEFAULT_SETTINGS, ...diskData };
+      _settingsCache = result;
+      try {
+        if (typeof localStorage !== "undefined") {
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
+      } catch { /* silent */ }
+      return result;
+    }
+
+    // 2. Fall back to legacy localStorage migration if disk data was missing
+    try {
+      if (typeof localStorage !== "undefined") {
+        const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const result: AISettings = { ...DEFAULT_SETTINGS, ...parsed };
+          _settingsCache = result;
+          await writeData(DISK_SETTINGS_PATH, result);
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+          console.log("[AISettings] Migrated AI settings from localStorage to .openonyx/ai-settings.json");
+          return result;
+        }
+      }
+    } catch { /* silent */ }
+
+    const finalSettings: AISettings = _settingsCache || { ...DEFAULT_SETTINGS };
+    _settingsCache = finalSettings;
+    return finalSettings;
+  })();
+
+  return _loadPromise;
 }
 
 export function saveSettings(settings: AISettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  _settingsCache = { ...DEFAULT_SETTINGS, ...settings };
+  void writeData(DISK_SETTINGS_PATH, _settingsCache);
+
+  // Guarantee plaintext API keys are NEVER left in localStorage
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+  } catch { /* silent */ }
+}
+
+export function _resetSettingsCache(): void {
+  _settingsCache = null;
+  _loadPromise = null;
 }
 
 export interface AIConfig {
