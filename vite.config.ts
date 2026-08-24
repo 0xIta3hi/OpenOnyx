@@ -18,6 +18,12 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
+  optimizeDeps: {
+    include: ['d3-force', 'd3', 'mermaid', 'react-colorful'],
+  },
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 5173,
     strictPort: true,

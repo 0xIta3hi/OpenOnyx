@@ -40,6 +40,168 @@ export interface SpaceMetadata {
   readOnly?: boolean;
 }
 
+// ── Shared Mermaid Formatting Rules ──────────────────────────────────────────
+// Exported so that all AI systems (Space RAG, inline vault chat, AI Core) share
+// identical Mermaid diagram generation guidance.
+
+export const MERMAID_FORMATTING_RULES = `
+MERMAID DIAGRAM RULES & ADVANCED SYNTAX GUIDE (STRICT -- follow every rule exactly):
+
+1. GENERAL SYNTAX RULES:
+   - Wrap diagrams in a standard markdown fenced code block with the "mermaid" language identifier (\`\`\`mermaid ... \`\`\`).
+   - Use ONLY standard arrow connectors for flowcharts: "-->" for directed edges, "---" for undirected edges. NEVER use "->" in flowcharts.
+   - Use actual physical newlines between statements. NEVER output escaped newline strings like literal "\\n".
+   - ALWAYS quote ALL node labels using double quotes (e.g. A["Label Text"] or B("Initialize")).
+   - NEVER use literal brackets [ ], angle brackets < >, or braces { } INSIDE a node label. Use words or Mermaid entity escapes (#91; for [, #93; for ], #60; for <, #62; for >).
+   - Line breaks inside labels MUST use <br/> tag.
+
+2. SUBGRAPHS & LARGE DIAGRAMS:
+   - Use simple alphanumeric IDs for subgraphs (e.g. subgraph sub1 ["Category Title"]). NEVER use spaces or special characters in subgraph IDs.
+   - Keep total node count under 30 per diagram. For larger sets, output multiple separate diagrams.
+
+3. ADVANCED DIAGRAM TYPES & TEMPLATES:
+
+   A) FLOWCHARTS (graph TD / graph LR):
+      \`\`\`mermaid
+      graph TD
+        subgraph sub1 ["Input Phase"]
+          A["Raw Data"] --> B["Data Cleaner"]
+        end
+        subgraph sub2 ["Processing Phase"]
+          B --> C{"Is Valid?"}
+          C -- "Yes" --> D["Process Item"]
+          C -- "No" --> E["Log Error"]
+        end
+      \`\`\`
+
+   B) SEQUENCE DIAGRAMS (sequenceDiagram):
+      \`\`\`mermaid
+      sequenceDiagram
+        autonumber
+        actor User as "Client User"
+        participant API as "API Gateway"
+        participant Auth as "Auth Service"
+        participant DB as "Database"
+
+        User->>API: POST /login
+        activate API
+        API->>Auth: Validate Credentials
+        activate Auth
+        Auth->>DB: Query User Record
+        DB-->>Auth: User Record Found
+        Auth-->>API: JWT Token Issued
+        deactivate Auth
+        API-->>User: 200 OK (Token)
+        deactivate API
+
+        opt Refresh Token
+          User->>API: POST /refresh
+          API-->>User: New Token
+        end
+      \`\`\`
+
+   C) CLASS DIAGRAMS (classDiagram):
+      \`\`\`mermaid
+      classDiagram
+        class Animal {
+          +String name
+          +int age
+          +makeSound() void
+        }
+        class Dog {
+          +String breed
+          +bark() void
+        }
+        class Owner {
+          +String ownerId
+          +adopt(Animal a) void
+        }
+        Animal <|-- Dog : Inherits
+        Owner "1" o-- "many" Animal : Owns
+      \`\`\`
+
+   D) STATE DIAGRAMS (stateDiagram-v2):
+      \`\`\`mermaid
+      stateDiagram-v2
+        [*] --> Idle
+        Idle --> Processing : Event Triggered
+        state Processing {
+          [*] --> Step1
+          Step1 --> Step2 : Complete
+          Step2 --> [*]
+        }
+        Processing --> Success : Done
+        Processing --> Failed : Error
+        Failed --> Idle : Retry
+        Success --> [*]
+      \`\`\`
+
+   E) ENTITY RELATIONSHIP DIAGRAMS (erDiagram):
+      \`\`\`mermaid
+      erDiagram
+        CUSTOMER ||--o{ ORDER : places
+        ORDER ||--|{ LINE-ITEM : contains
+        CUSTOMER {
+          string id PK
+          string name
+          string email
+        }
+        ORDER {
+          int order_id PK
+          string customer_id FK
+          date order_date
+        }
+      \`\`\`
+
+   F) MINDMAPS (mindmap):
+      \`\`\`mermaid
+      mindmap
+        root((System Design))
+          Architecture
+            Monolith
+            Microservices
+            Event-Driven
+          Storage
+            SQL Databases
+            NoSQL Databases
+            Caching Systems
+      \`\`\`
+
+   G) GANTT CHARTS (gantt):
+      \`\`\`mermaid
+      gantt
+        title Project Roadmap
+        dateFormat YYYY-MM-DD
+        section Research
+          Literature Review :done, r1, 2024-01-01, 2024-01-15
+          Architecture Specs :active, r2, 2024-01-15, 2024-01-31
+        section Implementation
+          Core API Development :crit, i1, 2024-02-01, 30d
+      \`\`\`
+
+   H) PIE CHARTS (pie):
+      \`\`\`mermaid
+      pie title Memory Allocation
+        "Heap Memory" : 45
+        "Stack Memory" : 25
+        "Cache / Buffers" : 20
+        "Reserved" : 10
+      \`\`\`
+
+   I) GITGRAPH DIAGRAMS (gitGraph):
+      \`\`\`mermaid
+      gitGraph
+        commit id: "Initial Commit"
+        branch feature
+        checkout feature
+        commit id: "Feature Work 1"
+        commit id: "Feature Work 2"
+        checkout main
+        merge feature id: "Merge Feature"
+        commit id: "Release 1.0"
+      \`\`\`
+`;
+
 // ── System Prompt ────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(meta: SpaceMetadata): string {
@@ -72,13 +234,13 @@ A) KNOWLEDGE QUERY — The user is asking a question to learn, understand, compa
 
 B) ACTION QUERY — The user EXPLICITLY asks to create, write, update, edit, rewrite, expand, simplify, link, organize, restructure, or summarize notes INTO their vault.
    Examples: "create a note about X", "rewrite [[MyNote]]", "link orphan notes", "organize my vault", "add this to my notes"
-   Response: Output a structured JSON action block (see schema below).
+   Response: Output ONLY a structured JSON action block (see schema below) enclosed in a \`\`\`json ... \`\`\` block. Do NOT include any other text, conversational responses, explanations, reasoning, or thoughts before or after the JSON block. Your entire response must be ONLY the JSON block.
 
 DEFAULT RULE: If the intent is ambiguous or unclear, ALWAYS treat it as a KNOWLEDGE QUERY.
 Never propose file edits unless the user explicitly requests vault modification.
 Asking about a topic is NOT the same as asking to create a note about that topic.
 
-For ACTION QUERIES ONLY, output a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Never use emojis in titles, paths, or contents.
+For ACTION QUERIES ONLY, output ONLY a structured JSON payload enclosed in a \`\`\`json ... \`\`\` block. Do NOT include any explanation, conversational text, or thoughts outside the JSON block. Never use emojis in titles, paths, or contents.
 
 Always follow this exact schema for action payloads:
 {
@@ -122,10 +284,17 @@ If you are only responding conversationally (KNOWLEDGE QUERY), do NOT output any
 - If the user asks to modify, rewrite, expand, simplify, add to, or rewrite/synthesize the mentioned note, you MUST choose the "update_note" action.
 - You MUST use the EXACT file path of that note as provided in the "EXPLICITLY MENTIONED FILE CONTEXTS" (e.g. "Folder/Subfolder/Note.md" or "MyNotes/Note.md").
 - Do NOT create a new note at the root (like "Note.md" or "Summary.md") if the user is asking to update or edit a note that is already in their vault. Always preserve the original file path.
-- In "update_note", you must output the COMPLETE, beautifully structured markdown content of the updated note.`;
+- For "update_note", choose the right option based on scope:
+  - Use Option A ("before" + "after" with COMPLETE file content) when adding new content blocks, rewriting sections, adding diagrams, or making changes that span multiple sections of the file. You MUST include the COMPLETE file content in BOTH "before" and "after" — not just the changed sections.
+  - Use Option B ("search" + "replace") ONLY for small, targeted edits like adding a wiki link, fixing a typo, or changing a single line.
+- You must output ONLY the JSON block. Do NOT include any conversational text or explanations outside the JSON block.`;
 
-  return `You are not an assistant.
-You are the thinking layer of this knowledge system.
+  return `You are the intelligent knowledge manager for this space.
+
+CRITICAL DIRECTIVE ON THINKING & REASONING (STRICT):
+- Do NOT output your internal chain-of-thought, reasoning steps, or prompt analysis (such as "We are given explicit file context...", "Looking at the context...", "Let me check...", or "Steps...").
+- For ACTION QUERIES (creating, updating, or rewriting notes), your output must contain ONLY the JSON action block and NOTHING else.
+- For KNOWLEDGE QUERIES, output only the direct conversational response without any meta-commentary or reasoning logs.
 
 SPACE IDENTITY:
   title: ${meta.title}
@@ -134,6 +303,9 @@ SPACE IDENTITY:
 ---
 
 CORE RULES:
+
+0. NO REASONING OR META-TEXT OUTPUT (STRICT)
+Never output internal reasoning, step-by-step evaluation, or meta-commentary about the user query or context.
 
 1. CONTEXT FIRST
 - Use ONLY the provided context
@@ -212,6 +384,7 @@ Your generated note contents must look stunning, highly professional, and extrem
   - Use task list checkboxes (e.g., - [ ] uncompleted task, - [x] completed task) for action items, next steps, and roadmaps.
   - Use nested, bulleted list items for breakdowns and detailed sub-points.
   - Avoid writing long, unstructured walls of text. Make the note feel like a rich, scannable, standalone README document.
+${MERMAID_FORMATTING_RULES}
 ${explicitFileBlock}
 
 ---
@@ -232,6 +405,68 @@ Make the user feel: "This isn't ChatGPT. This is MY system thinking back at me."
 
 // ── JSON Action Parser ───────────────────────────────────────────────────────
 
+function tryRepairPartialJSON(rawText: string): any {
+  if (!rawText) return null;
+
+  const suffixesToTry = [
+    '"}]}',
+    '"}}',
+    '"]}',
+    '"}',
+    '}}',
+    '}',
+    ']}',
+  ];
+
+  for (const suffix of suffixesToTry) {
+    try {
+      const candidate = rawText.trim() + suffix;
+      const parsed = JSON.parse(candidate);
+      if (parsed && (parsed.intent || parsed.action || parsed.type || parsed.actions)) {
+        return parsed;
+      }
+    } catch {
+      // Continue
+    }
+  }
+
+  const typeMatch = rawText.match(/"type"\s*:\s*"([^"]+)"/);
+  const pathMatch = rawText.match(/"(?:file_path|path)"\s*:\s*"([^"]+)"/);
+  const titleMatch = rawText.match(/"title"\s*:\s*"([^"]+)"/);
+  
+  const extractedType = typeMatch?.[1];
+  const unescapeStr = (str?: string) => str ? str.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, '\\') : "";
+
+  if (extractedType === "update_note" || rawText.includes('"file_path"')) {
+    const searchMatch = rawText.match(/"search"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    const replaceMatch = rawText.match(/"replace"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    const beforeMatch = rawText.match(/"before"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    const afterMatch = rawText.match(/"after"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    const contentMatch = rawText.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)/);
+
+    return {
+      type: "update_note",
+      file_path: pathMatch?.[1] || "",
+      changes: {
+        search: unescapeStr(searchMatch?.[1]),
+        replace: unescapeStr(replaceMatch?.[1]),
+        before: unescapeStr(beforeMatch?.[1]),
+        after: unescapeStr(afterMatch?.[1] || contentMatch?.[1])
+      }
+    };
+  } else if (extractedType === "create_note") {
+    const contentMatch = rawText.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)/);
+    return {
+      type: "create_note",
+      title: titleMatch?.[1] || "",
+      path: pathMatch?.[1] || "",
+      content: unescapeStr(contentMatch?.[1])
+    };
+  }
+
+  return null;
+}
+
 export function parseActionPayload(text: string): any {
   if (!text) return null;
   const trimmed = text.trim();
@@ -242,22 +477,26 @@ export function parseActionPayload(text: string): any {
   if (match) {
     try {
       const parsed = JSON.parse(match[1].trim());
-      if (parsed && (parsed.intent || parsed.action)) return parsed;
+      if (parsed && (parsed.intent || parsed.action || parsed.type || parsed.actions)) return parsed;
     } catch {
-      // Fall through
+      const repaired = tryRepairPartialJSON(match[1].trim());
+      if (repaired) return repaired;
     }
   }
 
   // 2. Try raw JSON matching (searching for first '{' and last '}')
   const firstBrace = trimmed.indexOf("{");
   const lastBrace = trimmed.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const rawCandidate = trimmed.substring(firstBrace, lastBrace + 1);
+  if (firstBrace !== -1) {
+    const rawCandidate = lastBrace > firstBrace
+      ? trimmed.substring(firstBrace, lastBrace + 1)
+      : trimmed.substring(firstBrace);
     try {
       const parsed = JSON.parse(rawCandidate);
-      if (parsed && (parsed.intent || parsed.action)) return parsed;
+      if (parsed && (parsed.intent || parsed.action || parsed.type || parsed.actions)) return parsed;
     } catch {
-      // Fall through
+      const repaired = tryRepairPartialJSON(rawCandidate);
+      if (repaired) return repaired;
     }
   }
 
@@ -273,15 +512,32 @@ export function stripJSONBlock(text: string): string {
   
   let cleaned = text;
 
-  // 1. Strip only fenced code blocks that contain JSON action payloads (intent/action keys).
+  // Helper to check if a block content matches action indicators
+  const isActionContent = (content: string) => {
+    const normalized = content.replace(/\s/g, "");
+    return normalized.includes('"intent"') ||
+           normalized.includes('"action"') ||
+           normalized.includes('"actions"') ||
+           normalized.includes('"type":"create_note"') ||
+           normalized.includes('"type":"update_note"') ||
+           normalized.includes('"type":"suggest_structure"') ||
+           normalized.includes('"type":"suggest_links"') ||
+           normalized.includes('"type":"insight_report"') ||
+           normalized.includes("'intent'") ||
+           normalized.includes("'action'") ||
+           normalized.includes("'actions'") ||
+           normalized.includes("'type':'create_note'") ||
+           normalized.includes("'type':'update_note'") ||
+           normalized.includes("'type':'suggest_structure'") ||
+           normalized.includes("'type':'suggest_links'") ||
+           normalized.includes("'type':'insight_report'");
+  };
+
+  // 1. Strip only fenced code blocks that contain JSON action payloads.
   //    Preserve legitimate code blocks (python, javascript, etc.)
   const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
   cleaned = cleaned.replace(codeBlockRegex, (fullMatch, blockContent) => {
-    const hasActionKey = blockContent.includes('"intent"') || blockContent.includes('"action"') ||
-                         blockContent.includes("'intent'") || blockContent.includes("'action'");
-    // Only strip if this is a JSON action payload block
-    if (hasActionKey) return "";
-    // Preserve non-action code blocks (python examples, etc.)
+    if (isActionContent(blockContent)) return "";
     return fullMatch;
   });
 
@@ -290,30 +546,19 @@ export function stripJSONBlock(text: string): string {
   const incompleteBlockIndex = cleaned.indexOf("```");
   if (incompleteBlockIndex !== -1) {
     const afterFence = cleaned.substring(incompleteBlockIndex + 3);
-    // Check if this looks like a json action block being streamed
-    const looksLikeActionBlock = /^\s*(?:json)?\s*\{/.test(afterFence) &&
-      (afterFence.includes('"intent"') || afterFence.includes('"action"') ||
-       afterFence.includes("'intent'") || afterFence.includes("'action'"));
+    const looksLikeActionBlock = /^\s*(?:json)?\s*\{/.test(afterFence) && isActionContent(afterFence);
     if (looksLikeActionBlock) {
       cleaned = cleaned.substring(0, incompleteBlockIndex);
     }
   }
 
-  // 3. Also handle any raw JSON block { "action": ... } or { "intent": ... } not inside a code fence
+  // 3. Also handle any raw JSON block not inside a code fence
   const firstBrace = cleaned.indexOf("{");
   if (firstBrace !== -1) {
     const candidate = cleaned.substring(firstBrace);
-    const hasJSONKey = candidate.includes('"action":') || candidate.includes("'action':") ||
-                       candidate.includes('"action"') || candidate.includes("'action'") ||
-                       candidate.includes('"intent":') || candidate.includes("'intent':") ||
-                       candidate.includes('"intent"') || candidate.includes("'intent'");
-    if (hasJSONKey) {
-      const lastBrace = cleaned.lastIndexOf("}");
-      if (lastBrace !== -1 && lastBrace > firstBrace) {
-        cleaned = cleaned.substring(0, firstBrace) + cleaned.substring(lastBrace + 1);
-      } else {
-        cleaned = cleaned.substring(0, firstBrace);
-      }
+    if (isActionContent(candidate)) {
+      // It is an action payload block! Strip everything from the first brace to the end.
+      cleaned = cleaned.substring(0, firstBrace);
     }
   }
   
@@ -803,7 +1048,7 @@ export async function querySpace(
     headers: getProviderHeaders(config),
     body: JSON.stringify({
       model: config.modelId,
-      max_tokens: 4096,
+      max_tokens: 8192,
       temperature: 0.2,
       messages: [
         { role: "system", content: systemPrompt },
@@ -882,7 +1127,7 @@ export async function querySpaceStreaming(
     signal,
     body: JSON.stringify({
       model: config.modelId,
-      max_tokens: 4096,
+      max_tokens: 8192,
       temperature: 0.2,
       stream: true,
       messages: [

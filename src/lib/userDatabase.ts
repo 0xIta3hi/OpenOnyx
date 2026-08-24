@@ -5,7 +5,7 @@ import {
   loadLocalSupabaseConfig,
   saveLocalSupabaseConfig,
 } from './supabaseConfig';
-import { supabase } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 
 /**
  * User-owned Supabase Database Setup
@@ -549,6 +549,7 @@ export function connectUserDatabase(config: UserDatabaseConfig): SupabaseClient<
   userConfig = config;
   userClient = createClient<Database>(config.supabaseUrl, config.anonKey, {
     auth: {
+      storageKey: 'openonyx-user-db-auth-v1',
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
@@ -558,13 +559,15 @@ export function connectUserDatabase(config: UserDatabaseConfig): SupabaseClient<
       },
     },
   });
-  void supabase.auth.getSession()
-    .then(({ data, error }) => {
-      if (!error) void syncUserDatabaseSession(data.session);
-    })
-    .catch((err) => {
-      console.warn('[UserDatabase] Failed to read active auth session:', err);
-    });
+  if (isSupabaseConfigured) {
+    void supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (!error) void syncUserDatabaseSession(data.session);
+      })
+      .catch((err) => {
+        console.warn('[UserDatabase] Failed to read active auth session:', err);
+      });
+  }
   return userClient;
 }
 
@@ -591,6 +594,7 @@ export async function testConnection(config: UserDatabaseConfig): Promise<{ ok: 
   try {
     const client = createClient(config.supabaseUrl, config.anonKey, {
       auth: {
+        storageKey: 'openonyx-test-connection-auth-v1',
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,

@@ -1104,13 +1104,95 @@ export function MarkdownPreview({
               startOnLoad: false,
               theme: isDarkTheme ? "dark" : "default",
               securityLevel: "strict",
+              fontSize: 13,
+              flowchart: {
+                padding: 12,
+                nodeSpacing: 25,
+                rankSpacing: 25,
+                useMaxWidth: false,
+              },
+              sequence: {
+                useMaxWidth: false,
+              },
+              gantt: {
+                useMaxWidth: true,
+              },
             });
+
+            // Sanitize Mermaid source to fix common LLM generation errors
+            const sanitizeMermaidSource = (raw: string): string => {
+              let s = raw;
+              // Fix literal escaped newlines (LLM sometimes outputs "\\n" as text)
+              s = s.replace(/\\n/g, "\n");
+
+              // Check if diagram is a flowchart/graph before applying flowchart-specific node shape transformations
+              const isFlowchart = /^\s*(?:---[\s\S]*?---\s*)?(?:graph|flowchart)\b/i.test(s);
+
+              if (isFlowchart) {
+                // Fix wrong arrow syntax: single-dash -> should be --> (without mangling dotted links -.-> or existing -->)
+                s = s.replace(/(?<![\.-])->/g, "-->");
+                // Convert Unicode arrows like → or ➔ to -->, and ⇒ to ==>
+                s = s.replace(/→|➔/g, "-->");
+                s = s.replace(/⇒/g, "==>");
+
+                const escapeMermaidLabel = (label: string): string => {
+                  const BR = '\x00BR\x00';
+                  let str = label.replace(/<br\s*\/?>/gi, BR);
+                  // Replace inner double quotes with single quotes to prevent breaking outer double-quoted string boundary
+                  str = str.replace(/"/g, "'");
+                  // Escape structural brackets and comparison operators with standard HTML entities
+                  str = str
+                    .replace(/\[/g, '&lsqb;')
+                    .replace(/\]/g, '&rsqb;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                  return str.replace(new RegExp(BR, 'g'), '<br/>');
+                };
+
+                s = s.replace(/\b([a-zA-Z0-9_-]+)\[((?:(?!-->|---|==>)[^\n])+)\]/g, (match, id, label) => {
+                  let inner = label.trim();
+                  if (inner.startsWith('"') && inner.endsWith('"')) {
+                    inner = inner.slice(1, -1);
+                  }
+                  return `${id}["${escapeMermaidLabel(inner)}"]`;
+                });
+                s = s.replace(/\b([a-zA-Z0-9_-]+)\(((?:(?!-->|---|==>)[^\n])+)\)/g, (match, id, label) => {
+                  let inner = label.trim();
+                  if (inner.startsWith('"') && inner.endsWith('"')) {
+                    inner = inner.slice(1, -1);
+                  }
+                  return `${id}("${escapeMermaidLabel(inner)}")`;
+                });
+                s = s.replace(/\b([a-zA-Z0-9_-]+)\{((?:(?!-->|---|==>)[^\n])+)\}/g, (match, id, label) => {
+                  let inner = label.trim();
+                  if (inner.startsWith('"') && inner.endsWith('"')) {
+                    inner = inner.slice(1, -1);
+                  }
+                  return `${id}{"${escapeMermaidLabel(inner)}"}`;
+                });
+
+                // Fix subgraph syntax errors: convert `subgraph "Title"` to `subgraph sub_1 ["Title"]`
+                let subgraphCounter = 0;
+                s = s.replace(/subgraph\s+"([^"]+)"/g, (match, title) => {
+                  subgraphCounter++;
+                  return `subgraph sub_${subgraphCounter} ["${title}"]`;
+                });
+                s = s.replace(/subgraph\s+([a-zA-Z0-9_\s\-\(\)\^]+)(?:\r?\n|$)/g, (match, title) => {
+                  const trimmed = title.trim();
+                  if (!trimmed || trimmed.includes("[")) return match;
+                  subgraphCounter++;
+                  return `subgraph sub_${subgraphCounter} ["${trimmed}"]\n`;
+                });
+              }
+
+              return s;
+            };
 
             // Convert any remaining <pre><code class="language-mermaid">
             mermaidBlocks.forEach((block) => {
               const pre = block.parentElement;
               if (pre?.tagName === "PRE") {
-                const source = block.textContent || "";
+                const source = sanitizeMermaidSource(block.textContent || "");
                 const diagram = document.createElement("div");
                 diagram.className = "mermaid";
                 diagram.dataset.mermaidSource = source;
@@ -1125,11 +1207,12 @@ export function MarkdownPreview({
 
             // Reset every diagram so Mermaid can re-render it
             for (const node of nodes) {
-              const source =
+              const rawSource =
                 node.dataset.mermaidSource ||
                 node.getAttribute("data-mermaid-source") ||
                 node.textContent ||
                 "";
+              const source = sanitizeMermaidSource(rawSource);
 
               node.removeAttribute("data-processed");
               node.removeAttribute("data-mermaid-source"); // clean old attr
@@ -1141,13 +1224,118 @@ export function MarkdownPreview({
               nodes,
               suppressErrors: false,
             });
+
+            // Post-process SVG sizing & theme contrast
+            if (previewRef.current) {
+              const svgElements = previewRef.current.querySelectorAll(".mermaid svg");
+              svgElements.forEach((svg) => {
+                // Ensure SVGs scale smoothly inside the resizable container
+                (svg as HTMLElement).style.maxWidth = "100%";
+                (svg as HTMLElement).style.maxHeight = "100%";
+                (svg as HTMLElement).style.height = "auto";
+              });
+
+              if (isDarkTheme) {
+                // Ensure radar & axis labels are bright and readable in dark mode
+                const axisTexts = previewRef.current.querySelectorAll(".mermaid .axis text, .mermaid text.legend, .mermaid .legend text");
+                axisTexts.forEach((t) => {
+                  (t as HTMLElement).style.setProperty("fill", "#e4e4e7", "important");
+                  (t as HTMLElement).style.setProperty("color", "#e4e4e7", "important");
+                });
+              }
+            }
+
+            // Post-process rendered nodes to guarantee high text contrast on light/dark shape backgrounds
+            try {
+              const canvas = document.createElement("canvas");
+              const ctx = canvas.getContext("2d");
+              if (ctx && previewRef.current) {
+                const nodeElements = previewRef.current.querySelectorAll(".mermaid .node");
+                nodeElements.forEach((nodeEl) => {
+                  const shape = nodeEl.querySelector("rect, circle, polygon, path, ellipse");
+                  if (!shape) return;
+                  const computedStyle = window.getComputedStyle(shape);
+                  const fill = computedStyle.fill || shape.getAttribute("fill");
+                  if (!fill || fill === "none" || fill === "transparent") return;
+
+                  ctx.fillStyle = fill;
+                  const hex = ctx.fillStyle;
+                  if (hex && hex.startsWith("#") && hex.length === 7) {
+                    const r = parseInt(hex.slice(1, 3), 16) / 255;
+                    const g = parseInt(hex.slice(3, 5), 16) / 255;
+                    const b = parseInt(hex.slice(5, 7), 16) / 255;
+                    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+                    // Light shape background (lum > 0.45) -> black text; Dark shape -> white text
+                    const textColor = lum > 0.45 ? "#000000" : "#ffffff";
+                    const textEls = nodeEl.querySelectorAll("text, tspan, span, p, div, .nodeLabel, .label");
+                    textEls.forEach((t) => {
+                      (t as HTMLElement).style.setProperty("fill", textColor, "important");
+                      (t as HTMLElement).style.setProperty("color", textColor, "important");
+                      if (lum > 0.45) {
+                        (t as HTMLElement).style.setProperty("font-weight", "600", "important");
+                      }
+                    });
+                  }
+                });
+
+                // Also adjust edge label text contrast if edge label has a background fill
+                const edgeLabelElements = previewRef.current.querySelectorAll(".mermaid .edgeLabel");
+                edgeLabelElements.forEach((edgeEl) => {
+                  const shape = edgeEl.querySelector("rect, path") || edgeEl;
+                  const computedStyle = window.getComputedStyle(shape);
+                  const bg = computedStyle.backgroundColor || computedStyle.fill;
+                  if (bg && bg !== "transparent" && bg !== "none") {
+                    ctx.fillStyle = bg;
+                    const hex = ctx.fillStyle;
+                    if (hex && hex.startsWith("#") && hex.length === 7) {
+                      const r = parseInt(hex.slice(1, 3), 16) / 255;
+                      const g = parseInt(hex.slice(3, 5), 16) / 255;
+                      const b = parseInt(hex.slice(5, 7), 16) / 255;
+                      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                      const textColor = lum > 0.45 ? "#000000" : "#ffffff";
+                      const textEls = edgeEl.querySelectorAll("text, tspan, span, p, div");
+                      textEls.forEach((t) => {
+                        (t as HTMLElement).style.setProperty("fill", textColor, "important");
+                        (t as HTMLElement).style.setProperty("color", textColor, "important");
+                      });
+                    }
+                  }
+                });
+              }
+            } catch (contrastErr) {
+              console.warn("Mermaid contrast adjustment failed:", contrastErr);
+            }
           } catch (error: any) {
-            // Better logging so we can see the real error
+            // Show a visible error fallback instead of silently swallowing
             console.error(
               "Failed to render Mermaid diagram:",
               error?.message || error,
               error,
             );
+
+            // Display error banner + raw source for each failed diagram
+            if (previewRef.current) {
+              const failedNodes = Array.from(
+                previewRef.current.querySelectorAll(".mermaid:not([data-processed])"),
+              ) as HTMLElement[];
+              for (const node of failedNodes) {
+                const source = node.dataset.mermaidSource || node.textContent || "";
+                const wrapper = document.createElement("div");
+                wrapper.style.cssText = "border:1px solid var(--border-medium);border-radius:8px;overflow:hidden;margin:1rem 0;";
+                const banner = document.createElement("div");
+                banner.style.cssText = "background:rgba(239,68,68,0.12);color:var(--text-secondary);padding:6px 12px;font-size:12px;font-weight:500;border-bottom:1px solid var(--border-subtle);";
+                banner.textContent = "Mermaid diagram syntax error — showing raw source";
+                const pre = document.createElement("pre");
+                pre.style.cssText = "margin:0;padding:12px;font-size:12px;overflow-x:auto;background:var(--bg-secondary);";
+                const code = document.createElement("code");
+                code.textContent = source;
+                pre.appendChild(code);
+                wrapper.appendChild(banner);
+                wrapper.appendChild(pre);
+                node.replaceWith(wrapper);
+              }
+            }
           }
         })();
       }

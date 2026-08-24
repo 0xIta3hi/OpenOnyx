@@ -28,6 +28,10 @@ interface CachedGraph {
 }
 let cachedGraph: CachedGraph | null = null;
 
+export function resetAIGraphCache(): void {
+  cachedGraph = null;
+}
+
 const AI_GRAPH_SIMILARITY_THRESHOLD = 0.45;
 const AI_GRAPH_CLUSTER_THRESHOLD = 0.58;
 const AI_GRAPH_MAX_EDGES_PER_NODE = 4;
