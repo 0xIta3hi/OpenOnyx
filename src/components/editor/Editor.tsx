@@ -2091,12 +2091,29 @@ function markdownLivePreviewPlugin() {
                 tableRows.push(doc.line(tableEnd).text);
               }
 
+              // Replace tableStart line content with the rendered MarkdownTableWidget
               decorations.push(
                 Decoration.replace({
                   widget: new MarkdownTableWidget(tableRows, tableStart),
-                  block: true,
-                }).range(line.from, doc.line(tableEnd).to),
+                }).range(line.from, line.to),
               );
+
+              // Hide subsequent table lines within their own line boundaries without replacing line breaks (\n)
+              for (let j = tableStart + 1; j <= tableEnd; j++) {
+                const subLine = doc.line(j);
+                if (subLine.from < subLine.to) {
+                  decorations.push(
+                    Decoration.replace({
+                      widget: new EmptyInlineWidget(),
+                    }).range(subLine.from, subLine.to),
+                  );
+                }
+                decorations.push(
+                  Decoration.line({
+                    attributes: { style: "display: none;" },
+                  }).range(subLine.from),
+                );
+              }
 
               i = tableEnd;
               continue;

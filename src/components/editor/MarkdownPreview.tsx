@@ -1442,6 +1442,30 @@ export function MarkdownPreview({
     }
   }, [diagramModal]);
 
+  const lightboxCardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!diagramModal || !lightboxCardRef.current) return;
+    const el = lightboxCardRef.current;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      const nextZoom = Math.min(10, Math.max(0.2, zoomRef.current * zoomFactor));
+      zoomRef.current = nextZoom;
+      const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
+      if (zoomIndicator) {
+        zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
+      }
+      updateSvgTransform(nextZoom, panRef.current);
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", handleWheel);
+    };
+  }, [diagramModal]);
+
   useEffect(() => {
     if (!diagramModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1500,6 +1524,7 @@ export function MarkdownPreview({
         >
           {/* Modal Card Content (85vw x 85vh) */}
           <div
+            ref={lightboxCardRef}
             style={{
               width: "85vw",
               height: "85vh",
@@ -1511,17 +1536,6 @@ export function MarkdownPreview({
               userSelect: "none",
             }}
             onClick={(e) => e.stopPropagation()}
-            onWheel={(e) => {
-              e.preventDefault();
-              const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-              const nextZoom = Math.min(10, Math.max(0.2, zoomRef.current * zoomFactor));
-              zoomRef.current = nextZoom;
-              const zoomIndicator = document.getElementById("lightbox-zoom-indicator");
-              if (zoomIndicator) {
-                zoomIndicator.textContent = `${Math.round(nextZoom * 100)}% Zoom`;
-              }
-              updateSvgTransform(nextZoom, panRef.current);
-            }}
           >
             {/* Header Controls (Floating Overlay) */}
             <div
