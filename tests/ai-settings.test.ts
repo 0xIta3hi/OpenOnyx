@@ -7,13 +7,27 @@ import {
   getProviderHeaders,
   loadAIConfig,
   loadSettings,
+  loadSettingsAsync,
   parseProviderError,
   saveSettings,
+  _resetSettingsCache,
 } from "../src/utils/ai-settings";
+import { readData, writeData } from "../src/utils/disk-store";
 
 describe("AI settings", () => {
   beforeEach(() => {
-    localStorage.clear();
+    _resetSettingsCache();
+    let store: Record<string, string> = {};
+    const mockStorage = {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = String(value); },
+      removeItem: (key: string) => { delete store[key]; },
+      clear: () => { store = {}; },
+      get length() { return Object.keys(store).length; },
+      key: (i: number) => Object.keys(store)[i] ?? null,
+    };
+    Object.defineProperty(window, "localStorage", { value: mockStorage, writable: true, configurable: true });
+    Object.defineProperty(globalThis, "localStorage", { value: mockStorage, writable: true, configurable: true });
   });
 
   it("returns defaults when nothing is stored", () => {
@@ -25,27 +39,63 @@ describe("AI settings", () => {
     expect(loadAIConfig()).toBeNull();
   });
 
-  it("round-trips a saved key", () => {
+  it("round-trips a saved key and does NOT leave plaintext in localStorage", async () => {
     saveSettings({
-      apiKey: "sk-test",
+      apiKey: "sk-test-secret-123",
       modelId: "openai/gpt-4o",
       webGrounding: false,
       provider: "openrouter",
       customBaseUrl: "",
     });
+
     const loaded = loadAIConfig();
-    expect(loaded?.apiKey).toBe("sk-test");
+    expect(loaded?.apiKey).toBe("sk-test-secret-123");
     expect(loaded?.provider).toBe("openrouter");
+
+    // Verify localStorage contains NO plaintext key under openonyx-ai-settings
+    expect(window.localStorage.getItem("openonyx-ai-settings")).toBeNull();
+
+    // Verify saved to disk store (.openonyx/ai-settings.json)
+    const diskData = await readData<any>("ai-settings.json");
+    expect(diskData?.apiKey).toBe("sk-test-secret-123");
+  });
+
+  it("migrates legacy localStorage value once to disk and deletes it from localStorage", async () => {
+    // Seed legacy localStorage
+    window.localStorage.setItem(
+      "openonyx-ai-settings",
+      JSON.stringify({
+        apiKey: "sk-legacy-key-999",
+        modelId: "openai/gpt-4o",
+        provider: "openai",
+      }),
+    );
+
+    // Call saveSettings with legacy data to simulate load/migrate
+    const settings = loadSettings();
+    expect(settings.apiKey).toBe("sk-legacy-key-999");
+
+    const loadedAsync = await loadSettingsAsync();
+    expect(loadedAsync.apiKey).toBe("sk-legacy-key-999");
+
+    // Confirm legacy localStorage was deleted
+    expect(window.localStorage.getItem("openonyx-ai-settings")).toBeNull();
+
+    // Confirm stored on disk
+    const diskData = await readData<any>("ai-settings.json");
+    expect(diskData?.apiKey).toBe("sk-legacy-key-999");
   });
 
   it("uses a custom base url when set", () => {
-    expect(getBaseUrl({
-      apiKey: "x",
-      modelId: "gpt-4o",
-      supportsGrounding: false,
-      provider: "openai",
-      customBaseUrl: "https://proxy.example/v1",
-    })).toBe("https://proxy.example/v1");
+    expect(
+      getBaseUrl({
+        apiKey: "x",
+        modelId: "gpt-4o",
+        supportsGrounding: false,
+        provider: "openai",
+        customBaseUrl: "https://proxy.example/v1",
+      }),
+    ).toBe("https://proxy.example/v1");
   });
 
   it("adds OpenRouter headers", () => {
