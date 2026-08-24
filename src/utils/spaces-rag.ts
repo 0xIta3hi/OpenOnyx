@@ -12,7 +12,7 @@
  * the creator's perspective, and refuses generic answers.
  */
 
-import { embedText, isModelLoaded } from "./embeddings";
+import { embedText, isModelLoaded, isLexicalFallbackActive } from "./embeddings";
 import { loadVectorIndex } from "./spaces-store";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "./ai-settings";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
@@ -57,7 +57,7 @@ MERMAID DIAGRAM RULES & ADVANCED SYNTAX GUIDE (STRICT -- follow every rule exact
 
 2. SUBGRAPHS & LARGE DIAGRAMS:
    - Use simple alphanumeric IDs for subgraphs (e.g. subgraph sub1 ["Category Title"]). NEVER use spaces or special characters in subgraph IDs.
-   - Keep total node count under 30 per diagram. For larger sets, output multiple separate diagrams.
+   - Keep total node count under 30 per flowchart. For mindmaps, limit tree depth to 3 levels and a maximum of 35 core topics. For larger sets, group topics into high-level categories or output multiple separate diagrams.
 
 3. ADVANCED DIAGRAM TYPES & TEMPLATES:
 
@@ -751,19 +751,22 @@ export async function retrieveChunks(
   topK: number = TOP_K,
   minSimilarity: number = MIN_SIMILARITY,
   options?: { diversify?: boolean },
-): Promise<RetrievedChunk[]> {
+): Promise<RetrievedChunk[] & { isLexicalFallback?: boolean }> {
   console.log("[SpacesRAG] retrieveChunks called for space:", spaceId, "query:", query);
   
   let queryVector: number[] | null = null;
+  let isLexicalFallback = isLexicalFallbackActive();
   try {
     const embedded = await embedText(query);
-    if (isModelLoaded()) {
+    if (isModelLoaded() && !isLexicalFallback) {
       queryVector = embedded.some((value) => value !== 0) ? embedded : null;
       console.log("[SpacesRAG] Generated semantic query vector. Length:", queryVector?.length);
     } else {
-      console.log("[SpacesRAG] Local model not loaded, skipping semantic query vector generation.");
+      isLexicalFallback = true;
+      console.log("[SpacesRAG] Local model not loaded or lexical fallback active, skipping semantic query vector generation.");
     }
   } catch (err) {
+    isLexicalFallback = true;
     console.warn("[SpacesRAG] Embedding query failed, using lexical retrieval fallback:", err);
   }
   const results: RetrievedChunk[] = [];
@@ -787,9 +790,10 @@ export async function retrieveChunks(
           results.push(mapCloudRpcChunk(rc, spaceId));
         }
         
-        return options?.diversify
+        const finalChunks = options?.diversify
           ? diversifyRetrievedChunks(results, topK)
           : results;
+        return Object.assign(finalChunks, { isLexicalFallback: isLexicalFallback || !queryVector });
       } else {
         console.log("[SpacesRAG] Semantic cloud search returned 0 chunks.");
       }
@@ -926,9 +930,10 @@ export async function retrieveChunks(
   }
 
   const ranked = results.sort((a, b) => b.similarity - a.similarity);
-  return options?.diversify
+  const selected = options?.diversify
     ? diversifyRetrievedChunks(ranked, topK)
     : ranked.slice(0, topK);
+  return Object.assign(selected, { isLexicalFallback: isLexicalFallback || !queryVector });
 }
 
 // ── Prompt Construction ──────────────────────────────────────────────────────
@@ -968,6 +973,7 @@ function buildUserPrompt(
 export interface RAGResult {
   answer: string;
   sources: { notePath: string; noteTitle: string; chunkText: string; similarity: number }[];
+  isLexicalFallback?: boolean;
 }
 
 function buildDisplaySources(
@@ -1020,10 +1026,13 @@ export async function querySpace(
     { diversify: isBroadOverview },
   );
 
+  const isLexicalFallback = Boolean(retrieved.isLexicalFallback ?? isLexicalFallbackActive());
+
   if (retrieved.length === 0 && (!meta.explicitNotes || meta.explicitNotes.length === 0)) {
     return {
       answer: "No relevant content found in this space. Try rephrasing or adding more notes to your vault.",
       sources: [],
+      isLexicalFallback,
     };
   }
 
@@ -1069,6 +1078,7 @@ export async function querySpace(
   return {
     answer,
     sources: buildDisplaySources(retrieved),
+    isLexicalFallback,
   };
 }
 
@@ -1099,10 +1109,12 @@ export async function querySpaceStreaming(
     { diversify: isBroadOverview },
   );
 
+  const isLexicalFallback = Boolean(retrieved.isLexicalFallback ?? isLexicalFallbackActive());
+
   if (retrieved.length === 0 && (!meta.explicitNotes || meta.explicitNotes.length === 0)) {
     const msg = "No relevant content found in this space. Try rephrasing or adding more notes to your vault.";
     onChunk(msg);
-    return { answer: msg, sources: [] };
+    return { answer: msg, sources: [], isLexicalFallback };
   }
 
   const systemPrompt = buildSystemPrompt(meta);
@@ -1151,7 +1163,7 @@ export async function querySpaceStreaming(
     const data = await response.json();
     const answer = data.choices?.[0]?.message?.content?.trim() || "";
     onChunk(answer);
-    return { answer, sources: makeSources() };
+    return { answer, sources: makeSources(), isLexicalFallback };
   }
 
   const decoder = new TextDecoder();
@@ -1223,5 +1235,5 @@ export async function querySpaceStreaming(
     }
   }
 
-  return { answer: fullAnswer, sources: makeSources() };
+  return { answer: fullAnswer, sources: makeSources(), isLexicalFallback };
 }

@@ -491,25 +491,30 @@ function wikiLinkPlugin(onLinkClick: (name: string) => void) {
         const decorations: any[] = [];
         const doc = view.state.doc;
 
-        for (let i = 1; i <= doc.lines; i++) {
-          const line = doc.line(i);
-          const regex = /\[\[([^\]]+)\]\]/g;
-          let match;
+        for (const { from, to } of view.visibleRanges) {
+          const startLine = doc.lineAt(from).number;
+          const endLine = doc.lineAt(to).number;
 
-          while ((match = regex.exec(line.text)) !== null) {
-            const from = line.from + match.index;
-            const to = from + match[0].length;
+          for (let i = startLine; i <= endLine; i++) {
+            const line = doc.line(i);
+            const regex = /\[\[([^\]]+)\]\]/g;
+            let match;
 
-            if (from < to) {
-              decorations.push(
-                Decoration.mark({
-                  class: "cm-wikilink",
-                  attributes: {
-                    "data-link": match[1],
-                    title: `Open: ${match[1]}`,
-                  },
-                }).range(from, to),
-              );
+            while ((match = regex.exec(line.text)) !== null) {
+              const fromPos = line.from + match.index;
+              const toPos = fromPos + match[0].length;
+
+              if (fromPos < toPos) {
+                decorations.push(
+                  Decoration.mark({
+                    class: "cm-wikilink",
+                    attributes: {
+                      "data-link": match[1],
+                      title: `Open: ${match[1]}`,
+                    },
+                  }).range(fromPos, toPos),
+                );
+              }
             }
           }
         }
@@ -563,27 +568,32 @@ function tagPlugin() {
         const decorations: any[] = [];
         const doc = view.state.doc;
 
-        for (let i = 1; i <= doc.lines; i++) {
-          const line = doc.line(i);
-          const regex = /(?:^|\s)(#[a-zA-Z][a-zA-Z0-9_-]*)/g;
-          let match;
+        for (const { from, to } of view.visibleRanges) {
+          const startLine = doc.lineAt(from).number;
+          const endLine = doc.lineAt(to).number;
 
-          while ((match = regex.exec(line.text)) !== null) {
-            const tag = match[1];
-            // Skip hex color codes (e.g. #ef4444) from tag decorators
-            const hexColorRegex = /^#[a-fA-F0-9]{3,4}$|^#[a-fA-F0-9]{6}$|^#[a-fA-F0-9]{8}$/;
-            if (hexColorRegex.test(tag)) {
-              continue;
-            }
+          for (let i = startLine; i <= endLine; i++) {
+            const line = doc.line(i);
+            const regex = /(?:^|\s)(#[a-zA-Z][a-zA-Z0-9_-]*)/g;
+            let match;
 
-            const tagStart =
-              line.from + match.index + (match[0].startsWith(" ") ? 1 : 0);
-            const tagEnd = tagStart + match[1].length;
+            while ((match = regex.exec(line.text)) !== null) {
+              const tag = match[1];
+              // Skip hex color codes (e.g. #ef4444) from tag decorators
+              const hexColorRegex = /^#[a-fA-F0-9]{3,4}$|^#[a-fA-F0-9]{6}$|^#[a-fA-F0-9]{8}$/;
+              if (hexColorRegex.test(tag)) {
+                continue;
+              }
 
-            if (tagStart < tagEnd) {
-              decorations.push(
-                Decoration.mark({ class: "cm-tag-mark" }).range(tagStart, tagEnd),
-              );
+              const tagStart =
+                line.from + match.index + (match[0].startsWith(" ") ? 1 : 0);
+              const tagEnd = tagStart + match[1].length;
+
+              if (tagStart < tagEnd) {
+                decorations.push(
+                  Decoration.mark({ class: "cm-tag-mark" }).range(tagStart, tagEnd),
+                );
+              }
             }
           }
         }
@@ -877,22 +887,27 @@ function imageWidgetPlugin(onOpenLightbox: (src: string, alt: string) => void) {
         const decorations: any[] = [];
         const doc = view.state.doc;
 
-        for (let i = 1; i <= doc.lines; i++) {
-          const line = doc.line(i);
-          const regex = new RegExp(MARKDOWN_IMAGE_GLOBAL_REGEX.source, "g");
-          let match: RegExpExecArray | null;
+        for (const { from, to } of view.visibleRanges) {
+          const startLine = doc.lineAt(from).number;
+          const endLine = doc.lineAt(to).number;
 
-          while ((match = regex.exec(line.text)) !== null) {
-            const from = line.from + match.index;
-            const to = from + match[0].length;
-            const parsed = parseMarkdownImage(match[0], from, to);
-            if (!parsed) continue;
+          for (let i = startLine; i <= endLine; i++) {
+            const line = doc.line(i);
+            const regex = new RegExp(MARKDOWN_IMAGE_GLOBAL_REGEX.source, "g");
+            let match: RegExpExecArray | null;
 
-            decorations.push(
-              Decoration.replace({
-                widget: new MarkdownImageWidget(parsed, view),
-              }).range(from, to),
-            );
+            while ((match = regex.exec(line.text)) !== null) {
+              const fromPos = line.from + match.index;
+              const toPos = fromPos + match[0].length;
+              const parsed = parseMarkdownImage(match[0], fromPos, toPos);
+              if (!parsed) continue;
+
+              decorations.push(
+                Decoration.replace({
+                  widget: new MarkdownImageWidget(parsed, view),
+                }).range(fromPos, toPos),
+              );
+            }
           }
         }
 
@@ -1997,118 +2012,135 @@ function markdownLivePreviewPlugin() {
   const headingRegex = /^([ \t]*)(?:<[a-zA-Z]+[^>]*>)?(#{1,6})\s/;
   const codeFenceRegex = /^\s*```/;
 
-  const buildDecorations = (state: EditorState): DecorationSet => {
-    const decorations: any[] = [];
-    const doc = state.doc;
-    const selection = state.selection;
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
 
-    // Get the set of lines that have a cursor
-    const activeLinesSet = new Set<number>();
-    for (const range of selection.ranges) {
-      const startLine = doc.lineAt(range.from).number;
-      const endLine = doc.lineAt(range.to).number;
-      for (let l = startLine; l <= endLine; l++) {
-        activeLinesSet.add(l);
+      constructor(view: EditorView) {
+        this.decorations = this.buildDecorations(view);
       }
-    }
 
-    let inCodeBlock = false;
-
-    for (let i = 1; i <= doc.lines; i++) {
-      const line = doc.line(i);
-      const isFence = codeFenceRegex.test(line.text);
-      const match = headingRegex.exec(line.text);
-      const isActive = activeLinesSet.has(i);
-
-      if (isFence) {
-        if (!isActive) {
-          decorations.push(
-            Decoration.line({
-              attributes: { class: "cm-live-codeblock-line" },
-            }).range(line.from),
-          );
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.selectionSet || update.viewportChanged) {
+          this.decorations = this.buildDecorations(update.view);
         }
-        inCodeBlock = !inCodeBlock;
-        continue;
       }
 
-      if (inCodeBlock) {
-        if (!isActive) {
-          decorations.push(
-            Decoration.line({
-              attributes: { class: "cm-live-codeblock-line" },
-            }).range(line.from),
-          );
-        }
-        continue;
-      }
+      buildDecorations(view: EditorView): DecorationSet {
+        const decorations: any[] = [];
+        const state = view.state;
+        const doc = state.doc;
+        const selection = state.selection;
 
-      if (isTableRow(line.text) && i < doc.lines && isTableSeparator(doc.line(i + 1).text)) {
-        const tableStart = i;
-        const tableRows: string[] = [line.text, doc.line(i + 1).text];
-        let tableEnd = i + 1;
-        while (tableEnd + 1 <= doc.lines && isTableRow(doc.line(tableEnd + 1).text)) {
-          tableEnd++;
-          tableRows.push(doc.line(tableEnd).text);
+        // Get the set of lines that have a cursor
+        const activeLinesSet = new Set<number>();
+        for (const range of selection.ranges) {
+          const startLine = doc.lineAt(range.from).number;
+          const endLine = doc.lineAt(range.to).number;
+          for (let l = startLine; l <= endLine; l++) {
+            activeLinesSet.add(l);
+          }
         }
 
-        decorations.push(
-          Decoration.replace({
-            widget: new MarkdownTableWidget(tableRows, tableStart),
-            block: true,
-          }).range(line.from, doc.line(tableEnd).to),
-        );
+        for (const { from, to } of view.visibleRanges) {
+          const startLineNum = doc.lineAt(from).number;
+          const endLineNum = doc.lineAt(to).number;
 
-        i = tableEnd;
-        continue;
-      }
+          let inCodeBlock = false;
+          for (let check = 1; check < startLineNum; check++) {
+            if (codeFenceRegex.test(doc.line(check).text)) {
+              inCodeBlock = !inCodeBlock;
+            }
+          }
 
-      if (match) {
-        const level = match[2].length;
+          for (let i = startLineNum; i <= endLineNum; i++) {
+            const line = doc.line(i);
+            const isFence = codeFenceRegex.test(line.text);
+            const match = headingRegex.exec(line.text);
+            const isActive = activeLinesSet.has(i);
 
-        if (!isActive) {
-          // Hide the `# ` prefix on non-active heading lines
-          const tagMatch = match[0].match(/^(?:[ \t]*)(?:<[a-zA-Z]+[^>]*>)/);
-          const offset = tagMatch ? tagMatch[0].length : match[1].length;
-          const hashesLength = match[2].length + 1; // plus space
-          hideMarkdownSyntax(decorations, line.from + offset, line.from + offset + hashesLength);
+            if (isFence) {
+              if (!isActive) {
+                decorations.push(
+                  Decoration.line({
+                    attributes: { class: "cm-live-codeblock-line" },
+                  }).range(line.from),
+                );
+              }
+              inCodeBlock = !inCodeBlock;
+              continue;
+            }
+
+            if (inCodeBlock) {
+              if (!isActive) {
+                decorations.push(
+                  Decoration.line({
+                    attributes: { class: "cm-live-codeblock-line" },
+                  }).range(line.from),
+                );
+              }
+              continue;
+            }
+
+            if (isTableRow(line.text) && i < doc.lines && isTableSeparator(doc.line(i + 1).text)) {
+              const tableStart = i;
+              const tableRows: string[] = [line.text, doc.line(i + 1).text];
+              let tableEnd = i + 1;
+              while (tableEnd + 1 <= doc.lines && isTableRow(doc.line(tableEnd + 1).text)) {
+                tableEnd++;
+                tableRows.push(doc.line(tableEnd).text);
+              }
+
+              decorations.push(
+                Decoration.replace({
+                  widget: new MarkdownTableWidget(tableRows, tableStart),
+                  block: true,
+                }).range(line.from, doc.line(tableEnd).to),
+              );
+
+              i = tableEnd;
+              continue;
+            }
+
+            if (match) {
+              const level = match[2].length;
+
+              if (!isActive) {
+                // Hide the `# ` prefix on non-active heading lines
+                const tagMatch = match[0].match(/^(?:[ \t]*)(?:<[a-zA-Z]+[^>]*>)/);
+                const offset = tagMatch ? tagMatch[0].length : match[1].length;
+                const hashesLength = match[2].length + 1; // plus space
+                hideMarkdownSyntax(decorations, line.from + offset, line.from + offset + hashesLength);
+              }
+
+              // Apply heading font size as a line decoration
+              const sizes = ["2.0em", "1.6em", "1.37em", "1.25em", "1.1em", "1em"];
+              const fontSize = sizes[level - 1] || "1em";
+              decorations.push(
+                Decoration.line({
+                  attributes: {
+                    style: `font-size: ${fontSize}; line-height: 1.3; font-weight: 700; font-family: var(--font-family); color: var(--editor-heading);`,
+                    class: `cm-heading-${level}`,
+                  },
+                }).range(line.from),
+              );
+            }
+
+            if (!isActive) {
+              addInactiveBlockPreviewDecorations(decorations, line.from, line.text);
+              addInactiveInlinePreviewDecorations(decorations, line.from, line.text);
+              addInactiveInlineHTMLDecorations(decorations, line.from, line.text);
+            }
+          }
         }
 
-        // Apply heading font size as a line decoration
-        const sizes = ["2.0em", "1.6em", "1.37em", "1.25em", "1.1em", "1em"];
-        const fontSize = sizes[level - 1] || "1em";
-        decorations.push(
-          Decoration.line({
-            attributes: {
-              style: `font-size: ${fontSize}; line-height: 1.3; font-weight: 700; font-family: var(--font-family); color: var(--editor-heading);`,
-              class: `cm-heading-${level}`,
-            },
-          }).range(line.from),
-        );
+        return Decoration.set(decorations, true);
       }
-
-      if (!isActive) {
-        addInactiveBlockPreviewDecorations(decorations, line.from, line.text);
-        addInactiveInlinePreviewDecorations(decorations, line.from, line.text);
-        addInactiveInlineHTMLDecorations(decorations, line.from, line.text);
-      }
-    }
-
-    return Decoration.set(decorations, true);
-  };
-
-  return StateField.define<DecorationSet>({
-    create(state) {
-      return buildDecorations(state);
     },
-    update(decorations, tr) {
-      if (tr.docChanged || tr.selection) {
-        return buildDecorations(tr.state);
-      }
-      return decorations.map(tr.changes);
+    {
+      decorations: (v) => v.decorations,
     },
-    provide: (field) => EditorView.decorations.from(field),
-  });
+  );
 }
 
 const INLINE_PHRASE_STOP_WORDS = new Set([

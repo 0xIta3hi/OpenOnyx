@@ -20,7 +20,9 @@ beforeEach(() => {
 });
 
 describe('embedding cache metadata refresh', () => {
-  it('uses a browser-reachable ONNX WASM runtime path', () => {
+  it('uses local/cached and remote model configurations with WASM runtime path', () => {
+    expect(env.allowLocalModels).toBe(true);
+    expect(env.allowRemoteModels).toBe(true);
     expect(env.backends.onnx.wasm.proxy).toBe(false);
     expect(env.backends.onnx.wasm.wasmPaths).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@xenova\/transformers@/);
   });

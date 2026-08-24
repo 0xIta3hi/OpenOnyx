@@ -640,8 +640,10 @@ export class SyncEngine {
           const remoteVersion = normalizeVersion((remote as any).version);
           const localVersion = normalizeVersion(local.version);
           if (remoteVersion > 0 || localVersion > 0) {
-            if (remoteVersion <= localVersion) {
+            if (remoteVersion < localVersion) {
               console.info(`[SyncEngine][pull_overwrite_prevented] Path: ${cleanPath} | Remote: v${remoteVersion} | Local: v${localVersion}`);
+              continue;
+            } else if (remoteVersion === localVersion) {
               continue;
             }
           } else {

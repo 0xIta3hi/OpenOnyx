@@ -24,6 +24,7 @@ import {
 } from "../../utils/spaces-store";
 import { buildVectorIndex, type VaultNote } from "../../utils/spaces-processing";
 import { querySpaceStreaming, parseActionPayload, stripJSONBlock, type RAGResult, type SpaceMetadata } from "../../utils/spaces-rag";
+import { isLexicalFallbackActive } from "../../utils/embeddings";
 import { isAIConfigured } from "../../utils/ai-core";
 import { getAPI } from "../../utils/api";
 import type { Space, SpaceIndexEntry, SpaceChatMessage, SpaceVisibility, SpaceConversation } from "../../types/spaces";
@@ -2890,6 +2891,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
             <div className={spaceIndexingIndicatorClass}>
               <Loader2 size={12} className="animate-spin" />
               <span>AI Indexing Vault... ({indexProgress.done}/{indexProgress.total})</span>
+            </div>
+          )}
+          {isLexicalFallbackActive() && (
+            <div className="mx-4 my-2 flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--bg-secondary)_95%,var(--text-muted)_5%)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <Zap size={14} className="shrink-0 text-[var(--text-muted)]" />
+              <span>Using keyword search — semantic model not loaded (offline mode)</span>
             </div>
           )}
           

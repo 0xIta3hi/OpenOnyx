@@ -123,7 +123,7 @@ Key capabilities:
 
 - Local Spaces stored in IndexedDB
 - Private and public cloud-backed Spaces through Supabase
-- Browser-native embeddings with `@xenova/transformers`
+- Browser-native embeddings with `@xenova/transformers` (cached locally for offline use; keyword search fallback when model is not cached)
 - RAG chat with source citations back to notes
 - Suggested queries, indexing progress, and vault previews
 - Public Space discovery, upvotes, and Remix/fork workflows
@@ -465,7 +465,7 @@ See [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility
 
 ## Privacy and Security
 
-- Core note editing, search, graph navigation, local embeddings, and local Spaces work offline.
+- Core note editing, search, graph navigation, local embeddings (with keyword search fallback when offline prior to first model cache), and local Spaces work offline.
 - Notes are stored as local files in the selected vault.
 - Local indexes, embeddings, and caches stay on device unless the user enables cloud-backed features.
 - The renderer runs with context isolation and talks to the filesystem through a preload IPC bridge.

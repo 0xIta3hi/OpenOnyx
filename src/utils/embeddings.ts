@@ -16,9 +16,12 @@
 import { pipeline, env, type FeatureExtractionPipeline } from "@xenova/transformers";
 import { readData, writeData, listData, deleteData, createDebouncedWriter } from "./disk-store";
 
-// Disable local model loading — always use remote CDN cache
-env.allowLocalModels = false;
+// Allow local cached models alongside remote downloads so offline models work after first load
+env.allowLocalModels = true;
 env.allowRemoteModels = true;
+if ("useBrowserCache" in env) {
+  (env as any).useBrowserCache = true;
+}
 
 // Electron/Browser compatibility fixes for @xenova/transformers v2.
 // Force the WASM backend and disable Node.js-specific backends.
@@ -56,6 +59,14 @@ export function getEmbeddingDisabledReason(): string | null {
   return _disabledReason;
 }
 
+export function isLexicalFallbackActive(): boolean {
+  return _disabledReason !== null;
+}
+
+export function isSemanticEmbeddingAvailable(): boolean {
+  return _pipeline !== null;
+}
+
 export function areEmbeddingsAvailable(): boolean {
   return true;
 }
@@ -78,6 +89,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       if (!p) throw new Error("Pipeline creation returned null");
 
       _loadProgress = 100;
+      _disabledReason = null;
       _onProgress?.(100, "Model ready");
       _pipeline = p as FeatureExtractionPipeline;
       _loadingPromise = null;
@@ -86,7 +98,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
       _loadingPromise = null;
       _loadProgress = 0;
       _disabledReason = err instanceof Error ? err.message : "Analysis engine failed to load";
-      _onProgress?.(100, "Local analysis fallback ready");
+      _onProgress?.(100, "Using keyword search (semantic model not loaded)");
       throw err;
     }
   })();

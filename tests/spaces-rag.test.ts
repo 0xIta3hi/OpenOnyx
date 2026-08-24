@@ -6,6 +6,7 @@ import {
   mapCloudRpcChunk,
   parseActionPayload,
   stripJSONBlock,
+  retrieveChunks,
 } from "../src/utils/spaces-rag";
 
 describe("spaces RAG parsers", () => {
@@ -97,5 +98,14 @@ print("hi")
     expect(getTopLevelFolder("Systems/Locks.md")).toBe("Systems");
     expect(getTopLevelFolder("Hello.md")).toBe("(root)");
     expect(getTopLevelFolder("")).toBe("(root)");
+  });
+
+  it("retrieves chunks and includes isLexicalFallback indicator", async () => {
+    (window as any).electronAPI = {
+      dataRead: async () => null,
+    };
+    const res = await retrieveChunks("space-1", "test query");
+    expect(res).toBeDefined();
+    expect(typeof res.isLexicalFallback).toBe("boolean");
   });
 });
