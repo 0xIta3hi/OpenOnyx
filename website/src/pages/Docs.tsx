@@ -124,14 +124,40 @@ export function Docs() {
 
       <div className="docs-main">
         <article className="docs-body" key={page.slug}>
-          <div className="kicker">{page.group}</div>
-          <h1>{page.title}</h1>
-          <p className="docs-lede">{page.summary}</p>
+          <nav className="docs-crumbs" aria-label="Breadcrumb">
+            <Link to="/docs/start">Documentation</Link>
+            {page.slug !== "start" && (
+              <>
+                <span aria-hidden>/</span>
+                <span>{page.group}</span>
+                <span aria-hidden>/</span>
+                <span>{page.title}</span>
+              </>
+            )}
+          </nav>
+          <header className="docs-hero">
+            <h1>{page.title}</h1>
+            <p className="docs-lede">{page.summary}</p>
+          </header>
           {withHeadingIds(page.body)}
-          <div className="doc-nav">
-            {prev ? <Link to={`/docs/${prev.slug}`}>← {prev.title}</Link> : <span />}
-            {next ? <Link to={`/docs/${next.slug}`}>{next.title} →</Link> : <span />}
-          </div>
+          <nav className="doc-nav" aria-label="Page turn">
+            {prev ? (
+              <Link to={`/docs/${prev.slug}`}>
+                <span>Previous</span>
+                {prev.title}
+              </Link>
+            ) : (
+              <span />
+            )}
+            {next ? (
+              <Link to={`/docs/${next.slug}`}>
+                <span>Next</span>
+                {next.title}
+              </Link>
+            ) : (
+              <span />
+            )}
+          </nav>
         </article>
 
         <aside className="docs-rail">
@@ -146,10 +172,11 @@ export function Docs() {
             </div>
           )}
           <div>
-            <h4>Continue</h4>
-            {next && <Link to={`/docs/${next.slug}`}>{next.title}</Link>}
-            {prev && <Link to={`/docs/${prev.slug}`}>{prev.title}</Link>}
-            <Link to="/download">Download</Link>
+            <h4>Feedback</h4>
+            <a href={`${PRODUCT.repo}/issues/new`} target="_blank" rel="noreferrer">
+              Open an issue
+            </a>
+            <Link to="/download">Download v{PRODUCT.version}</Link>
             <a href={PRODUCT.repo} target="_blank" rel="noreferrer">
               Source on GitHub
             </a>
