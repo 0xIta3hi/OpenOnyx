@@ -2551,6 +2551,7 @@ export default function App() {
     handleOpenVault,
     handleCreateVault,
     handleSwitchVault,
+    handleCloseVault,
     handleWelcomeVaultAction,
     handleCopyVaultId,
     handleRenameVault,
@@ -5247,9 +5248,13 @@ export default function App() {
               <div className="vault-entry-layer vault-entry-layer-welcome">
                 <WelcomeScreen
                   onOpenVault={handleWelcomeVaultAction}
+                  currentVaultPath={vaultPath}
+                  previouslyOpenedVaults={previouslyOpenedVaults}
+                  onSwitchVault={handleSwitchVault}
+                  onRemoveVaultFromList={handleRemoveVaultFromList}
                   transitionPhase={vaultEntryTransitionPhase}
                   theme={theme}
-                  settings={settings}
+                  settings={settings} 
                 />
               </div>
 
@@ -5262,6 +5267,10 @@ export default function App() {
           ) : !vaultPath ? (
             <WelcomeScreen
               onOpenVault={handleWelcomeVaultAction}
+              currentVaultPath={vaultPath}
+              previouslyOpenedVaults={previouslyOpenedVaults}
+              onSwitchVault={handleSwitchVault}
+              onRemoveVaultFromList={handleRemoveVaultFromList}
               transitionPhase="idle"
               theme={theme}
               settings={settings}
@@ -5685,6 +5694,7 @@ export default function App() {
           onCreateVault={handleCreateVault}
           onOpenVault={handleOpenVault}
           onSwitchVault={handleSwitchVault}
+          onCloseVault={handleCloseVault}
           onRevealVault={(path) => {
             void api.showItemInFolder(path);
           }}

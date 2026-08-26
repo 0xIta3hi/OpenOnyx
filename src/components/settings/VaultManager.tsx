@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { Theme } from "../../types";
-import { isDarkTheme } from "../../utils/helpers";
+import { isDarkTheme, vaultName  } from "../../utils/helpers";
 import type { AppSettings } from "./SettingsPage";
 
 interface VaultManagerProps {
@@ -22,16 +22,13 @@ interface VaultManagerProps {
   onCreateVault: () => Promise<boolean>;
   onOpenVault: () => Promise<boolean>;
   onSwitchVault: (path: string) => Promise<boolean>;
+  onCloseVault?: () => Promise<void>;
   onRevealVault?: (path: string) => void;
   onCopyVaultId?: (path: string) => void;
   onRenameVault?: (path: string) => Promise<void>;
   onMoveVault?: (path: string) => Promise<void>;
   onRemoveVaultFromList?: (path: string) => Promise<void>;
   onClose: () => void;
-}
-
-function vaultName(path: string): string {
-  return path.split(/[/\\]/).filter(Boolean).pop() || path;
 }
 
 function uniqueVaults(paths: Array<string | null | undefined>): string[] {
@@ -53,6 +50,7 @@ export function VaultManager({
   onCreateVault,
   onOpenVault,
   onSwitchVault,
+  onCloseVault,
   onRevealVault,
   onCopyVaultId,
   onRenameVault,
@@ -147,10 +145,13 @@ export function VaultManager({
                         </span>
                       </span>
                       {isCurrent ? (
-                        <Check
-                          size={15}
-                          className="mt-1 shrink-0 text-[var(--accent-primary)]"
-                        />
+                        // <Check
+                        //   size={15}
+                        //   className="mt-1 shrink-0 text-[var(--accent-primary)]"
+                        // />
+                        <span className="mt-1 flex shrink-0 items-center gap-2">
+                          <Check size={15} className="text-[var(--accent-primary)]" />
+                        </span>
                       ) : null}
                     </button>
                     <button
@@ -218,6 +219,19 @@ export function VaultManager({
               })
             )}
           </div>
+          {currentVaultPath && onCloseVault ? (
+              <button
+                type="button"
+                className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[var(--border-subtle)] bg-transparent px-3 py-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!!busyAction}
+                onClick={() => void runAction("close-vault", async () => {
+                  await onCloseVault();
+                  return true;
+                })}
+              >
+                {busyAction === "close-vault" ? "Closing..." : "Close current vault"}
+              </button>
+            ) : null}
         </aside>
 
         <section className="relative flex min-w-0 flex-1 flex-col bg-[var(--bg-primary)]">
