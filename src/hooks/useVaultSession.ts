@@ -193,14 +193,12 @@ export function useVaultSession({
     setFileTree([]);
     setTabs([]);
     setActiveTabId(null);
-    handleOpenNewTab();
     await refreshPreviouslyOpenedVaults();
   }, [
     setVaultPath,
     setFileTree,
     setTabs,
     setActiveTabId,
-    handleOpenNewTab,
     refreshPreviouslyOpenedVaults,
   ]);
 
