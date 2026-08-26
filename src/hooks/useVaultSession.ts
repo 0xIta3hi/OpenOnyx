@@ -182,6 +182,28 @@ export function useVaultSession({
     }
   }, [loadVaultData]);
 
+  const handleCloseVault = useCallback(async () => {
+    try {
+      await api.setVaultPath("");
+    } catch (e) {
+      console.error("Failed to clear active vault path:", e);
+    }
+    setVaultPath(null);
+    (window as any).__oo_vault_path = null;
+    setFileTree([]);
+    setTabs([]);
+    setActiveTabId(null);
+    handleOpenNewTab();
+    await refreshPreviouslyOpenedVaults();
+  }, [
+    setVaultPath,
+    setFileTree,
+    setTabs,
+    setActiveTabId,
+    handleOpenNewTab,
+    refreshPreviouslyOpenedVaults,
+  ]);
+
   const handleWelcomeVaultAction = useCallback(
     async (action: VaultEntryAction) => {
       if (vaultEntryTransitionPhase !== "idle") return;
@@ -295,6 +317,7 @@ export function useVaultSession({
     handleOpenVault,
     handleCreateVault,
     handleSwitchVault,
+    handleCloseVault,
     handleWelcomeVaultAction,
     handleCopyVaultId,
     handleRenameVault,
