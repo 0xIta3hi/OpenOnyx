@@ -87,3 +87,8 @@ export function isDarkTheme(theme: string | Theme, settings?: any): boolean {
   const darkThemes = ["dark", "dark-plus", "blue-night", "oceanic", "ember-night", "aurora-grove"];
   return darkThemes.includes(theme as string);
 }
+
+/** Extract the vault name from a path */
+export function vaultName(path: string): string {
+  return path.split(/[/\\]/).filter(Boolean).pop() || path;
+}
