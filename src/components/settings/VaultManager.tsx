@@ -145,10 +145,6 @@ export function VaultManager({
                         </span>
                       </span>
                       {isCurrent ? (
-                        // <Check
-                        //   size={15}
-                        //   className="mt-1 shrink-0 text-[var(--accent-primary)]"
-                        // />
                         <span className="mt-1 flex shrink-0 items-center gap-2">
                           <Check size={15} className="text-[var(--accent-primary)]" />
                         </span>
