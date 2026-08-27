@@ -15,7 +15,7 @@ All contributors and maintainers are expected to adhere to the [Code of Conduct]
 ### Prerequisites
 
 Ensure you have the following installed on your development machine:
-- **Node.js**: v24.x or newer
+- **Node.js**: v22.x or newer (`package.json` engines and release CI)
 - **npm**: v9.x or newer
 - **Git**
 
