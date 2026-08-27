@@ -62,6 +62,9 @@ beforeEach(() => {
     dataWrite: vi.fn(async () => {}),
     dataDelete: vi.fn(async () => {}),
     dataList: vi.fn(async () => []),
+    listFiles: vi.fn(async () => []),
+    fileExists: vi.fn(async () => false),
+    trashFile: vi.fn(async () => {}),
   };
 });
 
@@ -846,5 +849,101 @@ body.theme-dark .plain-plugin-button { border-color: blue; }
     expect(editor.offsetToPos(7)).toEqual({ line: 1, ch: 2 });
 
     view.destroy();
+  });
+});
+
+describe('plugin vault adapter compatibility', () => {
+  function installMapFs(initial: Record<string, string> = {}) {
+    const files = new Map<string, string>(Object.entries(initial));
+    const api = (window as any).electronAPI;
+    api.readFile = vi.fn(async (path: string) => (files.has(path) ? files.get(path)! : null));
+    api.writeFile = vi.fn(async (path: string, content: string) => {
+      files.set(path, content);
+    });
+    api.createFile = vi.fn(async (path: string, content?: string) => {
+      if (!files.has(path)) files.set(path, content || '');
+    });
+    api.deleteFile = vi.fn(async (path: string) => {
+      files.delete(path);
+    });
+    api.fileExists = vi.fn(async (path: string) => files.has(path));
+    api.renameFile = vi.fn(async (oldPath: string, newPath: string) => {
+      if (files.has(oldPath)) {
+        files.set(newPath, files.get(oldPath)!);
+        files.delete(oldPath);
+        return;
+      }
+      const prefix = oldPath.endsWith('/') ? oldPath : `${oldPath}/`;
+      const nextPrefix = newPath.endsWith('/') ? newPath : `${newPath}/`;
+      for (const key of Array.from(files.keys())) {
+        if (key.startsWith(prefix)) {
+          files.set(nextPrefix + key.slice(prefix.length), files.get(key)!);
+          files.delete(key);
+        }
+      }
+    });
+    api.listFiles = vi.fn(async (dirPath?: string) => {
+      const prefix = dirPath ? `${dirPath.replace(/\/$/, '')}/` : '';
+      const names = new Map<string, { name: string; path: string; isDirectory: boolean }>();
+      for (const key of files.keys()) {
+        if (prefix && !key.startsWith(prefix)) continue;
+        const rest = prefix ? key.slice(prefix.length) : key;
+        const [name, ...more] = rest.split('/');
+        if (!name) continue;
+        const isDirectory = more.length > 0;
+        const path = prefix ? `${prefix.replace(/\/$/, '')}/${name}` : name;
+        if (!names.has(name) || isDirectory) {
+          names.set(name, { name, path, isDirectory });
+        }
+      }
+      return Array.from(names.values());
+    });
+    api.trashFile = vi.fn(async (path: string) => {
+      files.set(`__system_trash__/${path}`, files.get(path) || '');
+      files.delete(path);
+    });
+    return files;
+  }
+
+  it('lets plugins read, list, and stat hidden config folders through the adapter', async () => {
+    const files = installMapFs({
+      '.obsidian/snippets/wide.css': 'body { max-width: none; }',
+      '.openonyx/plugins/demo/data.json': '{"ok":true}',
+    });
+    const app = new OOApp();
+
+    expect(await app.vault.adapter.exists('.obsidian/snippets/wide.css')).toBe(true);
+    expect(await app.vault.adapter.read('.obsidian/snippets/wide.css')).toContain('max-width');
+    const listing = await app.vault.adapter.list('.obsidian/snippets');
+    expect(listing.files.some((path: string) => path.endsWith('wide.css'))).toBe(true);
+    const stat = await app.vault.adapter.stat('.openonyx/plugins/demo/data.json');
+    expect(stat?.type).toBe('file');
+    expect(files.has('.openonyx/plugins/demo/data.json')).toBe(true);
+  });
+
+  it('moves notes to .trash instead of deleting them when plugins call vault.trash(file, false)', async () => {
+    const files = installMapFs({ 'Keep.md': 'safe' });
+    const app = new OOApp();
+    const note = await app.vault.create('Keep.md', 'safe');
+    files.set('Keep.md', 'safe');
+
+    await app.vault.trash(note, false);
+
+    expect(files.has('Keep.md')).toBe(false);
+    expect(files.get('.trash/Keep.md')).toBe('safe');
+    expect(app.vault.getAbstractFileByPath('Keep.md')).toBeNull();
+  });
+
+  it('uses the system trash API when plugins call vault.trash(file, true)', async () => {
+    const files = installMapFs({ 'Gone.md': 'bye' });
+    const app = new OOApp();
+    const note = await app.vault.create('Gone.md', 'bye');
+    files.set('Gone.md', 'bye');
+
+    await app.vault.trash(note, true);
+
+    expect(files.has('Gone.md')).toBe(false);
+    expect(files.get('__system_trash__/Gone.md')).toBe('bye');
+    expect((window as any).electronAPI.trashFile).toHaveBeenCalledWith('Gone.md');
   });
 });

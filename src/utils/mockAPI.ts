@@ -323,6 +323,7 @@ export function createMockAPI(): ElectronAPI {
     },
 
     trashFile: async (filePath: string) => {
+      mockFiles[`__system_trash__/${filePath}`] = mockFiles[filePath] || "";
       delete mockFiles[filePath];
     },
 
