@@ -34,22 +34,35 @@ OpenOnyx is for writers, researchers, engineers, students, and teams who want a 
 
 ## To start using OpenOnyx
 
-Current release is **[v1.0.4](https://github.com/OpenOnyx/OpenOnyx/releases/tag/v1.0.4)**. Product docs: [openonyx.dev](https://openonyx.dev) (placeholder URL).
+You do not need an account, a cloud project, or an API key to write. There is no shipped phone app. Current release is **[v1.0.4](https://github.com/OpenOnyx/OpenOnyx/releases/tag/v1.0.4)**.
 
-### macOS and Linux — one command
+A **vault** is any folder you choose. Your notes are the `.md` files in that folder. OpenOnyx reads them; it does not lock them in a database. Cache and indexes go in a `.openonyx` folder inside the vault — you can ignore that folder in git.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash
+Stuck after install? [Open an issue](https://github.com/OpenOnyx/OpenOnyx/issues) or ask in [Discussions](https://github.com/OpenOnyx/OpenOnyx/discussions).
+
+### Install
+
+Pick your OS. Linux packages on this release are **x86_64**.
+
+**Windows**
+
+- [Installer](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe) — run `OpenOnyx.Setup.1.0.4.exe`
+- [Portable](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.1.0.4.exe) — no installer; run the `.exe`
+
+Signed by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/).
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe -OutFile OpenOnyx.Setup.1.0.4.exe
 ```
-
-That fetches the latest release and installs the matching package (`.dmg` on macOS; `.deb`, Arch, or AppImage on Linux).
-
-### Or download the file
 
 **macOS**
 
+Apple menu → About This Mac → Chip. If it says Apple, use Apple Silicon. If it says Intel, use Intel.
+
 - Apple Silicon — [OpenOnyx-1.0.4-arm64.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg)
 - Intel — [OpenOnyx-1.0.4.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg)
+
+Open the `.dmg`, drag **OpenOnyx** into **Applications**, then launch it from there.
 
 ```bash
 # Apple Silicon
@@ -61,22 +74,13 @@ curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-
 
 If Gatekeeper blocks the app: right-click → Open, or `xattr -cr /Applications/OpenOnyx.app`.
 
-**Windows**
-
-- Installer — [OpenOnyx.Setup.1.0.4.exe](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe)
-- Portable — [OpenOnyx.1.0.4.exe](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.1.0.4.exe)
-
-Signed by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/).
-
-```powershell
-Invoke-WebRequest -Uri https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe -OutFile OpenOnyx.Setup.1.0.4.exe
-```
-
 **Linux**
 
-- [OpenOnyx-1.0.4.AppImage](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage)
+- [AppImage](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage)
 - Debian / Ubuntu — [openonyx_1.0.4_amd64.deb](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb)
 - Arch — [openonyx-1.0.4-1-x86_64.pkg.tar.zst](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst)
+
+There is no official `.rpm`.
 
 ```bash
 # AppImage
@@ -93,11 +97,54 @@ curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-
 sudo pacman -U openonyx-1.0.4-1-x86_64.pkg.tar.zst
 ```
 
-Then open a folder. That folder is the vault.
+**macOS and Linux — one command** (detects the OS and installs the matching package):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash
+```
+
+### First launch
+
+The welcome screen can **create a new folder** or **open an existing one**. That folder is the vault.
+
+- New to this: create an empty folder. You will add notes inside the app.
+- Coming from Obsidian: open the folder you already use. Notes, `[[wiki links]]`, tags, and `.canvas` files stay on disk. You can keep using Obsidian on the same folder.
+- Switch later with **File → Open Vault**. `Ctrl/Cmd+O` is the note switcher, not “open another vault.”
+
+No account. Writing works offline.
+
+### First session
+
+1. `Ctrl/Cmd+N` — new note. Type. `Ctrl/Cmd+S` saves the `.md` file in the vault.
+2. Link notes with `[[other-note]]`.
+3. `Ctrl/Cmd+O` jumps to a note by name. `Ctrl/Cmd+Shift+F` searches file contents. `Ctrl/Cmd+P` is the command palette.
+4. `Ctrl/Cmd+G` opens the graph (your wiki links as a map).
+5. Open **Spaces**, create a local Space, and ask a question over the folder. The first time may download the on-device embedding model; after that, retrieval stays local. Answers that call a remote model need an OpenAI or OpenRouter key in Settings. Local embeddings do not.
+
+| Keys | What it does |
+| --- | --- |
+| `Ctrl/Cmd+N` | New note |
+| `Ctrl/Cmd+S` | Save |
+| `Ctrl/Cmd+O` | Jump to a note |
+| `Ctrl/Cmd+Shift+F` | Search the vault |
+| `Ctrl/Cmd+P` | Command palette |
+| `Ctrl/Cmd+G` | Graph |
+
+### AI and optional cloud
+
+| You want | What you set up |
+| --- | --- |
+| Write, search, graph | Nothing |
+| Local Spaces (index the folder, retrieve with citations) | Nothing. Model caches on first use. |
+| Inline rewrite / Spaces answers from a remote model | Your OpenAI or OpenRouter key in Settings |
+| Sync Spaces across machines | Your own Supabase project (see [To start developing](#to-start-developing-openonyx)) |
+| Live multiplayer editing | In the app, but the collaboration panel currently shows a maintenance notice |
+
+Community plugins go through an Obsidian-compatible runtime. Compatibility is tested; it is not a promise that every plugin is perfect.
 
 ## To start developing OpenOnyx
 
-You need [Node.js](https://nodejs.org/) 22 or newer and npm 9+.
+You need [Node.js](https://nodejs.org/) 22 or newer and npm 9+. You do **not** need this if you only want to use the desktop app above.
 
 ```bash
 git clone https://github.com/OpenOnyx/OpenOnyx.git
@@ -139,7 +186,9 @@ npm run dev
 
 ## Website
 
-User-facing docs and the product tour live at [openonyx.dev](https://openonyx.dev) (placeholder URL). Source is [`website/`](website/). Contributor technical notes stay in [`docs/`](docs/README.md).
+The product site and user guide live in [`website/`](website/). Run it locally with the commands above. [openonyx.dev](https://openonyx.dev) is a **placeholder** — do not treat that URL as live docs until it is.
+
+Contributor technical notes: [`docs/`](docs/README.md) (Spaces internals, plugin API matrix).
 
 ## Contributing
 
@@ -155,8 +204,8 @@ What is shipped, what is next, and what is later: [docs/roadmap.md](docs/roadmap
 
 ## Getting in touch
 
-- [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues) — bugs and feature work
-- [GitHub Discussions](https://github.com/OpenOnyx/OpenOnyx/discussions) — questions and ideas
+- [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues) — bugs and features
+- [GitHub Discussions](https://github.com/OpenOnyx/OpenOnyx/discussions) — questions
 - [openonyx@gmail.com](mailto:openonyx@gmail.com) — project contact
 - Security reports: [SECURITY.md](SECURITY.md) (not the public tracker)
 
@@ -165,11 +214,6 @@ What is shipped, what is next, and what is later: [docs/roadmap.md](docs/roadmap
 <a href="https://github.com/OpenOnyx/OpenOnyx/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=OpenOnyx/OpenOnyx" alt="OpenOnyx contributors" />
 </a>
-
-## Support
-
-- Bugs and features: [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues)
-- Security: [SECURITY.md](SECURITY.md)
 
 ## License
 
