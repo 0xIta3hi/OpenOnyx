@@ -1,50 +1,40 @@
-<p align="center">
-  <img src="docs/images/openonyx-poster.jpg" alt="OpenOnyx" width="920">
-</p>
-
-## Local-first knowledge workspace for notes you keep as files
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-111827)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/OpenOnyx/OpenOnyx?sort=semver)](https://github.com/OpenOnyx/OpenOnyx/releases)
-[![CI](https://github.com/OpenOnyx/OpenOnyx/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenOnyx/OpenOnyx/actions/workflows/ci.yml)
-[![Node](https://img.shields.io/badge/node-%3E%3D22-339933)](package.json)
-
-**OpenOnyx** is an Apache-2.0 desktop app. You point it at a folder — a vault — and write Markdown there. The editor, graph, search, Spaces, and plugins all read those files. Nothing important lives only inside the app. You do not need an account.
-
-It is the right tool if you want notes that remain ordinary files, a graph and a local thinking layer without assembling a plugin shopping list, and cloud only when you bring your own project. It is not a hosted-only notes service, and there is no shipped phone client yet.
-
-Current release is **v1.0.4**. There is no product telemetry.
-
-The desktop adds:
-
-- A CodeMirror workspace — source, preview, split, wiki links, Vim, tables
-- A D3 knowledge graph, plus an on-device AI view of suggested links and islands
-- Portable `.canvas` boards next to the notes they map
-- **Spaces** — chunk the vault, embed with `all-MiniLM-L6-v2`, answer with citations
-- An [Obsidian-compatible](docs/obsidian-plugin-compatibility.md) plugin runtime (`obsidian@1.13.1`, 158/158 public exports)
-- Optional Spaces sync on **your** Supabase. Live multiplayer is in the app but currently under maintenance
-
-## Architecture
-
-OpenOnyx is a local-first desktop with an optional cloud switch. The vault on disk is the source of truth. The Electron main process owns the filesystem and search index. The React renderer is the workspace. Spaces embeddings stay on device unless you opt a Space into your own backend.
+# OpenOnyx
 
 <p align="center">
-  <img src="docs/images/openonyx-architecture.png" alt="OpenOnyx architecture: vault on disk, Electron desktop, optional Supabase and model keys, website" width="920">
+  <img width="1600" alt="OpenOnyx desktop workspace" src="docs/images/banner.webp" />
 </p>
 
-| Layer | What it is | Where it lives |
-| --- | --- | --- |
-| Vault | `.md`, `.canvas`, attachments | A folder you choose |
-| Desktop | Electron 41, React 19, CodeMirror, D3, plugin runtime | [`electron/`](electron/), [`src/`](src/) |
-| Spaces | Local RAG (`Transformers.js` + IndexedDB) | [`src/utils/spaces-rag.ts`](src/utils/spaces-rag.ts), [`docs/spaces.md`](docs/spaces.md) |
-| Optional cloud | Your Supabase, your OpenAI / OpenRouter keys | [`supabase/`](supabase/), [`.env.example`](.env.example) |
-| Website | Product site and user guide | [`website/`](website/) |
+<p align="center">
+  <strong>A local-first, AI-assisted knowledge workspace for Markdown vaults.</strong>
+</p>
 
-Collaboration (Yjs) is implemented in-tree. The collaboration panel currently shows a maintenance notice — do not treat live multiplayer as ready.
+<p align="center">
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache%202.0-111827?style=flat-square"></a>
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-41-47848F?style=flat-square&logo=electron&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="Local first" src="https://img.shields.io/badge/local--first-yes-10B981?style=flat-square">
+</p>
+
+OpenOnyx is a professional desktop knowledge management app built around plain Markdown files, Obsidian-style workflows, graph navigation, local semantic indexing, and optional cloud collaboration. It is designed for people who want ownership of their notes while still having a modern thinking layer for search, synthesis, writing assistance, and knowledge exploration.
+
+The app is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
+
+## Why OpenOnyx
+
+OpenOnyx is for writers, researchers, engineers, students, and teams who want a serious knowledge base without surrendering their files to a proprietary silo.
+
+| Principle | What it means |
+| --- | --- |
+| Local-first by default | Notes are normal files in normal folders. Core workflows work offline. |
+| Markdown-native | Your writing stays portable, readable, and tool-friendly. |
+| AI where it helps | Retrieval, suggestions, summaries, and inline writing tools are grounded in your vault. |
+| Cloud when you choose | Supabase-backed sync, collaboration, and public Spaces are optional. |
+| Plugin-aware | OpenOnyx targets Obsidian plugin compatibility through a tested runtime layer. |
 
 ## To start using OpenOnyx
 
-Download a build from [Releases](https://github.com/OpenOnyx/OpenOnyx/releases), or use the site at [openonyx.dev](https://openonyx.dev) (placeholder — swap this URL when the public site is live).
+Download a build from [Releases](https://github.com/OpenOnyx/OpenOnyx/releases), or use the site at [openonyx.dev](https://openonyx.dev) (placeholder — swap this URL when the public site is live). Current release is **v1.0.4**.
 
 | Platform | Artifact |
 | --- | --- |
@@ -125,18 +115,11 @@ What is shipped, what is next, and what is later: [docs/roadmap.md](docs/roadmap
 - [openonyx@gmail.com](mailto:openonyx@gmail.com) — project contact
 - Security reports: [SECURITY.md](SECURITY.md) (not the public tracker)
 
-<div align="center">
-
-<h2>
-  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Red%20Heart.png" alt="Red Heart" width="40" height="40" />
-  Contributors
-</h2>
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Red%20Heart.png" alt="Red Heart" width="40" height="40" /> Contributors
 
 <a href="https://github.com/OpenOnyx/OpenOnyx/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=OpenOnyx/OpenOnyx" alt="OpenOnyx contributors" />
 </a>
-
-</div>
 
 ## Support
 
