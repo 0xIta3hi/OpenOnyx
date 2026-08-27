@@ -19,3 +19,13 @@ Dev server: `http://localhost:4173`
 npm run build
 npm run preview
 ```
+
+## Vercel
+
+Set **Root Directory** to `website`. Use Node 22. The production build runs
+`prebuild`, which installs the desktop app's production dependencies from the
+repo root. The hero editor and graph import those packages from `../src`.
+
+Do not set the project root to the repository root unless you also change the
+install command to `npm install && cd website && npm install` and the output
+directory to `website/dist`.
