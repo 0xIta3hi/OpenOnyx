@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(appRoot, "src"),
+      electron: path.resolve(__dirname, "src/shims/electron.ts"),
       "onnxruntime-node": "onnxruntime-web",
     },
     dedupe: ["react", "react-dom"],
