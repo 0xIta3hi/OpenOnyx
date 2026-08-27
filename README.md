@@ -34,21 +34,66 @@ OpenOnyx is for writers, researchers, engineers, students, and teams who want a 
 
 ## To start using OpenOnyx
 
-Download a build from [Releases](https://github.com/OpenOnyx/OpenOnyx/releases), or use the site at [openonyx.dev](https://openonyx.dev) (placeholder — swap this URL when the public site is live). Current release is **v1.0.4**.
+Current release is **[v1.0.4](https://github.com/OpenOnyx/OpenOnyx/releases/tag/v1.0.4)**. Product docs: [openonyx.dev](https://openonyx.dev) (placeholder URL).
 
-| Platform | Artifact |
-| --- | --- |
-| macOS | `.dmg` / `.zip`. If Gatekeeper blocks the app: right-click → Open, or `xattr -cr /Applications/OpenOnyx.app` |
-| Windows | `.exe`. Signing by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/) |
-| Linux | `.AppImage`, `.deb`, or Arch `.pkg.tar.zst` |
-
-Linux installer:
+### macOS and Linux — one command
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash
 ```
 
-Open a folder. That folder is the vault.
+That fetches the latest release and installs the matching package (`.dmg` on macOS; `.deb`, Arch, or AppImage on Linux).
+
+### Or download the file
+
+**macOS**
+
+- Apple Silicon — [OpenOnyx-1.0.4-arm64.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg)
+- Intel — [OpenOnyx-1.0.4.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg)
+
+```bash
+# Apple Silicon
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg
+
+# Intel
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg
+```
+
+If Gatekeeper blocks the app: right-click → Open, or `xattr -cr /Applications/OpenOnyx.app`.
+
+**Windows**
+
+- Installer — [OpenOnyx.Setup.1.0.4.exe](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe)
+- Portable — [OpenOnyx.1.0.4.exe](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.1.0.4.exe)
+
+Signed by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/).
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe -OutFile OpenOnyx.Setup.1.0.4.exe
+```
+
+**Linux**
+
+- [OpenOnyx-1.0.4.AppImage](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage)
+- Debian / Ubuntu — [openonyx_1.0.4_amd64.deb](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb)
+- Arch — [openonyx-1.0.4-1-x86_64.pkg.tar.zst](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst)
+
+```bash
+# AppImage
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage
+chmod +x OpenOnyx-1.0.4.AppImage
+./OpenOnyx-1.0.4.AppImage
+
+# Debian / Ubuntu
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb
+sudo dpkg -i openonyx_1.0.4_amd64.deb
+
+# Arch
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst
+sudo pacman -U openonyx-1.0.4-1-x86_64.pkg.tar.zst
+```
+
+Then open a folder. That folder is the vault.
 
 ## To start developing OpenOnyx
 
