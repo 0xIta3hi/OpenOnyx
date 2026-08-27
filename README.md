@@ -10,13 +10,13 @@
 
 OpenOnyx is an open-source, local-first knowledge workspace. Notes are ordinary Markdown (and `.canvas`) files in a folder you choose. The desktop app adds a graph, Spaces (local RAG), and an [Obsidian-compatible](docs/obsidian-plugin-compatibility.md) plugin runtime. Cloud sync and remote models are optional. There is no product telemetry.
 
-The source of truth for the product is this repository. The user-facing site and guide live in [`website/`](website/).
+The source of truth for the product is this repository. The user-facing site and guide are at [openonyx.dev](https://openonyx.dev) (placeholder — update when the public URL is live). Source for that site is [`website/`](website/).
 
 ----
 
 ## To start using OpenOnyx
 
-See the [website](website/) (user docs and product tour) and download a build from [Releases](https://github.com/OpenOnyx/OpenOnyx/releases).
+See [openonyx.dev](https://openonyx.dev) and download a build from [Releases](https://github.com/OpenOnyx/OpenOnyx/releases).
 
 Current release is **v1.0.4**.
 
@@ -32,7 +32,7 @@ Linux installer:
 curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash
 ```
 
-To run the website locally:
+To run the website from this repo:
 
 ```bash
 cd website
@@ -78,7 +78,7 @@ Optional Spaces sync uses [`.env.example`](.env.example) → `.env.local` (`VITE
 
 | | |
 | --- | --- |
-| [website/](website/) | User guide and product site |
+| [openonyx.dev](https://openonyx.dev) | User guide and product site |
 | [docs/](docs/README.md) | Contributor docs |
 | [docs/spaces.md](docs/spaces.md) | Spaces, RAG, sync internals |
 | [docs/obsidian-plugin-compatibility.md](docs/obsidian-plugin-compatibility.md) | Plugin API matrix |

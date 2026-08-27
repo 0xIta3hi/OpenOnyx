@@ -1,6 +1,6 @@
 # Repository docs
 
-User-facing product docs and screenshots live in [`website/`](../website/). This folder is for contributors.
+User-facing product docs live at [openonyx.dev](https://openonyx.dev) (placeholder URL) and in [`website/`](../website/). This folder is for contributors.
 
 | File | What it is |
 | --- | --- |
