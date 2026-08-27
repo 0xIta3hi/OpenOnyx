@@ -9,13 +9,42 @@ import { normalizePath } from './utils';
 
 const api = () => (window as any).electronAPI;
 
-function toVaultRelative(path: string, basePath: string): string {
-  const normalized = normalizePath(path || '');
-  const base = (basePath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+function slashPath(value: string): string {
+  return (value || '').replace(/\\/g, '/');
+}
+
+/** Map an adapter.fs path (often absolute) back to a vault-relative path. */
+export function toVaultRelative(path: string, basePath: string): string {
+  const normalized = slashPath(path || '').replace(/\/+$/, '');
+  const base = slashPath(basePath || '').replace(/\/+$/, '');
   if (base && (normalized === base || normalized.startsWith(`${base}/`))) {
     return normalized.slice(base.length).replace(/^\/+/, '');
   }
-  return normalized === '/' ? '' : normalized;
+  if (normalized === '/' || normalized === '') return '';
+  return normalizePath(normalized);
+}
+
+export type DeletedFilesMode = 'system-trash' | 'app-trash' | 'permanent';
+
+export function readDeletedFilesMode(): DeletedFilesMode {
+  try {
+    const saved = JSON.parse(localStorage.getItem('openonyx-settings') || '{}');
+    if (saved.deletedFilesMode === 'system-trash' || saved.deletedFilesMode === 'permanent') {
+      return saved.deletedFilesMode;
+    }
+  } catch {
+    /* use local trash */
+  }
+  return 'app-trash';
+}
+
+export async function applyPreferredTrash(vault: OOVault, file: TAbstractFile): Promise<void> {
+  const mode = readDeletedFilesMode();
+  if (mode === 'permanent') {
+    await vault.delete(file);
+    return;
+  }
+  await vault.trash(file, mode === 'system-trash');
 }
 
 function localTrashPath(filePath: string): string {
@@ -38,6 +67,30 @@ async function uniqueVaultPath(filePath: string): Promise<string> {
   return candidate;
 }
 
+async function pathIsDirectory(filePath: string): Promise<boolean> {
+  if (typeof api().listFiles !== 'function') return false;
+  try {
+    await api().listFiles(filePath);
+  } catch {
+    return false;
+  }
+  if (typeof api().fileExists === 'function' && !(await api().fileExists(filePath))) {
+    return false;
+  }
+  const parent = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
+  const name = filePath.split('/').pop();
+  if (typeof api().listFiles === 'function' && name) {
+    try {
+      const siblings = await api().listFiles(parent);
+      const entry = (siblings || []).find((item: any) => item.name === name);
+      if (entry) return !!entry.isDirectory;
+    } catch {
+      /* parent unlistable — hidden dirs fall through as folders */
+    }
+  }
+  return true;
+}
+
 async function trashPathLocal(filePath: string): Promise<void> {
   const dest = await uniqueVaultPath(localTrashPath(filePath));
   if (api().renameFile) {
@@ -45,9 +98,37 @@ async function trashPathLocal(filePath: string): Promise<void> {
       await api().renameFile(filePath, dest);
       return;
     } catch {
-      /* fall through to copy-delete */
+      /* fall through */
     }
   }
+
+  if (await pathIsDirectory(filePath)) {
+    if (api().createDirectory) await api().createDirectory(dest);
+    const entries = typeof api().listFiles === 'function' ? await api().listFiles(filePath).catch(() => []) : [];
+    for (const entry of entries || []) {
+      const childPath = entry.path || `${filePath.replace(/\/$/, '')}/${entry.name}`;
+      const childDest = `${dest}/${entry.name}`;
+      if (api().renameFile) {
+        try {
+          await api().renameFile(childPath, childDest);
+          continue;
+        } catch {
+          /* copy below */
+        }
+      }
+      if (entry.isDirectory) {
+        await trashPathLocal(childPath);
+        continue;
+      }
+      const content = (await api().readFile(childPath)) || '';
+      if (api().createFile) await api().createFile(childDest, content);
+      else await api().writeFile(childDest, content);
+      await api().deleteFile(childPath);
+    }
+    if (api().deleteDirectory) await api().deleteDirectory(filePath);
+    return;
+  }
+
   const content = (await api().readFile(filePath)) || '';
   if (api().createFile) await api().createFile(dest, content);
   else await api().writeFile(dest, content);
@@ -169,23 +250,13 @@ export class OOVault extends Events {
         if (typeof api().fileExists === 'function' && !(await api().fileExists(relative))) {
           return null;
         }
-        const parent = relative.includes('/') ? relative.slice(0, relative.lastIndexOf('/')) : '';
-        const name = relative.split('/').pop();
-        if (typeof api().listFiles === 'function') {
-          try {
-            const siblings = await api().listFiles(parent);
-            const entry = (siblings || []).find((item: any) => item.name === name);
-            if (entry) {
-              return {
-                type: entry.isDirectory ? 'folder' : 'file',
-                ctime: entry.modifiedAt || Date.now(),
-                mtime: entry.modifiedAt || Date.now(),
-                size: entry.size || 0,
-              };
-            }
-          } catch {
-            /* hidden or unlistable parent */
-          }
+        if (await pathIsDirectory(relative)) {
+          return {
+            type: 'folder',
+            ctime: Date.now(),
+            mtime: Date.now(),
+            size: 0,
+          };
         }
         if (typeof api().fileExists === 'function' && await api().fileExists(relative)) {
           return { type: 'file', ctime: Date.now(), mtime: Date.now(), size: 0 };

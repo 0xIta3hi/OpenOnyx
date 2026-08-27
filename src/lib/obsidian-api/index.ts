@@ -50,6 +50,7 @@ export { OOApp as App } from './app';
 
 // ── Vault ───────────────────────────────────────────
 export { OOVault as Vault } from './vault';
+import { applyPreferredTrash } from './vault';
 
 // ── Workspace & Views ───────────────────────────────
 export {
@@ -657,14 +658,7 @@ export class FileManager {
     return confirm(`Delete ${file.path}?`);
   }
   async trashFile(file: TAbstractFile): Promise<void> {
-    let system = false;
-    try {
-      const saved = JSON.parse(localStorage.getItem('openonyx-settings') || '{}');
-      system = saved.deletedFilesMode === 'system-trash';
-    } catch {
-      system = false;
-    }
-    await this._app?.vault?.trash(file, system);
+    if (this._app?.vault) await applyPreferredTrash(this._app.vault, file);
   }
   generateMarkdownLink(file: TFile, sourcePath: string, subpath?: string, alias?: string): string {
     const display = alias || file.basename;
