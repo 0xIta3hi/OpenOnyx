@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/OpenOnyx/OpenOnyx"><img alt="Main Repository" src="https://img.shields.io/badge/Repository-OpenOnyx-111827?style=for-the-badge&logo=github"></a>
-  <a href="https://github.com/OpenOnyx/OpenOnyx/releases"><img alt="Latest Release" src="https://img.shields.io/badge/Release-v1.0.3-47848F?style=for-the-badge&logo=electron"></a>
+  <a href="https://github.com/OpenOnyx/OpenOnyx/releases"><img alt="Latest Release" src="https://img.shields.io/badge/Release-v1.0.4-47848F?style=for-the-badge&logo=electron"></a>
   <a href="https://github.com/OpenOnyx/OpenOnyx/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache%202.0-10B981?style=for-the-badge"></a>
 </p>
 
@@ -28,7 +28,7 @@ Our core philosophy is simple: **Your thoughts belong to you.** Notes should res
 | **Markdown & Canvas Native** | Full support for standard `.md` formatting, Obsidian `.canvas` visual maps, KaTeX equations, and wiki-link connections. |
 | **Grounded AI Retrieval** | Local embeddings with Transformers.js and optional RAG capabilities allow you to query your vault securely without exposing raw notes. |
 | **Plugin Ecosystem Support** | Engineered runtime layer compatible with Obsidian API interfaces, enabling rich community plugin support. |
-| **Cross-Platform Availability** | Native desktop experiences for Linux (AppImage, deb, rpm, pacman), macOS (dmg, zip), and Windows (nsis, portable). |
+| **Cross-Platform Availability** | Desktop builds for Linux (AppImage, deb, Arch pkg), macOS (dmg, zip), and Windows (nsis, portable). |
 
 ---
 
@@ -99,7 +99,7 @@ npm run dev
 
 We welcome contributions from developers, researchers, and writers. Whether you are adding features, refining plugin compatibility, fixing bugs, or improving documentation:
 
-- Read our [Contribution Guidelines](https://github.com/OpenOnyx/OpenOnyx/blob/main/README.md#contributing).
+- Read our [Contribution Guidelines](https://github.com/OpenOnyx/OpenOnyx/blob/main/CONTRIBUTING.md).
 - Explore open issues in the [OpenOnyx Issue Tracker](https://github.com/OpenOnyx/OpenOnyx/issues).
 - Check the project [Architecture Documentation](https://github.com/OpenOnyx/OpenOnyx/tree/main/docs).
 

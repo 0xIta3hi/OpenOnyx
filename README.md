@@ -20,7 +20,6 @@ OpenOnyx is a professional desktop knowledge management app built around plain M
 
 The app is built with Electron, React, TypeScript, CodeMirror, D3, Tailwind CSS, Transformers.js, IndexedDB, and Supabase.
 
-
 ## Why OpenOnyx
 
 OpenOnyx is for writers, researchers, engineers, students, and teams who want a serious knowledge base without surrendering their files to a proprietary silo.
@@ -33,217 +32,119 @@ OpenOnyx is for writers, researchers, engineers, students, and teams who want a 
 | Cloud when you choose | Supabase-backed sync, collaboration, and public Spaces are optional. |
 | Plugin-aware | OpenOnyx targets Obsidian plugin compatibility through a tested runtime layer. |
 
-## Feature Tour
+## To start using OpenOnyx
 
-### 1. Markdown Workspace
+You do not need an account, a cloud project, or an API key to write. There is no shipped phone app. Current release is **[v1.0.4](https://github.com/OpenOnyx/OpenOnyx/releases/tag/v1.0.4)**.
 
-Write in a fast CodeMirror-powered editor with live preview, source mode, split panes, tab groups, backlinks, tags, outline, properties, and wiki links. OpenOnyx keeps the editing surface focused while making surrounding context available when you need it.
+A **vault** is any folder you choose. Your notes are the `.md` files in that folder. OpenOnyx reads them; it does not lock them in a database. Cache and indexes go in a `.openonyx` folder inside the vault — you can ignore that folder in git.
 
-Key capabilities:
+Stuck after install? [Open an issue](https://github.com/OpenOnyx/OpenOnyx/issues) or ask in [Discussions](https://github.com/OpenOnyx/OpenOnyx/discussions).
 
-- Markdown editing with live preview and sanitized rendering
-- Wiki links with `[[note-name]]` syntax
-- KaTeX math support
-- Backlinks, outgoing links, unlinked mentions, tags, outline, and properties panels
-- Split panes, multi-tab workspaces, tab groups, and recent vault history
-- Vim mode support with editor commands for common workflows
-- Interactive WYSIWYG table editor that replaces raw pipe-syntax markdown with an inline-editable table, complete with row/column insertion tools and cell caret synchronization.
+### Install
 
-<p align="center">
-  <img width="1200" alt="Markdown workspace" src="docs/images/markdown-workspace.png" />
-</p>
+Pick your OS. Linux packages on this release are **x86_64**.
 
-### 2. Vault Navigation and Search
+**Windows**
 
-Move through large vaults with quick switching, global search, in-note search, bookmarks, daily notes, context menus, and a file explorer that keeps ordinary folders as the source of truth.
+- [Installer](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe) — run `OpenOnyx.Setup.1.0.4.exe`
+- [Portable](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.1.0.4.exe) — no installer; run the `.exe`
 
-Key capabilities:
+Signed by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/).
 
-- Fuzzy vault search and quick switcher
-- Search and replace inside the active note
-- Daily note creation
-- Bookmarks and recent vault workflows
-- File explorer actions for notes, folders, assets, and canvases
-- Global keyboard shortcuts for fast navigation
+```powershell
+Invoke-WebRequest -Uri https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe -OutFile OpenOnyx.Setup.1.0.4.exe
+```
 
-### 3. Knowledge Graph
+**macOS**
 
-Explore relationships between notes through an interactive graph built for local vaults. The graph helps reveal dense clusters, isolated notes, hidden relationships, and important hubs in the knowledge base.
+Apple menu → About This Mac → Chip. If it says Apple, use Apple Silicon. If it says Intel, use Intel.
 
-Key capabilities:
+- Apple Silicon — [OpenOnyx-1.0.4-arm64.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg)
+- Intel — [OpenOnyx-1.0.4.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg)
 
-- Interactive note graph with configurable physics and display settings
-- Canvas2D rendering path for larger graph views
-- Search, focus, filtering, and node centering tools
-- Persistent layout and theme-aware graph styling
-- Edge and node controls for precise exploration
+Open the `.dmg`, drag **OpenOnyx** into **Applications**, then launch it from there.
 
-<p align="center">
-  <img width="1200" alt="Knowledge graph" src="docs/images/knowledge-graph.png" />
-</p>
+```bash
+# Apple Silicon
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg
 
-### 4. AI Knowledge Graph
+# Intel
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg
+```
 
-Use semantic similarity and graph analysis to surface relationships that are not obvious from manual links alone. The AI graph can highlight suggested links, bridge notes, idea islands, central concepts, clusters, and directional reading flows.
+If Gatekeeper blocks the app: right-click → Open, or `xattr -cr /Applications/OpenOnyx.app`.
 
-Key capabilities:
+**Linux**
 
-- Semantic graph generation from local embeddings
-- Suggested connections between related notes
-- Bridge note insights across clusters
-- Idea island detection for isolated topic groups
-- Focus cards for concepts, links, clusters, and generated explanations
-- Configurable thresholds, node limits, and cluster breadth
+- [AppImage](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage)
+- Debian / Ubuntu — [openonyx_1.0.4_amd64.deb](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb)
+- Arch — [openonyx-1.0.4-1-x86_64.pkg.tar.zst](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst)
 
-<p align="center">
-  <img width="1200" alt="AI knowledge graph" src="docs/images/ai-knowledge-graph.png" />
-</p>
+There is no official `.rpm`.
 
-### 5. Canvas
+```bash
+# AppImage
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage
+chmod +x OpenOnyx-1.0.4.AppImage
+./OpenOnyx-1.0.4.AppImage
 
-Create visual maps of notes, ideas, and relationships with Obsidian-style `.canvas` support. Canvas files stay portable and live beside the rest of the vault.
+# Debian / Ubuntu
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb
+sudo dpkg -i openonyx_1.0.4_amd64.deb
 
-Key capabilities:
+# Arch
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst
+sudo pacman -U openonyx-1.0.4-1-x86_64.pkg.tar.zst
+```
 
-- Obsidian-style `.canvas` document support
-- Canvas nodes, edges, toolbar controls, and recent canvas tracking
-- Duplicate and save-as flows
-- Markdown note embedding inside visual layouts
-- Compatibility tests for canvas document behavior
+**macOS and Linux — one command** (detects the OS and installs the matching package):
 
-<p align="center">
-  <img width="1200" alt="Canvas workspace" src="docs/images/canvas-workspace.png" />
-</p>
+```bash
+curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash
+```
 
-### 6. Spaces
+### First launch
 
-Spaces turn a vault into a queryable knowledge layer. A Space indexes notes, chunks content, creates embeddings, and lets users ask contextual questions over their own material.
+The welcome screen can **create a new folder** or **open an existing one**. That folder is the vault.
 
-Key capabilities:
+- New to this: create an empty folder. You will add notes inside the app.
+- Coming from Obsidian: open the folder you already use. Notes, `[[wiki links]]`, tags, and `.canvas` files stay on disk. You can keep using Obsidian on the same folder.
+- Switch later with **File → Open Vault**. `Ctrl/Cmd+O` is the note switcher, not “open another vault.”
 
-- Local Spaces stored in IndexedDB
-- Private and public cloud-backed Spaces through Supabase
-- Browser-native embeddings with `@xenova/transformers` (cached locally for offline use; keyword search fallback when model is not cached)
-- RAG chat with source citations back to notes
-- Suggested queries, indexing progress, and vault previews
-- Public Space discovery, upvotes, and Remix/fork workflows
+No account. Writing works offline.
 
-<p align="center">
-  <img width="1200" alt="Spaces dashboard" src="docs/images/spaces-dashboard.png" />
-</p>
+### First session
 
-### 7. AI Writing and Synthesis
+1. `Ctrl/Cmd+N` — new note. Type. `Ctrl/Cmd+S` saves the `.md` file in the vault.
+2. Link notes with `[[other-note]]`.
+3. `Ctrl/Cmd+O` jumps to a note by name. `Ctrl/Cmd+Shift+F` searches file contents. `Ctrl/Cmd+P` is the command palette.
+4. `Ctrl/Cmd+G` opens the graph (your wiki links as a map).
+5. Open **Spaces**, create a local Space, and ask a question over the folder. The first time may download the on-device embedding model; after that, retrieval stays local. Answers that call a remote model need an OpenAI or OpenRouter key in Settings. Local embeddings do not.
 
-OpenOnyx includes optional AI assistance for writing, editing, synthesis, and vault-level reasoning. Remote LLM providers are used only when configured.
+| Keys | What it does |
+| --- | --- |
+| `Ctrl/Cmd+N` | New note |
+| `Ctrl/Cmd+S` | Save |
+| `Ctrl/Cmd+O` | Jump to a note |
+| `Ctrl/Cmd+Shift+F` | Search the vault |
+| `Ctrl/Cmd+P` | Command palette |
+| `Ctrl/Cmd+G` | Graph |
 
-Key capabilities:
+### AI and optional cloud
 
-- Inline AI writing actions in the editor
-- Retrieval-grounded answers from Spaces
-- Note annotations and related-note suggestions
-- Contradiction, expansion, and synthesis hints
-- Configurable OpenAI and OpenRouter providers
-- Source-aware responses designed for vault context
-
-<p align="center">
-  <img width="1200" alt="AI writing tools" src="docs/images/ai-writing-tools.png" />
-</p>
-
-### 8. Sync and Collaboration
-
-Cloud features are optional, but when enabled OpenOnyx can sync Spaces, preserve offline edits, and support collaborative workflows through a Supabase-backed data model.
-
-Key capabilities:
-
-- Optional Supabase authentication
-- Offline-first sync queue with retry handling
-- Deduplication of pending local mutations
-- Last-write-wins conflict resolution
-- Local IndexedDB cache for durable offline state
-- Supabase `pgvector` schema for semantic matching
-<p align="center">
-  <img width="1200" alt="Collaboration Settings" src="docs/images/Collaboration-settings.png" />
-</p>
-
-### 9. Plugin System
-
-OpenOnyx includes an Obsidian-compatible runtime layer and a plugin management experience for community-style plugins.
-
-Key capabilities:
-
-- Obsidian API compatibility layer based on the official `obsidian` package
-- Plugin marketplace and local plugin management UI
-- Commands, ribbon actions, status bar items, settings tabs, custom views, and sidebars
-- Markdown processors, editor extensions, lifecycle cleanup, and compatibility checks
-- Runtime isolation, permission prompts, manifest caching, and crash containment
-- Regression tests against real community plugin bundles
-
-<p align="center">
-  <img width="1200" alt="Plugin marketplace" src="docs/images/plugin-marketplace.png" />
-</p>
-
-### 10. Themes and Interface
-
-The interface is built for long working sessions: quiet surfaces, readable typography, restrained contrast, and theme-aware components across the editor, graph, settings, modals, and plugin views.
-
-Key capabilities:
-
-- Dark, light, oceanic, and custom theme support
-- Theme-aware graph and editor surfaces
-- Responsive pane layout
-- Command palette, modals, settings pages, and status bar
-- Logo and icon assets in `public/`
-
-<p align="center">
-  <img width="1200" alt="Plugin marketplace" src="docs/images/themes.png" />
-</p>
-
-
-### 11. Custom Wallpaper Backgrounds
-
-Customize your environment by uploading any custom image to serve as the application-level wallpaper. Panel translucency overlays automatically adjust to blend with your background.
-
-Key capabilities:
-
-- Upload and apply any custom image files as the application background
-- Adjustable background blur controller to soften the wallpaper details
-- Adjustable background opacity controller to maintain perfect typography contrast
-- Fully translucent panel options for the editor, left sidebar, and right sidebar panels
-
-<p align="center">
-  <img width="1200" alt="Wallpaper Background" src="docs/images/wallpaper-background.png" />
-</p>
-
-### 12. Export and Compatibility Tooling
-
-OpenOnyx includes compatibility infrastructure for export plugins and plugin runtimes that expect desktop APIs.
-
-Key capabilities:
-
-- Managed Pandoc 3.10 WASM backend for export plugins
-- Electron and Node compatibility shims for plugin workflows
-- Canvas compatibility tests
-- Obsidian API runtime export checks
-- Live compatibility scripts for selected plugins
-
-### Installation & Downloads
-
-Download official binaries for your platform from the [GitHub Releases Page](https://github.com/OpenOnyx/OpenOnyx/releases).
-
-#### Platform Notes:
-- **macOS Gatekeeper**: If macOS shows *"OpenOnyx.app cannot be opened because it is from an unidentified developer"* or *"damaged and cannot be opened"*, right-click `OpenOnyx.app` → select **Open**, or run this command in Terminal after moving to Applications:
-  ```bash
-  xattr -cr /Applications/OpenOnyx.app
-  ```
-- **Windows**: Download `.exe` installer from Releases. Free code signing provided by [SignPath.io](https://signpath.io/) and certificate by [SignPath Foundation](https://signpath.org/).
-- **Linux**: Download `.AppImage`, `.deb`, `.rpm`, or `.pkg.tar.zst` from Releases, or run `curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash`.
-
-### Prerequisites
-
-- Node.js 24.x or newer
-- npm 9.x or newer
-
-### Run Locally
+| You want | What you set up |
+| --- | --- |
+| Write, search, graph | Nothing |
+| Local Spaces (index the folder, retrieve with citations) | Nothing. Model caches on first use. |
+| Inline rewrite / Spaces answers from a remote model | Your OpenAI or OpenRouter key in Settings |
+| Sync Spaces across machines | Your own Supabase project (see [To start developing](#to-start-developing-openonyx)) |
+| Live multiplayer editing | In the app, but the collaboration panel currently shows a maintenance notice |
+
+Community plugins go through an Obsidian-compatible runtime. Compatibility is tested; it is not a promise that every plugin is perfect.
+
+## To start developing OpenOnyx
+
+You need [Node.js](https://nodejs.org/) 22 or newer and npm 9+. You do **not** need this if you only want to use the desktop app above.
 
 ```bash
 git clone https://github.com/OpenOnyx/OpenOnyx.git
@@ -252,9 +153,9 @@ npm install
 npm run dev
 ```
 
-`npm run dev` builds the Electron main process, starts Vite on port `5173`, and launches the Electron app against the local dev server.
+That builds the Electron main process, starts Vite at `http://localhost:5173`, and launches the desktop app.
 
-If Electron's postinstall download was skipped or interrupted, the dev launcher will try to repair `node_modules/electron` automatically before starting the desktop app. If the repair cannot download Electron because of a network or proxy issue, run:
+If Electron’s postinstall download was skipped:
 
 ```bash
 npm config set ignore-scripts false
@@ -262,239 +163,20 @@ npm rebuild electron
 npm run dev
 ```
 
-### Build a Desktop Package
-
-```bash
-npm run package
-```
-
-Electron Builder writes distributable artifacts to `release/`.
-
-Platform-specific builds:
-
-- `npm run package:win` builds Windows `.exe` installers.
-- `npm run package:mac` builds macOS `.dmg` and `.zip` artifacts.
-- `npm run package:linux` builds Linux `.AppImage`, `.deb`, `.rpm`, and Arch pacman package artifacts.
-- `npm run package:all` requests every configured target. Use CI for real cross-platform releases because macOS installers must be produced on macOS.
-
-GitHub release builds are handled by `.github/workflows/release.yml`. Push a tag such as `v1.0.0`, or run the workflow manually with a tag, and the workflow will attach the Windows, macOS, and Linux installer files to the GitHub Release.
-
-On Arch-based local machines, the `.deb`, `.rpm`, and pacman targets require `libxcrypt-compat` for Electron Builder's bundled `fpm` tool. The GitHub workflow installs the Ubuntu equivalent automatically.
-
-Package-manager publishing templates for AUR, Homebrew, and winget are documented in [`docs/release/package-distribution.md`](docs/release/package-distribution.md).
-
-## Configuration
-
-OpenOnyx runs without environment variables for local vault editing, local search, local embeddings, local graphs, and local Spaces.
-
-Cloud-backed features require Supabase:
-
-```bash
-cp .env.example .env.local
-```
-
-Then set:
-
-```env
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
-```
-
-### Supabase Setup
-
-1. Create a Supabase project.
-2. Enable the `vector` extension in **Database > Extensions**.
-3. Open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql).
-4. Copy the project URL and anon key from **Project Settings > API**.
-5. Add those values to `.env.local` or paste them into the in-app database settings.
-
-Optional OAuth redirect configuration:
-
-```env
-VITE_SUPABASE_REDIRECT_URL=https://your-project-id.supabase.co/auth/v1/callback
-```
-
-### AI Provider Setup
-
-Local embeddings do not require an API key. Remote generation features use provider credentials configured in the app settings for OpenAI or OpenRouter.
-
-## Development
-
-Common commands:
-
-| Command | Description |
+| Command | Purpose |
 | --- | --- |
-| `npm run dev` | Build Electron, start Vite, and launch the desktop app |
-| `npm run build` | Type-check, build the renderer, and build Electron |
-| `npm run build:electron` | Compile the Electron main and preload process |
-| `npm run package` | Build and package desktop installers |
-| `npm run lint` | Run TypeScript with `--noEmit` |
+| `npm run dev` | Desktop app + Vite |
+| `npm run lint` | Typecheck (`tsc --noEmit`) |
+| `npm run test` | Unit tests |
+| `npm run test:plugin-runtime` | Plugin API runtime tests |
+| `npm run test:all-checks` | Full contributor gate |
+| `npm run package` | Local installers in `release/` |
 
-The Vite dev server uses:
+Platform packages: `npm run package:mac`, `package:win`, `package:linux`. Tagged GitHub releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml). Distro templates are in [`packaging/`](packaging/).
 
-```text
-http://localhost:5173
-```
+Optional Spaces sync uses [`.env.example`](.env.example) → `.env.local` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) and [`supabase/schema.sql`](supabase/schema.sql). Local vaults, search, graph, and local Spaces need no environment variables.
 
-Useful development environment variables:
-
-| Variable | Purpose |
-| --- | --- |
-| `VITE_DEV_SERVER_URL` | Override the renderer URL loaded by Electron |
-| `OPENONYX_DEBUG_PORT` | Enable Chromium remote debugging for Electron |
-| `OPENONYX_VERBOSE_CHROMIUM_LOGS=1` | Keep verbose Chromium logs in development |
-| `OPENONYX_PANDOC_DIR` | Override the managed Pandoc backend directory |
-| `OPENONYX_PANDOC_ARCHIVE` | Install Pandoc backend from a local archive |
-| `OPENONYX_PANDOC_WASM` | Override the Pandoc WASM path used by the runner |
-
-## Testing
-
-### All-in-One Verification
-Contributors can verify their changes against compilation, API definitions, document processors, unit tests, integration sandboxes, and build integrity configurations using a single command. This command automatically sets up any missing prerequisites (like Pandoc WASM and plugin fixtures) to ensure execution succeeds:
-
-```bash
-npm run test:all-checks
-```
-
-### Running Specific Tests
-You can also trigger individual test runs manually:
-
-```bash
-# Compilation check / Type check
-npm run lint
-
-# Test the settings and build installer packaging configuration
-npx vitest run tests/build-integrity.test.ts
-
-# Test general features (tab groups, embedding cache, etc.)
-npx vitest run tests/tab-groups.test.ts tests/embedding-cache.test.ts
-
-# Test Obsidian API sandbox compatibility runtime layer
-npm run test:plugin-runtime
-```
-
-Pandoc-backed export compatibility:
-
-```bash
-npm run install:pandoc-backend
-npm run test:pandoc-backend
-```
-
-Live plugin tests are available for selected plugins:
-
-```bash
-npm run test:kanban-live
-npm run test:excalidraw-live
-npm run test:notebook-navigator-live
-```
-
-Some live tests expect a vault path through environment variables such as `OO_KANBAN_VAULT`, `OO_EXCALIDRAW_VAULT`, or `OO_NOTEBOOK_NAVIGATOR_VAULT`.
-
-## Architecture
-
-OpenOnyx uses Electron's multi-process model with a strict boundary between the renderer and local system access.
-
-```text
-Renderer Process
-React, CodeMirror, D3, Spaces UI, plugin UI, local AI workers
-        |
-        | window.electronAPI
-        v
-Preload Process
-contextBridge IPC surface
-        |
-        | ipcRenderer / ipcMain
-        v
-Main Process
-window lifecycle, vault filesystem, search index, dialogs, shell integration
-        |
-        v
-Local Vault
-Markdown files, canvas files, assets, .openonyx cache
-```
-
-Core principles:
-
-- Local-first storage: notes are ordinary files, and local indexes stay on device by default.
-- Context isolation: renderer code cannot directly access Node.js APIs.
-- Async filesystem access: vault operations are routed through IPC handlers.
-- Durable local state: IndexedDB stores Spaces, chunks, vector indexes, sync metadata, and pending mutations.
-- Optional remote services: Supabase and LLM providers are used only for features that need them.
-- Plugin compatibility: the runtime exposes Obsidian-like APIs while keeping plugin execution contained.
-
-## Project Structure
-
-```text
-.
-|-- electron/                    # Electron main, preload, IPC, filesystem, search
-|-- src/
-|   |-- components/              # React UI: editor, graph, canvas, settings, plugins, spaces
-|   |-- context/                 # Shared React context
-|   |-- editor/                  # CodeMirror extensions
-|   |-- keybindings/             # Global keyboard behavior
-|   |-- lib/                     # Supabase, sync, local DB, plugin manager, Obsidian API
-|   |-- styles/                  # Theme and generated-document style helpers
-|   |-- types/                   # TypeScript domain types
-|   `-- utils/                   # AI, embeddings, RAG, filesystem helpers, app utilities
-|-- supabase/
-|   |-- schema.sql               # Tables, RLS, pgvector functions, sync schema
-|   `-- functions/               # Edge functions for chat and embeddings
-|-- docs/                        # Architecture, feature docs, and screenshot slots
-|   `-- images/                  # README screenshots and feature images
-|-- scripts/                     # Dev, compatibility, fixture, and Pandoc scripts
-|-- tests/                       # Vitest and runtime compatibility tests
-|-- public/                      # Logos, icons, and static assets
-|-- vite.config.ts               # Vite, React, Tailwind, and WASM runtime aliases
-`-- package.json                 # Scripts, dependencies, and Electron Builder config
-```
-
-## Plugin Compatibility
-
-OpenOnyx targets the public Obsidian plugin API using the official `obsidian` npm package as its baseline.
-
-Current compatibility coverage includes:
-
-- Runtime export audit against `obsidian@1.13.1`
-- CodeMirror 6 and legacy CodeMirror 5 access patterns
-- Commands, ribbon icons, status bars, modals, settings tabs, sidebars, custom views, workspace leaves, Markdown processors, and cleanup lifecycles
-- Node/Electron compatibility shims for plugins that expect desktop APIs
-- Managed Pandoc 3.10 WASM backend for export plugins
-- Regression tests for real plugin bundles including Dataview, Templater, Tasks, Calendar, Kanban, Style Settings, Advanced Tables, QuickAdd, Obsidian Git, Excalidraw, Better Export PDF, Enhancing Export, and Reading Time
-
-See [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) for the full compatibility matrix and verification flow.
-
-## Privacy and Security
-
-- Core note editing, search, graph navigation, local embeddings (with keyword search fallback when offline prior to first model cache), and local Spaces work offline.
-- Notes are stored as local files in the selected vault.
-- Local indexes, embeddings, and caches stay on device unless the user enables cloud-backed features.
-- The renderer runs with context isolation and talks to the filesystem through a preload IPC bridge.
-- Supabase is optional and used for authentication, sync, collaboration, public Spaces, and vector search.
-- Remote LLM providers are optional and receive only the prompts/context needed for the selected AI workflow.
-- Private Spaces are designed around client-side encryption and key wrapping.
-- The project does not include product analytics or telemetry.
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl+N` / `Cmd+N` | Create note |
-| `Ctrl+S` / `Cmd+S` | Save current note |
-| `Ctrl+F` / `Cmd+F` | Search inside current note |
-| `Ctrl+Shift+F` / `Cmd+Shift+F` | Search vault |
-| `Ctrl+O` / `Cmd+O` | Quick switcher |
-| `Ctrl+P` / `Cmd+P` | Command palette |
-| `Ctrl+G` / `Cmd+G` | Open graph |
-| `Ctrl+Shift+C` / `Cmd+Shift+C` | Create or open canvas |
-| `Ctrl+B` / `Cmd+B` | Toggle sidebar |
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+W` / `Cmd+W` | Close active tab |
-| `Escape` | Close modal or transient panel |
-
-## Documentation
-
-The product website and user guide live in [`website/`](website/):
+The website is a separate Vite app:
 
 ```bash
 cd website
@@ -502,22 +184,37 @@ npm install
 npm run dev
 ```
 
-- [`website/`](website/) — marketing site, interactive vault graph, and user docs
-- [`docs/spaces.md`](docs/spaces.md) — Spaces architecture, indexing, RAG, storage, sync
-- [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) — plugin API coverage and the real-plugin regression matrix
-- [`changelog.md`](changelog.md) — project changes
+## Website
+
+The product site and user guide live in [`website/`](website/). Run it locally with the commands above. [openonyx.dev](https://openonyx.dev) is a **placeholder** — do not treat that URL as live docs until it is.
+
+Contributor technical notes: [`docs/`](docs/README.md) (Spaces internals, plugin API matrix).
 
 ## Contributing
 
-1. Fork the repository.
-2. Create a focused feature branch.
-3. Install dependencies with `npm install`.
-4. Make the change using the existing architecture and style.
-5. Run the relevant checks, at minimum `npm run lint`.
-6. Open a pull request with a clear description of the behavior changed and the verification performed.
+We love our contributors. If you want to help, start with [CONTRIBUTING.md](CONTRIBUTING.md). Fork, branch from `main`, keep the change small, run `npm run lint` and the tests that match what you touched, then open a pull request against `OpenOnyx/OpenOnyx`.
 
-For changes that touch plugins, Spaces, sync, AI retrieval, filesystem behavior, or Electron IPC, include the matching compatibility or integration tests where practical.
+This community has a [Code of Conduct](CODE_OF_CONDUCT.md). Please follow it.
+
+Good first issues are labeled [`good first issue`](https://github.com/OpenOnyx/OpenOnyx/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+
+## Our Roadmap
+
+What is shipped, what is next, and what is later: [docs/roadmap.md](docs/roadmap.md). The living backlog is [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues).
+
+## Getting in touch
+
+- [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues) — bugs and features
+- [GitHub Discussions](https://github.com/OpenOnyx/OpenOnyx/discussions) — questions
+- [openonyx@gmail.com](mailto:openonyx@gmail.com) — project contact
+- Security reports: [SECURITY.md](SECURITY.md) (not the public tracker)
+
+## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Red%20Heart.png" alt="Red Heart" width="40" height="40" /> Contributors
+
+<a href="https://github.com/OpenOnyx/OpenOnyx/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=OpenOnyx/OpenOnyx" alt="OpenOnyx contributors" />
+</a>
 
 ## License
 
-OpenOnyx is released under the [Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE).

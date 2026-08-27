@@ -20,7 +20,7 @@ OpenOnyx spaces support three visibility levels:
 The Spaces system operates as a multi-tier pipeline extending from raw local files to in-browser Web Workers, local databases, and remote cloud databases.
 
 ### A. The Automated Indexing Lifecycle
-When a space is created or selected, the app initiates an asynchronous indexing process controlled by [spaces-processing.ts](file:///home/varshith/VOLT/notework/src/utils/spaces-processing.ts):
+When a space is created or selected, the app initiates an asynchronous indexing process controlled by [`src/utils/spaces-processing.ts`](../src/utils/spaces-processing.ts):
 1. **File Tree Scan**: The engine traverses the entire active vault directory, locating all `.md` (Markdown) and `.canvas` (Obsidian Canvas) files.
 2. **Content Extraction**: Textual content is read, stripping out heavy formatting while preserving headers, lists, tags, and inline links.
 3. **Semantic Chunking**: Long notes are parsed into small, overlapping semantic chunks (average 500-1000 characters) to ensure localized semantic meaning is retained during search.
@@ -28,7 +28,7 @@ When a space is created or selected, the app initiates an asynchronous indexing 
 5. **Local Storage**: Chunks, metadata, and embeddings are committed to IndexedDB.
 
 ### B. The Retrieval-Augmented Generation (RAG) Query Lifecycle
-When a user asks a question inside a Space, the AI uses a local-first retrieval loop managed by [spaces-rag.ts](file:///home/varshith/VOLT/notework/src/utils/spaces-rag.ts):
+When a user asks a question inside a Space, the AI uses a local-first retrieval loop managed by [`src/utils/spaces-rag.ts`](../src/utils/spaces-rag.ts):
 1. **Query Embedding**: The user's prompt is embedded locally using the same Web Worker model.
 2. **Semantic Similarity Search**:
    * For **Local Spaces**: The engine runs a local cosine similarity search across all stored chunks in IndexedDB.
@@ -44,14 +44,14 @@ When a user asks a question inside a Space, the AI uses a local-first retrieval 
 To ensure seamless coordination between offline and online states, both the local database (IndexedDB) and the remote database (Supabase) share structurally symmetric schemas.
 
 ### A. Local IndexedDB Schema (`openonyx-local`)
-Defined in [localdb.ts](file:///home/varshith/VOLT/notework/src/lib/localdb.ts), the database consists of several primary object stores:
+Defined in [`src/lib/localdb.ts`](../src/lib/localdb.ts), the database consists of several primary object stores:
 * **`spaces`**: Keyed by `id` (UUID). Contains `title`, `description`, `helps_with` (tags), `note_count`, `visibility` ('local' | 'private' | 'public'), `owner_id`, `created_at`, and `updated_at`.
 * **`notes`**: Keyed by `id` (UUID). Tracks note-level metadata, including the parent `space_id`, `title`, `pinned`, `is_canvas`, and `deleted` (for soft-deletions).
 * **`note_chunks`**: Keyed by `id` (UUID). Stores raw text `content` and the floating-point `embedding` vector array. Includes an index on `by-note` for cascading deletions.
 * **`sync_queue`**: A persistent transaction log storing mutations (`insert`, `update`, `delete`) containing exact payload copies and `retry_count` flags to guarantee delivery.
 
 ### B. Supabase Cloud Schema
-Defined in [schema.sql](file:///home/varshith/VOLT/notework/supabase/schema.sql), this PostgreSQL database provides cloud-side indexing, RLS, and similarity matching:
+Defined in [`supabase/schema.sql`](../supabase/schema.sql), this PostgreSQL database provides cloud-side indexing, RLS, and similarity matching:
 * **Soft-Deletes**: The `notes` table contains a `deleted` column. A trigger blocks deleted notes from showing up in vector searches.
 * **High-Speed Vector Similarity**: Uses the `pgvector` extension to run fast cosine similarity searches inside PostgreSQL functions:
   * `match_note_chunks`: Similarity matches chunks within a specific space.
@@ -61,7 +61,7 @@ Defined in [schema.sql](file:///home/varshith/VOLT/notework/supabase/schema.sql)
 
 ## 4. The Resilient Synchronization Engine
 
-The [SyncEngine](file:///home/varshith/VOLT/notework/src/lib/syncEngine.ts) is a robust background process executing the offline-first synchronization logic.
+The [`SyncEngine`](../src/lib/syncEngine.ts) is a robust background process executing the offline-first synchronization logic.
 
 ### A. Queue-Based Mutations & Deduplication
 Every write operation to the local database is intercepted by the `enqueueChange` helper. The change is stored in `sync_queue` using a unique key (`${table}_${record_id}`). 
@@ -105,5 +105,5 @@ Constructs the interactive workflow inside an active space:
 
 Local Spaces work without an account or environment configuration. To enable the optional Spaces cloud sync feature in a deployment, ensure that:
 1. **Environment Variables**: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are defined in your `.env.local`.
-2. **Engine Bootstrapping**: Import `syncEngine` inside your main entry file [main.tsx](file:///home/varshith/VOLT/notework/src/main.tsx) to ensure background processes are fully instantiated on startup.
+2. **Engine Bootstrapping**: Import `syncEngine` inside your main entry file [`src/main.tsx`](../src/main.tsx) to ensure background processes are fully instantiated on startup.
 3. **In-UI Status Observers**: Subscribe your interface to `syncEngine.onStatusChange(state)` to render state changes dynamically in the interface.
