@@ -1,28 +1,48 @@
 # OpenOnyx
 
-Local-first knowledge workspace for Markdown vaults. Notes stay as files on disk. Graph, Spaces (RAG), canvas, and an Obsidian-compatible plugin runtime ship in the desktop app. Apache-2.0. No product telemetry.
+[![License](https://img.shields.io/badge/License-Apache%202.0-111827)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/OpenOnyx/OpenOnyx?sort=semver)](https://github.com/OpenOnyx/OpenOnyx/releases)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-339933)](package.json)
 
-**Product tour and user guide:** run the site in [`website/`](website/) (`cd website && npm install && npm run dev`). Downloads: [Releases](https://github.com/OpenOnyx/OpenOnyx/releases).
+<img src="public/logos/logo-light.png" width="96" alt="OpenOnyx">
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-111827?style=flat-square)](LICENSE)
-![Electron 41](https://img.shields.io/badge/Electron-41-47848F?style=flat-square)
-![Node 22+](https://img.shields.io/badge/node-%3E%3D22-339933?style=flat-square)
+----
 
-## Download
+OpenOnyx is an open-source, local-first knowledge workspace. Notes are ordinary Markdown (and `.canvas`) files in a folder you choose. The desktop app adds a graph, Spaces (local RAG), and an [Obsidian-compatible](docs/obsidian-plugin-compatibility.md) plugin runtime. Cloud sync and remote models are optional. There is no product telemetry.
 
-Binaries are on the [GitHub Releases](https://github.com/OpenOnyx/OpenOnyx/releases) page (v1.0.4).
+The source of truth for the product is this repository. The user-facing site and guide live in [`website/`](website/).
 
-- **macOS:** `.dmg` / `.zip`. If Gatekeeper says the app is damaged or from an unidentified developer, right-click → Open, or `xattr -cr /Applications/OpenOnyx.app`.
-- **Windows:** `.exe`. Signing is provided by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/).
-- **Linux:** `.AppImage`, `.deb`, or Arch `.pkg.tar.zst`, or:
+----
+
+## To start using OpenOnyx
+
+See the [website](website/) (user docs and product tour) and download a build from [Releases](https://github.com/OpenOnyx/OpenOnyx/releases).
+
+Current release is **v1.0.4**.
+
+| Platform | Artifact |
+| --- | --- |
+| macOS | `.dmg` / `.zip`. If Gatekeeper blocks the app: right-click → Open, or `xattr -cr /Applications/OpenOnyx.app` |
+| Windows | `.exe`. Signing by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/) |
+| Linux | `.AppImage`, `.deb`, or Arch `.pkg.tar.zst` |
+
+Linux installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OpenOnyx/OpenOnyx/main/scripts/install.sh | bash
 ```
 
-## Develop
+To run the website locally:
 
-Requires **Node.js 22+** and npm 9+.
+```bash
+cd website
+npm install
+npm run dev
+```
+
+## To start developing OpenOnyx
+
+You need [Node.js](https://nodejs.org/) 22 or newer and npm 9+.
 
 ```bash
 git clone https://github.com/OpenOnyx/OpenOnyx.git
@@ -31,7 +51,9 @@ npm install
 npm run dev
 ```
 
-That compiles Electron, starts Vite on `http://localhost:5173`, and launches the desktop app. If Electron’s postinstall download was skipped:
+That builds the Electron main process, starts Vite at `http://localhost:5173`, and launches the desktop app.
+
+If Electron’s postinstall download was skipped:
 
 ```bash
 npm config set ignore-scripts false
@@ -39,66 +61,39 @@ npm rebuild electron
 npm run dev
 ```
 
-| Command | What it does |
+| Command | Purpose |
 | --- | --- |
-| `npm run dev` | Electron + Vite |
-| `npm run lint` | `tsc --noEmit` |
-| `npm run test` | Unit tests (excludes live plugin-bundle suite) |
-| `npm run test:plugin-runtime` | Obsidian API runtime tests |
-| `npm run test:all-checks` | Full contributor gate (types, tests, fixtures) |
-| `npm run package` | Installers in `release/` |
-| `npm run package:mac` / `package:win` / `package:linux` | Platform packages |
+| `npm run dev` | Desktop app + Vite |
+| `npm run lint` | Typecheck (`tsc --noEmit`) |
+| `npm run test` | Unit tests |
+| `npm run test:plugin-runtime` | Plugin API runtime tests |
+| `npm run test:all-checks` | Full contributor gate |
+| `npm run package` | Local installers in `release/` |
 
-`package:linux` produces AppImage (and the Linux packager). Cross-platform release artifacts are built by `.github/workflows/release.yml` from a version tag.
+Platform packages: `npm run package:mac`, `package:win`, `package:linux`. Tagged GitHub releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml). Distro templates are in [`packaging/`](packaging/).
 
-Packaging templates (AUR, Homebrew, winget) live in [`packaging/`](packaging/).
+Optional Spaces sync uses [`.env.example`](.env.example) → `.env.local` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) and [`supabase/schema.sql`](supabase/schema.sql). Local vaults, search, graph, and local Spaces need no environment variables.
 
-## Cloud and AI (optional)
+## Documentation
 
-Local vaults, search, graph, embeddings, and local Spaces need no env vars.
-
-For Spaces sync / auth, copy `.env.example` to `.env.local`:
-
-```env
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-Enable the `vector` extension, run [`supabase/schema.sql`](supabase/schema.sql), then paste the project URL and anon key (or use in-app database settings). Remote writing models (OpenAI / OpenRouter) are configured in the app, not required for local embeddings.
-
-Live multiplayer editing uses Yjs and is currently under maintenance. Offline Spaces sync uses a queue plus last-write-wins for metadata; rejected edits are kept as `Note (conflict).md`.
-
-## Layout
-
-```
-electron/     main process, IPC, vault filesystem
-src/          renderer (editor, graph, canvas, Spaces, plugins)
-supabase/     optional schema and edge functions
-website/      marketing site and user docs
-docs/         contributor docs (see docs/README.md)
-scripts/      install, Pandoc, plugin fixtures
-tests/        Vitest and compatibility scripts
-packaging/    AUR / Homebrew / winget templates
-```
-
-## Docs
-
-| Doc | Audience |
+| | |
 | --- | --- |
-| [`website/`](website/) | Users: product, download, how-to |
-| [`docs/README.md`](docs/README.md) | Index of remaining repo docs |
-| [`docs/spaces.md`](docs/spaces.md) | Spaces indexing, RAG, sync internals |
-| [`docs/obsidian-plugin-compatibility.md`](docs/obsidian-plugin-compatibility.md) | Plugin API matrix |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to send a change |
-| [`SECURITY.md`](SECURITY.md) | Vulnerability reports |
-| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Community rules |
-| [`changelog.md`](changelog.md) | History |
+| [website/](website/) | User guide and product site |
+| [docs/](docs/README.md) | Contributor docs |
+| [docs/spaces.md](docs/spaces.md) | Spaces, RAG, sync internals |
+| [docs/obsidian-plugin-compatibility.md](docs/obsidian-plugin-compatibility.md) | Plugin API matrix |
+| [changelog.md](changelog.md) | Release history |
 
-## Contribute
+## Contributing
 
-Fork, branch from `main`, keep the change small, run `npm run lint` (and the tests that match what you touched). Open a PR against `OpenOnyx/OpenOnyx`. Details: [CONTRIBUTING.md](CONTRIBUTING.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Fork, branch from `main`, keep the change small, run `npm run lint` and the tests that match what you touched, then open a pull request against `OpenOnyx/OpenOnyx`.
 
-Security issues: [SECURITY.md](SECURITY.md) — not the public issue tracker.
+This project has a [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Support
+
+- Bugs and features: [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues)
+- Security reports: [SECURITY.md](SECURITY.md) (not the public tracker)
 
 ## License
 
