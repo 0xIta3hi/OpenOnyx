@@ -54,8 +54,10 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
       <div
         role="dialog"
         aria-label="Command palette"
+        aria-modal="true"
         className="w-full max-w-[520px] bg-(--bg-primary) border border-(--border-medium) rounded-xl shadow-none overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
       >
         <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-subtle)">
           <span className="text-(--text-muted) text-lg shrink-0">{modifierLabel}</span>
@@ -69,7 +71,6 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            onKeyDown={handleKeyDown}
           />
         </div>
 

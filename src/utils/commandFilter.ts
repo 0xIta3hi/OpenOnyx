@@ -9,7 +9,7 @@ export function filterCommands<T extends FilterableCommand>(commands: T[], query
   return filterCommandsByWords(commands, query);
 }
 
-/** Word-aware filter: every word must appear in the label or category. */
+/** Word-aware filter: every word must appear in the id, label, or category. */
 export function filterCommandsByWords<T extends FilterableCommand>(commands: T[], query: string): T[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return commands;
