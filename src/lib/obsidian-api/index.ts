@@ -50,6 +50,7 @@ export { OOApp as App } from './app';
 
 // ── Vault ───────────────────────────────────────────
 export { OOVault as Vault } from './vault';
+import { applyPreferredTrash } from './vault';
 
 // ── Workspace & Views ───────────────────────────────
 export {
@@ -226,8 +227,19 @@ export class FileSystemAdapter {
   getFilePath(path: string): string { return `${this.basePath}/${normalizePath(path)}`; }
   getFullPath(path: string): string { return this.getFilePath(path); }
   async readLocalFile(path: string): Promise<ArrayBuffer> { return this.readBinary(path); }
-  async trashLocal(path: string): Promise<void> { await this.delegate?.trashLocal?.(path); }
-  async trashSystem(path: string): Promise<boolean> { return !!(await this.delegate?.trashSystem?.(path)); }
+  async trashLocal(path: string): Promise<void> {
+    if (this.delegate?.trashLocal) {
+      await this.delegate.trashLocal(path);
+      return;
+    }
+    await (window as any).__oo_app?.vault?.adapter?.trashLocal?.(path);
+  }
+  async trashSystem(path: string): Promise<boolean> {
+    if (this.delegate?.trashSystem) {
+      return !!(await this.delegate.trashSystem(path));
+    }
+    return !!(await (window as any).__oo_app?.vault?.adapter?.trashSystem?.(path));
+  }
 }
 
 // ── Keymap (obsidian-git uses Keymap.isModifier) ──
@@ -646,7 +658,7 @@ export class FileManager {
     return confirm(`Delete ${file.path}?`);
   }
   async trashFile(file: TAbstractFile): Promise<void> {
-    await this._app?.vault?.trash(file, false);
+    if (this._app?.vault) await applyPreferredTrash(this._app.vault, file);
   }
   generateMarkdownLink(file: TFile, sourcePath: string, subpath?: string, alias?: string): string {
     const display = alias || file.basename;
@@ -665,7 +677,7 @@ export class FileManager {
     await this._app?.vault?.modify(file, newContent);
   }
   async getAvailablePathForAttachment(filename: string, sourcePath?: string): Promise<string> {
-    return filename;
+    return this._app?.vault?.getAvailablePathForAttachments?.(filename, sourcePath || '') || filename;
   }
 }
 

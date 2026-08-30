@@ -3,7 +3,7 @@
  * The root App object that plugins receive.
  */
 
-import { OOVault } from './vault';
+import { applyPreferredTrash, OOVault } from './vault';
 import { OOWorkspace } from './workspace';
 import { OOMetadataCache } from './metadata';
 import { normalizePath, parseYaml, Scope, stringifyYaml } from './utils';
@@ -197,7 +197,7 @@ export class OOApp {
         await this.vault.delete(file);
         return true;
       },
-      trashFile: async (file: any) => this.vault.trash(file, false),
+      trashFile: async (file: any) => applyPreferredTrash(this.vault, file),
       promptForFileDeletion: async (file: any) => {
         if (confirm(`Are you sure you want to delete ${file.path}?`)) {
           return this.vault.delete(file);

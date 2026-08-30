@@ -9,6 +9,141 @@ import { normalizePath } from './utils';
 
 const api = () => (window as any).electronAPI;
 
+function slashPath(value: string): string {
+  return (value || '').replace(/\\/g, '/');
+}
+
+/** Map an adapter.fs path (often absolute) back to a vault-relative path. */
+export function toVaultRelative(path: string, basePath: string): string {
+  const normalized = slashPath(path || '').replace(/\/+$/, '');
+  const base = slashPath(basePath || '').replace(/\/+$/, '');
+  if (base && (normalized === base || normalized.startsWith(`${base}/`))) {
+    return normalized.slice(base.length).replace(/^\/+/, '');
+  }
+  if (normalized === '/' || normalized === '') return '';
+  return normalizePath(normalized);
+}
+
+export type DeletedFilesMode = 'system-trash' | 'app-trash' | 'permanent';
+
+export function readDeletedFilesMode(): DeletedFilesMode {
+  try {
+    const saved = JSON.parse(localStorage.getItem('openonyx-settings') || '{}');
+    if (saved.deletedFilesMode === 'system-trash' || saved.deletedFilesMode === 'permanent') {
+      return saved.deletedFilesMode;
+    }
+  } catch {
+    /* use local trash */
+  }
+  return 'app-trash';
+}
+
+export async function applyPreferredTrash(vault: OOVault, file: TAbstractFile): Promise<void> {
+  const mode = readDeletedFilesMode();
+  if (mode === 'permanent') {
+    await vault.delete(file);
+    return;
+  }
+  await vault.trash(file, mode === 'system-trash');
+}
+
+function localTrashPath(filePath: string): string {
+  return `.trash/${normalizePath(filePath)}`;
+}
+
+async function uniqueVaultPath(filePath: string): Promise<string> {
+  if (!(await api().fileExists?.(filePath))) return filePath;
+  const lastDot = filePath.lastIndexOf('.');
+  const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  const hasExt = lastDot > lastSlash;
+  const stem = hasExt ? filePath.slice(0, lastDot) : filePath;
+  const ext = hasExt ? filePath.slice(lastDot) : '';
+  let index = 1;
+  let candidate = `${stem}-${index}${ext}`;
+  while (await api().fileExists?.(candidate)) {
+    index += 1;
+    candidate = `${stem}-${index}${ext}`;
+  }
+  return candidate;
+}
+
+async function pathIsDirectory(filePath: string): Promise<boolean> {
+  if (typeof api().listFiles !== 'function') return false;
+  try {
+    await api().listFiles(filePath);
+  } catch {
+    return false;
+  }
+  if (typeof api().fileExists === 'function' && !(await api().fileExists(filePath))) {
+    return false;
+  }
+  const parent = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
+  const name = filePath.split('/').pop();
+  if (typeof api().listFiles === 'function' && name) {
+    try {
+      const siblings = await api().listFiles(parent);
+      const entry = (siblings || []).find((item: any) => item.name === name);
+      if (entry) return !!entry.isDirectory;
+    } catch {
+      /* parent unlistable — hidden dirs fall through as folders */
+    }
+  }
+  return true;
+}
+
+async function trashPathLocal(filePath: string): Promise<void> {
+  const dest = await uniqueVaultPath(localTrashPath(filePath));
+  if (api().renameFile) {
+    try {
+      await api().renameFile(filePath, dest);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (await pathIsDirectory(filePath)) {
+    if (api().createDirectory) await api().createDirectory(dest);
+    const entries = typeof api().listFiles === 'function' ? await api().listFiles(filePath).catch(() => []) : [];
+    for (const entry of entries || []) {
+      const childPath = entry.path || `${filePath.replace(/\/$/, '')}/${entry.name}`;
+      const childDest = `${dest}/${entry.name}`;
+      if (api().renameFile) {
+        try {
+          await api().renameFile(childPath, childDest);
+          continue;
+        } catch {
+          /* copy below */
+        }
+      }
+      if (entry.isDirectory) {
+        await trashPathLocal(childPath);
+        continue;
+      }
+      const content = (await api().readFile(childPath)) || '';
+      if (api().createFile) await api().createFile(childDest, content);
+      else await api().writeFile(childDest, content);
+      await api().deleteFile(childPath);
+    }
+    if (api().deleteDirectory) await api().deleteDirectory(filePath);
+    return;
+  }
+
+  const content = (await api().readFile(filePath)) || '';
+  if (api().createFile) await api().createFile(dest, content);
+  else await api().writeFile(dest, content);
+  await api().deleteFile(filePath);
+}
+
+async function trashPathSystem(filePath: string): Promise<boolean> {
+  if (typeof api().trashFile === 'function') {
+    await api().trashFile(filePath);
+    return true;
+  }
+  await trashPathLocal(filePath);
+  return false;
+}
+
 export class OOVault extends Events {
   adapter: any;
   configDir = '.openonyx';
@@ -29,30 +164,73 @@ export class OOVault extends Events {
     this._files.set('/', this._root);
     
     // Initialize adapter with stubs and real implementations where possible
+    const vault = this;
     this.adapter = {
       getBasePath: () => this._path || (window as any).__oo_vault_path || '',
       getName: () => this.getName(),
       fs: {
-        exists: (path: string, cb: any) => { cb(true); },
-        stat: (path: string, cb: any) => { cb(null, { isDirectory: () => false }); },
-        readFile: (path: string, enc: any, cb: any) => { cb(null, ''); },
-        writeFile: (path: string, data: any, enc: any, cb: any) => { cb(null); },
+        exists: (path: string, cb: any) => {
+          void vault.adapter.exists(toVaultRelative(path, vault.adapter.getBasePath()))
+            .then((exists: boolean) => cb(exists))
+            .catch(() => cb(false));
+        },
+        existsSync: (path: string) => {
+          const relative = toVaultRelative(path, vault.adapter.getBasePath());
+          return !!vault.getAbstractFileByPath(relative);
+        },
+        stat: (path: string, cb: any) => {
+          void vault.adapter.stat(toVaultRelative(path, vault.adapter.getBasePath()))
+            .then((stat: any) => {
+              if (!stat) {
+                cb(new Error('ENOENT'));
+                return;
+              }
+              cb(null, {
+                isDirectory: () => stat.type === 'folder',
+                isFile: () => stat.type === 'file',
+                mtime: new Date(stat.mtime || Date.now()),
+                ctime: new Date(stat.ctime || Date.now()),
+                size: stat.size || 0,
+              });
+            })
+            .catch((err: unknown) => cb(err));
+        },
+        readFile: (path: string, enc: any, cb: any) => {
+          const callback = typeof enc === 'function' ? enc : cb;
+          void vault.adapter.read(toVaultRelative(path, vault.adapter.getBasePath()))
+            .then((data: string) => callback(null, data))
+            .catch((err: unknown) => callback(err));
+        },
+        writeFile: (path: string, data: any, enc: any, cb: any) => {
+          const callback = typeof enc === 'function' ? enc : cb;
+          void vault.adapter.writeFile(toVaultRelative(path, vault.adapter.getBasePath()), String(data))
+            .then(() => callback?.(null))
+            .catch((err: unknown) => callback?.(err));
+        },
       },
       // Essential DataAdapter methods
       read: async (path: string) => {
-        const file = this.getAbstractFileByPath(path);
+        const relative = normalizePath(path);
+        const file = this.getAbstractFileByPath(relative);
         if (file instanceof TFile) return await this.read(file);
-        throw new Error('Not a file');
+        const raw = await api().readFile(relative);
+        if (raw === null || raw === undefined) throw new Error('Not a file');
+        return raw;
       },
       write: async (path: string, data: string) => {
         return await this.adapter.writeFile(path, data);
       },
       exists: async (path: string) => {
-        return !!this.getAbstractFileByPath(path);
+        const relative = normalizePath(path);
+        if (this.getAbstractFileByPath(relative)) return true;
+        if (typeof api().fileExists === 'function') {
+          return !!(await api().fileExists(relative));
+        }
+        return false;
       },
       stat: async (path: string) => {
-        const file = this.getAbstractFileByPath(path);
-        if (!file) return null;
+        const relative = normalizePath(path);
+        const file = this.getAbstractFileByPath(relative);
         if (file instanceof TFile) {
           return {
             type: 'file',
@@ -61,29 +239,63 @@ export class OOVault extends Events {
             size: file.stat.size
           };
         }
-        return {
-          type: 'folder',
-          ctime: Date.now(),
-          mtime: Date.now(),
-          size: 0
-        };
+        if (file instanceof TFolder) {
+          return {
+            type: 'folder',
+            ctime: Date.now(),
+            mtime: Date.now(),
+            size: 0
+          };
+        }
+        if (typeof api().fileExists === 'function' && !(await api().fileExists(relative))) {
+          return null;
+        }
+        if (await pathIsDirectory(relative)) {
+          return {
+            type: 'folder',
+            ctime: Date.now(),
+            mtime: Date.now(),
+            size: 0,
+          };
+        }
+        if (typeof api().fileExists === 'function' && await api().fileExists(relative)) {
+          return { type: 'file', ctime: Date.now(), mtime: Date.now(), size: 0 };
+        }
+        return null;
       },
       getResourcePath: (path: string) => {
         const base = this.adapter.getBasePath();
         return `app://local${base}/${path}`;
       },
       list: async (path: string) => {
-        const folder = this.getAbstractFileByPath(path);
-        if (folder instanceof TFolder) {
+        const relative = normalizePath(path);
+        const folder = this.getAbstractFileByPath(relative);
+        if (folder instanceof TFolder && folder.children.length > 0) {
           return {
             files: folder.children.filter(f => f instanceof TFile).map(f => f.path),
             folders: folder.children.filter(f => f instanceof TFolder).map(f => f.path)
           };
         }
+        if (typeof api().listFiles === 'function') {
+          try {
+            const entries = await api().listFiles(relative === '/' ? '' : relative);
+            const prefix = !relative || relative === '/' ? '' : `${relative}/`;
+            return {
+              files: (entries || []).filter((entry: any) => !entry.isDirectory).map((entry: any) => entry.path || `${prefix}${entry.name}`),
+              folders: (entries || []).filter((entry: any) => entry.isDirectory).map((entry: any) => entry.path || `${prefix}${entry.name}`),
+            };
+          } catch {
+            return { files: [], folders: [] };
+          }
+        }
         return { files: [], folders: [] };
       },
-      trashLocal: async () => {},
-      trashSystem: async () => {},
+      trashLocal: async (path: string) => {
+        await trashPathLocal(normalizePath(path));
+      },
+      trashSystem: async (path: string) => {
+        return trashPathSystem(normalizePath(path));
+      },
       mkdir: async (path: string) => {
         await api().createDirectory(path);
         await this.refreshFiles();
@@ -389,8 +601,34 @@ export class OOVault extends Events {
     this.trigger('delete', file);
   }
 
-  async trash(file: TAbstractFile, system: boolean): Promise<void> {
-    return this.delete(file);
+  async trash(file: TAbstractFile, system?: boolean): Promise<void> {
+    const useSystem = system === true;
+    if (useSystem) {
+      await trashPathSystem(file.path);
+    } else {
+      await trashPathLocal(file.path);
+    }
+
+    const removeEntry = (entry: TAbstractFile) => {
+      this._files.delete(entry.path);
+      (window as any).__oo_app?.metadataCache?.deletePath?.(entry.path);
+    };
+
+    if (file instanceof TFolder) {
+      const prefix = file.path.endsWith('/') ? file.path : `${file.path}/`;
+      for (const entry of Array.from(this._files.values())) {
+        if (entry.path === file.path || entry.path.startsWith(prefix)) {
+          removeEntry(entry);
+        }
+      }
+    } else {
+      removeEntry(file);
+    }
+
+    window.dispatchEvent(new CustomEvent('openonyx:file-deleted', {
+      detail: { path: file.path, isDirectory: file instanceof TFolder },
+    }));
+    this.trigger('delete', file);
   }
 
   async rename(file: TAbstractFile, newPath: string): Promise<void> {
