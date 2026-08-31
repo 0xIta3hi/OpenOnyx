@@ -4376,6 +4376,12 @@ export function Editor({
 
     // If view already exists, just update content
     if (viewRef.current) {
+      // When Yjs CRDT collaboration is active, ytext is the authoritative source of truth.
+      // Do not dispatch full-document replacements on content prop updates,
+      // as ySync would interpret them as local user edits and duplicate content.
+      if (yCollabExtensionRef.current) {
+        return;
+      }
       const currentDoc = viewRef.current.state.doc.toString();
       if (currentDoc !== content) {
         viewRef.current.dispatch({
@@ -5122,6 +5128,13 @@ export function Editor({
   useEffect(() => {
     if (isSpecialTab) return;
     if (!viewRef.current) return;
+
+    // When Yjs CRDT collaboration is active, ytext is the authoritative source of truth.
+    // Do not dispatch full-document replacements on content prop updates,
+    // as ySync would interpret them as local user edits and duplicate content.
+    if (yCollabExtensionRef.current) {
+      return;
+    }
 
     // If the user edited locally very recently, the content prop is stale.
     // Skip the full-doc replace to avoid clobbering ongoing typing.

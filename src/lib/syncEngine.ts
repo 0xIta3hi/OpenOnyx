@@ -529,6 +529,11 @@ export class SyncEngine {
                 console.warn('[SyncEngine] Client-side LWW check failed:', e);
               }
             }
+            if (table === 'notes') {
+              if (payload.content === null || payload.content === undefined) {
+                payload.content = '';
+              }
+            }
             if (isPrivateSpace && table === 'notes') {
               const encrypted = await privateCrypto.encryptNoteContent(this.activeSpaceId, payload);
               finalPayloads.push({

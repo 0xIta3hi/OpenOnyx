@@ -44,4 +44,27 @@ describe("Yjs note merge", () => {
     expect(a.getText("content").toString()).toContain("A");
     expect(a.getText("content").toString()).toContain("B");
   });
+
+  it("does not duplicate content on repeated document hydration", () => {
+    const doc = new Y.Doc();
+    const text = doc.getText("content");
+    const initialContent = "# SQL_Overview\n\nThis is SQL overview.";
+
+    // First hydration
+    if (text.length === 0) {
+      doc.transact(() => {
+        text.insert(0, initialContent);
+      }, 'init');
+    }
+    expect(text.toString()).toBe(initialContent);
+
+    // Simulated second hydration (e.g. app restart or tab reopen)
+    if (text.length === 0) {
+      doc.transact(() => {
+        text.insert(0, initialContent);
+      }, 'init');
+    }
+    expect(text.toString()).toBe(initialContent);
+    expect(text.toString().match(/SQL_Overview/g)?.length).toBe(1);
+  });
 });

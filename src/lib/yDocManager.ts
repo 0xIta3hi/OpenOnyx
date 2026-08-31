@@ -219,7 +219,9 @@ class YDocManagerImpl {
           const fileContent = await api.readFile(cleanPath);
           if (fileContent && fileContent.length > 0) {
             doc.transact(() => {
-              text.insert(0, fileContent);
+              if (text.length === 0) {
+                text.insert(0, fileContent);
+              }
             }, 'init');
             console.log(`[YJS] Hydrated document from filesystem (.md) (${fileContent.length} chars)`);
           }

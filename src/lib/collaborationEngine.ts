@@ -25,7 +25,7 @@
 import { supabase } from './supabase';
 import { authManager } from './auth';
 import { localDB } from './localdb';
-import { normalizeSyncPath } from './syncEngine';
+import { normalizeSyncPath, hasYjsSnapshot } from './syncEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getAPI } from '../utils/api';
 import { yDocManager } from './yDocManager';
@@ -1845,7 +1845,9 @@ class CollaborationEngine {
 
     // When Yjs CRDT is actively managing this note, Yjs is the single source of truth for text.
     // Skip legacy Postgres LWW version comparisons and overwrite_prevented logs.
-    if (yDocManager.hasDoc(cleanPath, remoteNote.space_id)) {
+    const hasActiveYjs = yDocManager.hasDoc(cleanPath, remoteNote.space_id) ||
+      await hasYjsSnapshot(remoteNote.space_id, cleanPath);
+    if (hasActiveYjs) {
       return;
     }
     let remoteContent = remoteNote.content || '';

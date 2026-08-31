@@ -197,6 +197,15 @@ export function LeafPaneEditor({
           keymap.of(yUndoManagerKeymap),
         ];
         console.log(`[YJS] Bound CodeMirror for note: ${activeTab.path} (guid: ${result.doc.guid})`);
+
+        // Update content state and caches with the authoritative ytext content
+        const docText = result.text.toString();
+        setContent(docText);
+        latestContentRef.current = docText;
+        latestContentPathRef.current = activeTab.path;
+        contentCacheRef.current.set(activeTab.path, docText);
+        onContentChangeGlobalRef.current(activeTab.path, docText, false);
+
         setYCollabExtension(ext);
       } catch (err) {
         console.error('[CRDT] Failed to open Y.Doc:', err);
@@ -936,10 +945,11 @@ export function LeafPaneEditor({
     return unsub;
   }, [activeTab.path, onContentChangeGlobal, collabFailSafe, enterFailSafeMode]);
 
-  // Re-sync active note upon network reconnection or page focus
+  // Re-sync active note upon network reconnection or page focus (legacy LWW mode only)
   useEffect(() => {
     if (activeTab.path === "__new_tab__") return;
     if (!collaborationEngine.activeSpaceId) return;
+    if (useCRDT) return; // Yjs CRDT handles its own sync; do not run legacy LWW polling
 
     const handleReSync = async () => {
       // Only pull if there are no pending unsaved local edits
