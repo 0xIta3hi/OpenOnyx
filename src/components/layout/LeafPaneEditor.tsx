@@ -199,7 +199,20 @@ export function LeafPaneEditor({
         console.log(`[YJS] Bound CodeMirror for note: ${activeTab.path} (guid: ${result.doc.guid})`);
 
         // Update content state and caches with the authoritative ytext content
-        const docText = result.text.toString();
+        let docText = result.text.toString();
+        if (docText.length === 0 && activeTab.path !== '__new_tab__') {
+          try {
+            const diskContent = await api.readFile(activeTab.path);
+            if (diskContent && diskContent.length > 0 && result.text.length === 0) {
+              result.doc.transact(() => {
+                result.text.insert(0, diskContent);
+              }, 'init');
+              docText = diskContent;
+            }
+          } catch (e) {
+            console.warn('[YJS] Could not read disk content for hydration:', e);
+          }
+        }
         setContent(docText);
         latestContentRef.current = docText;
         latestContentPathRef.current = activeTab.path;
@@ -343,8 +356,9 @@ export function LeafPaneEditor({
       latestContentPathRef.current = activeTab.path;
     } else {
       setContentPath(activeTab.path);
-      setContent("");
-      latestContentRef.current = "";
+      const fallbackContent = getNoteContent(activeTab.name) || getNoteContent(activeTab.path) || "";
+      setContent(fallbackContent);
+      latestContentRef.current = fallbackContent;
       latestContentPathRef.current = activeTab.path;
     }
     
@@ -357,8 +371,9 @@ export function LeafPaneEditor({
           setIsLoading(false);
           return;
         }
-        const c = await api.readFile(activeTab.path);
+        const diskContent = await api.readFile(activeTab.path);
         if (!isActive) return;
+        const c = diskContent ?? "";
         const spaceId = collaborationEngine.activeSpaceId;
         if (spaceId) {
           const note = await localDB.getNoteByPath(spaceId, activeTab.path);
@@ -374,15 +389,21 @@ export function LeafPaneEditor({
         setContent(c);
         latestContentRef.current = c;
         latestContentPathRef.current = activeTab.path;
+
+        // Immediately update CodeMirror view if editor is ready
+        if (editorViewRef.current && editorViewRef.current.state.doc.toString() !== c) {
+          editorViewRef.current.dispatch({
+            changes: { from: 0, to: editorViewRef.current.state.doc.length, insert: c },
+            annotations: [Transaction.remote.of(true)],
+          });
+        }
+
         onContentChangeGlobalRef.current(activeTab.path, c, false);
         setIsLoading(false);
       } catch (err) {
         if (isActive) {
           setFileExists(false);
           setContentPath(activeTab.path);
-          setContent("");
-          latestContentRef.current = "";
-          latestContentPathRef.current = activeTab.path;
           setIsLoading(false);
           console.error("Failed to load note content:", err);
         }

@@ -1383,98 +1383,100 @@ export function Sidebar({
                       {selectedFolder === "" ? "Root Directory" : selectedFolder ? selectedFolder.split("/").pop() : "Root Directory"}
                     </span>
                   </div>
-                {groupedNotes.length > 0 ? (
-                  groupedNotes.map((section) => {
-                    const isCollapsed = collapsedSections[section.id];
-                    return (
-                      <React.Fragment key={section.id}>
-                        <button
-                          className="nn-section-header"
-                          onClick={() =>
-                            setCollapsedSections((prev) => ({
-                              ...prev,
-                              [section.id]: !prev[section.id],
-                            }))
-                          }
-                        >
-                          <span>{section.title}</span>
-                          <ChevronDown
-                            size={12}
-                            className="nn-section-header-chevron"
-                            style={{
-                              transform: isCollapsed ? "rotate(-90deg)" : "none",
-                            }}
-                          />
-                        </button>
-                        {!isCollapsed &&
-                          section.notes.map((note) => {
-                            const isActive = note.path === activeFilePath;
-                            const isStarred = starredNotes.includes(note.path);
-                            const snippet = previews[note.path];
-                            const dateStr = getRelativeDate(note.modifiedAt);
-                            const isCanvas = note.extension === ".canvas";
-
-                            const isRenaming = note.path === renamingPath;
-                            return (
-                              <div
-                                key={note.path}
-                                className={cx("nn-note-card", isActive && "active")}
-                                onClick={(e) => {
-                                  if (isRenaming) {
-                                    e.stopPropagation();
-                                    return;
-                                  }
-                                  onFileSelect(note.path);
+                  <div className="nn-notes-list">
+                    {groupedNotes.length > 0 ? (
+                      groupedNotes.map((section) => {
+                        const isCollapsed = collapsedSections[section.id];
+                        return (
+                          <React.Fragment key={section.id}>
+                            <button
+                              className="nn-section-header"
+                              onClick={() =>
+                                setCollapsedSections((prev) => ({
+                                  ...prev,
+                                  [section.id]: !prev[section.id],
+                                }))
+                              }
+                            >
+                              <span>{section.title}</span>
+                              <ChevronDown
+                                size={12}
+                                className="nn-section-header-chevron"
+                                style={{
+                                  transform: isCollapsed ? "rotate(-90deg)" : "none",
                                 }}
-                                onContextMenu={(e) => handleContextMenu(e, note.path, false)}
-                                draggable={!isRenaming}
-                                onDragStart={(e) => handleDragStart(e, note.path)}
-                              >
-                                {isRenaming ? (
-                                  <form onSubmit={handleRenameSubmit} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginBottom: '4px' }}>
-                                    <input
-                                      className={renameInputClass}
-                                      value={renameValue}
-                                      onChange={(e) => setRenameValue(e.target.value)}
-                                      onBlur={handleRenameSubmit}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Escape') {
-                                          setRenamingPath(null);
-                                          setRenameValue("");
-                                        }
-                                      }}
-                                      autoFocus
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                  </form>
-                                ) : (
-                                  <div className="nn-card-title">{getNoteName(note.name)}</div>
-                                )}
-                                <div className="nn-card-meta">
-                                  {snippet && snippet !== "No additional text" && (
-                                    <div className="nn-card-snippet">{snippet}</div>
-                                  )}
-                                  <div className="nn-card-date">{dateStr}</div>
-                                </div>
-                                {(isCanvas || isStarred) && (
-                                  <div className="nn-card-indicators">
-                                    {isCanvas && <span className="nn-badge">Canvas</span>}
-                                    {isStarred && <Star size={12} className="text-amber-500 fill-amber-500 shrink-0" />}
+                              />
+                            </button>
+                            {!isCollapsed &&
+                              section.notes.map((note) => {
+                                const isActive = note.path === activeFilePath;
+                                const isStarred = starredNotes.includes(note.path);
+                                const snippet = previews[note.path];
+                                const dateStr = getRelativeDate(note.modifiedAt);
+                                const isCanvas = note.extension === ".canvas";
+
+                                const isRenaming = note.path === renamingPath;
+                                return (
+                                  <div
+                                    key={note.path}
+                                    className={cx("nn-note-card", isActive && "active")}
+                                    onClick={(e) => {
+                                      if (isRenaming) {
+                                        e.stopPropagation();
+                                        return;
+                                      }
+                                      onFileSelect(note.path);
+                                    }}
+                                    onContextMenu={(e) => handleContextMenu(e, note.path, false)}
+                                    draggable={!isRenaming}
+                                    onDragStart={(e) => handleDragStart(e, note.path)}
+                                  >
+                                    {isRenaming ? (
+                                      <form onSubmit={handleRenameSubmit} onClick={(e) => e.stopPropagation()} style={{ width: '100%', marginBottom: '4px' }}>
+                                        <input
+                                          className={renameInputClass}
+                                          value={renameValue}
+                                          onChange={(e) => setRenameValue(e.target.value)}
+                                          onBlur={handleRenameSubmit}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Escape') {
+                                              setRenamingPath(null);
+                                              setRenameValue("");
+                                            }
+                                          }}
+                                          autoFocus
+                                          onClick={(e) => e.stopPropagation()}
+                                        />
+                                      </form>
+                                    ) : (
+                                      <div className="nn-card-title">{getNoteName(note.name)}</div>
+                                    )}
+                                    <div className="nn-card-meta">
+                                      {snippet && snippet !== "No additional text" && (
+                                        <div className="nn-card-snippet">{snippet}</div>
+                                      )}
+                                      <div className="nn-card-date">{dateStr}</div>
+                                    </div>
+                                    {(isCanvas || isStarred) && (
+                                      <div className="nn-card-indicators">
+                                        {isCanvas && <span className="nn-badge">Canvas</span>}
+                                        {isStarred && <Star size={12} className="text-amber-500 fill-amber-500 shrink-0" />}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                      </React.Fragment>
-                    );
-                  })
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-[var(--text-muted)] p-4">
-                    <FileText size={24} className="opacity-30" />
-                    <div>No notes here</div>
+                                );
+                              })}
+                          </React.Fragment>
+                        );
+                      })
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-[var(--text-muted)] p-4">
+                        <FileText size={24} className="opacity-30" />
+                        <div>No notes here</div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
             )}
             </div>
           </>

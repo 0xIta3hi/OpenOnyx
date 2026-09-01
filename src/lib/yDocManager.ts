@@ -225,8 +225,8 @@ class YDocManagerImpl {
             }, 'init');
             console.log(`[YJS] Hydrated document from filesystem (.md) (${fileContent.length} chars)`);
           }
-        } catch {
-          // File may not exist yet (new note)
+        } catch (err) {
+          console.warn(`[YJS] Error hydrating note from filesystem: ${cleanPath}`, err);
         }
       }
     }

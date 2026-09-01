@@ -5130,10 +5130,11 @@ export function Editor({
     if (!viewRef.current) return;
 
     // When Yjs CRDT collaboration is active, ytext is the authoritative source of truth.
-    // Do not dispatch full-document replacements on content prop updates,
-    // as ySync would interpret them as local user edits and duplicate content.
+    // Do not dispatch full-document replacements on content prop updates unless CM doc is empty.
     if (yCollabExtensionRef.current) {
-      return;
+      if (viewRef.current.state.doc.length > 0 || !content || content.length === 0) {
+        return;
+      }
     }
 
     // If the user edited locally very recently, the content prop is stale.

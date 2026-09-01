@@ -3181,6 +3181,8 @@ export default function App() {
       await collaborationEngine.persistNoteEdit(candidatePath, content);
       syncEngine.triggerPush();
     }
+    setFtuxState((prev) => ({ ...prev, notesCount: Math.max(1, prev.notesCount + 1) }));
+    setVaultEntryTransitionPhase("idle");
     await refreshFileTree();
     await openFile(candidatePath, "editor");
     setFirstThoughtDraft("");
@@ -3429,7 +3431,8 @@ export default function App() {
       if (!isHostEditableMarkdownPath(path)) return;
 
       // Keep currentContentRef updated synchronously
-      if (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path) {
+      const isCurrentActiveTabPath = (activeTab?.path === path) || (activeTabId && tabs.find((t) => t.id === activeTabId)?.path === path);
+      if (isCurrentActiveTabPath) {
         currentContentRef.current = content;
         currentContentPathRef.current = path;
 
@@ -4090,6 +4093,14 @@ export default function App() {
     return getNotes(fileTree);
   }, [fileTree]);
 
+  useEffect(() => {
+    const count = allNoteNames.length;
+    setFtuxState((prev) => {
+      if (prev.notesCount === count) return prev;
+      return { ...prev, notesCount: count };
+    });
+  }, [allNoteNames.length]);
+
   const { handleRenameFile, handleMoveFile } = useRenameNote({
     fileTree,
     settings,
@@ -4199,7 +4210,17 @@ export default function App() {
   });
 
   // Get active tab info
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const focusedLeaf = useMemo(() => {
+    return findLeafById(paneTree, focusedLeafId);
+  }, [paneTree, focusedLeafId]);
+
+  const activeTab = useMemo(() => {
+    if (focusedLeaf) {
+      const leafTab = focusedLeaf.tabs.find((t: Tab) => t.id === focusedLeaf.activeTabId);
+      if (leafTab) return leafTab;
+    }
+    return tabs.find((t: Tab) => t.id === activeTabId);
+  }, [focusedLeaf, tabs, activeTabId]);
 
   // ── Collaboration State ────────────────────────────────
   const [collaborators, setCollaborators] = useState<any[]>([]);
@@ -5228,7 +5249,7 @@ export default function App() {
             />
             <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
               <div className={`editor-column flex flex-col flex-1 min-w-0 overflow-hidden ${settings.backgroundImage ? '' : 'bg-[var(--bg-primary)]'}`}>
-                {vaultPath && !isFTUXZeroState && activeTab?.path && activeTab.path !== "__new_tab__" && !activeTab.path.startsWith("__") && viewMode !== "preview" && (
+                {vaultPath && !isFTUXZeroState && activeTab?.path && activeTab.path !== "__new_tab__" && !activeTab.path.startsWith("__") && (
                   <FormattingToolbar />
                 )}
                 <div

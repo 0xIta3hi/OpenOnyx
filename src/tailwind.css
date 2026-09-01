@@ -1429,8 +1429,16 @@ img.emoji {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   background-color: var(--inner-panel-bg, var(--bg-primary, #1e1e1e));
+  padding: 0;
+}
+
+.nn-notes-list {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
   padding: 8px;
 }
 
@@ -1582,11 +1590,9 @@ img.emoji {
 .nn-compact-header {
   display: flex;
   align-items: center;
-  margin-top: -2px;
-  margin-left: -6px;
-  margin-right: -6px;
-  margin-bottom: 8px;
-  padding: 8px 8px 8px 10px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
   background-color: var(--inner-panel-bg, var(--bg-secondary, #161617));
   border-bottom: 1px solid var(--border-subtle, #2a2a2b);
   gap: 8px;

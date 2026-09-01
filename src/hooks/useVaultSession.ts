@@ -144,25 +144,24 @@ export function useVaultSession({
       let defaultPath: string | undefined;
       try {
         const documentsPath = await api.getSystemPath("documents");
-        defaultPath = documentsPath
-          ? `${documentsPath}/Untitled vault`
-          : undefined;
+        defaultPath = documentsPath || undefined;
       } catch {
         defaultPath = undefined;
       }
 
-      const result = await api.showSaveDialog({
-        title: "Create new vault",
-        buttonLabel: "Create",
+      const result = await api.showOpenDialog({
+        title: "Create or Select Vault Directory",
+        buttonLabel: "Select Vault",
         defaultPath,
-        properties: ["createDirectory"],
-      } as any);
+        properties: ["openDirectory", "createDirectory"],
+      });
 
-      if (result.canceled || !result.filePath) {
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
         return false;
       }
 
-      await loadVaultData(result.filePath);
+      const selectedPath = result.filePaths[0];
+      await loadVaultData(selectedPath);
       return true;
     } catch (e) {
       console.error("Failed to create vault:", e);
