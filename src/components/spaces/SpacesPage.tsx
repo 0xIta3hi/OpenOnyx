@@ -96,7 +96,16 @@ function getSourceChunk(source: any): string {
 }
 
 function normalizeSourcePath(path: string): string {
-  return path.replace(/\\/g, "/").replace(/^\/+/, "").trim();
+  const normalized = String(path || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
+    .trim();
+
+  if (!normalized) return "";
+  if (normalized.split("/").some((part) => part === ".." || part === ".")) return "";
+  return normalized;
 }
 
 function getDisplaySources(sources: any[]): {

@@ -869,8 +869,9 @@ export async function retrieveChunks(
         console.log(`[SpacesRAG] Cloud lexical fallback: querying note_chunks via inner join on notes...`);
         const { data, error } = await supabase
           .from("note_chunks" as any)
-          .select("id, note_id, content, notes!inner(space_id, path)")
-          .eq("notes.space_id", spaceId);
+          .select("id, note_id, content, notes!inner(space_id, path, deleted)")
+          .eq("notes.space_id", spaceId)
+          .eq("notes.deleted", false);
 
         if (error) throw error;
 

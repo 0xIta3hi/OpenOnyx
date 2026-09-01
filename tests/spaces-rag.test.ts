@@ -142,6 +142,35 @@ print("hi")
     expect(res[0].chunk.notePath).toBe("Projects/Alpha.md");
   });
 
+  it("filters deleted notes from cloud lexical fallback", async () => {
+    const eqCalls: Array<[string, string, any]> = [];
+    const buildChain = (data: any[] = []) => ({
+      select: () => buildChain(data),
+      eq: (field: string, value: any) => {
+        eqCalls.push(["note_chunks", field, value]);
+        return buildChain(data);
+      },
+      then: (onFulfilled: any) => Promise.resolve({ data, error: null }).then(onFulfilled),
+    });
+
+    (supabase as any).from.mockImplementation((table: string) => {
+      if (table === "notes") {
+        return buildChain([
+          { id: "note-1", title: "Alpha", path: "Projects/Alpha.md", content: "", version: 1, content_encrypted: null, iv: null, auth_tag: null, encryption_version: null, deleted: false },
+        ]);
+      }
+      if (table === "note_chunks") {
+        return buildChain([
+          { id: "chunk-1", note_id: "note-1", content: "Alpha concept and decision making", notes: { path: "Projects/Alpha.md", deleted: false } },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    await retrieveChunks("space-1", "alpha decision");
+    expect(eqCalls).toContainEqual(["note_chunks", "notes.deleted", false]);
+  });
+
   it("retrieves chunks and includes isLexicalFallback indicator", async () => {
     (window as any).electronAPI = {
       dataRead: async () => null,
