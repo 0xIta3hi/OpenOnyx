@@ -68,6 +68,7 @@ import { extractOperations } from "../../utils/collabOperations";
 import { remoteCursorsExtension, setCursorsEffect } from "../../utils/remoteCursorsPlugin";
 import { authManager } from "../../lib/auth";
 import { loadAIConfig, getBaseUrl, getProviderHeaders, parseProviderError } from "../../utils/ai-settings";
+import { formatTaskLineWithDate } from "../../utils/taskDateParser";
 import type { AppSettings } from "../settings/SettingsPage";
 
 const validPluginEditorExtensionCache = new WeakMap<object, boolean>();
@@ -443,6 +444,30 @@ const handleDelete = (view: EditorView): boolean => {
   return false;
 };
 
+const parseTaskDatesInSelection: Command = (view: EditorView) => {
+  const { state, dispatch } = view;
+  if (state.readOnly) return false;
+
+  const changes: { from: number; to: number; insert: string }[] = [];
+  const selection = state.selection.main;
+  const startLine = state.doc.lineAt(selection.from).number;
+  const endLine = state.doc.lineAt(selection.to).number;
+
+  for (let i = startLine; i <= endLine; i++) {
+    const line = state.doc.line(i);
+    const formatted = formatTaskLineWithDate(line.text);
+    if (formatted !== line.text) {
+      changes.push({ from: line.from, to: line.to, insert: formatted });
+    }
+  }
+
+  if (changes.length > 0) {
+    dispatch(state.update({ changes, userEvent: "input.formatTaskDate" }));
+    return true;
+  }
+  return false;
+};
+
 function getEditorKeymapExtensions(settings?: AppSettings) {
   return keymap.of([
     { key: "Mod-b", run: toggleBold },
@@ -450,6 +475,7 @@ function getEditorKeymapExtensions(settings?: AppSettings) {
     { key: "Mod-e", run: toggleCode },
     { key: "Mod-`", run: toggleCode },
     { key: "Mod-Shift-x", run: toggleStrikethrough },
+    { key: "Mod-Shift-d", run: parseTaskDatesInSelection },
     { key: "Backspace", run: handleBackspace },
     { key: "Delete", run: handleDelete },
     ...defaultKeymap,
@@ -5947,6 +5973,9 @@ export function Editor({
     paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Bullet list').setIcon('list').onClick(() => toggleBlockFormat('- ')));
     paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Numbered list').setIcon('list-ordered').onClick(() => toggleBlockFormat('1. ')));
     paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Todo list').setIcon('check-square').onClick(() => toggleBlockFormat('- [ ] ')));
+    paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Parse Task Date').setIcon('calendar').onClick(() => {
+      if (viewRef.current) parseTaskDatesInSelection(viewRef.current);
+    }));
     paragraphSubmenu.addSeparator();
     paragraphSubmenu.addItem((subItem: any) => subItem.setTitle('Blockquote').setIcon('quote').onClick(() => toggleBlockFormat('> ')));
 
