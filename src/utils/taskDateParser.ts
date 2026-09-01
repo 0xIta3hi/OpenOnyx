@@ -94,19 +94,31 @@ export function parseTaskDate(text: string, referenceDate: Date = new Date()): P
     return { hours, minutes, timeStr };
   };
 
-  // 1. Relative Days: today, tomorrow, yesterday
-  const relativeMatch = text.match(/\b(?:due\s+)?(?:on\s+)?(today|tomorrow|yesterday)\b/i);
+  // 1. Relative Days & Quick Keywords: today, tomorrow, yesterday, this weekend, next weekend, end of week
+  const relativeMatch = text.match(/\b(?:due\s+)?(?:on\s+)?(today|tomorrow|yesterday|this\s+weekend|next\s+weekend|end\s+of\s+week|end\s+of\s+month)\b/i);
   if (relativeMatch) {
     matchedPhrase = relativeMatch[0];
-    const kw = relativeMatch[1].toLowerCase();
+    const kw = relativeMatch[1].toLowerCase().replace(/\s+/g, " ");
     targetDate = new Date(now);
     if (kw === "tomorrow") targetDate.setDate(now.getDate() + 1);
-    if (kw === "yesterday") targetDate.setDate(now.getDate() - 1);
+    else if (kw === "yesterday") targetDate.setDate(now.getDate() - 1);
+    else if (kw === "this weekend" || kw === "next weekend") {
+      let daysUntilSat = (6 - now.getDay() + 7) % 7;
+      if (daysUntilSat === 0) daysUntilSat = 7;
+      if (kw === "next weekend") daysUntilSat += 7;
+      targetDate.setDate(now.getDate() + daysUntilSat);
+    } else if (kw === "end of week") {
+      let daysUntilFri = (5 - now.getDay() + 7) % 7;
+      if (daysUntilFri === 0) daysUntilFri = 7;
+      targetDate.setDate(now.getDate() + daysUntilFri);
+    } else if (kw === "end of month") {
+      targetDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
   }
 
-  // 2. Relative offsets: "in X days", "in X weeks", "in a week"
+  // 2. Relative offsets: "in X days", "in X weeks", "in X months", "in a week"
   if (!targetDate) {
-    const offsetMatch = text.match(/\b(?:due\s+)?in\s+(\d+|a|an)\s+(day|days|week|weeks)\b/i);
+    const offsetMatch = text.match(/\b(?:due\s+)?in\s+(\d+|a|an)\s+(day|days|week|weeks|month|months)\b/i);
     if (offsetMatch) {
       matchedPhrase = offsetMatch[0];
       const qtyStr = offsetMatch[1].toLowerCase();
@@ -117,6 +129,8 @@ export function parseTaskDate(text: string, referenceDate: Date = new Date()): P
         targetDate.setDate(now.getDate() + qty);
       } else if (unit.startsWith("week")) {
         targetDate.setDate(now.getDate() + qty * 7);
+      } else if (unit.startsWith("month")) {
+        targetDate.setMonth(now.getMonth() + qty);
       }
     }
   }
@@ -241,7 +255,7 @@ export function formatTaskLineWithDate(line: string, referenceDate: Date = new D
   // Preserve task prefix e.g. "- [ ] ", "* [ ] ", "- [x] ", "1. [ ] "
   const taskPrefixMatch = line.match(/^(\s*[-*+]\s*\[[ xX]\]\s*|\s*\d+\.\s*\[[ xX]\]\s*|\s*[-*+]\s+|\s*\d+\.\s+)(.*)$/);
 
-  let prefix = "";
+  let prefix = "- [ ] ";
   let taskBody = line;
 
   if (taskPrefixMatch) {
@@ -255,7 +269,7 @@ export function formatTaskLineWithDate(line: string, referenceDate: Date = new D
   }
 
   const cleanBody = parsed.cleanText;
-  const formattedTask = `${prefix}${cleanBody} 📅 ${parsed.formattedDate}`.trimEnd();
+  const formattedTask = `${prefix}${cleanBody}  ${parsed.formattedDate}`.trimEnd();
 
   return formattedTask;
 }

@@ -13,7 +13,7 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { X, Lightbulb, BookOpen, Pen, RefreshCw, Sparkles, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
-import { Compartment, EditorState, Transaction, StateEffect, StateField, EditorSelection } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, StateEffect, StateField, EditorSelection, Prec } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -468,20 +468,58 @@ const parseTaskDatesInSelection: Command = (view: EditorView) => {
   return false;
 };
 
+const handleEnterOnTaskLine: Command = (view: EditorView) => {
+  const { state, dispatch } = view;
+  if (state.readOnly) return false;
+
+  const selection = state.selection.main;
+  if (!selection.empty) return false;
+
+  const line = state.doc.lineAt(selection.head);
+  const formatted = formatTaskLineWithDate(line.text);
+
+  if (formatted !== line.text) {
+    const indentMatch = line.text.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1] : "";
+    const nextLinePrefix = `\n${indent}- [ ] `;
+
+    const changeFrom = line.from;
+    const changeTo = line.to;
+    const newContent = formatted + nextLinePrefix;
+    const newCursorPos = changeFrom + newContent.length;
+
+    dispatch(state.update({
+      changes: { from: changeFrom, to: changeTo, insert: newContent },
+      selection: EditorSelection.cursor(newCursorPos),
+      userEvent: "input.formatTaskDate",
+    }));
+    return true;
+  }
+  return false;
+};
+
 function getEditorKeymapExtensions(settings?: AppSettings) {
-  return keymap.of([
+  return Prec.highest(keymap.of([
     { key: "Mod-b", run: toggleBold },
     { key: "Mod-i", run: toggleItalic },
     { key: "Mod-e", run: toggleCode },
     { key: "Mod-`", run: toggleCode },
     { key: "Mod-Shift-x", run: toggleStrikethrough },
     { key: "Mod-Shift-d", run: parseTaskDatesInSelection },
+    { key: "Mod-Shift-D", run: parseTaskDatesInSelection },
+    { key: "Ctrl-Shift-d", run: parseTaskDatesInSelection },
+    { key: "Ctrl-Shift-D", run: parseTaskDatesInSelection },
+    { key: "Alt-Shift-d", run: parseTaskDatesInSelection },
+    { key: "Alt-Shift-D", run: parseTaskDatesInSelection },
+    { key: "Mod-d", run: parseTaskDatesInSelection },
+    { key: "Mod-D", run: parseTaskDatesInSelection },
+    { key: "Enter", run: handleEnterOnTaskLine },
     { key: "Backspace", run: handleBackspace },
     { key: "Delete", run: handleDelete },
     ...defaultKeymap,
     ...historyKeymap,
     ...(settings?.indentUsingTabs === false ? [] : [indentWithTab]),
-  ]);
+  ]));
 }
 
 function getEditorBehaviorExtensions(settings?: AppSettings) {
