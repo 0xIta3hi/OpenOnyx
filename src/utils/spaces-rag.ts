@@ -626,14 +626,16 @@ export function mapCloudRpcChunk(
     similarity?: number;
     path?: string;
     note_path?: string;
+    notePath?: string;
   },
   spaceId: string,
 ): RetrievedChunk {
+  const notePath = rc.path || rc.note_path || rc.notePath || "";
   return {
     chunk: {
       id: rc.id,
       spaceId,
-      notePath: rc.path || rc.note_path || "",
+      notePath,
       noteTitle: rc.note_title || "Unknown Note",
       chunkText: rc.content || "",
       vector: [],
@@ -836,12 +838,14 @@ export async function retrieveChunks(
       if (notesErr) throw notesErr;
 
       const noteTitleMap: Record<string, string> = {};
+      const notePathMap: Record<string, string> = {};
       const noteIds: string[] = [];
-      const decryptedNotes: { id: string; title: string; content: string }[] = [];
+      const decryptedNotes: { id: string; title: string; path: string; content: string }[] = [];
 
       if (notesData) {
         for (const n of notesData as any[]) {
           noteTitleMap[n.id] = n.title;
+          notePathMap[n.id] = n.path || "";
           noteIds.push(n.id);
 
           let decryptedContent = n.content || "";
@@ -855,6 +859,7 @@ export async function retrieveChunks(
           decryptedNotes.push({
             id: n.id,
             title: n.title,
+            path: n.path || "",
             content: decryptedContent,
           });
         }
@@ -864,7 +869,7 @@ export async function retrieveChunks(
         console.log(`[SpacesRAG] Cloud lexical fallback: querying note_chunks via inner join on notes...`);
         const { data, error } = await supabase
           .from("note_chunks" as any)
-          .select("id, note_id, content, notes!inner(space_id)")
+          .select("id, note_id, content, notes!inner(space_id, path)")
           .eq("notes.space_id", spaceId);
 
         if (error) throw error;
@@ -874,10 +879,11 @@ export async function retrieveChunks(
           console.log(`[SpacesRAG] Cloud database lexical fallback fetched ${cloudChunks.length} chunks. Scoring...`);
           const queryTerms = tokenizeQuery(query);
           for (const rc of cloudChunks) {
+            const notePath = ((rc as any).notes && typeof (rc as any).notes === "object" ? (rc as any).notes.path : "") || notePathMap[rc.note_id] || "";
             const mockChunk = {
               id: rc.id,
               spaceId,
-              notePath: "",
+              notePath,
               noteTitle: noteTitleMap[rc.note_id] || "Unknown Note",
               chunkText: rc.content || "",
               vector: [],
@@ -903,7 +909,7 @@ export async function retrieveChunks(
               const mockChunk = {
                 id: `mem-${n.id}-${idx}`,
                 spaceId,
-                notePath: "",
+                notePath: n.path || "",
                 noteTitle: n.title,
                 chunkText: chunkText,
                 vector: [],

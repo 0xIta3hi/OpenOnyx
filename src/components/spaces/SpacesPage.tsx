@@ -75,6 +75,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
 
 type DisplaySource = {
   noteTitle: string;
+  notePath?: string;
   chunkText: string;
 };
 
@@ -84,9 +85,18 @@ function getSourceTitle(source: any): string {
   return String(source.note || source.noteTitle || source.title || "").trim();
 }
 
+function getSourcePath(source: any): string {
+  if (!source || typeof source !== "object") return "";
+  return String(source.notePath || source.path || source.filePath || "").trim();
+}
+
 function getSourceChunk(source: any): string {
   if (!source || typeof source !== "object") return "";
   return String(source.chunk || source.chunkText || "").trim();
+}
+
+function normalizeSourcePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\/+/, "").trim();
 }
 
 function getDisplaySources(sources: any[]): {
@@ -100,13 +110,14 @@ function getDisplaySources(sources: any[]): {
   for (const source of sources) {
     const noteTitle = getSourceTitle(source);
     if (!noteTitle) continue;
-    const key = noteTitle.toLowerCase();
+    const key = (normalizeSourcePath(getSourcePath(source)) || noteTitle).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     totalUnique++;
     if (visibleSources.length < DISPLAY_SOURCE_LIMIT) {
       visibleSources.push({
         noteTitle,
+        notePath: normalizeSourcePath(getSourcePath(source)),
         chunkText: getSourceChunk(source),
       });
     }
@@ -1986,11 +1997,52 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
     }
   };
 
-  const handleOpenSource = useCallback((noteTitle: string, chunkText: string) => {
-    let notePath = "";
+  const ensureCloudSourceNoteAvailable = useCallback(async (notePath: string): Promise<boolean> => {
+    const api = getAPI();
+    const localExists = await api.fileExists(notePath).catch(() => false);
+    if (localExists) return true;
+
+    if (!activeSpace || activeSpace.visibility === "local" || !activeSpaceId || !isSupabaseConfigured) {
+      return false;
+    }
+
+    const { data, error } = await supabase
+      .from("notes" as any)
+      .select("id, path, title, content, content_encrypted, iv, auth_tag, encryption_version, version, is_canvas")
+      .eq("space_id", activeSpaceId)
+      .eq("path", notePath)
+      .eq("deleted", false)
+      .limit(1);
+
+    if (error) throw error;
+
+    const notes = data as any[] | null;
+    const note = Array.isArray(notes) ? notes[0] : null;
+    if (!note) return false;
+
+    const content = activeSpace.visibility === "private"
+      ? await privateCrypto.decryptNoteContent(activeSpaceId, note)
+      : note.content || "";
+
+    const parentPath = notePath.split("/").slice(0, -1).join("/");
+    if (parentPath) {
+      let currentPath = "";
+      for (const part of parentPath.split("/").filter(Boolean)) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        await api.createDirectory(currentPath).catch(() => undefined);
+      }
+    }
+
+    await api.writeFile(notePath, content);
+    showToast(`Downloaded "${note.title || notePath}" from this Space.`);
+    return true;
+  }, [activeSpace, activeSpaceId, showToast]);
+
+  const handleOpenSource = useCallback(async (noteTitle: string, chunkText: string, notePathOverride?: string) => {
+    let notePath = normalizeSourcePath(notePathOverride || "");
     const searchTree = (nodes: any[]) => {
       for (const node of nodes) {
-        if (node.isFolder) {
+        if (node.isFolder || node.isDirectory) {
           searchTree(node.children || []);
         } else if (node.name.replace(/\.md$/, "") === noteTitle.replace(/\.md$/, "")) {
           notePath = node.path;
@@ -1998,10 +2050,29 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
         }
       }
     };
-    searchTree(fileTree || []);
 
     if (!notePath) {
-      notePath = `${noteTitle}.md`;
+      searchTree(fileTree || []);
+    }
+
+    if (!notePath) {
+      notePath = normalizeSourcePath(`${noteTitle}.md`);
+    }
+
+    try {
+      const sourceAvailable = await ensureCloudSourceNoteAvailable(notePath);
+      if (
+        activeSpace &&
+        activeSpace.visibility !== "local" &&
+        isSupabaseConfigured &&
+        !sourceAvailable
+      ) {
+        showToast(`Could not find "${noteTitle}" in this Space.`, "error");
+        return;
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to download source note.", "error");
+      return;
     }
 
     onOpenNote?.(notePath);
@@ -2014,7 +2085,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
         document.dispatchEvent(event);
       }, 300);
     }
-  }, [fileTree, onOpenNote]);
+  }, [activeSpace, ensureCloudSourceNoteAvailable, fileTree, onOpenNote, showToast]);
 
   const resolveActionContent = async (action: any): Promise<{ before: string, after: string }> => {
     let filePath = action.file_path || action.path || "";
@@ -3495,7 +3566,7 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
                               <span
                                 key={`${source.noteTitle}-${i}`}
                                 className={spaceChatSourcePillClass}
-                                onClick={() => handleOpenSource(source.noteTitle, source.chunkText)}
+                                onClick={() => handleOpenSource(source.noteTitle, source.chunkText, source.notePath)}
                                 title={source.chunkText ? `Excerpt: ${source.chunkText.substring(0, 100)}...` : `Open ${source.noteTitle}`}
                               >
                                 {source.noteTitle}
