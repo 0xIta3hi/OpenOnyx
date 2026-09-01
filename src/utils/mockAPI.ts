@@ -10,7 +10,7 @@ import type { ElectronAPI } from "../../electron/preload";
 
 // In-memory file system for browser mode
 const mockFiles: Record<string, string> = {};
-let mockVaultPath: string | null = null;
+let mockVaultPath: string | null = "OO-Test-Vault";
 
 const SAMPLE_NOTES: Record<string, string> = {
   "Welcome.md": `# Welcome to OpenOnyx
@@ -200,7 +200,7 @@ function buildFileTree(): any[] {
         const dirEntry = {
           name: part,
           path: currentPath,
-          absolutePath: `/mock-vault/${currentPath}`,
+          absolutePath: `OO-Test-Vault/${currentPath}`,
           isDirectory: true,
           extension: "",
           children: [] as any[],
@@ -215,7 +215,7 @@ function buildFileTree(): any[] {
     const fileEntry = {
       name: fileName,
       path: filePath,
-      absolutePath: `/mock-vault/${filePath}`,
+      absolutePath: `OO-Test-Vault/${filePath}`,
       isDirectory: false,
       extension: ".md",
       modifiedAt: Date.now(),
@@ -241,8 +241,8 @@ export function createMockAPI(): ElectronAPI {
   const mockAPI: ElectronAPI = {
     // Vault
     openVaultDialog: async () => {
-      mockVaultPath = "/mock-vault";
-      return "/mock-vault";
+      mockVaultPath = "OO-Test-Vault";
+      return "OO-Test-Vault";
     },
     setVaultPath: async (path: string) => {
       mockVaultPath = path;
