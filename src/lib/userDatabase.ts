@@ -424,7 +424,7 @@ CREATE OR REPLACE FUNCTION public.match_note_chunks(
   match_count int,
   filter_space_id uuid DEFAULT NULL
 )
-RETURNS TABLE (id uuid, note_id uuid, content text, similarity float)
+RETURNS TABLE (id uuid, note_id uuid, note_title text, note_path text, content text, similarity float)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF auth.uid() IS NULL THEN
@@ -440,11 +440,12 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT nc.id, nc.note_id, nc.content,
+  SELECT nc.id, nc.note_id, n.title, n.path, nc.content,
     1 - (nc.embedding <=> query_embedding) AS similarity
   FROM public.note_chunks nc
   JOIN public.notes n ON n.id = nc.note_id
   WHERE nc.embedding IS NOT NULL
+    AND n.deleted = false
     AND n.space_id = filter_space_id
     AND 1 - (nc.embedding <=> query_embedding) > match_threshold
   ORDER BY nc.embedding <=> query_embedding

@@ -683,6 +683,7 @@ export type Database = {
           content: string
           id: string
           note_id: string
+          note_path: string
           note_title: string
           similarity: number
         }[]

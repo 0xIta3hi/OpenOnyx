@@ -1,5 +1,20 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/utils/embeddings", () => ({
+  embedText: vi.fn().mockRejectedValue(new Error("embedding unavailable")),
+  isModelLoaded: () => false,
+  isLexicalFallbackActive: () => false,
+}));
+
+vi.mock("../src/lib/supabase", () => ({
+  supabase: {
+    from: vi.fn(),
+    rpc: vi.fn(),
+  },
+  isSupabaseConfigured: true,
+}));
+
 import {
   getTopLevelFolder,
   isComprehensiveSpaceQuery,
@@ -8,6 +23,7 @@ import {
   stripJSONBlock,
   retrieveChunks,
 } from "../src/utils/spaces-rag";
+import { supabase } from "../src/lib/supabase";
 
 describe("spaces RAG parsers", () => {
   it("parses a fenced action payload", () => {
@@ -98,6 +114,61 @@ print("hi")
     expect(getTopLevelFolder("Systems/Locks.md")).toBe("Systems");
     expect(getTopLevelFolder("Hello.md")).toBe("(root)");
     expect(getTopLevelFolder("")).toBe("(root)");
+  });
+
+  it("keeps note paths in cloud lexical fallback results", async () => {
+    const makeQuery = (data: any[]) => ({
+      select: () => makeQuery(data),
+      eq: () => makeQuery(data),
+      then: (onFulfilled: any) => Promise.resolve({ data, error: null }).then(onFulfilled),
+    });
+
+    (supabase as any).from.mockImplementation((table: string) => {
+      if (table === "notes") {
+        return makeQuery([
+          { id: "note-1", title: "Alpha", path: "Projects/Alpha.md", content: "", version: 1, content_encrypted: null, iv: null, auth_tag: null, encryption_version: null, deleted: false },
+        ]);
+      }
+      if (table === "note_chunks") {
+        return makeQuery([
+          { id: "chunk-1", note_id: "note-1", content: "Alpha concept and decision making" },
+        ]);
+      }
+      return makeQuery([]);
+    });
+
+    const res = await retrieveChunks("space-1", "alpha decision");
+    expect(res.length).toBeGreaterThan(0);
+    expect(res[0].chunk.notePath).toBe("Projects/Alpha.md");
+  });
+
+  it("filters deleted notes from cloud lexical fallback", async () => {
+    const eqCalls: Array<[string, string, any]> = [];
+    const buildChain = (data: any[] = []) => ({
+      select: () => buildChain(data),
+      eq: (field: string, value: any) => {
+        eqCalls.push(["note_chunks", field, value]);
+        return buildChain(data);
+      },
+      then: (onFulfilled: any) => Promise.resolve({ data, error: null }).then(onFulfilled),
+    });
+
+    (supabase as any).from.mockImplementation((table: string) => {
+      if (table === "notes") {
+        return buildChain([
+          { id: "note-1", title: "Alpha", path: "Projects/Alpha.md", content: "", version: 1, content_encrypted: null, iv: null, auth_tag: null, encryption_version: null, deleted: false },
+        ]);
+      }
+      if (table === "note_chunks") {
+        return buildChain([
+          { id: "chunk-1", note_id: "note-1", content: "Alpha concept and decision making", notes: { path: "Projects/Alpha.md", deleted: false } },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    await retrieveChunks("space-1", "alpha decision");
+    expect(eqCalls).toContainEqual(["note_chunks", "notes.deleted", false]);
   });
 
   it("retrieves chunks and includes isLexicalFallback indicator", async () => {
