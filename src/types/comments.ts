@@ -21,6 +21,7 @@ export interface NoteComment {
   image?: string;
   author: CommentAuthor;
   createdAt: number;
+  editedAt?: number;
   resolved?: boolean;
   replies?: CommentReply[];
 }

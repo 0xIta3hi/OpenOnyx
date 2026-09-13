@@ -153,6 +153,30 @@ const commentClickDomHandler = EditorView.domEventHandlers({
       }
     }
   },
+  mouseover(event) {
+    const target = event.target as HTMLElement | null;
+    const highlight = target?.closest(".cm-comment-highlight") as HTMLElement | null;
+    const commentId = highlight?.getAttribute("data-comment-id");
+    if (commentId) {
+      window.dispatchEvent(
+        new CustomEvent("openonyx:hover-comment", {
+          detail: { commentId },
+        })
+      );
+    }
+  },
+  mouseout(event) {
+    const target = event.target as HTMLElement | null;
+    const highlight = target?.closest(".cm-comment-highlight") as HTMLElement | null;
+    const commentId = highlight?.getAttribute("data-comment-id");
+    if (commentId) {
+      window.dispatchEvent(
+        new CustomEvent("openonyx:hover-comment", {
+          detail: { commentId: null },
+        })
+      );
+    }
+  },
 });
 
 const commentTheme = EditorView.theme({

@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EditorView } from "@codemirror/view";
 import { MessageSquare, X } from "lucide-react";
@@ -17,6 +17,7 @@ interface EditorCommentsLayerProps {
   onSelectComment: (commentId: string) => void;
   onResolveComment?: (commentId: string) => void;
   onDeleteComment: (commentId: string) => void;
+  onEditComment: (commentId: string, content: string, image?: string) => void;
   onReplyComment: (commentId: string, content: string, image?: string) => void;
 }
 
@@ -85,6 +86,32 @@ interface LayoutItem {
   computedTop: number;
 }
 
+function getCommentImagePresence(comment: NoteComment): boolean {
+  return Boolean(
+    comment.image ||
+      comment.content?.startsWith("data:image/") ||
+      /!\[(.*?)\]\((data:image\/[^)]+|https?:\/\/[^)]+|blob:[^)]+)\)/.test(comment.content || ""),
+  );
+}
+
+function shouldCollapseWideComment(comment: NoteComment, _isActive: boolean): boolean {
+  const replyCount = comment.replies?.length || 0;
+  const textLength = comment.content?.replace(/<[^>]*>/g, "").length || 0;
+  const blockCount = comment.content?.match(/<(?:p|div|br|li)\b/gi)?.length || 0;
+  return getCommentImagePresence(comment) || replyCount > 0 || textLength > 80 || blockCount > 1;
+}
+
+function estimateWideCommentHeight(comment: NoteComment, isActive: boolean): number {
+  if (shouldCollapseWideComment(comment, isActive)) return 118;
+
+  const replyCount = comment.replies?.length || 0;
+  const textLength = comment.content?.replace(/<[^>]*>/g, "").length || 0;
+  const replyImageCount = (comment.replies || []).filter((reply) =>
+    Boolean(reply.image || reply.content?.startsWith("data:image/")),
+  ).length;
+  return 78 + Math.min(120, Math.ceil(textLength / 42) * 20) + (getCommentImagePresence(comment) ? 238 : 0) + replyCount * 72 + replyImageCount * 170;
+}
+
 export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
   view,
   containerEl,
@@ -96,13 +123,45 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
   onCancelPending,
   onSelectComment,
   onDeleteComment,
+  onEditComment,
   onReplyComment,
 }) => {
   // Update tick to trigger re-measurement when doc, font size, content width, or viewport changes
   const [layoutTick, setLayoutTick] = useState(0);
   const [openPopoverLine, setOpenPopoverLine] = useState<number | null>(null);
+  const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
+  const [measuredCardHeights, setMeasuredCardHeights] = useState<Record<string, number>>({});
 
   const targetScrollEl = isReadMode && containerEl ? containerEl : (view?.scrollDOM || containerEl || null);
+
+  // Re-measure real card heights after expand/collapse so following cards move
+  // out of the way instead of relying on a stale content-length estimate.
+  useLayoutEffect(() => {
+    if (!targetScrollEl) return;
+
+    const cardNodes = Array.from(targetScrollEl.querySelectorAll<HTMLElement>(".cm-wide-comment-card"));
+    const updateHeights = () => {
+      const next: Record<string, number> = {};
+      for (const node of cardNodes) {
+        const key = node.dataset.commentId;
+        if (key) next[key] = node.offsetHeight;
+      }
+
+      setMeasuredCardHeights((current) => {
+        const keys = Object.keys(next);
+        if (keys.length === Object.keys(current).length && keys.every((key) => current[key] === next[key])) {
+          return current;
+        }
+        return next;
+      });
+    };
+
+    updateHeights();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateHeights);
+    cardNodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [targetScrollEl, isReadMode, comments, pendingComment, activeCommentId, layoutTick]);
 
   useEffect(() => {
     if (!targetScrollEl) return;
@@ -170,6 +229,18 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [openPopoverLine]);
+
+  useEffect(() => {
+    const handleHoverComment = (e: Event) => {
+      const custom = e as CustomEvent<{ commentId: string | null }>;
+      setHoveredCommentId(custom.detail?.commentId || null);
+    };
+
+    window.addEventListener("openonyx:hover-comment", handleHoverComment);
+    return () => {
+      window.removeEventListener("openonyx:hover-comment", handleHoverComment);
+    };
+  }, []);
 
   // Compute line top in either Editor mode or Read Mode
   const getLineTop = (pos: number, commentId?: string, isPending?: boolean): number => {
@@ -364,13 +435,16 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
       const actualY = Math.max(desiredY, currentY);
       item.computedTop = actualY;
 
-      const replyCount = item.comment?.replies?.length || 0;
-      const estimatedHeight = item.isPending ? 48 : 74 + replyCount * 38;
+      const estimatedHeight = item.isPending
+        ? 170
+        : item.comment
+          ? measuredCardHeights[item.comment.id] || estimateWideCommentHeight(item.comment, item.comment.id === activeCommentId)
+          : 90;
       currentY = actualY + estimatedHeight + MIN_GAP;
     }
 
     return items;
-  }, [targetScrollEl, view, comments, pendingComment, isReadMode, layoutTick]);
+  }, [targetScrollEl, view, comments, pendingComment, activeCommentId, isReadMode, layoutTick, measuredCardHeights]);
 
   if (!targetScrollEl) return null;
   const hasComments = comments.some((c) => !c.resolved);
@@ -412,13 +486,13 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
                 {/* Popover shown ONLY when clicked (Image 1 requirement) */}
                 {isPopoverOpen && (
                   <div
-                    className="cm-comment-popover pointer-events-auto absolute right-0 top-7 z-[60] flex w-[310px] flex-col gap-2.5 rounded-lg border border-[#383838] bg-[#1a1a1a] p-3 shadow-2xl transition-all"
+                    className="cm-comment-popover pointer-events-auto absolute right-0 top-7 z-[60] flex w-[310px] flex-col gap-2.5 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-elevated)] p-3 shadow-2xl transition-all"
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
-                    <div className="flex items-center justify-between border-b border-[#2c2c2c] pb-1.5">
-                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-[#aaa]">
-                        <MessageSquare className="h-3.5 w-3.5 text-[#888]" />
+                    <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-1.5">
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--text-secondary)]">
+                        <MessageSquare className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                         <span>
                           {group.comments.length} comment
                           {group.comments.length > 1 ? "s" : ""}
@@ -427,7 +501,7 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
                       <button
                         type="button"
                         title="Close"
-                        className="flex h-5 w-5 items-center justify-center rounded text-[#888] hover:bg-[#2a2a2a] hover:text-white"
+                        className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                         onClick={() => setOpenPopoverLine(null)}
                       >
                         <X className="h-3.5 w-3.5" />
@@ -436,10 +510,11 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
 
                     <div className="flex flex-col gap-2">
                       {group.comments.map((c, idx) => (
-                        <div key={c.id} className={idx > 0 ? "border-t border-[#2a2a2a] pt-2" : ""}>
+                        <div key={c.id} className={idx > 0 ? "border-t border-[var(--border-subtle)] pt-2" : ""}>
                           <CommentCard
                             comment={c}
                             isActive={c.id === activeCommentId}
+                            isTargetHovered={hoveredCommentId === c.id}
                             embedded={true}
                             onSelect={() => {
                               onSelectComment(c.id);
@@ -453,6 +528,7 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
                               }
                             }}
                             onDelete={() => onDeleteComment(c.id)}
+                            onEdit={(text, img) => onEditComment(c.id, text, img)}
                             onReply={(text, img) => onReplyComment(c.id, text, img)}
                           />
                         </div>
@@ -510,12 +586,14 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
               return (
                 <div
                   key={c.id}
-                  className="pointer-events-auto absolute right-[20px] transition-all duration-150 ease-out"
+                  className="cm-wide-comment-card pointer-events-auto absolute right-[20px] transition-all duration-200 ease-out"
+                  data-comment-id={c.id}
                   style={{ top: `${item.computedTop}px` }}
                 >
                   <CommentCard
                     comment={c}
                     isActive={isActive}
+                    isTargetHovered={hoveredCommentId === c.id}
                     onSelect={() => {
                       onSelectComment(c.id);
                       if (view) {
@@ -528,7 +606,9 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
                       }
                     }}
                     onDelete={() => onDeleteComment(c.id)}
+                    onEdit={(text, img) => onEditComment(c.id, text, img)}
                     onReply={(text, img) => onReplyComment(c.id, text, img)}
+                    defaultCollapsed={shouldCollapseWideComment(c, isActive)}
                   />
                 </div>
               );
@@ -543,4 +623,3 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
 
   return createPortal(content, targetScrollEl);
 };
-

@@ -26,6 +26,7 @@ import {
   loadComments,
   addComment,
   deleteComment,
+  updateComment,
   resolveComment,
   addReply,
   subscribeToComments,
@@ -4122,6 +4123,18 @@ export function Editor({
   const handleSelectionChange = useCallback(() => {
     if (isSpecialTab) return;
     const sel = window.getSelection();
+    const selectionAnchor = sel?.anchorNode;
+    const selectionFocus = sel?.focusNode;
+    const selectionElement =
+      selectionAnchor instanceof HTMLElement
+        ? selectionAnchor
+        : selectionAnchor?.parentElement ||
+          (selectionFocus instanceof HTMLElement ? selectionFocus : selectionFocus?.parentElement) ||
+          null;
+    if (selectionElement?.closest(".cm-comments-layer, .cm-comment-popover, .cm-comment-input-box")) {
+      setSelectionRange((prev) => prev === null ? prev : null);
+      return;
+    }
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
       if (pendingInlineEdit) return;
       if (pendingComment) return;
@@ -4572,6 +4585,11 @@ export function Editor({
   const handleDeleteComment = useCallback(async (commentId: string) => {
     if (!activePathRef.current) return;
     await deleteComment(activePathRef.current, commentId);
+  }, []);
+
+  const handleEditComment = useCallback(async (commentId: string, content: string, image?: string) => {
+    if (!activePathRef.current) return;
+    await updateComment(activePathRef.current, commentId, content, image);
   }, []);
 
   const handleReplyComment = useCallback(async (commentId: string, content: string, image?: string) => {
@@ -7479,6 +7497,7 @@ export function Editor({
               onSelectComment={(id) => setActiveCommentId(id)}
               onResolveComment={handleResolveComment}
               onDeleteComment={handleDeleteComment}
+              onEditComment={handleEditComment}
               onReplyComment={handleReplyComment}
               containerEl={viewMode === "preview" ? (previewEl || previewRef.current) : (viewRef.current?.scrollDOM || null)}
               isReadMode={viewMode === "preview"}

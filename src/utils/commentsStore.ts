@@ -194,6 +194,34 @@ export async function deleteComment(
 }
 
 /**
+ * Update the text/image payload for an existing comment.
+ */
+export async function updateComment(
+  notePath: string,
+  commentId: string,
+  content: string,
+  image?: string
+): Promise<NoteComment | null> {
+  const current = await loadComments(notePath);
+  let updatedComment: NoteComment | null = null;
+  const next = current.map((c) => {
+    if (c.id !== commentId) return c;
+    updatedComment = {
+      ...c,
+      content,
+      image,
+      editedAt: Date.now(),
+    };
+    return updatedComment;
+  });
+
+  if (updatedComment) {
+    await saveComments(notePath, next);
+  }
+  return updatedComment;
+}
+
+/**
  * Resolve or toggle resolution for a comment.
  */
 export async function resolveComment(

@@ -507,12 +507,95 @@ function protectInlineCode(text: string): {
   };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getCommentRangeText(source: string, from: number, to: number, fallback: string): string {
+  const ranged = source.slice(Math.max(0, from), Math.max(0, to));
+  return ranged.trim() || fallback.trim();
+}
+
+function getSourceOccurrenceIndex(source: string, phrase: string, from: number): number {
+  if (!phrase) return 0;
+  const before = source.slice(0, Math.max(0, from));
+  const regex = new RegExp(escapeRegExp(phrase), "g");
+  let count = 0;
+  while (regex.exec(before)) count++;
+  return count;
+}
+
+function findNthOccurrence(text: string, phrase: string, occurrenceIndex: number): { index: number; length: number } | null {
+  if (!phrase) return null;
+  let fromIndex = 0;
+  for (let i = 0; i <= occurrenceIndex; i++) {
+    const found = text.indexOf(phrase, fromIndex);
+    if (found === -1) return null;
+    if (i === occurrenceIndex) return { index: found, length: phrase.length };
+    fromIndex = found + phrase.length;
+  }
+  return null;
+}
+
+function findNthOccurrenceInsensitive(text: string, phrase: string, occurrenceIndex: number): { index: number; length: number } | null {
+  return findNthOccurrence(text.toLowerCase(), phrase.toLowerCase(), occurrenceIndex);
+}
+
+function markHtmlTextOccurrence(
+  html: string,
+  phrase: string,
+  occurrenceIndex: number,
+  attrs: Record<string, string>,
+): string {
+  if (!phrase.trim() || typeof window === "undefined" || typeof DOMParser === "undefined") return html;
+
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const body = doc.body;
+  const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const segments: { node: Text; start: number; end: number }[] = [];
+  let fullText = "";
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const parent = node.parentElement;
+    if (!parent || parent.closest(".cm-comment-highlight")) continue;
+    const start = fullText.length;
+    fullText += node.nodeValue || "";
+    segments.push({ node, start, end: fullText.length });
+  }
+
+  const match = findNthOccurrence(fullText, phrase, occurrenceIndex) || findNthOccurrenceInsensitive(fullText, phrase, occurrenceIndex);
+  if (!match) return html;
+
+  const startSegment = segments.find((segment) => match.index >= segment.start && match.index <= segment.end);
+  const endIndex = match.index + match.length;
+  const endSegment = segments.find((segment) => endIndex >= segment.start && endIndex <= segment.end);
+  if (!startSegment || !endSegment) return html;
+
+  const range = doc.createRange();
+  range.setStart(startSegment.node, match.index - startSegment.start);
+  range.setEnd(endSegment.node, endIndex - endSegment.start);
+
+  const mark = doc.createElement("mark");
+  for (const [name, value] of Object.entries(attrs)) {
+    mark.setAttribute(name, value);
+  }
+
+  try {
+    range.surroundContents(mark);
+  } catch {
+    return html;
+  }
+
+  return body.innerHTML;
+}
+
 /**
- * Wraps commented phrases in the rendered HTML with comment highlight marks.
- * Operates strictly on text content outside HTML tags.
+ * Wraps only the saved comment ranges in the rendered HTML.
  */
 function applyCommentHighlightsToHtml(
   html: string,
+  source: string,
   comments?: NoteComment[],
   pendingComment?: PendingComment | null,
 ): string {
@@ -520,30 +603,28 @@ function applyCommentHighlightsToHtml(
 
   let result = html;
 
-  const highlightPhrase = (src: string, phrase: string, tagStart: string): string => {
-    if (!phrase || !phrase.trim()) return src;
-    const cleanPhrase = phrase.trim();
-    const escaped = cleanPhrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`(?![^<]*>)(${escaped})`, "i");
-    return src.replace(regex, `${tagStart}$1</mark>`);
-  };
-
   if (comments) {
     for (const c of comments) {
-      if (c.resolved || !c.selectedText) continue;
-      result = highlightPhrase(
+      if (c.resolved) continue;
+      const phrase = getCommentRangeText(source, c.from, c.to, c.selectedText);
+      const occurrenceIndex = getSourceOccurrenceIndex(source, phrase, c.from);
+      result = markHtmlTextOccurrence(
         result,
-        c.selectedText,
-        `<mark class="cm-comment-highlight" data-comment-id="${c.id}">`,
+        phrase,
+        occurrenceIndex,
+        { class: "cm-comment-highlight", "data-comment-id": c.id },
       );
     }
   }
 
-  if (pendingComment && pendingComment.selectedText) {
-    result = highlightPhrase(
+  if (pendingComment) {
+    const phrase = getCommentRangeText(source, pendingComment.from, pendingComment.to, pendingComment.selectedText);
+    const occurrenceIndex = getSourceOccurrenceIndex(source, phrase, pendingComment.from);
+    result = markHtmlTextOccurrence(
       result,
-      pendingComment.selectedText,
-      `<mark class="cm-comment-highlight cm-comment-pending">`,
+      phrase,
+      occurrenceIndex,
+      { class: "cm-comment-highlight cm-comment-pending" },
     );
   }
 
@@ -990,7 +1071,7 @@ export function MarkdownPreview({
     const sanitized = sanitizePreviewHtml(html);
 
     // Apply comment highlights to rendered preview
-    return applyCommentHighlightsToHtml(sanitized, comments, pendingComment);
+    return applyCommentHighlightsToHtml(sanitized, debouncedContent, comments, pendingComment);
   }, [debouncedContent, onEmbed, themeMode, getSmartEmbed, getUrlPreviewMarkup, comments, pendingComment]);
 
   // Handle clicks on wiki-links, tags, checkboxes, and comment highlights
@@ -1070,8 +1151,36 @@ export function MarkdownPreview({
       }
     };
 
+    const handleCommentHover = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const commentMark = target.closest(".cm-comment-highlight");
+      const commentId = commentMark?.getAttribute("data-comment-id") || null;
+      if (!commentId) return;
+      window.dispatchEvent(
+        new CustomEvent("openonyx:hover-comment", {
+          detail: { commentId },
+        })
+      );
+    };
+
+    const handleCommentLeave = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".cm-comment-highlight")) return;
+      window.dispatchEvent(
+        new CustomEvent("openonyx:hover-comment", {
+          detail: { commentId: null },
+        })
+      );
+    };
+
     container.addEventListener("click", handleClick);
-    return () => container.removeEventListener("click", handleClick);
+    container.addEventListener("mouseover", handleCommentHover);
+    container.addEventListener("mouseout", handleCommentLeave);
+    return () => {
+      container.removeEventListener("click", handleClick);
+      container.removeEventListener("mouseover", handleCommentHover);
+      container.removeEventListener("mouseout", handleCommentLeave);
+    };
   }, [onLinkClick, onCheckboxToggle, onImageClick, onContentChange, onCommentClick]);
 
   // Handle link hover for preview
