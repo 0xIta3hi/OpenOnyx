@@ -43,6 +43,8 @@ let nodes: WorkerNode[] = [];
 let edges: WorkerEdge[] = [];
 let isRunning = false;
 let nodeMap = new Map<string, WorkerNode>();
+let keepAlive = false;
+const AI_IDLE_ALPHA_TARGET = 0.015;
 
 // Default parameters matching Obsidian's sim.js defaults
 let forceParams: ForceParams = {
@@ -94,6 +96,7 @@ function initSimulation() {
       "collision",
       d3.forceCollide<WorkerNode>().radius(forceParams.collisionRadius).strength(0.5)
     )
+    .alphaTarget(keepAlive ? AI_IDLE_ALPHA_TARGET : 0)
     .on("tick", onTick)
     .on("end", onEnd);
 
@@ -186,6 +189,7 @@ self.onmessage = (e: MessageEvent) => {
           vy: 0,
         };
       });
+      keepAlive = Boolean(data.keepAlive);
       edges = data.edges.map((e: any) => ({ ...e }));
       if (data.forces) {
         forceParams = { ...forceParams, ...data.forces };
@@ -197,6 +201,7 @@ self.onmessage = (e: MessageEvent) => {
     case "start": {
       if (simulation && !isRunning) {
         isRunning = true;
+        simulation.alphaTarget(keepAlive ? AI_IDLE_ALPHA_TARGET : 0);
         simulation.alpha(1.0).restart();
       }
       break;
@@ -220,6 +225,7 @@ self.onmessage = (e: MessageEvent) => {
     case "reheat": {
       if (simulation) {
         isRunning = true;
+        simulation.alphaTarget(keepAlive ? AI_IDLE_ALPHA_TARGET : 0);
         simulation.alpha(1.0).restart();
       }
       break;
@@ -246,8 +252,8 @@ self.onmessage = (e: MessageEvent) => {
           node.fx = null;
           node.fy = null;
           if (simulation) {
-            // Obsidian resets alphaTarget to 0 on release, letting it cool naturally
-            simulation.alphaTarget(0);
+            // AI graphs return to a gentle idle target; regular graphs cool naturally.
+            simulation.alphaTarget(keepAlive ? AI_IDLE_ALPHA_TARGET : 0);
           }
         }
       }

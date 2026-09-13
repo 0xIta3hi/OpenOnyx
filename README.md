@@ -34,7 +34,7 @@ OpenOnyx is for writers, researchers, engineers, students, and teams who want a 
 
 ## To start using OpenOnyx
 
-You do not need an account, a cloud project, or an API key to write. There is no shipped phone app. Current release is **[v1.0.4](https://github.com/OpenOnyx/OpenOnyx/releases/tag/v1.0.4)**.
+You do not need an account, a cloud project, or an API key to write. There is no shipped phone app. Current release is **[v1.0.5](https://github.com/OpenOnyx/OpenOnyx/releases/tag/v1.0.5)**.
 
 A **vault** is any folder you choose. Your notes are the `.md` files in that folder. OpenOnyx reads them; it does not lock them in a database. Cache and indexes go in a `.openonyx` folder inside the vault — you can ignore that folder in git.
 
@@ -46,55 +46,55 @@ Pick your OS. Linux packages on this release are **x86_64**.
 
 **Windows**
 
-- [Installer](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe) — run `OpenOnyx.Setup.1.0.4.exe`
-- [Portable](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.1.0.4.exe) — no installer; run the `.exe`
+- [Installer](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx.Setup.1.0.5.exe) — run `OpenOnyx.Setup.1.0.5.exe`
+- [Portable](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx.1.0.5.exe) — no installer; run the `.exe`
 
 Signed by [SignPath.io](https://signpath.io/) / [SignPath Foundation](https://signpath.org/).
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx.Setup.1.0.4.exe -OutFile OpenOnyx.Setup.1.0.4.exe
+Invoke-WebRequest -Uri https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx.Setup.1.0.5.exe -OutFile OpenOnyx.Setup.1.0.5.exe
 ```
 
 **macOS**
 
 Apple menu → About This Mac → Chip. If it says Apple, use Apple Silicon. If it says Intel, use Intel.
 
-- Apple Silicon — [OpenOnyx-1.0.4-arm64.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg)
-- Intel — [OpenOnyx-1.0.4.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg)
+- Apple Silicon — [OpenOnyx-1.0.5-arm64.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx-1.0.5-arm64.dmg)
+- Intel — [OpenOnyx-1.0.5.dmg](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx-1.0.5.dmg)
 
 Open the `.dmg`, drag **OpenOnyx** into **Applications**, then launch it from there.
 
 ```bash
 # Apple Silicon
-curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4-arm64.dmg
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx-1.0.5-arm64.dmg
 
 # Intel
-curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.dmg
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx-1.0.5.dmg
 ```
 
 If Gatekeeper blocks the app: right-click → Open, or `xattr -cr /Applications/OpenOnyx.app`.
 
 **Linux**
 
-- [AppImage](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage)
-- Debian / Ubuntu — [openonyx_1.0.4_amd64.deb](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb)
-- Arch — [openonyx-1.0.4-1-x86_64.pkg.tar.zst](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst)
+- [AppImage](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx-1.0.5.AppImage)
+- Debian / Ubuntu — [openonyx_1.0.5_amd64.deb](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/openonyx_1.0.5_amd64.deb)
+- Arch — [openonyx-1.0.5-1-x86_64.pkg.tar.zst](https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/openonyx-1.0.5-1-x86_64.pkg.tar.zst)
 
 There is no official `.rpm`.
 
 ```bash
 # AppImage
-curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/OpenOnyx-1.0.4.AppImage
-chmod +x OpenOnyx-1.0.4.AppImage
-./OpenOnyx-1.0.4.AppImage
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/OpenOnyx-1.0.5.AppImage
+chmod +x OpenOnyx-1.0.5.AppImage
+./OpenOnyx-1.0.5.AppImage
 
 # Debian / Ubuntu
-curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx_1.0.4_amd64.deb
-sudo dpkg -i openonyx_1.0.4_amd64.deb
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/openonyx_1.0.5_amd64.deb
+sudo dpkg -i openonyx_1.0.5_amd64.deb
 
 # Arch
-curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.4/openonyx-1.0.4-1-x86_64.pkg.tar.zst
-sudo pacman -U openonyx-1.0.4-1-x86_64.pkg.tar.zst
+curl -LO https://github.com/OpenOnyx/OpenOnyx/releases/download/v1.0.5/openonyx-1.0.5-1-x86_64.pkg.tar.zst
+sudo pacman -U openonyx-1.0.5-1-x86_64.pkg.tar.zst
 ```
 
 **macOS and Linux — one command** (detects the OS and installs the matching package):

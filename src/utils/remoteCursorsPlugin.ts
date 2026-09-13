@@ -158,7 +158,9 @@ export const remoteCursorsField = StateField.define<Map<string, CursorPresence>>
     if (tr.docChanged && !changed) {
       // Map cursor positions through the changes
       const mapped = new Map<string, CursorPresence>();
-      const startLen = tr.startState.doc.length;
+      // The changeset is the authoritative source snapshot. During rapid
+      // file/tab activation the startState can briefly be stale.
+      const startLen = tr.changes.length;
       for (const [id, p] of (next === cursors ? cursors : next)) {
         const safeFrom = Math.max(0, Math.min(p.cursor.from, startLen));
         const safeTo = Math.max(0, Math.min(p.cursor.to, startLen));

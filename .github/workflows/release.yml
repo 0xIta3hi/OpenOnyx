@@ -55,7 +55,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -120,6 +120,62 @@ jobs:
       - name: Build installers
         run: npm run ${{ matrix.platform.script }}
 
+      - name: Verify release artifacts
+        shell: bash
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform.name }}
+        run: |
+          set -euo pipefail
+          has_artifact() {
+            for file in release/$1; do
+              if [ -f "$file" ]; then
+                return 0
+              fi
+            done
+            echo "Missing release artifact matching release/$1" >&2
+            return 1
+          }
+
+          case "$RELEASE_PLATFORM" in
+            linux)
+              has_artifact '*.AppImage'
+              has_artifact '*.deb'
+              has_artifact '*.pkg.tar.*'
+              ;;
+            windows)
+              has_artifact '*.exe'
+              ;;
+            macos)
+              has_artifact '*.dmg'
+              has_artifact '*-mac.zip'
+              ;;
+            *)
+              echo "Unknown release platform: $RELEASE_PLATFORM" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "Verified $RELEASE_PLATFORM release artifacts:"
+          for file in release/*; do
+            if [ -f "$file" ]; then
+              printf '  %s\n' "$(basename "$file")"
+            fi
+          done | sort
+
+      - name: Prepare release notes
+        if: matrix.platform.name == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '
+            /^## / {
+              if (found) exit
+              found = 1
+            }
+            found { print }
+          ' changelog.md > release-notes.md
+          test -s release-notes.md
+
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -127,4 +183,5 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: ${{ matrix.platform.release_paths }}
           fail_on_unmatched_files: false
-          generate_release_notes: ${{ matrix.platform.name == 'linux' }}
+          body_path: ${{ matrix.platform.name == 'linux' && 'release-notes.md' || '' }}
+          generate_release_notes: false

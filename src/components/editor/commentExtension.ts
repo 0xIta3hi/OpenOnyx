@@ -86,8 +86,14 @@ export const commentStateField = StateField.define<CommentExtensionState>({
     if (tr.docChanged) {
       // Map existing comment coordinates across changes
       comments = comments.map((c) => {
-        const newFrom = tr.changes.mapPos(c.from, 1);
-        const newTo = tr.changes.mapPos(c.to, -1);
+        // Use the changeset source length rather than a possibly stale
+        // document snapshot. Comments can arrive asynchronously while a
+        // note is being replaced during tab/file activation.
+        const sourceLength = tr.changes.length;
+        const safeFrom = Math.max(0, Math.min(c.from, sourceLength));
+        const safeTo = Math.max(0, Math.min(c.to, sourceLength));
+        const newFrom = tr.changes.mapPos(safeFrom, 1);
+        const newTo = tr.changes.mapPos(safeTo, -1);
         return {
           ...c,
           from: newFrom,
@@ -96,8 +102,11 @@ export const commentStateField = StateField.define<CommentExtensionState>({
       });
 
       if (pending) {
-        const newFrom = tr.changes.mapPos(pending.from, 1);
-        const newTo = tr.changes.mapPos(pending.to, -1);
+        const sourceLength = tr.changes.length;
+        const safeFrom = Math.max(0, Math.min(pending.from, sourceLength));
+        const safeTo = Math.max(0, Math.min(pending.to, sourceLength));
+        const newFrom = tr.changes.mapPos(safeFrom, 1);
+        const newTo = tr.changes.mapPos(safeTo, -1);
         pending = {
           from: newFrom,
           to: Math.max(newFrom, newTo),

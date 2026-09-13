@@ -1482,6 +1482,7 @@ export function AIKnowledgeGraph({
         })),
         edges: layoutEdges,
         forces,
+        keepAlive: true,
       },
     });
 

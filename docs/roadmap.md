@@ -2,7 +2,7 @@
 
 This is the public view of where OpenOnyx is pointed. Dates are not commitments. The living backlog is [GitHub Issues](https://github.com/OpenOnyx/OpenOnyx/issues).
 
-## Now — desktop v1.0.4
+## Now — desktop v1.0.5
 
 The current release is a local-first Electron app for macOS, Windows, and Linux:
 

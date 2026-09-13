@@ -4,6 +4,52 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ---
 
+## 2026-09-13 (v1.0.5)
+
+This release builds on v1.0.4 with a more dependable editor, a substantially more capable commenting workflow, stronger local-first intelligence, and safer plugin and collaboration behavior.
+
+### Commenting and Review Workflow
+* **Rich Comment Editing**: Added comment editing with a full formatting toolbar for bold, italic, underline, strikethrough, highlighting, inline code, links, blockquotes, and ordered or unordered lists.
+* **Threaded Discussions**: Added replies, image attachments, image lightbox viewing, mentions, and persisted edited timestamps.
+* **Readable Comment Layout**: Added compact comment cards, long-comment previews with ellipses, expand/collapse controls, measured collision-free positioning, smooth movement when cards expand, and hover-linked comment emphasis.
+* **Precise Anchoring**: Fixed repeated words being highlighted as multiple comments; highlights now map to the exact selected occurrence.
+* **Robust Rendering**: Fixed missing-content and JSDOM rendering crashes that previously failed the unit-test CI job.
+
+### Knowledge and AI
+* **Grounded RAG Citations**: Local and cloud retrieval results now preserve note paths and chunk context, with safer lexical fallback behavior and deleted-note filtering.
+* **AI Graph Improvements**: Improved graph centering, rendering performance, Mermaid safeguards, and local ONNX runtime hosting.
+* **Writing Assistance**: Expanded reliable inline AI workflows and centralized Mermaid-aware prompting.
+
+### Collaboration, Vaults, and Reliability
+* **Sync Hardening**: Improved Yjs hydration, conflict-copy preservation, offline change detection, batching, reconnection behavior, and protection against legacy LWW overwrites during CRDT collaboration.
+* **Vault Safety**: Strengthened filesystem isolation, outbound URL validation, plugin permissions, API-key storage, and cross-user retrieval protections.
+* **File Watching and Loading**: Improved external file synchronization, note hydration, vault switching, recent-vault handling, and refresh behavior so existing files do not appear missing after reload.
+
+### Interface and Compatibility
+* **Theme Refinement**: Introduced the updated default dark palette, theme-aware comment colors, improved sidebar/explorer contrast, and more consistent wallpaper behavior.
+* **Obsidian Compatibility**: Expanded plugin runtime support, filesystem adapters, plugin views, marketplace handling, and compatibility tests.
+* **Canvas and Markdown**: Improved Canvas support, table editing, embeds, callouts, PDF image handling, and Markdown preview safety.
+* **Website and Documentation**: Added the production documentation experience, product walkthrough content, improved responsive layouts, and clearer installation guidance.
+
+### Build and Release Quality
+* **CI Coverage**: Release candidates are checked with TypeScript compilation, unit and integration tests, build-integrity checks, plugin runtime tests, and production builds.
+* **Cross-Platform Packaging**: Maintained native packaging paths for Linux, Windows, and macOS, including AppImage, Debian, Arch, NSIS, portable, DMG, and ZIP artifacts.
+
+### Contributors
+Thank you to everyone who helped make this release possible:
+
+* **Varshith M7X** — comment system, editor and theme work, sync and RAG improvements, performance, release engineering, and integration fixes.
+* **Rishi Jat** — CI improvements, documentation and website work, plugin compatibility, security hardening, and release workflow support.
+* **Muhammad Ali Siddiqui** — plugin marketplace security and integration fixes.
+* **Muhammad Muneeb** — PDF export, status bar, and collaboration-related fixes.
+* **0xIta3hi** — API-key security and project documentation contributions.
+* **alibro005** — Mermaid, plugin, vault, and command workflow fixes.
+* **JINLING1** — command palette and platform usability improvements.
+* **Cenk** — database query hardening against cross-user data exposure.
+* **Sarthik**, **GUNPARK_GOOKIM**, and **hopperminecart** — Electron startup, synchronization, and desktop reliability fixes.
+
+---
+
 ## 2026-07-24 (v1.0.4)
 
 ### OpenOnyx Rebrand & Vault Migration

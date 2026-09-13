@@ -24,7 +24,7 @@ If applicable, add screenshots or paste relevant console error logs (`Ctrl + Shi
 
 ## Desktop Environment
  - **OS:** [e.g. macOS 14.2, Windows 11, Ubuntu 22.04]
- - **OpenOnyx Version:** [e.g. v1.0.4]
+ - **OpenOnyx Version:** [e.g. v1.0.5]
  - **Node/Electron Version (if building from source):** [e.g. Node 24.x, Electron 41]
 
 ## Additional Context
