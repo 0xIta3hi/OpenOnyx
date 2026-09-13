@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EditorView } from "@codemirror/view";
-import { MessageSquare, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { NoteComment, PendingComment } from "../../types/comments";
 import { CommentInputBox, CommentCard, CommentBadge } from "./CommentComponents";
 
@@ -486,18 +486,11 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
                 {/* Popover shown ONLY when clicked (Image 1 requirement) */}
                 {isPopoverOpen && (
                   <div
-                    className="cm-comment-popover pointer-events-auto absolute right-0 top-7 z-[60] flex w-[310px] flex-col gap-2.5 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-elevated)] p-3 shadow-2xl transition-all"
+                    className="cm-comment-popover pointer-events-auto absolute right-0 top-7 z-[60] flex w-[310px] flex-col gap-2 transition-all"
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
-                    <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-1.5">
-                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--text-secondary)]">
-                        <MessageSquare className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                        <span>
-                          {group.comments.length} comment
-                          {group.comments.length > 1 ? "s" : ""}
-                        </span>
-                      </div>
+                    <div className="flex justify-end">
                       <button
                         type="button"
                         title="Close"
@@ -509,13 +502,12 @@ export const EditorCommentsLayer: React.FC<EditorCommentsLayerProps> = ({
                     </div>
 
                     <div className="flex flex-col gap-2">
-                      {group.comments.map((c, idx) => (
-                        <div key={c.id} className={idx > 0 ? "border-t border-[var(--border-subtle)] pt-2" : ""}>
+                      {group.comments.map((c) => (
+                        <div key={c.id}>
                           <CommentCard
                             comment={c}
                             isActive={c.id === activeCommentId}
                             isTargetHovered={hoveredCommentId === c.id}
-                            embedded={true}
                             onSelect={() => {
                               onSelectComment(c.id);
                               if (view) {
