@@ -6,47 +6,50 @@ A comprehensive chronological record of all features, improvements, optimization
 
 ## 2026-09-13 (v1.0.5)
 
-This release builds on v1.0.4 with a more dependable editor, a substantially more capable commenting workflow, stronger local-first intelligence, and safer plugin and collaboration behavior.
+This release builds on v1.0.4 with a major editor and collaboration upgrade, stronger local-first AI, improved plugin compatibility, and a production-ready documentation site.
 
-### Commenting and Review Workflow
-* **Rich Comment Editing**: Added comment editing with a full formatting toolbar for bold, italic, underline, strikethrough, highlighting, inline code, links, blockquotes, and ordered or unordered lists.
-* **Threaded Discussions**: Added replies, image attachments, image lightbox viewing, mentions, and persisted edited timestamps.
-* **Readable Comment Layout**: Added compact comment cards, long-comment previews with ellipses, expand/collapse controls, measured collision-free positioning, smooth movement when cards expand, and hover-linked comment emphasis.
-* **Precise Anchoring**: Fixed repeated words being highlighted as multiple comments; highlights now map to the exact selected occurrence.
-* **Robust Rendering**: Fixed missing-content and JSDOM rendering crashes that previously failed the unit-test CI job.
+### Editor and Commenting
+* **Full Comment Threads**: Added comment creation, editing, replies, mentions, image attachments, image lightboxes, edited timestamps, and persistent local storage.
+* **Rich Comment Formatting**: Added a toolbar for bold, italic, underline, strikethrough, highlighting, inline code, links, blockquotes, ordered lists, and unordered lists. Comments render as a live formatted preview instead of exposing Markdown syntax.
+* **Better Comment Layout**: Added normal standalone comment cards, compact cards, long-comment previews, expand/collapse controls, collision-aware positioning, smooth expansion movement, and hover-linked emphasis.
+* **Accurate Anchors**: Fixed repeated words being highlighted together. A comment now belongs only to the exact selected occurrence, including selections inside rendered tables.
+* **Markdown Editing**: Added live table editing with row and column controls, improved callout editing and typography, better image widgets and lightbox zoom, and safer Mermaid rendering with theme support.
+* **Editor Reliability**: Fixed missing-content rendering crashes, stale CodeMirror positions during file and tab activation, layout overflow, and several refresh and hydration edge cases.
 
-### Knowledge and AI
-* **Grounded RAG Citations**: Local and cloud retrieval results now preserve note paths and chunk context, with safer lexical fallback behavior and deleted-note filtering.
-* **AI Graph Improvements**: Improved graph centering, rendering performance, Mermaid safeguards, and local ONNX runtime hosting.
-* **Writing Assistance**: Expanded reliable inline AI workflows and centralized Mermaid-aware prompting.
+### AI and Knowledge Graph
+* **Grounded Citations**: Cloud citation results now preserve note paths, can download the referenced note on demand, and filter deleted notes from lexical fallback results.
+* **AI Graph Improvements**: Improved graph auto-centering, rendering performance, force layout behavior, and node activity. ONNX Runtime WASM assets are hosted locally for offline embedding support, with embedding-cache pruning.
+* **Writing Assistance**: Improved inline AI suggestions and centralized Mermaid-aware prompting with higher response limits.
 
-### Collaboration, Vaults, and Reliability
-* **Sync Hardening**: Improved Yjs hydration, conflict-copy preservation, offline change detection, batching, reconnection behavior, and protection against legacy LWW overwrites during CRDT collaboration.
-* **Vault Safety**: Strengthened filesystem isolation, outbound URL validation, plugin permissions, API-key storage, and cross-user retrieval protections.
-* **File Watching and Loading**: Improved external file synchronization, note hydration, vault switching, recent-vault handling, and refresh behavior so existing files do not appear missing after reload.
+### Collaboration and Vaults
+* **Yjs Collaboration**: Improved CRDT hydration, real-time presence, reconnection, remote persistence, sync batching, and Canvas synchronization.
+* **Conflict Protection**: Preserved rejected local edits as conflict copies and prevented legacy last-write-wins synchronization from overwriting Yjs-managed documents.
+* **Vault Workflow**: Added recent vaults, close-vault actions, inline file and folder renaming, directory-aware note and folder creation, file and folder moves, and more reliable external file watching and refresh behavior.
+* **Local-First Safety**: Hardened filesystem path isolation, API-key storage outside plaintext localStorage, outbound URL validation, plugin permissions, and cross-user note retrieval.
 
-### Interface and Compatibility
-* **Theme Refinement**: Introduced the updated default dark palette, theme-aware comment colors, improved sidebar/explorer contrast, and more consistent wallpaper behavior.
-* **Obsidian Compatibility**: Expanded plugin runtime support, filesystem adapters, plugin views, marketplace handling, and compatibility tests.
-* **Canvas and Markdown**: Improved Canvas support, table editing, embeds, callouts, PDF image handling, and Markdown preview safety.
-* **Website and Documentation**: Added the production documentation experience, product walkthrough content, improved responsive layouts, and clearer installation guidance.
+### Interface, Plugins, and Website
+* **Theme and Layout**: Refined the default dark theme, made comment colors theme-aware, improved sidebar and explorer contrast, and fixed wallpaper and responsive layout issues.
+* **Plugin Compatibility**: Expanded Obsidian API polyfills, filesystem adapters, plugin views, marketplace behavior, and runtime compatibility coverage.
+* **Plugin Security**: Sanitized marketplace README rendering, hardened renderer IPC, rejected redirects to private hosts, and routed external plugin links through validated IPC.
+* **Documentation Site**: Added the production documentation website, product walkthrough, embedded workspace demonstrations, feature comparisons, responsive layouts, and improved README installation guidance.
 
 ### Build and Release Quality
-* **CI Coverage**: Release candidates are checked with TypeScript compilation, unit and integration tests, build-integrity checks, plugin runtime tests, and production builds.
-* **Cross-Platform Packaging**: Maintained native packaging paths for Linux, Windows, and macOS, including AppImage, Debian, Arch, NSIS, portable, DMG, and ZIP artifacts.
+* **Testing**: Added the pull-request CI gate, build-integrity checks, unit and integration coverage, plugin runtime tests, compatibility checks, and the unified all-checks runner.
+* **Cross-Platform Packaging**: Maintained native Linux, Windows, and macOS packaging for AppImage, Debian, Arch, NSIS, portable EXE, DMG, and ZIP artifacts.
+* **Electron Reliability**: Improved startup behavior, single-instance handling, hardware acceleration, Vite code splitting, lazy loading, and editor component memoization.
 
 ### Contributors
-Thank you to everyone who helped make this release possible:
+Thank you to everyone who contributed between v1.0.4 and v1.0.5:
 
-* **Varshith M7X** — comment system, editor and theme work, sync and RAG improvements, performance, release engineering, and integration fixes.
-* **Rishi Jat** — CI improvements, documentation and website work, plugin compatibility, security hardening, and release workflow support.
-* **Muhammad Ali Siddiqui** — plugin marketplace security and integration fixes.
-* **Muhammad Muneeb** — PDF export, status bar, and collaboration-related fixes.
-* **0xIta3hi** — API-key security and project documentation contributions.
-* **alibro005** — Mermaid, plugin, vault, and command workflow fixes.
-* **JINLING1** — command palette and platform usability improvements.
-* **Cenk** — database query hardening against cross-user data exposure.
-* **Sarthik**, **GUNPARK_GOOKIM**, and **hopperminecart** — Electron startup, synchronization, and desktop reliability fixes.
+* **Varshith M7X** — editor, comments, synchronization, graph performance, AI, themes, release engineering, and integration work.
+* **Rishi Jat** — CI, website, documentation, plugin compatibility, security hardening, and release workflow work.
+* **Muhammad Ali Siddiqui** — marketplace security and integration fixes.
+* **Muhammad Muneeb** — cloud citations, PDF export, status bar, and collaboration fixes.
+* **0xIta3hi** — API-key security, documentation, and repository maintenance.
+* **alibro005** — Mermaid rendering, plugin security, vault behavior, and command workflow fixes.
+* **JINLING1** — command palette and platform usability fixes.
+* **Cenk** — cross-user retrieval and database security hardening.
+* **Sarthik**, **GUNPARK_GOOKIM**, **hopperminecart**, and **Abdulazeez A. Noaman** — Electron startup, synchronization, titlebar, and external-link reliability fixes.
 
 ---
 
