@@ -78,11 +78,11 @@ function commentValueToHtml(value: string): string {
   return sanitizeCommentHtml(marked.parse(normalized, { async: false, breaks: true }) as string);
 }
 
-function plainTextFromHtml(html: string): string {
+function plainTextFromHtml(html = ""): string {
   if (typeof document === "undefined") return html.replace(/<[^>]*>/g, " ").trim();
   const div = document.createElement("div");
   div.innerHTML = sanitizeCommentHtml(html);
-  return div.innerText.trim();
+  return (div.innerText || div.textContent || "").trim();
 }
 
 function wrapCurrentSelection(
