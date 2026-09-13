@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useDeferredValue, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, ExternalLink, ArrowLeft, Loader2, ShieldAlert, Check } from 'lucide-react';
+import { Search, ExternalLink, ArrowLeft, Loader2, ShieldAlert, Check } from 'lucide-react';
 import type { PluginRegistryEntry } from '../../types/plugin';
 import { getAPI } from '../../utils/api';
 import { marked } from 'marked';
@@ -212,16 +212,6 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
     }
   };
 
-  // Stable hash-based mock download counts to maintain clean and reliable metrics
-  const getStableDownloads = (pluginId: string): string => {
-    let hash = 0;
-    for (let i = 0; i < pluginId.length; i++) {
-      hash = pluginId.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const base = (Math.abs(hash) % 85000) + 15000;
-    return base.toLocaleString();
-  };
-
   // Convert raw README markdown string to safe sanitized HTML
   const readmeHtml = useMemo(() => {
     if (!readme) return '';
@@ -230,7 +220,7 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
       return DOMPurify.sanitize(rawHtml);
     } catch (e) {
       console.error('Failed to parse Markdown:', e);
-      return readme;
+      return DOMPurify.sanitize(readme);
     }
   }, [readme]);
 
@@ -421,10 +411,6 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                       }}>
                         {plugin.description}
                       </p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        <Download size={10} />
-                        <span>{getStableDownloads(plugin.id)}</span>
-                      </div>
                     </div>
                   );
                 })}
@@ -485,10 +471,6 @@ export function PluginMarketplace({ onClose, onInstall, installedPluginIds }: Pl
                         GitHub <ExternalLink size={11} />
                       </a>
                     )}
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}>
-                      <Download size={12} />
-                      {getStableDownloads(selectedPlugin.id)} downloads
-                    </span>
                   </div>
                 </div>
 
