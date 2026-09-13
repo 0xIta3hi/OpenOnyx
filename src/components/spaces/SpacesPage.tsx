@@ -1735,7 +1735,12 @@ export function SpacesPage({ onClose, fileTree, onOpenNote, vaultPath }: SpacesP
         id: `msg-${Date.now()}-resp`,
         role: "assistant",
         content: finalAnswer,
-        sources: result.sources.map((s) => s.noteTitle),
+        sources: result.sources.map((s) => ({
+          noteTitle: s.noteTitle,
+          notePath: s.notePath,
+          chunkText: s.chunkText,
+          similarity: s.similarity,
+        })),
         timestamp: Date.now(),
       };
       setChatMessages((prev) => {

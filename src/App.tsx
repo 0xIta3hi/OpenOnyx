@@ -2493,10 +2493,41 @@ export default function App() {
     window.addEventListener("openonyx:file-created", onFileCreated as EventListener);
     window.addEventListener("openonyx:directory-created", onFileCreated as EventListener);
     window.addEventListener("openonyx:file-written", onFileWritten as EventListener);
+
+    const unsubscribeVaultWatcher = api.onVaultFileChanges?.((changes) => {
+      const meaningfulChanges = changes.filter((change) => {
+        const path = change.path || "";
+        return path && !path.startsWith(".openonyx/") && !path.startsWith(".trash/");
+      });
+      if (meaningfulChanges.length === 0) return;
+
+      void refreshFileTree();
+      for (const change of meaningfulChanges) {
+        if (!change.isDirectory && change.type !== "delete") {
+          void indexMarkdownFileNow(change.path);
+        } else if (change.type === "delete" && change.path.toLowerCase().endsWith(".md")) {
+          void (async () => {
+            try {
+              const store = loadStore();
+              await removeEmbedding(store, change.path);
+              window.dispatchEvent(
+                new CustomEvent("openonyx:embedding-updated", {
+                  detail: { path: change.path },
+                }),
+              );
+            } catch (err) {
+              console.warn("[Auto-index] Failed to remove deleted file embedding:", err);
+            }
+          })();
+        }
+      }
+    });
+
     return () => {
       window.removeEventListener("openonyx:file-created", onFileCreated as EventListener);
       window.removeEventListener("openonyx:directory-created", onFileCreated as EventListener);
       window.removeEventListener("openonyx:file-written", onFileWritten as EventListener);
+      unsubscribeVaultWatcher?.();
     };
   }, [indexMarkdownFileNow, refreshFileTree]);
 

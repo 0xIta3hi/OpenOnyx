@@ -86,6 +86,24 @@ const electronAPI = {
   getFileTree: (): Promise<any> =>
     ipcRenderer.invoke('fs:getFileTree'),
 
+  onVaultFileChanges: (
+    callback: (changes: Array<{
+      type: 'create' | 'modify' | 'delete' | 'rename';
+      path: string;
+      isDirectory: boolean;
+      timestamp: number;
+    }>) => void,
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, changes: Array<{
+      type: 'create' | 'modify' | 'delete' | 'rename';
+      path: string;
+      isDirectory: boolean;
+      timestamp: number;
+    }>) => callback(changes);
+    ipcRenderer.on('vault:file-changes', listener);
+    return () => ipcRenderer.removeListener('vault:file-changes', listener);
+  },
+
   // ── Search Operations ─────────────────────────────
   search: (query: string): Promise<any[]> =>
     ipcRenderer.invoke('search:query', query),

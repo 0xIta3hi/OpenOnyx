@@ -2051,6 +2051,18 @@ img.emoji {
 .onyx-tree {
 }
 
+.sidebar.onyx-tree .nn-explorer-container,
+.sidebar.onyx-tree .nn-folders-pane,
+.sidebar.onyx-tree .nn-notes-pane,
+.sidebar.onyx-tree .nn-compact-header,
+.sidebar.onyx-tree .file-explorer {
+  background-color: var(--bg-tree, var(--bg-secondary)) !important;
+}
+
+.sidebar.onyx-tree .onyx-quick-search {
+  background-color: var(--bg-input, color-mix(in srgb, var(--bg-tree, #111) 88%, white 12%));
+}
+
 .onyx-tree .file-tree-item.active {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
@@ -2588,7 +2600,6 @@ mark.cm-comment-highlight.cm-comment-pending {
   background-color: rgba(250, 204, 21, 0.35) !important;
   border-bottom: 2px dashed rgba(250, 204, 21, 0.9) !important;
 }
-
 
 
 
