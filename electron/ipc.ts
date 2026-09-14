@@ -237,7 +237,7 @@ export function registerIpcHandlers(
   ipcMain.handle('desktop:renamePath', async (_event, oldPath: string, newPath: string) => {
     if (!oldPath || !newPath) throw new Error('Missing path');
     if (!isApprovedVaultPath(oldPath)) {
-      throw new Error('Source vault is not approved');
+      throw new Error('Cannot rename path outside an approved vault');
     }
     const resolvedOld = nodePath.resolve(oldPath);
     const resolvedNew = nodePath.resolve(newPath);
@@ -248,6 +248,7 @@ export function registerIpcHandlers(
     }
     await fs.rename(resolvedOld, resolvedNew);
     approveVaultPath(resolvedNew);
+    return { success: true };
   });
 
   // ── File Operations ───────────────────────────────

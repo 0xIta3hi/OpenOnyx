@@ -82,7 +82,9 @@ describe("desktop:renamePath IPC", () => {
       const handler = registeredHandlers(fsManager).get("desktop:renamePath");
 
       expect(handler).toBeDefined();
-      await handler?.({}, sourcePath, destinationPath);
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
 
       await expect(access(destinationPath)).resolves.toBeUndefined();
       await expect(access(sourcePath)).rejects.toThrow();
