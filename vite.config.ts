@@ -28,11 +28,12 @@ export default defineConfig({
             if (id.includes('@codemirror') || id.includes('@lezer') || id.includes('codemirror') || id.includes('@replit/codemirror-vim')) {
               return 'vendor-codemirror';
             }
-            if (id.includes('d3') || id.includes('cytoscape') || id.includes('dagre')) {
-              return 'vendor-d3';
-            }
-            if (id.includes('mermaid')) {
-              return 'vendor-mermaid';
+            // Mermaid's layout/rendering dependencies and the app's graph
+            // dependencies import each other. Keeping them in separate manual
+            // chunks creates an initialization cycle in production builds and
+            // can crash the renderer before React mounts.
+            if (id.includes('mermaid') || id.includes('d3') || id.includes('cytoscape') || id.includes('dagre')) {
+              return 'vendor-diagrams';
             }
             if (id.includes('katex')) {
               return 'vendor-katex';
@@ -64,4 +65,3 @@ export default defineConfig({
     environment: "node",
   },
 });
-
