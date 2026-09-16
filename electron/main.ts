@@ -121,13 +121,13 @@ function renameVaultPath(oldPath: string, newPath: string): string[] {
   const normalizedOldPath = normalizeVaultPath(oldPath);
   const normalizedNewPath = normalizeVaultPath(newPath);
   const state = readVaultHistoryState();
-  const previousVaultPaths = state.previousVaultPaths.map((entry) =>
-    entry === normalizedOldPath ? normalizedNewPath : entry,
-  );
+  const remapPath = (entry: string): string => {
+    if (!isInsideRoot(normalizedOldPath, entry)) return entry;
+    return path.join(normalizedNewPath, path.relative(normalizedOldPath, entry));
+  };
+  const previousVaultPaths = state.previousVaultPaths.map(remapPath);
   writeVaultHistoryState({
-    currentVaultPath: state.currentVaultPath === normalizedOldPath
-      ? normalizedNewPath
-      : state.currentVaultPath,
+    currentVaultPath: state.currentVaultPath ? remapPath(state.currentVaultPath) : null,
     previousVaultPaths,
   });
   return previousVaultPaths;

@@ -250,7 +250,11 @@ export function registerIpcHandlers(
     await fs.rename(resolvedOld, resolvedNew);
     approveVaultPath(resolvedNew);
     if (renameVaultPath) {
-      renameVaultPath(resolvedOld, resolvedNew);
+      try {
+        renameVaultPath(resolvedOld, resolvedNew);
+      } catch (error) {
+        console.warn('[IPC] Failed to update vault history after rename:', error);
+      }
     }
     return { success: true };
   });

@@ -104,4 +104,28 @@ describe("desktop:renamePath IPC", () => {
       await rm(parentPath, { recursive: true, force: true });
     }
   });
+
+  it("reports success when updating vault history fails after the move", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    const fsManager = {
+      getVaultPath: () => sourcePath,
+    };
+
+    await mkdir(sourcePath);
+
+    try {
+      const handler = registeredHandlers(fsManager, () => {
+        throw new Error("history unavailable");
+      }).get("desktop:renamePath");
+
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+      await expect(access(destinationPath)).resolves.toBeUndefined();
+    } finally {
+      await rm(parentPath, { recursive: true, force: true });
+    }
+  });
 });
