@@ -8,6 +8,7 @@
 import { app, IpcMain, BrowserWindow, clipboard, dialog, shell } from 'electron';
 import * as fs from 'fs/promises';
 import * as nodeFs from 'fs';
+import { tmpdir } from 'os';
 import * as nodePath from 'path';
 import { FileSystemManager } from './fileSystem.js';
 import { SearchEngine } from './search.js';
@@ -55,6 +56,14 @@ export function registerIpcHandlers(
     return relativePath
       .split('/')
       .some((part) => part.startsWith('.') || part === 'node_modules');
+  };
+
+  const isSamePath = (firstPath: string, secondPath: string): boolean => {
+    const resolvedFirst = nodePath.resolve(firstPath);
+    const resolvedSecond = nodePath.resolve(secondPath);
+    return process.platform === 'win32'
+      ? resolvedFirst.toLowerCase() === resolvedSecond.toLowerCase()
+      : resolvedFirst === resolvedSecond;
   };
 
   const flushVaultFileChanges = () => {
@@ -247,7 +256,81 @@ export function registerIpcHandlers(
     if (destParent !== sourceParent && !isApprovedVaultPath(destParent)) {
       throw new Error('Destination is not approved');
     }
-    await fs.rename(resolvedOld, resolvedNew);
+
+    const activeVaultPath = fsManager.getVaultPath();
+    const movingActiveVault = !!(activeVaultPath && isSamePath(activeVaultPath, resolvedOld));
+    const originalCwd = process.cwd();
+    const cwdIsInsideSource = isInsideRoot(resolvedOld, originalCwd);
+
+    if (movingActiveVault) {
+      closeVaultWatchers();
+      if (cwdIsInsideSource) process.chdir(tmpdir());
+    }
+
+    try {
+      try {
+        await fs.rename(resolvedOld, resolvedNew);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException)?.code;
+        if (code !== 'EXDEV') throw error;
+
+        await fs.access(resolvedNew).then(
+          () => { throw new Error('Destination already exists'); },
+          () => undefined,
+        );
+        try {
+          await fs.cp(resolvedOld, resolvedNew, { recursive: true, force: false, errorOnExist: true });
+          await fs.rm(resolvedOld, { recursive: true, force: false });
+        } catch (fallbackError) {
+          await fs.rm(resolvedNew, { recursive: true, force: true }).catch(() => undefined);
+          throw fallbackError;
+        }
+      }
+
+      if (movingActiveVault) {
+        if (!fsManager.setVaultPath(resolvedNew)) {
+          throw new Error('Failed to update the active vault path after move');
+        }
+        startVaultWatchers();
+        if (cwdIsInsideSource) process.chdir(resolvedNew);
+      }
+    } catch (error) {
+      if (movingActiveVault) {
+        try {
+          process.chdir(originalCwd);
+        } catch {
+          // The original directory may no longer be accessible.
+        }
+
+        let sourceExists = true;
+        let destinationExists = false;
+        try {
+          await fs.access(resolvedOld);
+        } catch {
+          sourceExists = false;
+        }
+        try {
+          await fs.access(resolvedNew);
+          destinationExists = true;
+        } catch {
+        }
+
+        if (!sourceExists && destinationExists && fsManager.setVaultPath(resolvedNew)) {
+          startVaultWatchers();
+          if (cwdIsInsideSource) {
+            try {
+              process.chdir(resolvedNew);
+            } catch {
+              // Keep the original error if the destination CWD is unavailable.
+            }
+          }
+        } else if (sourceExists) {
+          startVaultWatchers();
+        }
+      }
+      throw error;
+    }
+
     approveVaultPath(resolvedNew);
     if (renameVaultPath) {
       try {

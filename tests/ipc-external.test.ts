@@ -1,7 +1,23 @@
 import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const fsMock = vi.hoisted(() => ({ forceCrossDeviceError: false }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    rename: vi.fn(async (...args: Parameters<typeof actual.rename>) => {
+      if (fsMock.forceCrossDeviceError) {
+        throw Object.assign(new Error("cross-device move"), { code: "EXDEV" });
+      }
+      return actual.rename(...args);
+    }),
+  };
+});
 
 const electronMocks = vi.hoisted(() => ({
   openExternal: vi.fn(async () => {}),
@@ -80,8 +96,13 @@ describe("desktop:renamePath IPC", () => {
     const sourcePath = join(parentPath, "source-vault");
     const destinationPath = join(parentPath, "renamed-vault");
     const renamedPaths: string[][] = [];
+    let activePath = sourcePath;
     const fsManager = {
-      getVaultPath: () => sourcePath,
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
     };
 
     await mkdir(sourcePath);
@@ -109,8 +130,13 @@ describe("desktop:renamePath IPC", () => {
     const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
     const sourcePath = join(parentPath, "source-vault");
     const destinationPath = join(parentPath, "renamed-vault");
+    let activePath = sourcePath;
     const fsManager = {
-      getVaultPath: () => sourcePath,
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
     };
 
     await mkdir(sourcePath);
@@ -125,6 +151,68 @@ describe("desktop:renamePath IPC", () => {
       });
       await expect(access(destinationPath)).resolves.toBeUndefined();
     } finally {
+      await rm(parentPath, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to copy and remove for cross-device moves", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    const sourceFile = join(sourcePath, "note.md");
+    let activePath = sourcePath;
+    const fsManager = {
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
+    };
+
+    await mkdir(sourcePath);
+    await fsPromises.writeFile(sourceFile, "# Note", "utf8");
+
+    try {
+      fsMock.forceCrossDeviceError = true;
+      const handler = registeredHandlers(fsManager).get("desktop:renamePath");
+
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+      await expect(access(join(destinationPath, "note.md"))).resolves.toBeUndefined();
+      await expect(access(sourcePath)).rejects.toThrow();
+    } finally {
+      fsMock.forceCrossDeviceError = false;
+      await rm(parentPath, { recursive: true, force: true });
+    }
+  });
+
+  it("moves the process CWD with an active vault", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    const originalCwd = process.cwd();
+    let activePath = sourcePath;
+    const fsManager = {
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
+    };
+
+    await mkdir(sourcePath);
+
+    try {
+      process.chdir(sourcePath);
+      const handler = registeredHandlers(fsManager).get("desktop:renamePath");
+
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+      expect(process.cwd()).toBe(destinationPath);
+    } finally {
+      process.chdir(originalCwd);
       await rm(parentPath, { recursive: true, force: true });
     }
   });
