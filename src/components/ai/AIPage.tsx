@@ -61,6 +61,7 @@ import { LINK_TYPES, type LinkType } from "./SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "../../utils/suggestion-enrichment";
 import {
   answerVaultQuestion,
+  collectMarkdownPaths,
   rankVaultPassages,
   type VaultAnswer,
   type VaultCitation,
@@ -504,12 +505,28 @@ export function AIPage({
       const currentStore = await loadStoreAsync();
       const semanticResults = await searchByQuery(currentStore, question, 30);
       const semanticScores = new Map(semanticResults.map((result) => [result.path, result.similarity]));
-      const allPaths = [...currentStore.entries.keys()].filter((path) => path.toLowerCase().endsWith(".md"));
+      const allPaths = [...new Set([
+        ...collectMarkdownPaths(fileTree),
+        ...currentStore.entries.keys(),
+      ])].filter((path) => path.toLowerCase().endsWith(".md"));
       const queryWords = question.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2);
       const titleMatches = allPaths.filter((path) => queryWords.some((word) => path.toLowerCase().includes(word)));
+      let fullTextMatches: string[] = [];
+      if (allPaths.length > 200) {
+        try {
+          const searchResults = await api.search(question);
+          fullTextMatches = searchResults.map((result) => result.path);
+        } catch {
+          // The live tree and semantic results still provide a useful fallback.
+        }
+      }
       const candidatePaths = allPaths.length <= 200
         ? allPaths
-        : [...new Set([...semanticResults.map((result) => result.path), ...titleMatches])].slice(0, 200);
+        : [...new Set([
+            ...semanticResults.map((result) => result.path),
+            ...fullTextMatches,
+            ...titleMatches,
+          ])].slice(0, 200);
 
       const documents = (await Promise.all(candidatePaths.map(async (path) => {
         try {
@@ -535,7 +552,7 @@ export function AIPage({
     } finally {
       setIsAsking(false);
     }
-  }, [api, askQuery, hasApiKey, isAsking]);
+  }, [api, askQuery, fileTree, hasApiKey, isAsking]);
 
   const displayedSources = askResult?.citations.length
     ? askResult.citations

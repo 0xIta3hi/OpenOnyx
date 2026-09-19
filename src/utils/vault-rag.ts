@@ -1,4 +1,5 @@
 import { askAI } from "./ai-core";
+import type { FileEntry } from "../types";
 
 export interface VaultRagDocument {
   path: string;
@@ -41,6 +42,26 @@ function tokens(value: string): string[] {
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(/\s+/)
     .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
+}
+
+/** Collect every Markdown note from the live vault tree, including unindexed notes. */
+export function collectMarkdownPaths(entries: FileEntry[]): string[] {
+  const paths: string[] = [];
+
+  const walk = (items: FileEntry[]) => {
+    for (const entry of items) {
+      if (entry.isDirectory) {
+        if (entry.children) walk(entry.children);
+        continue;
+      }
+      if (entry.extension.toLowerCase() === ".md" || entry.name.toLowerCase().endsWith(".md")) {
+        paths.push(entry.path);
+      }
+    }
+  };
+
+  walk(entries);
+  return paths;
 }
 
 function splitOversizedBlock(lines: string[], startLine: number, maxChars: number): Array<{ lines: string[]; startLine: number }> {

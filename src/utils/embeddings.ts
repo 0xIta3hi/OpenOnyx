@@ -834,6 +834,10 @@ export async function searchByQuery(
   query: string,
   maxResults = 8,
 ): Promise<SimilarNote[]> {
+  // There is nothing to compare against, so avoid starting the heavyweight
+  // model (and potentially logging a backend warning) on a brand-new vault.
+  if (store.entries.size === 0) return [];
+
   const queryVec = await embedText(query);
   const results: SimilarNote[] = [];
 

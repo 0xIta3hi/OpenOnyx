@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '@xenova/transformers';
 import {
   getRemoteEmbeddingModelSubpath,
+  isLexicalFallbackActive,
   refreshEmbeddingMetadataIfUnchanged,
   resetEmbeddingsStore,
   resolveTransformersWasmPath,
+  searchByQuery,
   simpleHash,
   type EmbeddingStore,
 } from '../src/utils/embeddings';
@@ -108,5 +110,12 @@ describe('embedding cache metadata refresh', () => {
 
     expect(refreshed).toBe(false);
     expect(store.entries.get('Changed.md')?.modifiedAt).toBe(1000);
+  });
+
+  it('does not initialize an embedding backend when there are no indexed notes', async () => {
+    const results = await searchByQuery({ entries: new Map() }, 'first question');
+
+    expect(results).toEqual([]);
+    expect(isLexicalFallbackActive()).toBe(false);
   });
 });

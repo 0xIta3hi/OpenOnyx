@@ -1,8 +1,42 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { chunkMarkdown, extractCitationIds, rankVaultPassages } from "../src/utils/vault-rag";
+import {
+  chunkMarkdown,
+  collectMarkdownPaths,
+  extractCitationIds,
+  rankVaultPassages,
+} from "../src/utils/vault-rag";
+import type { FileEntry } from "../src/types";
+
+function entry(overrides: Partial<FileEntry> & Pick<FileEntry, "name" | "path">): FileEntry {
+  return {
+    absolutePath: `/vault/${overrides.path}`,
+    isDirectory: false,
+    extension: "",
+    modifiedAt: 0,
+    size: 0,
+    ...overrides,
+  };
+}
 
 describe("vault RAG citations", () => {
+  it("collects Markdown notes from the live tree even when they are not embedded", () => {
+    const tree = [
+      entry({
+        name: "Systems",
+        path: "Systems",
+        isDirectory: true,
+        children: [
+          entry({ name: "Cache.md", path: "Systems/Cache.md", extension: ".md" }),
+          entry({ name: "Diagram.canvas", path: "Systems/Diagram.canvas", extension: ".canvas" }),
+        ],
+      }),
+      entry({ name: "README.MD", path: "README.MD" }),
+    ];
+
+    expect(collectMarkdownPaths(tree)).toEqual(["Systems/Cache.md", "README.MD"]);
+  });
+
   it("preserves headings and exact line ranges when chunking Markdown", () => {
     const passages = chunkMarkdown("Research/Cache.md", "# Cache\n\nIntro text.\n\n## Eviction\n\nLRU removes the least recently used item.");
 
