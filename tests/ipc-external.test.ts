@@ -1,4 +1,23 @@
+import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const fsMock = vi.hoisted(() => ({ forceCrossDeviceError: false }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    rename: vi.fn(async (...args: Parameters<typeof actual.rename>) => {
+      if (fsMock.forceCrossDeviceError) {
+        throw Object.assign(new Error("cross-device move"), { code: "EXDEV" });
+      }
+      return actual.rename(...args);
+    }),
+  };
+});
 
 const electronMocks = vi.hoisted(() => ({
   openExternal: vi.fn(async () => {}),
@@ -21,7 +40,10 @@ import { registerIpcHandlers } from "../electron/ipc";
 
 type Handler = (...args: any[]) => any;
 
-function registeredHandlers(): Map<string, Handler> {
+function registeredHandlers(
+  fsManager: object = {},
+  renameVaultPath?: (oldPath: string, newPath: string) => string[],
+): Map<string, Handler> {
   const handlers = new Map<string, Handler>();
   const ipcMain = {
     handle: vi.fn((channel: string, handler: Handler) => {
@@ -32,9 +54,13 @@ function registeredHandlers(): Map<string, Handler> {
 
   registerIpcHandlers(
     ipcMain as any,
-    {} as any,
+    fsManager as any,
     {} as any,
     () => null,
+    undefined,
+    undefined,
+    undefined,
+    renameVaultPath,
   );
   return handlers;
 }
@@ -61,5 +87,133 @@ describe("desktop:openExternal IPC", () => {
       "protocol is not allowed",
     );
     expect(electronMocks.openExternal).not.toHaveBeenCalled();
+  });
+});
+
+describe("desktop:renamePath IPC", () => {
+  it("registers the handler and renames an approved vault", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    const renamedPaths: string[][] = [];
+    let activePath = sourcePath;
+    const fsManager = {
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
+    };
+
+    await mkdir(sourcePath);
+
+    try {
+      const handler = registeredHandlers(fsManager, (oldPath, newPath) => {
+        renamedPaths.push([oldPath, newPath]);
+        return [newPath];
+      }).get("desktop:renamePath");
+
+      expect(handler).toBeDefined();
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+
+      await expect(access(destinationPath)).resolves.toBeUndefined();
+      await expect(access(sourcePath)).rejects.toThrow();
+      expect(renamedPaths).toEqual([[sourcePath, destinationPath]]);
+    } finally {
+      await rm(parentPath, { recursive: true, force: true });
+    }
+  });
+
+  it("reports success when updating vault history fails after the move", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    let activePath = sourcePath;
+    const fsManager = {
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
+    };
+
+    await mkdir(sourcePath);
+
+    try {
+      const handler = registeredHandlers(fsManager, () => {
+        throw new Error("history unavailable");
+      }).get("desktop:renamePath");
+
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+      await expect(access(destinationPath)).resolves.toBeUndefined();
+    } finally {
+      await rm(parentPath, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to copy and remove for cross-device moves", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    const sourceFile = join(sourcePath, "note.md");
+    let activePath = sourcePath;
+    const fsManager = {
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
+    };
+
+    await mkdir(sourcePath);
+    await fsPromises.writeFile(sourceFile, "# Note", "utf8");
+
+    try {
+      fsMock.forceCrossDeviceError = true;
+      const handler = registeredHandlers(fsManager).get("desktop:renamePath");
+
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+      await expect(access(join(destinationPath, "note.md"))).resolves.toBeUndefined();
+      await expect(access(sourcePath)).rejects.toThrow();
+    } finally {
+      fsMock.forceCrossDeviceError = false;
+      await rm(parentPath, { recursive: true, force: true });
+    }
+  });
+
+  it("moves the process CWD with an active vault", async () => {
+    const parentPath = await mkdtemp(join(tmpdir(), "openonyx-ipc-"));
+    const sourcePath = join(parentPath, "source-vault");
+    const destinationPath = join(parentPath, "renamed-vault");
+    const originalCwd = process.cwd();
+    let activePath = sourcePath;
+    const fsManager = {
+      getVaultPath: () => activePath,
+      setVaultPath: (path: string) => {
+        activePath = path;
+        return true;
+      },
+    };
+
+    await mkdir(sourcePath);
+
+    try {
+      process.chdir(sourcePath);
+      const handler = registeredHandlers(fsManager).get("desktop:renamePath");
+
+      await expect(handler?.({}, sourcePath, destinationPath)).resolves.toEqual({
+        success: true,
+      });
+      expect(process.cwd()).toBe(destinationPath);
+    } finally {
+      process.chdir(originalCwd);
+      await rm(parentPath, { recursive: true, force: true });
+    }
   });
 });
