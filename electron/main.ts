@@ -262,6 +262,9 @@ function configureChromiumRuntime(): void {
   ]);
 }
 
+// Chromium switches must be registered before app.whenReady().
+configureChromiumRuntime();
+
 function findFileInVault(dir: string, fileName: string): string | null {
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });

@@ -16,11 +16,50 @@ import { readData, writeData, listData, deleteData, createDebouncedWriter } from
 
 type FeatureExtractionPipeline = any;
 
+export function resolveTransformersWasmPath(
+  transformersVersion: string,
+  pageHref: string | undefined = typeof window !== "undefined" ? window.location.href : undefined,
+  isTest: boolean = typeof process !== "undefined" && process.env.NODE_ENV === "test",
+): string {
+  if (pageHref && !isTest) {
+    // Relative to index.html so this works for both Vite's HTTP server and a
+    // packaged Electron app loaded from dist/index.html via file://.
+    return new URL("./wasm/", pageHref).href;
+  }
+
+  return `https://cdn.jsdelivr.net/npm/@xenova/transformers@${transformersVersion}/dist/`;
+}
+
+export function getRemoteEmbeddingModelSubpath(url: string): string | null {
+  try {
+    const parsed = new URL(url, typeof window !== "undefined" ? window.location.href : undefined);
+    if (parsed.hostname !== "huggingface.co" && parsed.hostname !== "www.huggingface.co") {
+      return null;
+    }
+
+    const marker = "/Xenova/all-MiniLM-L6-v2/";
+    const index = parsed.pathname.indexOf(marker);
+    if (index === -1) return null;
+    let subpath = parsed.pathname.substring(index + marker.length);
+    if (subpath.startsWith("resolve/main/")) {
+      subpath = subpath.substring("resolve/main/".length);
+    }
+    return subpath || null;
+  } catch {
+    return null;
+  }
+}
+
 export function configureTransformersEnv(env: any) {
-  env.allowLocalModels = true;
+  // Model downloads are cached by the Electron fetch interceptor below.
+  // Transformers.js's separate local-model lookup targets /models/...; Vite's
+  // SPA fallback answers that missing URL with index.html and JSON parsing fails.
+  env.allowLocalModels = false;
   env.allowRemoteModels = true;
   if ("useBrowserCache" in env) {
-    (env as any).useBrowserCache = true;
+    // Electron uses the vault-backed cache below. Keeping the browser Cache API
+    // enabled creates a second cache that can retain SPA fallback HTML forever.
+    (env as any).useBrowserCache = false;
   }
 
   // Electron/Browser compatibility fixes for @xenova/transformers v2.
@@ -33,11 +72,7 @@ export function configureTransformersEnv(env: any) {
     };
     wasm.proxy = false;
     wasm.numThreads = 1;
-    if (typeof window !== "undefined" && typeof process !== "undefined" && process.env.NODE_ENV !== "test") {
-      wasm.wasmPaths = "/wasm/";
-    } else {
-      wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/@xenova/transformers@${env.version}/dist/`;
-    }
+    wasm.wasmPaths = resolveTransformersWasmPath(env.version);
   }
 }
 
@@ -66,20 +101,9 @@ if (
 ) {
   const originalFetch = window.fetch;
 
-  const getModelSubpath = (url: string): string | null => {
-    const marker = "Xenova/all-MiniLM-L6-v2/";
-    const index = url.indexOf(marker);
-    if (index === -1) return null;
-    let sub = url.substring(index + marker.length);
-    if (sub.startsWith("resolve/main/")) {
-      sub = sub.substring("resolve/main/".length);
-    }
-    return sub;
-  };
-
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
-    const subpath = getModelSubpath(url);
+    const subpath = getRemoteEmbeddingModelSubpath(url);
 
     if (subpath) {
       const localPath = `.openonyx/models/Xenova/all-MiniLM-L6-v2/${subpath}`;
@@ -89,10 +113,15 @@ if (
           if (subpath.endsWith(".json")) {
             const content = await (window as any).electronAPI.readFile(localPath);
             if (content !== null) {
-              return new Response(content, {
-                status: 200,
-                headers: { "Content-Type": "application/json" }
-              });
+              try {
+                JSON.parse(content);
+                return new Response(content, {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" }
+                });
+              } catch {
+                console.warn(`[Embeddings Cache] Ignoring invalid cached JSON file ${localPath}`);
+              }
             }
           } else if (subpath.endsWith(".onnx")) {
             const content = await (window as any).electronAPI.readBinary(localPath);
@@ -121,9 +150,12 @@ if (
           const clone = response.clone();
           if (subpath.endsWith(".json")) {
             clone.text().then(text => {
+              JSON.parse(text);
               (window as any).electronAPI.writeFile(localPath, text).catch((err: any) => {
                 console.warn(`[Embeddings Cache] Failed to cache JSON file ${localPath}:`, err);
               });
+            }).catch((err: any) => {
+              console.warn(`[Embeddings Cache] Skipped invalid JSON response for ${localPath}:`, err);
             });
           } else if (subpath.endsWith(".onnx")) {
             clone.arrayBuffer().then(buffer => {

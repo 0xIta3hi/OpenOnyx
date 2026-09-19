@@ -26,6 +26,9 @@ import {
   Eye,
   Zap,
   Network,
+  Search,
+  Send,
+  Quote,
 } from "lucide-react";
 import {
   loadStore,
@@ -36,6 +39,8 @@ import {
   isLexicalFallbackActive,
   getLoadProgress,
   setProgressCallback,
+  loadStoreAsync,
+  searchByQuery,
   type EmbeddingStore,
 } from "../../utils/embeddings";
 import {
@@ -54,6 +59,13 @@ import {
 } from "../../utils/ai-settings";
 import { LINK_TYPES, type LinkType } from "./SuggestionBanner";
 import { enrichSuggestions, type EnrichedSuggestion } from "../../utils/suggestion-enrichment";
+import {
+  answerVaultQuestion,
+  rankVaultPassages,
+  type VaultAnswer,
+  type VaultCitation,
+} from "../../utils/vault-rag";
+import { CitedMarkdownAnswer } from "./CitedMarkdownAnswer";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,7 +81,7 @@ const tm = {
   controls: "flex shrink-0 items-center gap-2",
   stats: "inline-flex h-7 items-center gap-1.5 rounded-md border border-(--border-subtle) bg-(--bg-primary) px-2 text-[11px] font-medium text-(--text-secondary)",
   iconBtn: "inline-flex h-8 w-8 items-center justify-center rounded-md border border-(--border-subtle) bg-transparent text-(--text-muted) transition-colors duration-150 hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary)",
-  content: "flex min-h-0 flex-1 flex-col bg-(--bg-primary)",
+  content: "relative flex min-h-0 flex-1 flex-col bg-(--bg-primary)",
   tabs: "flex shrink-0 gap-1 border-b border-(--border-subtle) bg-(--bg-primary) px-3 pt-2",
   tab: "inline-flex h-9 items-center gap-1.5 rounded-t-md border border-transparent border-b-0 px-3 text-[12px] font-medium text-(--text-muted) transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)",
   tabActive: "border-(--border-subtle) bg-(--bg-secondary) text-(--text-primary)",
@@ -142,6 +154,22 @@ const ai = {
   thresholdValue: "font-semibold tabular-nums",
   thresholdSlider: "w-full h-1 appearance-none bg-(--border-subtle) rounded-sm outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-(--text-secondary) [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:duration-150 hover:[&::-webkit-slider-thumb]:bg-(--text-primary)",
   thresholdLabels: "flex justify-between text-[10px] text-(--text-muted) mt-0.5 opacity-60",
+  askForm: "flex gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-2",
+  askInput: "min-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] leading-relaxed text-(--text-primary) outline-none placeholder:text-(--text-faint)",
+  askSubmit: "inline-flex h-9 shrink-0 items-center gap-1.5 self-end rounded-md border border-(--border-medium) bg-(--text-primary) px-3 text-[11px] font-semibold text-(--bg-primary) transition-opacity disabled:cursor-not-allowed disabled:opacity-40",
+  answer: "rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-4 text-[13px] leading-6 text-(--text-primary) [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
+  citationMarker: "mx-1 inline-flex h-7 max-w-[220px] cursor-pointer items-center gap-1.5 align-middle rounded-full border border-(--border-medium) bg-(--bg-active) px-2.5 text-[10px] font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-hover) hover:text-(--text-primary)",
+  sourcesButton: "inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--border-medium) bg-(--bg-secondary) px-3 text-[11px] font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-hover)",
+  sourcesBackdrop: "absolute inset-0 z-30 bg-black/25",
+  sourcesDrawer: "absolute inset-y-0 right-0 z-40 flex w-[min(390px,100%)] flex-col border-l border-(--border-medium) bg-(--bg-primary) shadow-2xl",
+  sourcesDrawerHeader: "flex h-14 shrink-0 items-center gap-2 border-b border-(--border-subtle) px-4",
+  sourcesDrawerBody: "min-h-0 flex-1 space-y-2 overflow-y-auto p-3",
+  sourceList: "space-y-2",
+  sourceCard: "w-full rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-3 text-left transition-colors hover:border-(--border-medium) hover:bg-(--bg-active)",
+  sourceHeader: "flex min-w-0 items-center gap-2 text-[11px] font-semibold text-(--text-primary)",
+  sourceLocation: "ml-auto shrink-0 font-mono text-[9px] font-normal text-(--text-muted)",
+  sourceExcerpt: "mt-2 line-clamp-4 whitespace-pre-wrap text-[11px] leading-relaxed text-(--text-secondary)",
+  askError: "rounded-md border border-[rgba(220,80,80,0.3)] bg-[rgba(220,80,80,0.08)] px-3 py-2 text-[11px] leading-relaxed text-(--color-red)",
 };
 
 const aiTypeBadgeClass = (type: EnrichedSuggestion["type"]) => {
@@ -171,7 +199,7 @@ interface AIPageProps {
   onToggleFullScreen?: () => void;
 }
 
-type AITab = "suggestions" | "insights";
+type AITab = "ask" | "suggestions" | "insights";
 
 export function AIPage({
   vaultPath,
@@ -186,7 +214,7 @@ export function AIPage({
   const api = useMemo(() => getAPI(), []);
 
   // ── Tab ────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<AITab>("suggestions");
+  const [activeTab, setActiveTab] = useState<AITab>("ask");
 
   // ── AI Settings ────────────────────────────────────
   const [aiSettings, setAiSettings] = useState<AISettings>(loadSettings);
@@ -202,6 +230,14 @@ export function AIPage({
   }, []);
 
   const hasApiKey = !!aiSettings.apiKey;
+
+  // ── Ask vault with exact citations ─────────────────
+  const [askQuery, setAskQuery] = useState("");
+  const [askResult, setAskResult] = useState<VaultAnswer | null>(null);
+  const [retrievedPassages, setRetrievedPassages] = useState<VaultCitation[]>([]);
+  const [isAsking, setIsAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
 
   // ── Model status ───────────────────────────────────
   const [modelStatus, setModelStatus] = useState<string>(
@@ -455,6 +491,56 @@ export function AIPage({
     [api],
   );
 
+  const handleAskVault = useCallback(async () => {
+    const question = askQuery.trim();
+    if (!question || isAsking) return;
+
+    setIsAsking(true);
+    setAskError(null);
+    setAskResult(null);
+    setRetrievedPassages([]);
+    setIsSourcesOpen(false);
+    try {
+      const currentStore = await loadStoreAsync();
+      const semanticResults = await searchByQuery(currentStore, question, 30);
+      const semanticScores = new Map(semanticResults.map((result) => [result.path, result.similarity]));
+      const allPaths = [...currentStore.entries.keys()].filter((path) => path.toLowerCase().endsWith(".md"));
+      const queryWords = question.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2);
+      const titleMatches = allPaths.filter((path) => queryWords.some((word) => path.toLowerCase().includes(word)));
+      const candidatePaths = allPaths.length <= 200
+        ? allPaths
+        : [...new Set([...semanticResults.map((result) => result.path), ...titleMatches])].slice(0, 200);
+
+      const documents = (await Promise.all(candidatePaths.map(async (path) => {
+        try {
+          return { path, content: await api.readFile(path), semanticScore: semanticScores.get(path) || 0 };
+        } catch {
+          return null;
+        }
+      }))).filter((document): document is { path: string; content: string; semanticScore: number } => document !== null);
+
+      const passages = rankVaultPassages(question, documents, 8);
+      setRetrievedPassages(passages);
+      if (passages.length === 0) {
+        setAskResult({ answer: "I couldn't find a relevant passage in this vault.", citations: [] });
+        return;
+      }
+      if (!hasApiKey) {
+        setAskError("Relevant passages are available under Sources. Configure an AI provider in Settings to generate a cited answer.");
+        return;
+      }
+      setAskResult(await answerVaultQuestion(question, passages));
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : "Unable to search the vault.");
+    } finally {
+      setIsAsking(false);
+    }
+  }, [api, askQuery, hasApiKey, isAsking]);
+
+  const displayedSources = askResult?.citations.length
+    ? askResult.citations
+    : retrievedPassages;
+
   // ── Enriched suggestion renderer ──────────────────────────────────────────
 
   const renderEnrichedSuggestion = (
@@ -572,6 +658,9 @@ export function AIPage({
 
         {/* Tabs */}
         <div className={tm.tabs}>
+          <button className={tmTabClass(activeTab === "ask")} onClick={() => setActiveTab("ask")}>
+            <Search size={14} /> Ask
+          </button>
           <button className={tmTabClass(activeTab === "suggestions")} onClick={() => setActiveTab("suggestions")}>
             <Link size={14} /> Suggest
           </button>
@@ -579,6 +668,71 @@ export function AIPage({
             <Lightbulb size={14} /> Insights
           </button>
         </div>
+
+        {/* ══ Ask Tab ═════════════════════════════════════ */}
+        {activeTab === "ask" && (
+          <div className={ai.tabPanelScroll}>
+            <form
+              className={ai.askForm}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAskVault();
+              }}
+            >
+              <textarea
+                className={ai.askInput}
+                value={askQuery}
+                onChange={(event) => setAskQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleAskVault();
+                  }
+                }}
+                placeholder="Ask a question about your notes…"
+                aria-label="Ask your vault"
+              />
+              <button className={ai.askSubmit} type="submit" disabled={!askQuery.trim() || isAsking}>
+                {isAsking ? <Loader2 size={13} className={tm.spinner} /> : <Send size={13} />}
+                {isAsking ? "Searching" : "Ask"}
+              </button>
+            </form>
+
+            {askError && <div className={ai.askError}>{askError}</div>}
+
+            {askResult && (
+              <>
+                <CitedMarkdownAnswer
+                  answer={askResult.answer}
+                  citations={retrievedPassages}
+                  className={ai.answer}
+                  citationClassName={ai.citationMarker}
+                  onOpenNote={onOpenNote}
+                />
+                {displayedSources.length > 0 && (
+                  <button type="button" className={ai.sourcesButton} onClick={() => setIsSourcesOpen(true)}>
+                    <Quote size={13} /> Sources
+                    <span className={ai.sectionBadge}>{displayedSources.length}</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            {!askResult && displayedSources.length > 0 && (
+              <button type="button" className={ai.sourcesButton} onClick={() => setIsSourcesOpen(true)}>
+                <Quote size={13} /> Sources
+                <span className={ai.sectionBadge}>{displayedSources.length}</span>
+              </button>
+            )}
+
+            {!askResult && !askError && retrievedPassages.length === 0 && !isAsking && (
+              <div className={ai.empty}>
+                <Search size={30} style={{ opacity: 0.15 }} />
+                <p>Ask a question and OpenOnyx will answer only from your notes, with exact source passages.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ══ Suggestions Tab ═════════════════════════════ */}
         {activeTab === "suggestions" && (
@@ -659,6 +813,50 @@ export function AIPage({
               </div>
             )}
           </div>
+        )}
+
+        {isSourcesOpen && displayedSources.length > 0 && (
+          <>
+            <button
+              type="button"
+              className={ai.sourcesBackdrop}
+              onClick={() => setIsSourcesOpen(false)}
+              aria-label="Close sources"
+            />
+            <aside className={ai.sourcesDrawer} aria-label="Answer sources">
+              <div className={ai.sourcesDrawerHeader}>
+                <Quote size={15} />
+                <span className="text-[13px] font-semibold text-(--text-primary)">Sources</span>
+                <span className={ai.sectionBadge}>{displayedSources.length}</span>
+                <button
+                  type="button"
+                  className={`${tm.iconBtn} ml-auto`}
+                  onClick={() => setIsSourcesOpen(false)}
+                  aria-label="Close sources"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div className={ai.sourcesDrawerBody}>
+                {displayedSources.map((source) => (
+                  <button
+                    key={`${source.path}:${source.startLine}`}
+                    type="button"
+                    className={ai.sourceCard}
+                    onClick={() => onOpenNote(source.path)}
+                  >
+                    <div className={ai.sourceHeader}>
+                      <FileText size={13} className="shrink-0 text-(--text-muted)" />
+                      <span className="truncate">{source.path.split("/").pop() || source.title}</span>
+                      <span className={ai.sourceLocation}>L{source.startLine}–{source.endLine}</span>
+                    </div>
+                    {source.heading && <div className="mt-1 text-[10px] font-medium text-(--text-muted)">{source.heading}</div>}
+                    <div className={ai.sourceExcerpt}>{source.excerpt}</div>
+                  </button>
+                ))}
+              </div>
+            </aside>
+          </>
         )}
 
         {/* ══ Insights Tab ════════════════════════════════ */}

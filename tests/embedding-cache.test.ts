@@ -3,8 +3,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '@xenova/transformers';
 import {
+  getRemoteEmbeddingModelSubpath,
   refreshEmbeddingMetadataIfUnchanged,
   resetEmbeddingsStore,
+  resolveTransformersWasmPath,
   simpleHash,
   type EmbeddingStore,
 } from '../src/utils/embeddings';
@@ -20,11 +22,28 @@ beforeEach(() => {
 });
 
 describe('embedding cache metadata refresh', () => {
-  it('uses local/cached and remote model configurations with WASM runtime path', () => {
-    expect(env.allowLocalModels).toBe(true);
+  it('uses the disk-cached remote model configuration with WASM runtime path', () => {
+    expect(env.allowLocalModels).toBe(false);
     expect(env.allowRemoteModels).toBe(true);
+    expect(env.useBrowserCache).toBe(false);
     expect(env.backends.onnx.wasm.proxy).toBe(false);
     expect(env.backends.onnx.wasm.wasmPaths).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@xenova\/transformers@/);
+  });
+
+  it('resolves WASM assets beside index.html in dev and packaged builds', () => {
+    expect(resolveTransformersWasmPath('2.17.2', 'http://localhost:5173/index.html', false))
+      .toBe('http://localhost:5173/wasm/');
+    expect(resolveTransformersWasmPath('2.17.2', 'file:///opt/OpenOnyx/resources/app.asar/dist/index.html', false))
+      .toBe('file:///opt/OpenOnyx/resources/app.asar/dist/wasm/');
+  });
+
+  it('only caches model files fetched from the remote model host', () => {
+    expect(getRemoteEmbeddingModelSubpath(
+      'https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer.json',
+    )).toBe('tokenizer.json');
+    expect(getRemoteEmbeddingModelSubpath(
+      'http://localhost:5173/models/Xenova/all-MiniLM-L6-v2/tokenizer.json',
+    )).toBeNull();
   });
 
   it('updates cached file metadata without re-embedding unchanged content', () => {
