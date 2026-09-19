@@ -7,7 +7,6 @@ import './lib/obsidian-api/dom-extensions';
 
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
 import { installGlobalTooltips } from "./lib/tooltips";
 import { documentTailwindClasses } from "./styles/documentTailwindClasses";
 import { themeClasses } from "./styles/themeClasses";
@@ -59,14 +58,100 @@ window.onunhandledrejection = (event) => {
 
 console.log('[OpenOnyx] Main entry point executing');
 
+function StartupFailure({ error }: { error: unknown }) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    <main
+      role="alert"
+      style={{
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 32,
+        color: '#f4f4f5',
+        background: '#0f0f14',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      <section style={{ width: 'min(560px, 100%)', lineHeight: 1.55 }}>
+        <h1 style={{ margin: '0 0 12px', fontSize: 24 }}>OpenOnyx could not finish starting</h1>
+        <p style={{ margin: '0 0 16px', color: '#c4c4cc' }}>
+          The renderer encountered an error. Reloading usually recovers the session; your vault files are not changed.
+        </p>
+        <pre
+          style={{
+            margin: '0 0 20px',
+            padding: 14,
+            overflow: 'auto',
+            border: '1px solid #3f3f46',
+            borderRadius: 8,
+            color: '#fca5a5',
+            background: '#18181b',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {message}
+        </pre>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            padding: '10px 16px',
+            border: 0,
+            borderRadius: 8,
+            color: '#071311',
+            background: '#5eead4',
+            font: 'inherit',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Reload OpenOnyx
+        </button>
+      </section>
+    </main>
+  );
+}
+
+class StartupErrorBoundary extends React.Component<
+  React.PropsWithChildren,
+  { error: unknown | null }
+> {
+  state: { error: unknown | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
+  }
+
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    console.error('[OpenOnyx] React startup failed', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) return <StartupFailure error={this.state.error} />;
+    return this.props.children;
+  }
+}
+
 const rootEl = document.getElementById("root");
 if (rootEl) {
   const root = ReactDOM.createRoot(rootEl);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
+  void import('./App')
+    .then(({ default: App }) => {
+      root.render(
+        <React.StrictMode>
+          <StartupErrorBoundary>
+            <App />
+          </StartupErrorBoundary>
+        </React.StrictMode>,
+      );
+    })
+    .catch((error: unknown) => {
+      console.error('[OpenOnyx] Application bundle failed to load', error);
+      root.render(<StartupFailure error={error} />);
+    });
 } else {
   console.error('[OpenOnyx] Root element not found!');
 }

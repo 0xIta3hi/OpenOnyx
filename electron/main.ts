@@ -232,13 +232,17 @@ function configureChromiumRuntime(): void {
     app.commandLine.appendSwitch('remote-debugging-port', debugPort);
   }
 
-  // Enable smooth scrolling on all platforms (especially important on Linux
-  // where Electron/Chromium ships with smooth scrolling disabled by default).
+  // Keep the broadly supported scrolling switches enabled. GPU rasterization,
+  // zero-copy and out-of-process canvas rasterization are deliberately opt-in:
+  // forcing them has produced fully black windows on some Windows, macOS and
+  // Linux GPU/driver combinations even though the renderer remains alive.
   app.commandLine.appendSwitch('enable-smooth-scrolling');
   app.commandLine.appendSwitch('enable-features', 'ScrollUnification');
-  app.commandLine.appendSwitch('enable-gpu-rasterization');
-  app.commandLine.appendSwitch('enable-zero-copy');
-  app.commandLine.appendSwitch('canvas-oop-rasterization');
+  if (process.env.OPENONYX_EXPERIMENTAL_GPU === '1') {
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+    app.commandLine.appendSwitch('enable-zero-copy');
+    app.commandLine.appendSwitch('canvas-oop-rasterization');
+  }
 
   if (!isDevMode) return;
   if (process.env.OPENONYX_VERBOSE_CHROMIUM_LOGS === '1') return;
@@ -338,6 +342,22 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
     mainWindow?.focus();
+  });
+
+  // Some GPU/desktop combinations never emit ready-to-show even though the
+  // document loaded. Do not leave the application permanently invisible.
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (!mainWindow?.isVisible()) mainWindow?.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error(`[Startup] Main document failed to load (${errorCode}): ${errorDescription} - ${validatedURL}`);
+    if (!mainWindow?.isVisible()) mainWindow?.show();
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[Startup] Renderer process exited: ${details.reason} (exit code ${details.exitCode})`);
   });
 
   // In development, load from Vite dev server
