@@ -75,16 +75,16 @@ function getNoteName(path: string): string {
 }
 
 const tm = {
-  header: "flex min-h-[64px] shrink-0 items-center justify-between gap-3 border-b border-(--border-subtle) bg-(--bg-secondary) px-4 py-3",
+  header: "flex min-h-[64px] shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-(--border-subtle) bg-(--bg-secondary) px-4 py-3",
   title: "m-0 text-[15px] font-semibold leading-tight tracking-normal text-(--text-primary)",
-  titleBlock: "flex min-w-0 items-center gap-2.5",
+  titleBlock: "flex min-w-[150px] flex-1 items-center gap-2.5",
   subtitle: "mt-1 text-[11px] leading-tight text-(--text-muted)",
-  controls: "flex shrink-0 items-center gap-2",
+  controls: "ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-1.5",
   stats: "inline-flex h-7 items-center gap-1.5 rounded-md border border-(--border-subtle) bg-(--bg-primary) px-2 text-[11px] font-medium text-(--text-secondary)",
   iconBtn: "inline-flex h-8 w-8 items-center justify-center rounded-md border border-(--border-subtle) bg-transparent text-(--text-muted) transition-colors duration-150 hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary)",
-  content: "relative flex min-h-0 flex-1 flex-col bg-(--bg-primary)",
-  tabs: "flex shrink-0 gap-1 border-b border-(--border-subtle) bg-(--bg-primary) px-3 pt-2",
-  tab: "inline-flex h-9 items-center gap-1.5 rounded-t-md border border-transparent border-b-0 px-3 text-[12px] font-medium text-(--text-muted) transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)",
+  content: "relative flex min-h-0 flex-1 flex-col bg-(--bg-primary) [container-type:inline-size]",
+  tabs: "grid shrink-0 grid-cols-3 gap-1 border-b border-(--border-subtle) bg-(--bg-primary) px-[clamp(8px,3cqw,14px)] pt-2",
+  tab: "inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-t-md border border-transparent border-b-0 px-2 text-[12px] font-medium text-(--text-muted) transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)",
   tabActive: "border-(--border-subtle) bg-(--bg-secondary) text-(--text-primary)",
   spinner: "animate-spin text-(--text-muted)",
 };
@@ -100,22 +100,22 @@ const ai = {
   modelProgress: "h-1 flex-1 overflow-hidden rounded-full bg-(--border-subtle)",
   modelProgressBar: "h-full rounded-full bg-(--text-secondary)",
   empty: "m-3 flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-(--border-subtle) bg-(--bg-secondary) p-6 text-center text-[13px] leading-relaxed text-(--text-muted)",
-  tabPanel: "min-h-0 flex-1 overflow-y-auto p-3",
-  tabPanelScroll: "min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
-  suggestionsList: "space-y-3",
+  tabPanel: "min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3",
+  tabPanelScroll: "min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto p-3",
+  suggestionsList: "min-w-0 space-y-3",
   suggestionsListFlush: "space-y-2",
   suggestionsHeader: "text-[10px] font-semibold uppercase tracking-[0.08em] text-(--text-muted)",
-  suggestionHero: "flex items-center justify-between gap-3 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) px-3 py-2.5",
+  suggestionHero: "flex min-w-0 items-center justify-between gap-3 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) px-3 py-2.5 [&>div:first-child]:min-w-0",
   suggestionHeroTitle: "truncate text-[13px] font-semibold text-(--text-primary)",
   suggestionHeroMeta: "mt-0.5 text-[11px] text-(--text-muted)",
   suggestionHeroCount: "flex h-8 min-w-8 items-center justify-center rounded-md border border-(--border-subtle) bg-(--bg-primary) px-2 text-[13px] font-semibold tabular-nums text-(--text-primary)",
-  suggestionItem: "grid cursor-default grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border border-(--border-subtle) bg-(--bg-secondary) p-3 transition-colors duration-150 hover:border-(--border-medium)",
-  suggestionContent: "min-w-0 space-y-2",
-  suggestionTopRow: "flex min-w-0 items-center gap-2",
+  suggestionItem: "flex cursor-default flex-wrap items-start gap-3 rounded-md border border-(--border-subtle) bg-(--bg-secondary) p-3 transition-colors duration-150 hover:border-(--border-medium)",
+  suggestionContent: "min-w-[180px] flex-[1_1_220px] space-y-2",
+  suggestionTopRow: "flex min-w-0 flex-wrap items-center gap-2",
   suggestionInfo: "min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-left",
   suggestionTitle: "block truncate text-[13px] font-medium text-(--text-primary)",
   suggestionScore: "shrink-0 rounded border border-(--border-subtle) bg-(--bg-primary) px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-(--text-muted)",
-  suggestionActions: "flex shrink-0 items-start gap-1.5",
+  suggestionActions: "ml-auto flex max-w-full shrink-0 flex-wrap items-start justify-end gap-1.5",
   suggestionAccept: "inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--border-medium) bg-(--bg-active) px-2 text-[11px] font-medium text-(--text-primary) transition-colors duration-150 hover:border-(--border-strong) hover:bg-(--bg-hover)",
   suggestionReject: "inline-flex h-7 w-7 items-center justify-center rounded-md border border-(--border-subtle) bg-transparent text-(--text-muted) transition-colors duration-150 hover:border-(--color-red) hover:bg-[rgba(220,80,80,0.08)] hover:text-(--color-red)",
   suggestionGroup: "space-y-2",
@@ -126,13 +126,13 @@ const ai = {
   dot: "w-1.5 h-1.5 rounded-full shrink-0",
   dotStrong: "bg-(--text-primary)",
   dotBroader: "bg-(--text-muted)",
-  linkTypeSelector: "flex items-center gap-0.5",
+  linkTypeSelector: "flex max-w-full flex-wrap items-center justify-end gap-0.5",
   linkTypeBtn: "flex items-center gap-[3px] px-1.5 py-0.5 border border-(--border-subtle) rounded bg-transparent text-(--text-muted) text-[10px] cursor-pointer transition-colors duration-150 whitespace-nowrap hover:bg-(--bg-active) hover:text-(--text-primary) hover:border-(--border-medium)",
   linkCancel: "flex items-center p-0.5 border-none bg-transparent text-(--text-muted) cursor-pointer rounded",
-  sectionHeader: "flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--text-secondary)",
+  sectionHeader: "flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--text-secondary)",
   sectionBadge: "ml-auto rounded border border-(--border-subtle) bg-(--bg-primary) px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-(--text-muted)",
   sectionHint: "m-0 text-[12px] leading-relaxed text-(--text-muted)",
-  section: "space-y-2.5 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-3",
+  section: "min-w-0 space-y-2.5 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-3",
   result: "rounded-md border border-(--border-subtle) bg-(--bg-primary) p-3 text-[13px] leading-relaxed text-(--text-secondary)",
   clusterList: "space-y-2",
   clusterItem: "overflow-hidden rounded-lg border border-(--border-subtle) bg-(--bg-primary)",
@@ -140,13 +140,13 @@ const ai = {
   clusterHeaderBtn: "flex w-full items-center gap-2 border-0 bg-transparent px-3 py-2.5 text-left text-(--text-secondary) transition-colors duration-150 hover:bg-(--bg-active) hover:text-(--text-primary)",
   clusterName: "min-w-0 flex-1 truncate text-[12px] font-medium",
   clusterMembers: "space-y-1.5 border-t border-(--border-subtle) px-3 py-2.5",
-  clusterMember: "inline-flex max-w-full items-center gap-1.5 rounded-md border border-(--border-subtle) bg-(--bg-secondary) px-2 py-1 text-[11px] text-(--text-secondary) transition-colors duration-150 hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary) [&_span]:truncate",
-  missingLinkInfo: "flex min-w-0 flex-1 flex-wrap items-center gap-1.5",
+  clusterMember: "inline-flex max-w-full items-center gap-1.5 overflow-hidden rounded-md border border-(--border-subtle) bg-(--bg-secondary) px-2 py-1 text-[11px] text-(--text-secondary) transition-colors duration-150 hover:border-(--border-medium) hover:bg-(--bg-active) hover:text-(--text-primary) [&_span]:truncate",
+  missingLinkInfo: "flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-hidden",
   missingLinkArrow: "text-[12px] text-(--text-faint)",
   confidenceBadge: "shrink-0 rounded border border-(--border-subtle) bg-(--bg-primary) px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-(--text-muted)",
-  unwrittenList: "space-y-2",
-  unwrittenItem: "relative space-y-2 rounded-lg border border-(--border-subtle) bg-(--bg-primary) p-3",
-  unwrittenDescription: "flex gap-2 text-[12px] leading-relaxed text-(--text-secondary)",
+  unwrittenList: "min-w-0 space-y-2",
+  unwrittenItem: "relative min-w-0 space-y-2 overflow-hidden rounded-lg border border-(--border-subtle) bg-(--bg-primary) p-3",
+  unwrittenDescription: "flex min-w-0 gap-2 text-[12px] leading-relaxed text-(--text-secondary) [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]",
   unwrittenNotes: "flex flex-wrap gap-1.5",
   unwrittenActions: "flex flex-wrap gap-1.5",
   compactBtn: "h-7 px-2 text-[10px]",
@@ -155,14 +155,24 @@ const ai = {
   thresholdValue: "font-semibold tabular-nums",
   thresholdSlider: "w-full h-1 appearance-none bg-(--border-subtle) rounded-sm outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-(--text-secondary) [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:duration-150 hover:[&::-webkit-slider-thumb]:bg-(--text-primary)",
   thresholdLabels: "flex justify-between text-[10px] text-(--text-muted) mt-0.5 opacity-60",
-  askForm: "flex gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-2",
-  askInput: "min-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] leading-relaxed text-(--text-primary) outline-none placeholder:text-(--text-faint)",
-  askSubmit: "inline-flex h-9 shrink-0 items-center gap-1.5 self-end rounded-md border border-(--border-medium) bg-(--text-primary) px-3 text-[11px] font-semibold text-(--bg-primary) transition-opacity disabled:cursor-not-allowed disabled:opacity-40",
-  answer: "rounded-lg border border-(--border-subtle) bg-(--bg-secondary) p-4 text-[13px] leading-6 text-(--text-primary) [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
-  citationMarker: "mx-1 inline-flex h-7 max-w-[220px] cursor-pointer items-center gap-1.5 align-middle rounded-full border border-(--border-medium) bg-(--bg-active) px-2.5 text-[10px] font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-hover) hover:text-(--text-primary)",
+  askPanel: "min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-[clamp(10px,3cqw,16px)]",
+  askLayout: "flex min-h-full flex-col gap-3",
+  askForm: "flex shrink-0 flex-col gap-2 rounded-xl border border-(--border-medium) bg-(--bg-secondary) p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition-colors focus-within:border-(--border-strong)",
+  askInput: "min-h-[76px] max-h-[180px] w-full resize-y border-0 bg-transparent px-1.5 py-1 text-[13px] leading-relaxed text-(--text-primary) outline-none placeholder:text-(--text-faint)",
+  askFooter: "flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-(--border-subtle) pt-2",
+  askHint: "min-w-0 flex-1 text-[10px] leading-4 text-(--text-faint)",
+  askSubmit: "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-transparent bg-(--interactive-accent) px-3 text-[11px] font-semibold text-(--text-on-accent) shadow-sm transition-[opacity,transform] hover:brightness-105 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35",
+  askEmpty: "flex min-h-[250px] flex-1 flex-col items-center justify-center rounded-xl border border-(--border-subtle) bg-(--bg-secondary) px-[clamp(16px,5cqw,30px)] py-7 text-center",
+  askEmptyIcon: "flex h-11 w-11 items-center justify-center rounded-xl border border-(--border-subtle) bg-(--bg-primary) text-(--text-muted) shadow-sm",
+  askEmptyTitle: "mt-4 text-[14px] font-semibold text-(--text-primary)",
+  askEmptyCopy: "mt-1.5 max-w-[380px] text-[12px] leading-5 text-(--text-muted)",
+  promptGrid: "mt-5 grid w-full max-w-[520px] grid-cols-[repeat(auto-fit,minmax(min(150px,100%),1fr))] gap-2",
+  promptChip: "group flex min-h-12 min-w-0 items-center gap-2 rounded-lg border border-(--border-subtle) bg-(--bg-primary) px-3 py-2 text-left text-[11px] leading-4 text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-active) hover:text-(--text-primary)",
+  answer: "rounded-xl border border-(--border-subtle) bg-(--bg-secondary) p-[clamp(14px,4cqw,20px)] text-[13px] leading-6 text-(--text-primary) shadow-[0_8px_24px_rgba(0,0,0,0.06)] [&_h1]:mt-0 [&_h2]:mt-0 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
+  citationMarker: "mx-1 inline-flex h-7 max-w-[min(220px,75cqw)] cursor-pointer items-center gap-1.5 align-middle rounded-full border border-(--border-medium) bg-(--bg-active) px-2.5 text-[10px] font-medium text-(--text-secondary) transition-colors hover:border-(--border-strong) hover:bg-(--bg-hover) hover:text-(--text-primary) focus-visible:outline-2 focus-visible:outline-(--interactive-accent)",
   sourcesButton: "inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--border-medium) bg-(--bg-secondary) px-3 text-[11px] font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-hover)",
   sourcesBackdrop: "absolute inset-0 z-30 bg-black/25",
-  sourcesDrawer: "absolute inset-y-0 right-0 z-40 flex w-[min(390px,100%)] flex-col border-l border-(--border-medium) bg-(--bg-primary) shadow-2xl",
+  sourcesDrawer: "absolute inset-y-0 right-0 z-40 flex w-full max-w-[420px] flex-col border-l border-(--border-medium) bg-(--bg-primary) shadow-2xl",
   sourcesDrawerHeader: "flex h-14 shrink-0 items-center gap-2 border-b border-(--border-subtle) px-4",
   sourcesDrawerBody: "min-h-0 flex-1 space-y-2 overflow-y-auto p-3",
   sourceList: "space-y-2",
@@ -172,6 +182,12 @@ const ai = {
   sourceExcerpt: "mt-2 line-clamp-4 whitespace-pre-wrap text-[11px] leading-relaxed text-(--text-secondary)",
   askError: "rounded-md border border-[rgba(220,80,80,0.3)] bg-[rgba(220,80,80,0.08)] px-3 py-2 text-[11px] leading-relaxed text-(--color-red)",
 };
+
+const ASK_STARTERS = [
+  "Summarize the main ideas in this vault.",
+  "What important connections exist between my notes?",
+  "Which topics are incomplete or missing context?",
+];
 
 const aiTypeBadgeClass = (type: EnrichedSuggestion["type"]) => {
   const tone =
@@ -239,6 +255,15 @@ export function AIPage({
   const [isAsking, setIsAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isSourcesOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsSourcesOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [isSourcesOpen]);
 
   // ── Model status ───────────────────────────────────
   const [modelStatus, setModelStatus] = useState<string>(
@@ -621,10 +646,10 @@ export function AIPage({
       <div className={tm.header}>
         <div className={tm.titleBlock}>
           <div>
-            <h2 className={tm.title}>Semantic Intelligence</h2>
+            <h2 className={tm.title}>Vault Intelligence</h2>
             <div className={tm.subtitle}>
               {indexedCount > 0 ? `${indexedCount} indexed notes` : "Index pending"}
-              <span aria-hidden="true"> / </span>
+              <span aria-hidden="true"> · </span>
               {hasApiKey ? "AI ready" : "Local analysis"}
             </div>
           </div>
@@ -674,80 +699,102 @@ export function AIPage({
         )}
 
         {/* Tabs */}
-        <div className={tm.tabs}>
-          <button className={tmTabClass(activeTab === "ask")} onClick={() => setActiveTab("ask")}>
+        <div className={tm.tabs} role="tablist" aria-label="Vault intelligence tools">
+          <button role="tab" aria-selected={activeTab === "ask"} className={tmTabClass(activeTab === "ask")} onClick={() => setActiveTab("ask")}>
             <Search size={14} /> Ask
           </button>
-          <button className={tmTabClass(activeTab === "suggestions")} onClick={() => setActiveTab("suggestions")}>
+          <button role="tab" aria-selected={activeTab === "suggestions"} className={tmTabClass(activeTab === "suggestions")} onClick={() => setActiveTab("suggestions")}>
             <Link size={14} /> Suggest
           </button>
-          <button className={tmTabClass(activeTab === "insights")} onClick={() => setActiveTab("insights")}>
+          <button role="tab" aria-selected={activeTab === "insights"} className={tmTabClass(activeTab === "insights")} onClick={() => setActiveTab("insights")}>
             <Lightbulb size={14} /> Insights
           </button>
         </div>
 
         {/* ══ Ask Tab ═════════════════════════════════════ */}
         {activeTab === "ask" && (
-          <div className={ai.tabPanelScroll}>
-            <form
-              className={ai.askForm}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleAskVault();
-              }}
-            >
-              <textarea
-                className={ai.askInput}
-                value={askQuery}
-                onChange={(event) => setAskQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleAskVault();
-                  }
+          <div className={ai.askPanel} role="tabpanel">
+            <div className={ai.askLayout}>
+              <form
+                className={ai.askForm}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleAskVault();
                 }}
-                placeholder="Ask a question about your notes…"
-                aria-label="Ask your vault"
-              />
-              <button className={ai.askSubmit} type="submit" disabled={!askQuery.trim() || isAsking}>
-                {isAsking ? <Loader2 size={13} className={tm.spinner} /> : <Send size={13} />}
-                {isAsking ? "Searching" : "Ask"}
-              </button>
-            </form>
-
-            {askError && <div className={ai.askError}>{askError}</div>}
-
-            {askResult && (
-              <>
-                <CitedMarkdownAnswer
-                  answer={askResult.answer}
-                  citations={retrievedPassages}
-                  className={ai.answer}
-                  citationClassName={ai.citationMarker}
-                  onOpenNote={onOpenNote}
+              >
+                <textarea
+                  className={ai.askInput}
+                  value={askQuery}
+                  rows={3}
+                  onChange={(event) => setAskQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleAskVault();
+                    }
+                  }}
+                  placeholder="Ask anything across your vault…"
+                  aria-label="Ask your vault"
                 />
-                {displayedSources.length > 0 && (
-                  <button type="button" className={ai.sourcesButton} onClick={() => setIsSourcesOpen(true)}>
-                    <Quote size={13} /> Sources
-                    <span className={ai.sectionBadge}>{displayedSources.length}</span>
+                <div className={ai.askFooter}>
+                  <span className={ai.askHint}>Enter to ask · Shift+Enter for a new line</span>
+                  <button className={ai.askSubmit} type="submit" disabled={!askQuery.trim() || isAsking}>
+                    {isAsking ? <Loader2 size={13} className={tm.spinner} /> : <Send size={13} />}
+                    {isAsking ? "Searching" : "Ask vault"}
                   </button>
-                )}
-              </>
-            )}
+                </div>
+              </form>
 
-            {!askResult && displayedSources.length > 0 && (
-              <button type="button" className={ai.sourcesButton} onClick={() => setIsSourcesOpen(true)}>
-                <Quote size={13} /> Sources
-                <span className={ai.sectionBadge}>{displayedSources.length}</span>
-              </button>
-            )}
+              {askError && <div className={ai.askError}>{askError}</div>}
 
-            {!askResult && !askError && retrievedPassages.length === 0 && !isAsking && (
-              <div className={ai.empty}>
-                <Search size={30} style={{ opacity: 0.15 }} />
-                <p>Ask a question and OpenOnyx will answer only from your notes, with exact source passages.</p>
-              </div>
-            )}
+              {askResult && (
+                <>
+                  <CitedMarkdownAnswer
+                    answer={askResult.answer}
+                    citations={retrievedPassages}
+                    className={ai.answer}
+                    citationClassName={ai.citationMarker}
+                    onOpenNote={onOpenNote}
+                  />
+                  {displayedSources.length > 0 && (
+                    <button type="button" className={ai.sourcesButton} onClick={() => setIsSourcesOpen(true)}>
+                      <Quote size={13} /> Sources
+                      <span className={ai.sectionBadge}>{displayedSources.length}</span>
+                    </button>
+                  )}
+                </>
+              )}
+
+              {!askResult && displayedSources.length > 0 && (
+                <button type="button" className={ai.sourcesButton} onClick={() => setIsSourcesOpen(true)}>
+                  <Quote size={13} /> Sources
+                  <span className={ai.sectionBadge}>{displayedSources.length}</span>
+                </button>
+              )}
+
+              {!askResult && !askError && retrievedPassages.length === 0 && !isAsking && (
+                <div className={ai.askEmpty}>
+                  <div className={ai.askEmptyIcon}><Search size={20} /></div>
+                  <div className={ai.askEmptyTitle}>Search your knowledge</div>
+                  <p className={ai.askEmptyCopy}>
+                    Get answers grounded only in your notes. Every claim links back to its exact source passage.
+                  </p>
+                  <div className={ai.promptGrid}>
+                    {ASK_STARTERS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className={ai.promptChip}
+                        onClick={() => setAskQuery(prompt)}
+                      >
+                        <Sparkles size={13} className="shrink-0 opacity-60 transition-opacity group-hover:opacity-100" />
+                        <span>{prompt}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -850,6 +897,7 @@ export function AIPage({
                   className={`${tm.iconBtn} ml-auto`}
                   onClick={() => setIsSourcesOpen(false)}
                   aria-label="Close sources"
+                  autoFocus
                 >
                   <X size={15} />
                 </button>
@@ -860,7 +908,10 @@ export function AIPage({
                     key={`${source.path}:${source.startLine}`}
                     type="button"
                     className={ai.sourceCard}
-                    onClick={() => onOpenNote(source.path)}
+                    onClick={() => {
+                      setIsSourcesOpen(false);
+                      onOpenNote(source.path);
+                    }}
                   >
                     <div className={ai.sourceHeader}>
                       <FileText size={13} className="shrink-0 text-(--text-muted)" />
