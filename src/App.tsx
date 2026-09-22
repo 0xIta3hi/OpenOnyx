@@ -2377,7 +2377,7 @@ export default function App() {
       } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c" && settings.coreCanvas !== false) {
         e.preventDefault();
         void handleToggleCanvas();
-      } else if (ctrl && e.key === "b") {
+      } else if (ctrl && shift && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setShowSidebar((s) => !s);
       } else if (ctrl && e.key === "Tab") {

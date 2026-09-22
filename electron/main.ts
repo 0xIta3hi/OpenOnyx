@@ -477,7 +477,7 @@ function buildMenu(): void {
         { type: 'separator' },
         {
           label: 'Toggle Sidebar',
-          accelerator: 'CmdOrCtrl+B',
+          accelerator: 'CmdOrCtrl+Shift+B',
           click: () => mainWindow?.webContents.send('menu:toggle-sidebar'),
         },
         { type: 'separator' },
