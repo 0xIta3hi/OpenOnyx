@@ -63,7 +63,8 @@ This creates a bidirectional link. The linked note will show this note in its **
 | \`Ctrl+F\` | Search |
 | \`Ctrl+G\` | Graph View |
 | \`Ctrl+P\` | Command Palette |
-| \`Ctrl+B\` | Toggle Sidebar |
+| \`Ctrl+B\` | Bold |
+| \`Ctrl+Shift+B\` | Toggle Sidebar |
 
 ## Next Steps
 

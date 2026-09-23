@@ -120,7 +120,7 @@ export function useAppCommands({
       {
         id: "sidebar",
         label: "Toggle Sidebar",
-        shortcut: "Ctrl+B",
+        shortcut: "Ctrl+Shift+B",
         action: () => setShowSidebar((s) => !s),
         category: "View",
       },
