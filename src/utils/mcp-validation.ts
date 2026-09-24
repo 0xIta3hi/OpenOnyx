@@ -5,7 +5,7 @@ import type {
   McpServerConfig,
   McpStdioTransport,
   McpTransportConfig,
-} from "../types/mcp";
+} from "../types/mcp.js";
 
 export interface McpValidationIssue {
   path: string;
