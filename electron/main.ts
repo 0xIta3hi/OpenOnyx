@@ -41,6 +41,8 @@ let mainWindow: BrowserWindow | null = null;
 let fsManager: FileSystemManager | null = null;
 let searchEngine: SearchEngine | null = null;
 let mcpManager: McpConnectionManager | null = null;
+let mcpShutdownComplete = false;
+let mcpShutdownPromise: Promise<void> | null = null;
 
 const isDevMode = !app.isPackaged;
 const MAX_RECENT_VAULTS = 20;
@@ -747,7 +749,14 @@ app.on('window-all-closed', () => {
 });
 
 // Clean up on exit
-app.on('will-quit', () => {
+app.on('will-quit', (event) => {
+  if (!mcpManager || mcpShutdownComplete) return;
+  event.preventDefault();
+  if (!mcpShutdownPromise) {
+    mcpShutdownPromise = mcpManager.shutdown().finally(() => {
+      mcpShutdownComplete = true;
+      app.quit();
+    });
+  }
   globalShortcut.unregisterAll();
-  void mcpManager?.shutdown();
 });

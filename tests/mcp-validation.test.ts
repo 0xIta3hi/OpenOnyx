@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   validateMcpConfiguration,
   validateMcpServerConfig,
-} from "../src/utils/mcp-validation";
+} from "../electron/mcpValidation";
 
 const baseServer = {
   id: "filesystem-local",

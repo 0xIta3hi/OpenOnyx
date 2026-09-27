@@ -48,13 +48,17 @@ function resolveValues(
   return Promise.all(
     Object.entries(values).map(async ([key, value]) => [
       key,
-      value.type === "value" ? value.value : await secretResolver.resolve(value.secretId) ?? "",
+      value.type === "value" ? value.value : await secretResolver.resolve(value.secretId).then((secret) => {
+        if (secret === undefined) throw new Error(`MCP secret is unavailable: ${value.secretId}`);
+        return secret;
+      }),
     ] as const),
   ).then((entries) => Object.fromEntries(entries));
 }
 
 export class McpConnectionManager {
   private readonly servers = new Map<string, ManagedServer>();
+  private readonly connections = new Map<string, Promise<McpServerSnapshot>>();
   private configuration: McpConfiguration = { servers: {} };
 
   constructor(
@@ -79,10 +83,17 @@ export class McpConnectionManager {
   }
 
   async upsert(config: McpServerConfig): Promise<McpServerSnapshot> {
-    await this.disconnect(config.id);
+    const existing = this.servers.get(config.id);
+    const transportChanged = existing && JSON.stringify(existing.config.transport) !== JSON.stringify(config.transport);
+    if (transportChanged || (existing?.config.enabled && !config.enabled)) await this.disconnect(config.id);
     this.configuration.servers[config.id] = config;
     await this.store.save(this.configuration);
-    this.servers.set(config.id, { config, runtime: createRuntime(config.enabled ? "disconnected" : "disabled"), tools: [] });
+    if (existing && !transportChanged) {
+      existing.config = config;
+      if (!config.enabled) existing.runtime = { ...existing.runtime, status: "disabled" };
+    } else {
+      this.servers.set(config.id, { config, runtime: createRuntime(config.enabled ? "disconnected" : "disabled"), tools: [] });
+    }
     return this.get(config.id)!;
   }
 
@@ -93,12 +104,10 @@ export class McpConnectionManager {
     await this.store.save(this.configuration);
   }
 
-  async setEnabled(id: string, enabled: boolean, trusted = false): Promise<McpServerSnapshot> {
+  async setEnabled(id: string, enabled: boolean): Promise<McpServerSnapshot> {
     const server = this.require(id);
-    if (enabled && !server.config.trusted && !trusted) {
-      throw new Error("MCP server trust approval is required before enabling");
-    }
-    server.config = { ...server.config, enabled, trusted: server.config.trusted || trusted, updatedAt: Date.now() };
+    if (enabled && !server.config.trusted) throw new Error("MCP server trust approval is required before enabling");
+    server.config = { ...server.config, enabled, updatedAt: Date.now() };
     this.configuration.servers[id] = server.config;
     await this.store.save(this.configuration);
     if (enabled) await this.connect(id);
@@ -106,8 +115,26 @@ export class McpConnectionManager {
     return this.get(id)!;
   }
 
-  async connect(id: string): Promise<McpServerSnapshot> {
+  async approveAndEnable(id: string): Promise<McpServerSnapshot> {
     const server = this.require(id);
+    server.config = { ...server.config, enabled: true, trusted: true, updatedAt: Date.now() };
+    this.configuration.servers[id] = server.config;
+    await this.store.save(this.configuration);
+    await this.connect(id);
+    return this.get(id)!;
+  }
+
+  async connect(id: string): Promise<McpServerSnapshot> {
+    const pending = this.connections.get(id);
+    if (pending) return pending;
+    const operation = this.connectInternal(id);
+    this.connections.set(id, operation);
+    try { return await operation; } finally { this.connections.delete(id); }
+  }
+
+  private async connectInternal(id: string): Promise<McpServerSnapshot> {
+    const server = this.require(id);
+    if (!server.config.enabled) throw new Error("MCP server is disabled");
     if (!server.config.trusted) throw new Error("MCP server trust approval is required before connecting");
     if (server.runtime.status === "connected") return this.get(id)!;
     server.runtime = { ...server.runtime, status: "connecting" };
@@ -166,6 +193,7 @@ export class McpConnectionManager {
 
   async callTool(id: string, name: string, args: Record<string, unknown>): Promise<unknown> {
     const server = this.require(id);
+    if (!server.config.enabled) throw new Error("MCP server is disabled");
     if (!server.config.enabledTools.includes(name)) throw new Error(`MCP tool is not enabled: ${name}`);
     if (!server.client || server.runtime.status !== "connected") await this.connect(id);
     const result = await this.require(id).client!.callTool({ name, arguments: args });
@@ -173,6 +201,7 @@ export class McpConnectionManager {
   }
 
   async shutdown(): Promise<void> {
+    await Promise.allSettled([...this.connections.values()]);
     await Promise.all([...this.servers.keys()].map((id) => this.disconnect(id)));
   }
 

@@ -55,11 +55,10 @@ export function McpSettingsPanel() {
   };
 
   const connect = async (server: McpServerSnapshot) => {
-    if (!window.confirm(`Connect to MCP server "${server.config.name}"? It may execute commands or access network resources.`)) return;
     setBusy(true);
     setError(null);
     try {
-      await getAPI().mcp.setEnabled(server.config.id, true, true);
+      await getAPI().mcp.setEnabled(server.config.id, true);
       await refresh();
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : "Could not connect to MCP server");
